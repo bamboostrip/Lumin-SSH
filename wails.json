@@ -1,0 +1,19 @@
+{
+  "name": "Lumin",
+  "outputfilename": "Lumin",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "Lumin",
+    "email": "admin@662662.xyz"
+  },
+  "info": {
+    "companyName": "Lumin",
+    "productName": "Lumin",
+    "productVersion": "1.0.0",
+    "copyright": "Copyright 2024 Lumin",
+    "comments": "Lightweight SSH Client"
+  }
+}

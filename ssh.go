@@ -1,0 +1,1656 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/pkg/sftp"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
+)
+
+// ErrHostKeyChanged 在远程主机密钥发生变化时返回，需要用户确认
+var ErrHostKeyChanged = errors.New("host key has changed")
+
+// PendingHostKey 保存等待用户确认的主机密钥变更信息
+type PendingHostKey struct {
+	Conn           Connection
+	Hostname       string
+	NewKey         ssh.PublicKey
+	NewFingerprint string
+	OldKeys        []knownhosts.KnownKey
+}
+
+// sshClientEntry 保存单个 SSH 连接共享的 client 和 sftp 实例
+// 同一服务器的多个终端复用同一 TCP 连接
+type sshClientEntry struct {
+	Client *ssh.Client
+	SFTP   *sftp.Client
+}
+
+type SessionData struct {
+	ConnKey             string // 共享客户端查找键: user@host:port
+	Session             *ssh.Session
+	Stdin               io.WriteCloser
+	HistoryStream       *commandHistoryStream
+	RemoteHistoryActive bool
+	GroupSessionId      string // 对子终端有效：父会话 sessionId（用于历史事件归组）
+}
+
+type SSHManager struct {
+	ctx              context.Context
+	app              *App                       // reference to App for WebSocket output delivery
+	sessions         map[string]*SessionData    // terminalId -> terminal session
+	clients          map[string]*sshClientEntry // connKey -> shared client+SFTP
+	connTerminals    map[string][]string        // connKey -> terminal sessionIds
+	probeDeployed    map[string]bool            // connKey -> probe.sh deployed
+	pendingHostKeys  map[string]*PendingHostKey // sessionId -> pending host key info
+	tempAcceptedKeys map[string]bool            // fingerprint -> true (accept this time only)
+	mu               sync.Mutex
+}
+
+// dialAddr 拼接 host:port，自动处理 IPv6 地址
+// 如果 host 本身已带 [] 会先去除，避免 net.JoinHostPort 重复包裹
+func dialAddr(host string, port int) string {
+	host = strings.TrimSpace(host)
+	host = strings.Trim(host, "[]")
+	return net.JoinHostPort(host, strconv.Itoa(port))
+}
+
+func NewSSHManager() *SSHManager {
+	return &SSHManager{
+		sessions:         make(map[string]*SessionData),
+		clients:          make(map[string]*sshClientEntry),
+		connTerminals:    make(map[string][]string),
+		probeDeployed:    make(map[string]bool),
+		pendingHostKeys:  make(map[string]*PendingHostKey),
+		tempAcceptedKeys: make(map[string]bool),
+	}
+}
+
+func (m *SSHManager) Connect(sessionId string, conn Connection) error {
+	// 去除密码首尾空白（防止复制粘贴带入不可见字符）
+	conn.Password = strings.TrimSpace(conn.Password)
+	connKey := fmt.Sprintf("%s@%s", conn.Username, dialAddr(conn.Host, conn.Port))
+
+	m.mu.Lock()
+	existingEntry, clientExists := m.clients[connKey]
+	m.mu.Unlock()
+
+	var client *ssh.Client
+	var sftpClient *sftp.Client
+
+	if clientExists {
+		client = existingEntry.Client
+		sftpClient = existingEntry.SFTP
+	} else {
+		// Setup auth methods
+		// keyboard-interactive 优先，因为部分服务器不提供 password 方法
+		var authMethods []ssh.AuthMethod
+		if conn.AuthMethod == "password" {
+			authMethods = append(authMethods, ssh.KeyboardInteractive(func(user, instruction string, questions []string, echos []bool) (answers []string, err error) {
+				answers = make([]string, len(questions))
+				for i := range answers {
+					answers[i] = conn.Password
+				}
+				return answers, nil
+			}))
+			authMethods = append(authMethods, ssh.Password(conn.Password))
+		} else if conn.AuthMethod == "privateKey" {
+			var signer ssh.Signer
+			var err error
+			if conn.Passphrase != "" {
+				signer, err = ssh.ParsePrivateKeyWithPassphrase([]byte(conn.PrivateKey), []byte(conn.Passphrase))
+			} else {
+				signer, err = ssh.ParsePrivateKey([]byte(conn.PrivateKey))
+			}
+			if err != nil {
+				return fmt.Errorf("invalid private key: %v", err)
+			}
+			authMethods = append(authMethods, ssh.PublicKeys(signer))
+		}
+
+		knownHostsPath := filepath.Join(os.Getenv("USERPROFILE"), ".ssh", "known_hosts")
+		os.MkdirAll(filepath.Dir(knownHostsPath), 0700)
+		if _, err := os.Stat(knownHostsPath); os.IsNotExist(err) {
+			os.WriteFile(knownHostsPath, []byte(""), 0600)
+		}
+
+		hostKeyCallback, err := knownhosts.New(knownHostsPath)
+		if err != nil {
+			hostKeyCallback = ssh.InsecureIgnoreHostKey()
+		}
+
+		customHostKeyCallback := func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+			err := hostKeyCallback(hostname, remote, key)
+			if err == nil {
+				return nil
+			}
+
+			var keyErr *knownhosts.KeyError
+			if errors.As(err, &keyErr) {
+				if len(keyErr.Want) == 0 {
+					fingerprint := ssh.FingerprintSHA256(key)
+
+					// 检查是否为临时接受的密钥（仅本次会话）
+					m.mu.Lock()
+					if m.tempAcceptedKeys[fingerprint] {
+						m.mu.Unlock()
+						return nil
+					}
+					m.mu.Unlock()
+
+					// 新主机密钥 —— 需要用户确认
+					m.pendingHostKeys[sessionId] = &PendingHostKey{
+						Conn:           conn,
+						Hostname:       hostname,
+						NewKey:         key,
+						NewFingerprint: fingerprint,
+						OldKeys:        nil, // nil 表示首次连接
+					}
+					return ErrHostKeyChanged
+				} else {
+					fingerprint := ssh.FingerprintSHA256(key)
+
+					// 检查是否为临时接受的密钥（仅本次会话）
+					m.mu.Lock()
+					if m.tempAcceptedKeys[fingerprint] {
+						m.mu.Unlock()
+						return nil // 本次接受该密钥
+					}
+					m.mu.Unlock()
+
+					m.pendingHostKeys[sessionId] = &PendingHostKey{
+						Conn:           conn,
+						Hostname:       hostname,
+						NewKey:         key,
+						NewFingerprint: fingerprint,
+						OldKeys:        keyErr.Want,
+					}
+					return ErrHostKeyChanged
+				}
+			}
+			return err
+		}
+
+		config := &ssh.ClientConfig{
+			User:            conn.Username,
+			Auth:            authMethods,
+			HostKeyCallback: customHostKeyCallback,
+			Timeout:         10 * time.Second,
+			HostKeyAlgorithms: []string{
+				"ssh-ed25519",
+				"ecdsa-sha2-nistp256",
+				"ecdsa-sha2-nistp384",
+				"ecdsa-sha2-nistp521",
+				"rsa-sha2-512",
+				"rsa-sha2-256",
+				"ssh-rsa",
+				"ssh-dss",
+			},
+		}
+
+		target := dialAddr(conn.Host, conn.Port)
+		var dialErr error
+		client, dialErr = ssh.Dial("tcp", target, config)
+		if dialErr != nil {
+			if errors.Is(dialErr, ErrHostKeyChanged) {
+				if m.ctx != nil {
+					pending := m.pendingHostKeys[sessionId]
+					oldFingerprints := make([]string, 0, len(pending.OldKeys))
+					for _, k := range pending.OldKeys {
+						oldFingerprints = append(oldFingerprints, ssh.FingerprintSHA256(k.Key))
+					}
+					runtime.EventsEmit(m.ctx, "ssh-host-key-changed", map[string]interface{}{
+						"sessionId":       sessionId,
+						"hostname":        pending.Hostname,
+						"host":            conn.Host,
+						"port":            conn.Port,
+						"newFingerprint":  pending.NewFingerprint,
+						"oldFingerprints": oldFingerprints,
+						"isNew":           len(pending.OldKeys) == 0,
+					})
+				}
+				return fmt.Errorf("主机密钥已变更，请在弹窗中确认")
+			}
+
+			// 认证失败或连接被拒绝，立即返回错误
+			errStr := dialErr.Error()
+			if strings.Contains(errStr, "unable to authenticate") ||
+				strings.Contains(errStr, "no supported methods remain") ||
+				strings.Contains(errStr, "EOF") ||
+				strings.Contains(errStr, "connection reset") ||
+				strings.Contains(errStr, "connection refused") {
+				if m.ctx != nil {
+					runtime.EventsEmit(m.ctx, "ssh-auth-failed", map[string]interface{}{
+						"sessionId": sessionId,
+						"connId":    conn.ID,
+						"host":      conn.Host,
+						"port":      conn.Port,
+						"username":  conn.Username,
+						"error":     errStr,
+					})
+				}
+				return fmt.Errorf("认证失败")
+			}
+
+			return dialErr
+		}
+
+		var sftpErr error
+		sftpClient, sftpErr = sftp.NewClient(client)
+		if sftpErr != nil {
+			client.Close()
+			return fmt.Errorf("failed to start SFTP: %v", sftpErr)
+		}
+
+		m.mu.Lock()
+		m.clients[connKey] = &sshClientEntry{Client: client, SFTP: sftpClient}
+		m.connTerminals[connKey] = []string{}
+		m.mu.Unlock()
+
+		go func() {
+			_ = client.Wait()
+			m.mu.Lock()
+			terminalIds := append([]string{}, m.connTerminals[connKey]...)
+			m.mu.Unlock()
+			for _, tid := range terminalIds {
+				m.mu.Lock()
+				ts, tsOk := m.sessions[tid]
+				if tsOk {
+					if ts.Stdin != nil {
+						ts.Stdin.Close()
+					}
+					if ts.Session != nil {
+						ts.Session.Close()
+					}
+					delete(m.sessions, tid)
+				}
+				m.mu.Unlock()
+				if m.ctx != nil {
+					runtime.EventsEmit(m.ctx, "ssh-disconnected", tid)
+				}
+			}
+			m.mu.Lock()
+			if entry, ok := m.clients[connKey]; ok {
+				if entry.SFTP != nil {
+					entry.SFTP.Close()
+				}
+				if entry.Client != nil {
+					entry.Client.Close()
+				}
+				delete(m.clients, connKey)
+				delete(m.connTerminals, connKey)
+				delete(m.probeDeployed, connKey)
+			}
+			m.mu.Unlock()
+		}()
+	}
+
+	session, err := client.NewSession()
+	if err != nil {
+		return err
+	}
+
+	modes := ssh.TerminalModes{
+		ssh.ECHO:          1,
+		ssh.TTY_OP_ISPEED: 115200,
+		ssh.TTY_OP_OSPEED: 115200,
+	}
+
+	if err := session.RequestPty("xterm-256color", 24, 80, modes); err != nil {
+		session.Close()
+		return err
+	}
+
+	stdin, err := session.StdinPipe()
+	if err != nil {
+		session.Close()
+		return err
+	}
+	stdout, err := session.StdoutPipe()
+	if err != nil {
+		session.Close()
+		return err
+	}
+	stderr, err := session.StderrPipe()
+	if err != nil {
+		session.Close()
+		return err
+	}
+
+	shellPath := detectRemoteShell(client)
+	launchCmd, remoteHistoryActive := buildShellLaunchCommand(shellPath)
+
+	if remoteHistoryActive {
+		err = session.Start(launchCmd)
+	} else {
+		err = session.Shell()
+	}
+	if err != nil {
+		session.Close()
+		return err
+	}
+
+	var historyStream *commandHistoryStream
+	if remoteHistoryActive {
+		historyStream = newCommandHistoryStream()
+	}
+
+	m.mu.Lock()
+	m.sessions[sessionId] = &SessionData{
+		ConnKey:             connKey,
+		Session:             session,
+		Stdin:               stdin,
+		HistoryStream:       historyStream,
+		RemoteHistoryActive: remoteHistoryActive,
+	}
+	m.connTerminals[connKey] = append(m.connTerminals[connKey], sessionId)
+	m.mu.Unlock()
+
+	go m.pipeOutput(sessionId, stdout, historyStream)
+	go m.pipeOutput(sessionId, stderr, nil)
+
+	return nil
+}
+
+func (m *SSHManager) pipeOutput(sessionId string, r io.Reader, historyStream *commandHistoryStream) {
+	buf := make([]byte, 32768)
+
+	// 查找 GroupSessionId（子终端时使用父会话 ID 归组历史事件）
+	eventSessionId := sessionId
+	m.mu.Lock()
+	if s, ok := m.sessions[sessionId]; ok && s.GroupSessionId != "" {
+		eventSessionId = s.GroupSessionId
+	}
+	m.mu.Unlock()
+
+	// 直接读取并通过 WebSocket 发送，不再批处理缓冲
+	// WebSocket 过 TCP loopback 延迟极低，无需批处理
+	for {
+		n, err := r.Read(buf)
+		if n > 0 {
+			data := make([]byte, n)
+			copy(data, buf[:n])
+			if historyStream != nil {
+				visible, commands := historyStream.Process(data)
+				data = visible
+				for _, command := range commands {
+					if command == "" || m.ctx == nil {
+						continue
+					}
+					runtime.EventsEmit(m.ctx, "ssh-command-executed", map[string]string{
+						"sessionId": eventSessionId,
+						"command":   command,
+						"time":      time.Now().Format(time.RFC3339),
+						"source":    "remote",
+					})
+				}
+			}
+			if len(data) == 0 {
+				if err != nil {
+					return
+				}
+				continue
+			}
+			if m.app != nil {
+				m.app.WriteWsOutput(sessionId, data)
+			} else if m.ctx != nil {
+				// fallback: WebSocket 未初始化时用 Events
+				runtime.EventsEmit(m.ctx, "terminal-data-"+sessionId, string(data))
+			}
+		}
+		if err != nil {
+			return
+		}
+	}
+}
+
+// getClientEntry 查找 session 对应的共享客户端
+func (m *SSHManager) getClientEntry(sessionId string) (*ssh.Client, *sftp.Client, error) {
+	m.mu.Lock()
+	s, ok := m.sessions[sessionId]
+	if !ok {
+		m.mu.Unlock()
+		return nil, nil, fmt.Errorf("session not found")
+	}
+	entry, ok := m.clients[s.ConnKey]
+	m.mu.Unlock()
+	if !ok {
+		return nil, nil, fmt.Errorf("client not found for session")
+	}
+	return entry.Client, entry.SFTP, nil
+}
+
+func (m *SSHManager) Disconnect(sessionId string) {
+	m.mu.Lock()
+	s, ok := m.sessions[sessionId]
+	if !ok {
+		m.mu.Unlock()
+		return
+	}
+	connKey := s.ConnKey
+	if s.Stdin != nil {
+		s.Stdin.Close()
+	}
+	if s.Session != nil {
+		s.Session.Close()
+	}
+	delete(m.sessions, sessionId)
+
+	// 从 connTerminals 中移除
+	terminals := m.connTerminals[connKey]
+	for i, t := range terminals {
+		if t == sessionId {
+			m.connTerminals[connKey] = append(terminals[:i], terminals[i+1:]...)
+			break
+		}
+	}
+	// 如果是最后一个终端，关闭共享客户端
+	if len(m.connTerminals[connKey]) == 0 {
+		if entry, ok := m.clients[connKey]; ok {
+			if entry.SFTP != nil {
+				entry.SFTP.Close()
+			}
+			if entry.Client != nil {
+				entry.Client.Close()
+			}
+			delete(m.clients, connKey)
+			delete(m.connTerminals, connKey)
+			delete(m.probeDeployed, connKey)
+		}
+	}
+	m.mu.Unlock()
+}
+
+func (m *SSHManager) CloseSessionResources(sessionId string) {
+	m.mu.Lock()
+	s, ok := m.sessions[sessionId]
+	if !ok {
+		m.mu.Unlock()
+		return
+	}
+	connKey := s.ConnKey
+	terminalIds := append([]string{}, m.connTerminals[connKey]...)
+	m.mu.Unlock()
+
+	for _, tid := range terminalIds {
+		m.mu.Lock()
+		ts, tsOk := m.sessions[tid]
+		if tsOk {
+			if ts.Stdin != nil {
+				ts.Stdin.Close()
+			}
+			if ts.Session != nil {
+				ts.Session.Close()
+			}
+			delete(m.sessions, tid)
+		}
+		m.mu.Unlock()
+	}
+
+	m.mu.Lock()
+	if entry, ok := m.clients[connKey]; ok {
+		if entry.SFTP != nil {
+			entry.SFTP.Close()
+		}
+		if entry.Client != nil {
+			entry.Client.Close()
+		}
+		delete(m.clients, connKey)
+		delete(m.connTerminals, connKey)
+		delete(m.probeDeployed, connKey)
+	}
+	m.mu.Unlock()
+}
+
+// OpenTerminal 为已有连接创建新的终端通道
+// 复用同一个 SSH 客户端，创建新的 shell session
+func (m *SSHManager) OpenTerminal(sessionId string) (string, error) {
+	m.mu.Lock()
+	existing, ok := m.sessions[sessionId]
+	if !ok {
+		m.mu.Unlock()
+		return "", fmt.Errorf("session not found")
+	}
+	entry, ok := m.clients[existing.ConnKey]
+	if !ok {
+		m.mu.Unlock()
+		return "", fmt.Errorf("client not found for session")
+	}
+	connKey := existing.ConnKey
+	remoteHistoryActive := existing.RemoteHistoryActive
+	m.mu.Unlock()
+
+	session, err := entry.Client.NewSession()
+	if err != nil {
+		return "", err
+	}
+
+	modes := ssh.TerminalModes{
+		ssh.ECHO:          1,
+		ssh.TTY_OP_ISPEED: 115200,
+		ssh.TTY_OP_OSPEED: 115200,
+	}
+
+	if err := session.RequestPty("xterm-256color", 24, 80, modes); err != nil {
+		session.Close()
+		return "", err
+	}
+
+	stdin, err := session.StdinPipe()
+	if err != nil {
+		session.Close()
+		return "", err
+	}
+	stdout, err := session.StdoutPipe()
+	if err != nil {
+		session.Close()
+		return "", err
+	}
+	stderr, err := session.StderrPipe()
+	if err != nil {
+		session.Close()
+		return "", err
+	}
+
+	if remoteHistoryActive {
+		shellPath := detectRemoteShell(entry.Client)
+		launchCmd, _ := buildShellLaunchCommand(shellPath)
+		if launchCmd != "" {
+			err = session.Start(launchCmd)
+		} else {
+			err = session.Shell()
+		}
+	} else {
+		err = session.Shell()
+	}
+	if err != nil {
+		session.Close()
+		return "", err
+	}
+
+	var historyStream *commandHistoryStream
+	if remoteHistoryActive {
+		historyStream = newCommandHistoryStream()
+	}
+
+	newId := fmt.Sprintf("term_%d", time.Now().UnixNano())
+
+	m.mu.Lock()
+	m.sessions[newId] = &SessionData{
+		ConnKey:             connKey,
+		Session:             session,
+		Stdin:               stdin,
+		HistoryStream:       historyStream,
+		RemoteHistoryActive: remoteHistoryActive,
+		GroupSessionId:      sessionId, // 使用父会话 ID 用于历史事件归组
+	}
+	m.connTerminals[connKey] = append(m.connTerminals[connKey], newId)
+	m.mu.Unlock()
+
+	go m.pipeOutput(newId, stdout, historyStream)
+	go m.pipeOutput(newId, stderr, nil)
+
+	return newId, nil
+}
+
+// AcceptHostKeyChange 处理用户对主机密钥变更的确认
+// action: 0=取消, 1=仅本次接受, 2=接受并保存至 known_hosts
+func (m *SSHManager) AcceptHostKeyChange(sessionId string, action int) error {
+	m.mu.Lock()
+	pending, exists := m.pendingHostKeys[sessionId]
+	if !exists {
+		m.mu.Unlock()
+		return fmt.Errorf("no pending host key change for session %s", sessionId)
+	}
+	delete(m.pendingHostKeys, sessionId)
+	m.mu.Unlock()
+
+	switch action {
+	case 0: // 取消
+		return fmt.Errorf("用户取消了主机密钥验证")
+
+	case 1: // 仅本次接受 —— 不写 known_hosts，仅临时放行
+		m.mu.Lock()
+		m.tempAcceptedKeys[pending.NewFingerprint] = true
+		m.mu.Unlock()
+		return m.Connect(sessionId, pending.Conn)
+
+	case 2: // 接受并保存到 known_hosts
+		knownHostsPath := filepath.Join(os.Getenv("USERPROFILE"), ".ssh", "known_hosts")
+		os.MkdirAll(filepath.Dir(knownHostsPath), 0700)
+
+		newLine := knownhosts.Line([]string{pending.Hostname}, pending.NewKey)
+
+		if len(pending.OldKeys) > 0 {
+			// 密钥已变更：删除旧条目后追加新条目
+			data, err := os.ReadFile(knownHostsPath)
+			if err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("无法读取 known_hosts: %v", err)
+			}
+
+			var newLines []string
+			for _, line := range strings.Split(string(data), "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" || strings.HasPrefix(line, "#") {
+					newLines = append(newLines, line)
+					continue
+				}
+				isOld := false
+				for _, oldKey := range pending.OldKeys {
+					if strings.Contains(line, strings.TrimSpace(string(ssh.MarshalAuthorizedKey(oldKey.Key)))) {
+						isOld = true
+						break
+					}
+				}
+				if !isOld {
+					newLines = append(newLines, line)
+				}
+			}
+			newLines = append(newLines, newLine)
+
+			if err := os.WriteFile(knownHostsPath, []byte(strings.Join(newLines, "\n")+"\n"), 0600); err != nil {
+				return fmt.Errorf("无法写入 known_hosts: %v", err)
+			}
+		} else {
+			// 首次连接：直接追加新条目
+			f, err := os.OpenFile(knownHostsPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+			if err != nil {
+				return fmt.Errorf("无法写入 known_hosts: %v", err)
+			}
+			defer f.Close()
+			f.WriteString(newLine + "\n")
+		}
+
+		return m.Connect(sessionId, pending.Conn)
+
+	default:
+		return fmt.Errorf("无效的操作")
+	}
+}
+
+func (m *SSHManager) GetTerminalCwd(sessionId string) (string, error) {
+	client, _, err := m.getClientEntry(sessionId)
+	if err != nil {
+		return "", err
+	}
+
+	localAddr := client.LocalAddr().String()
+	parts := strings.Split(localAddr, ":")
+	if len(parts) < 2 {
+		return "", fmt.Errorf("invalid local address format")
+	}
+	port := parts[len(parts)-1]
+
+	cmd := fmt.Sprintf(`PORT=%s; SSHD_PID=$(ss -ntp 2>/dev/null | grep ":$PORT " | grep -oE 'pid=[0-9]+' | cut -d= -f2 | head -n1); [ -z "$SSHD_PID" ] && SSHD_PID=$(netstat -ntp 2>/dev/null | grep ":$PORT " | grep -oE '[0-9]+/sshd' | cut -d/ -f1 | head -n1); if [ -n "$SSHD_PID" ]; then SHELL_PID=$(pgrep -P $SSHD_PID | head -n1); fi; [ -z "$SHELL_PID" ] && SHELL_PID=$(pgrep -u $USER -f "sh|bash|zsh" | tail -n1); if [ -n "$SHELL_PID" ]; then readlink /proc/$SHELL_PID/cwd 2>/dev/null || echo "/"; else echo "/"; fi`, port)
+
+	out, err := m.executeCmdWithClient(client, cmd)
+	if err != nil {
+		return "", err
+	}
+	cwd := strings.TrimSpace(out)
+	if cwd == "" || cwd == "/" {
+		// 复杂探测失败，用 $HOME 作为回退
+		homeOut, homeErr := m.executeCmdWithClient(client, "echo $HOME")
+		if homeErr == nil {
+			homeDir := strings.TrimSpace(homeOut)
+			if homeDir != "" && homeDir != "/" {
+				return homeDir, nil
+			}
+		}
+	}
+	if cwd == "" {
+		cwd = "/"
+	}
+	return cwd, nil
+}
+
+// WriteBytes sends raw bytes to the SSH PTY stdin (used by WebSocket handler)
+func (m *SSHManager) WriteBytes(sessionId string, data []byte) {
+	m.mu.Lock()
+	s, ok := m.sessions[sessionId]
+	m.mu.Unlock()
+	if ok && s.Stdin != nil {
+		_, _ = s.Stdin.Write(data)
+	}
+}
+
+func (m *SSHManager) Resize(sessionId string, cols, rows int) {
+	m.mu.Lock()
+	s, ok := m.sessions[sessionId]
+	m.mu.Unlock()
+	if ok {
+		s.Session.WindowChange(rows, cols)
+	}
+}
+
+// executeCmdWithClient executes a command on a separate temporary session using the given client
+func (m *SSHManager) executeCmdWithClient(client *ssh.Client, cmd string) (string, error) {
+	session, err := client.NewSession()
+	if err != nil {
+		return "", err
+	}
+	defer session.Close()
+
+	var stdoutBuf bytes.Buffer
+	session.Stdout = &stdoutBuf
+	err = session.Run(cmd)
+	return stdoutBuf.String(), err
+}
+
+func parseStatCpus(lines []string) map[string][]uint64 {
+	res := make(map[string][]uint64)
+	for _, l := range lines {
+		if !strings.HasPrefix(l, "cpu") {
+			continue
+		}
+		parts := strings.Fields(l)
+		if len(parts) < 5 {
+			continue
+		}
+		vals := make([]uint64, len(parts)-1)
+		for i := 1; i < len(parts); i++ {
+			v, _ := strconv.ParseUint(parts[i], 10, 64)
+			vals[i-1] = v
+		}
+		res[parts[0]] = vals
+	}
+	return res
+}
+
+func parseNetDev(lines []string) map[string][]uint64 {
+	res := make(map[string][]uint64)
+	for _, l := range lines {
+		if !strings.Contains(l, ":") {
+			continue
+		}
+		parts := strings.Split(l, ":")
+		name := strings.TrimSpace(parts[0])
+		if name == "lo" {
+			continue
+		}
+		fields := strings.Fields(parts[1])
+		if len(fields) < 9 {
+			continue
+		}
+		rx, _ := strconv.ParseUint(fields[0], 10, 64)
+		tx, _ := strconv.ParseUint(fields[8], 10, 64)
+		res[name] = []uint64{rx, tx}
+	}
+	return res
+}
+
+func parseDiskStats(lines []string) map[string][]uint64 {
+	res := make(map[string][]uint64)
+	for _, l := range lines {
+		fields := strings.Fields(l)
+		if len(fields) < 10 {
+			continue
+		}
+		name := fields[2]
+		if strings.HasPrefix(name, "loop") || strings.HasPrefix(name, "ram") {
+			continue
+		}
+		readSectors, _ := strconv.ParseUint(fields[5], 10, 64)
+		writeSectors, _ := strconv.ParseUint(fields[9], 10, 64)
+		res[name] = []uint64{readSectors, writeSectors}
+	}
+	return res
+}
+
+const probeScript = `#!/bin/sh
+# LuminSSH Probe Script - auto generated, do not edit
+# Collects metrics via /proc - no external dependencies required
+
+cat /proc/uptime
+echo ---MEM---
+grep -E '^MemTotal:|^MemFree:|^MemAvailable:|^Buffers:|^Cached:|^SReclaimable:|^SwapTotal:|^SwapFree:' /proc/meminfo
+echo ---DF---
+df -k | grep -vE '^tmpfs|^udev|^devtmpfs|Filesystem'
+echo ---OS---
+grep PRETTY_NAME /etc/os-release 2>/dev/null || echo 'PRETTY_NAME="Linux"'
+grep ^VERSION_ID= /etc/os-release 2>/dev/null
+echo ---TZ---
+cat /etc/timezone 2>/dev/null || date +'%Z'
+echo ---HOSTNAME---
+hostname
+echo ---IP---
+ip route get 1.1.1.1 2>/dev/null | grep -oE 'src [0-9.]+' | awk '{print $2}' || hostname -I 2>/dev/null | awk '{print $1}'
+echo ---CPUINFO---
+grep 'model name' /proc/cpuinfo | head -1
+echo ---CPU1---
+grep '^cpu' /proc/stat
+echo ---NET1---
+cat /proc/net/dev
+echo ---DISKIO1---
+cat /proc/diskstats
+sleep 1
+echo ---CPU2---
+grep '^cpu' /proc/stat
+echo ---NET2---
+cat /proc/net/dev
+echo ---DISKIO2---
+cat /proc/diskstats
+echo ---PROC---
+ps -eo pid,pcpu,rss,comm --sort=-pcpu 2>/dev/null | head -6
+echo ---DONE---
+`
+
+// deployProbeScript writes probe.sh to ~/.lumin/ on the remote server via SFTP.
+func (m *SSHManager) deployProbeScript(sftpClient *sftp.Client, connKey string) error {
+	m.mu.Lock()
+	already := m.probeDeployed[connKey]
+	m.mu.Unlock()
+	if already {
+		return nil
+	}
+
+	if err := sftpClient.MkdirAll(".lumin"); err != nil {
+		_ = sftpClient.MkdirAll("/tmp/.lumin")
+	}
+
+	scriptPath := ".lumin/probe.sh"
+	f, err := sftpClient.Create(scriptPath)
+	if err != nil {
+		scriptPath = "/tmp/.lumin/probe.sh"
+		f, err = sftpClient.Create(scriptPath)
+		if err != nil {
+			return fmt.Errorf("cannot write probe script: %v", err)
+		}
+	}
+	_, err = f.Write([]byte(probeScript))
+	f.Close()
+	if err != nil {
+		return err
+	}
+
+	_ = sftpClient.Chmod(scriptPath, 0755)
+
+	m.mu.Lock()
+	m.probeDeployed[connKey] = true
+	m.mu.Unlock()
+	return nil
+}
+
+func (m *SSHManager) GetSystemInfo(sessionId string) (map[string]interface{}, error) {
+	client, sftpClient, err := m.getClientEntry(sessionId)
+	if err != nil {
+		return nil, err
+	}
+
+	m.mu.Lock()
+	s, ok := m.sessions[sessionId]
+	if !ok {
+		m.mu.Unlock()
+		return nil, fmt.Errorf("session not found")
+	}
+	connKey := s.ConnKey
+	m.mu.Unlock()
+
+	_ = m.deployProbeScript(sftpClient, connKey)
+
+	out, err := m.executeCmdWithClient(client, `sh -c 'f=~/.lumin/probe.sh; [ -f "$f" ] && sh "$f" || sh /tmp/.lumin/probe.sh'`)
+	if err != nil || len(strings.TrimSpace(out)) == 0 {
+		return nil, fmt.Errorf("probe script execution failed")
+	}
+
+	// ── Split on ---CPU2--- to get two halves ──────────────────────────
+	halves := strings.SplitN(out, "---CPU2---", 2)
+	if len(halves) < 2 {
+		return nil, fmt.Errorf("unexpected output format")
+	}
+	part1 := halves[0]
+	part2 := halves[1] // everything after ---CPU2---
+
+	lines1 := strings.Split(part1, "\n")
+	lines2 := strings.Split(part2, "\n")
+
+	// ── Helper: extract a named section from a line slice ─────────────
+	extractSection := func(lines []string, startMarker, endMarker string) []string {
+		var out []string
+		// BUG FIX: if startMarker is empty, strings.Contains(l,"") is always true
+		// causing every line to be skipped via `continue`. Fix: start collecting immediately.
+		inside := (startMarker == "")
+		for _, l := range lines {
+			if startMarker != "" && strings.Contains(l, startMarker) {
+				inside = true
+				continue
+			}
+			if endMarker != "" && strings.Contains(l, endMarker) {
+				break
+			}
+			if inside {
+				out = append(out, l)
+			}
+		}
+		return out
+	}
+
+	// ── Parse uptime ──────────────────────────────────────────────────
+	uptimeStr := "0 小时"
+	if len(lines1) > 0 {
+		var uptimeVal float64
+		fmt.Sscanf(strings.TrimSpace(lines1[0]), "%f", &uptimeVal)
+		days := int(uptimeVal / 86400)
+		hours := int((uptimeVal - float64(days*86400)) / 3600)
+		mins := int((uptimeVal - float64(days*86400) - float64(hours*3600)) / 60)
+		if days > 0 {
+			uptimeStr = fmt.Sprintf("%d 天 %d 小时", days, hours)
+		} else if hours > 0 {
+			uptimeStr = fmt.Sprintf("%d 小时 %d 分", hours, mins)
+		} else {
+			uptimeStr = fmt.Sprintf("%d 分钟", mins)
+		}
+	}
+
+	// ── Parse memory ──────────────────────────────────────────────────
+	var memTotal, memFree, memAvailable, memBuffers, memCached, memSReclaimable uint64
+	var swapTotal, swapFree uint64
+	for _, l := range lines1 {
+		switch {
+		case strings.HasPrefix(l, "MemTotal:"):
+			fmt.Sscanf(l, "MemTotal: %d", &memTotal)
+		case strings.HasPrefix(l, "MemFree:"):
+			fmt.Sscanf(l, "MemFree: %d", &memFree)
+		case strings.HasPrefix(l, "MemAvailable:"):
+			fmt.Sscanf(l, "MemAvailable: %d", &memAvailable)
+		case strings.HasPrefix(l, "Buffers:"):
+			fmt.Sscanf(l, "Buffers: %d", &memBuffers)
+		case strings.HasPrefix(l, "Cached:"):
+			fmt.Sscanf(l, "Cached: %d", &memCached)
+		case strings.HasPrefix(l, "SReclaimable:"):
+			fmt.Sscanf(l, "SReclaimable: %d", &memSReclaimable)
+		case strings.HasPrefix(l, "SwapTotal:"):
+			fmt.Sscanf(l, "SwapTotal: %d", &swapTotal)
+		case strings.HasPrefix(l, "SwapFree:"):
+			fmt.Sscanf(l, "SwapFree: %d", &swapFree)
+		}
+	}
+	memTotalMB := float64(memTotal) / 1024.0
+	memFreeMB := float64(memFree) / 1024.0
+	memCacheMB := float64(memBuffers+memCached+memSReclaimable) / 1024.0
+	// 使用 MemAvailable 计算已用内存，与 free 命令一致
+	var memUsedMB float64
+	if memAvailable > 0 {
+		memUsedMB = memTotalMB - float64(memAvailable)/1024.0
+	} else {
+		memUsedMB = memTotalMB - memFreeMB - memCacheMB
+	}
+	if memUsedMB < 0 {
+		memUsedMB = 0
+	}
+	swapTotalMB := float64(swapTotal) / 1024.0
+	swapFreeMB := float64(swapFree) / 1024.0
+	swapUsedMB := swapTotalMB - swapFreeMB
+	if swapUsedMB < 0 {
+		swapUsedMB = 0
+	}
+
+	// ── Parse df (all partitions) ─────────────────────────────────────
+	dfLines := extractSection(lines1, "---DF---", "---OS---")
+	var diskTotalKB, diskUsedKB uint64
+	var diskPercent float64
+	diskDevice := "disk"
+	type partition struct {
+		Mount   string
+		Size    string
+		Avail   string
+		UsedPct int
+	}
+	var partitions []partition
+	for _, l := range dfLines {
+		fields := strings.Fields(l)
+		if len(fields) < 6 {
+			continue
+		}
+		totalKB, _ := strconv.ParseUint(fields[1], 10, 64)
+		usedKB, _ := strconv.ParseUint(fields[2], 10, 64)
+		availKB, _ := strconv.ParseUint(fields[3], 10, 64)
+		pctStr := strings.TrimSuffix(fields[4], "%")
+		pct, _ := strconv.Atoi(pctStr)
+		mount := fields[5]
+		if mount == "/" {
+			diskDevice = filepath.Base(fields[0])
+			diskTotalKB = totalKB
+			diskUsedKB = usedKB
+			if totalKB > 0 {
+				diskPercent = float64(usedKB) / float64(totalKB) * 100.0
+			}
+		}
+		formatGB := func(kb uint64) string {
+			gb := float64(kb) / (1024.0 * 1024.0)
+			if gb < 1 {
+				return fmt.Sprintf("%.0fM", float64(kb)/1024.0)
+			}
+			return fmt.Sprintf("%.1fG", gb)
+		}
+		partitions = append(partitions, partition{
+			Mount:   mount,
+			Size:    formatGB(totalKB),
+			Avail:   formatGB(availKB),
+			UsedPct: pct,
+		})
+		_ = usedKB
+	}
+	diskTotalGB := float64(diskTotalKB) / (1024.0 * 1024.0)
+	diskUsedGB := float64(diskUsedKB) / (1024.0 * 1024.0)
+
+	// ── Parse OS / timezone / hostname ───────────────────────────────
+	osName := "Linux"
+	for _, l := range extractSection(lines1, "---OS---", "---TZ---") {
+		if strings.HasPrefix(l, "PRETTY_NAME=") {
+			osName = strings.Trim(strings.TrimPrefix(l, "PRETTY_NAME="), "\"")
+		}
+	}
+	tzStr := "UTC"
+	for _, l := range extractSection(lines1, "---TZ---", "---HOSTNAME---") {
+		t := strings.TrimSpace(l)
+		if t != "" {
+			tzStr = t
+			break
+		}
+	}
+	hostname := ""
+	for _, l := range extractSection(lines1, "---HOSTNAME---", "---IP---") {
+		t := strings.TrimSpace(l)
+		if t != "" {
+			hostname = t
+			break
+		}
+	}
+	ipAddr := ""
+	for _, l := range extractSection(lines1, "---IP---", "---CPUINFO---") {
+		t := strings.TrimSpace(l)
+		if t != "" {
+			ipAddr = t
+			break
+		}
+	}
+
+	// ── Parse CPU model ──────────────────────────────────────────────
+	cpuModel := ""
+	for _, l := range extractSection(lines1, "---CPUINFO---", "---CPU1---") {
+		t := strings.TrimSpace(l)
+		if t != "" {
+			// "model name	: Intel(R) Core(TM) i7-9700K CPU @ 3.60GHz"
+			if idx := strings.Index(t, ":"); idx >= 0 {
+				cpuModel = strings.TrimSpace(t[idx+1:])
+			}
+			break
+		}
+	}
+
+	// ── Parse CPU (/proc/stat delta, XTerminal method) ────────────────
+	cpuLines1 := extractSection(lines1, "---CPU1---", "---NET1---")
+	cpuLines2 := extractSection(lines2, "", "---NET2---") // empty startMarker = collect from beginning
+
+	parseStat := func(lines []string) map[string][]uint64 {
+		res := make(map[string][]uint64)
+		for _, l := range lines {
+			if !strings.HasPrefix(l, "cpu") {
+				continue
+			}
+			parts := strings.Fields(l)
+			if len(parts) < 5 {
+				continue
+			}
+			// /proc/stat fields: user nice system idle iowait irq softirq steal ...
+			getU := func(i int) uint64 {
+				if i+1 < len(parts) {
+					v, _ := strconv.ParseUint(parts[i+1], 10, 64)
+					return v
+				}
+				return 0
+			}
+			userN := getU(0) + getU(1)                    // user + nice
+			sysN := getU(2) + getU(5) + getU(6) + getU(7) // system + irq + softirq + steal
+			idleN := getU(3) + getU(4)                    // idle + iowait
+			total := userN + sysN + idleN
+			res[parts[0]] = []uint64{userN, sysN, idleN, total}
+		}
+		return res
+	}
+
+	cpus1 := parseStat(cpuLines1)
+	cpus2 := parseStat(cpuLines2)
+
+	computeUsage := func(name string) float64 {
+		v1, ok1 := cpus1[name]
+		v2, ok2 := cpus2[name]
+		if !ok1 || !ok2 || len(v1) < 4 || len(v2) < 4 {
+			return 0
+		}
+		// v = [user+nice, system+irq+softirq+steal, idle+iowait, total]
+		dTotal := float64(v2[3]) - float64(v1[3])
+		dIdle := float64(v2[2]) - float64(v1[2])
+		if dTotal <= 0 {
+			return 0
+		}
+		usage := 100.0 * (1.0 - dIdle/dTotal)
+		if usage < 0 {
+			return 0
+		}
+		if usage > 100 {
+			return 100
+		}
+		return usage
+	}
+
+	cpuTotalUsage := computeUsage("cpu")
+
+	// Collect core names, sort them (cpu0, cpu1, cpu2...)
+	var coreNames []string
+	for name := range cpus2 {
+		if name != "cpu" && strings.HasPrefix(name, "cpu") {
+			coreNames = append(coreNames, name)
+		}
+	}
+	sort.Strings(coreNames)
+
+	var cpuCoreUsages []float64
+	for _, name := range coreNames {
+		cpuCoreUsages = append(cpuCoreUsages, computeUsage(name))
+	}
+
+	// ── Parse Network ─────────────────────────────────────────────────
+	parseNetDev2 := func(lines []string) map[string][]uint64 {
+		res := make(map[string][]uint64)
+		for _, l := range lines {
+			if !strings.Contains(l, ":") {
+				continue
+			}
+			parts := strings.SplitN(l, ":", 2)
+			name := strings.TrimSpace(parts[0])
+			if name == "lo" {
+				continue
+			}
+			fields := strings.Fields(parts[1])
+			if len(fields) < 9 {
+				continue
+			}
+			rx, _ := strconv.ParseUint(fields[0], 10, 64)
+			tx, _ := strconv.ParseUint(fields[8], 10, 64)
+			res[name] = []uint64{rx, tx}
+		}
+		return res
+	}
+
+	netLines1 := extractSection(lines1, "---NET1---", "---DISKIO1---")
+	netLines2 := extractSection(lines2, "---NET2---", "---DISKIO2---")
+	nets1 := parseNetDev2(netLines1)
+	nets2 := parseNetDev2(netLines2)
+
+	var netUpSpeed, netDownSpeed, netUpTotal, netDownTotal float64
+	for ifName, v2 := range nets2 {
+		v1, ok := nets1[ifName]
+		if !ok {
+			continue
+		}
+		netDownTotal += float64(v2[0]) / (1024.0 * 1024.0)
+		netUpTotal += float64(v2[1]) / (1024.0 * 1024.0)
+		rxSpeed := float64(v2[0]-v1[0]) / 1024.0 // KB/s over 1s
+		txSpeed := float64(v2[1]-v1[1]) / 1024.0
+		if rxSpeed > netDownSpeed {
+			netDownSpeed = rxSpeed
+		}
+		if txSpeed > netUpSpeed {
+			netUpSpeed = txSpeed
+		}
+	}
+
+	// ── Parse Disk IO ─────────────────────────────────────────────────
+	parseDiskIO := func(lines []string) map[string][]uint64 {
+		res := make(map[string][]uint64)
+		for _, l := range lines {
+			fields := strings.Fields(l)
+			if len(fields) < 10 {
+				continue
+			}
+			name := fields[2]
+			if strings.HasPrefix(name, "loop") || strings.HasPrefix(name, "ram") {
+				continue
+			}
+			r, _ := strconv.ParseUint(fields[5], 10, 64)
+			w, _ := strconv.ParseUint(fields[9], 10, 64)
+			res[name] = []uint64{r, w}
+		}
+		return res
+	}
+
+	diskIO1 := parseDiskIO(extractSection(lines1, "---DISKIO1---", "---CPU2---"))
+	diskIO2 := parseDiskIO(extractSection(lines2, "---DISKIO2---", "---PROC---"))
+
+	var diskReadSpeed, diskWriteSpeed float64
+	for dName, v2 := range diskIO2 {
+		v1, ok := diskIO1[dName]
+		if !ok {
+			continue
+		}
+		rKB := float64(v2[0]-v1[0]) * 0.5 // 512-byte sectors → KB over 1s
+		wKB := float64(v2[1]-v1[1]) * 0.5
+		if rKB > diskReadSpeed {
+			diskReadSpeed = rKB
+		}
+		if wKB > diskWriteSpeed {
+			diskWriteSpeed = wKB
+		}
+	}
+
+	// Convert partitions to []map for JSON
+	var partMaps []map[string]interface{}
+	for _, p := range partitions {
+		partMaps = append(partMaps, map[string]interface{}{
+			"mount":   p.Mount,
+			"size":    p.Size,
+			"avail":   p.Avail,
+			"usedPct": p.UsedPct,
+		})
+	}
+
+	// ── Parse Processes ───────────────────────────────────────────────
+	procLines := extractSection(lines2, "---PROC---", "---DONE---")
+	var processes []map[string]interface{}
+	for _, l := range procLines {
+		fields := strings.Fields(l)
+		if len(fields) < 4 {
+			continue
+		}
+		// skip header line
+		if fields[0] == "PID" {
+			continue
+		}
+		cpu, _ := strconv.ParseFloat(fields[1], 64)
+		rss, _ := strconv.ParseUint(fields[2], 10, 64)
+		processes = append(processes, map[string]interface{}{
+			"pid": fields[0],
+			"cpu": cpu,
+			"mem": float64(rss) / 1024.0, // MB
+			"cmd": fields[3],
+		})
+	}
+
+	return map[string]interface{}{
+		"os":       osName,
+		"uptime":   uptimeStr,
+		"timezone": tzStr,
+		"hostname": hostname,
+		"ip":       ipAddr,
+		"cpu": map[string]interface{}{
+			"usage": cpuTotalUsage,
+			"cores": cpuCoreUsages,
+			"model": cpuModel,
+		},
+		"memory": map[string]interface{}{
+			"total":     memTotalMB,
+			"used":      memUsedMB,
+			"cache":     memCacheMB,
+			"free":      memFreeMB,
+			"swapTotal": swapTotalMB,
+			"swapUsed":  swapUsedMB,
+			"swapFree":  swapFreeMB,
+		},
+		"disk": map[string]interface{}{
+			"device":     diskDevice,
+			"type":       "ext4",
+			"total":      diskTotalGB,
+			"used":       diskUsedGB,
+			"usage":      diskPercent,
+			"readSpeed":  diskReadSpeed,
+			"writeSpeed": diskWriteSpeed,
+			"partitions": partMaps,
+		},
+		"network": map[string]interface{}{
+			"uploadSpeed":   netUpSpeed,
+			"downloadSpeed": netDownSpeed,
+			"uploadTotal":   netUpTotal,
+			"downloadTotal": netDownTotal,
+		},
+		"processes": processes,
+	}, nil
+}
+
+// SFTP Methods
+
+func formatFileMode(mode os.FileMode) string {
+	return mode.String()
+}
+
+func (m *SSHManager) ListDir(sessionId string, path string) ([]map[string]interface{}, error) {
+	_, sftpClient, err := m.getClientEntry(sessionId)
+	if err != nil {
+		return nil, err
+	}
+
+	files, err := sftpClient.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []map[string]interface{}
+	for _, f := range files {
+		results = append(results, map[string]interface{}{
+			"name":        f.Name(),
+			"isDirectory": f.IsDir(),
+			"size":        f.Size(),
+			"modifyTime":  f.ModTime().Format(time.RFC3339),
+			"rights":      map[string]string{"user": formatFileMode(f.Mode())},
+		})
+	}
+	sort.Slice(results, func(i, j int) bool {
+		iDir := results[i]["isDirectory"].(bool)
+		jDir := results[j]["isDirectory"].(bool)
+		if iDir != jDir {
+			return iDir
+		}
+		return results[i]["name"].(string) < results[j]["name"].(string)
+	})
+	return results, nil
+}
+
+func (m *SSHManager) ReadFile(sessionId string, path string) (string, error) {
+	_, sftpClient, err := m.getClientEntry(sessionId)
+	if err != nil {
+		return "", err
+	}
+
+	f, err := sftpClient.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	buf, err := io.ReadAll(f)
+	if err != nil {
+		return "", err
+	}
+	return string(buf), nil
+}
+
+func (m *SSHManager) WriteFile(sessionId string, path string, content string) error {
+	_, sftpClient, err := m.getClientEntry(sessionId)
+	if err != nil {
+		return err
+	}
+
+	f, err := sftpClient.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	_, err = f.Write([]byte(content))
+	return err
+}
+
+func (m *SSHManager) DeleteItem(sessionId string, path string, isDir bool) error {
+	client, sftpClient, err := m.getClientEntry(sessionId)
+	if err != nil {
+		return err
+	}
+	if isDir {
+		_, err := m.executeCmdWithClient(client, fmt.Sprintf("rm -rf '%s'", strings.ReplaceAll(path, "'", "'\\''")))
+		return err
+	}
+	return sftpClient.Remove(path)
+}
+
+func (m *SSHManager) Mkdir(sessionId string, path string) error {
+	_, sftpClient, err := m.getClientEntry(sessionId)
+	if err != nil {
+		return err
+	}
+	return sftpClient.MkdirAll(path)
+}
+
+func (m *SSHManager) RenameItem(sessionId string, oldPath string, newPath string) error {
+	_, sftpClient, err := m.getClientEntry(sessionId)
+	if err != nil {
+		return err
+	}
+	return sftpClient.Rename(oldPath, newPath)
+}
+
+// progressReader wraps an io.Reader and emits progress events via Wails.
+type progressReader struct {
+	io.Reader
+	ctx       context.Context
+	sessionId string
+	total     int64
+	current   int64
+	lastEmit  time.Time
+}
+
+func (p *progressReader) Read(data []byte) (int, error) {
+	n, err := p.Reader.Read(data)
+	if n > 0 {
+		p.current += int64(n)
+		now := time.Now()
+		if now.Sub(p.lastEmit) > 200*time.Millisecond || p.current >= p.total {
+			pct := float64(0)
+			if p.total > 0 {
+				pct = float64(p.current) / float64(p.total) * 100
+				if pct > 100 {
+					pct = 100
+				}
+			}
+			if p.ctx != nil {
+				runtime.EventsEmit(p.ctx, "transfer-progress-"+p.sessionId, pct)
+			}
+			p.lastEmit = now
+		}
+	}
+	return n, err
+}
+
+func (m *SSHManager) UploadFile(sessionId string, localPath string, remotePath string) error {
+	_, sftpClient, err := m.getClientEntry(sessionId)
+	if err != nil {
+		return err
+	}
+
+	src, err := os.Open(localPath)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	destPath := filepath.ToSlash(filepath.Join(remotePath, filepath.Base(localPath)))
+	dst, err := sftpClient.Create(destPath)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+
+	var totalSize int64 = 0
+	if stat, err := src.Stat(); err == nil {
+		totalSize = stat.Size()
+	}
+
+	pr := &progressReader{
+		Reader:    src,
+		ctx:       m.ctx,
+		sessionId: sessionId,
+		total:     totalSize,
+		lastEmit:  time.Now(),
+	}
+
+	buf := make([]byte, 2*1024*1024)
+	_, err = io.CopyBuffer(dst, pr, buf)
+	return err
+}
+
+// UploadDir recursively uploads a local directory to a remote path
+func (m *SSHManager) UploadDir(sessionId string, localDir string, remoteDir string) error {
+	_, sftpClient, err := m.getClientEntry(sessionId)
+	if err != nil {
+		return err
+	}
+
+	remoteDir = filepath.ToSlash(remoteDir)
+
+	return filepath.Walk(localDir, func(localPath string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		relPath, err := filepath.Rel(localDir, localPath)
+		if err != nil {
+			return err
+		}
+
+		remotePath := filepath.ToSlash(filepath.Join(remoteDir, relPath))
+
+		if info.IsDir() {
+			return sftpClient.MkdirAll(remotePath)
+		}
+
+		src, err := os.Open(localPath)
+		if err != nil {
+			return err
+		}
+		defer src.Close()
+
+		dst, err := sftpClient.Create(remotePath)
+		if err != nil {
+			return err
+		}
+		defer dst.Close()
+
+		var totalSize int64 = 0
+		if stat, err := src.Stat(); err == nil {
+			totalSize = stat.Size()
+		}
+
+		pr := &progressReader{
+			Reader:    src,
+			ctx:       m.ctx,
+			sessionId: sessionId,
+			total:     totalSize,
+			lastEmit:  time.Now(),
+		}
+
+		buf := make([]byte, 2*1024*1024)
+		_, err = io.CopyBuffer(dst, pr, buf)
+		return err
+	})
+}
+
+// UploadFileContent uploads file content from memory to a remote path
+func (m *SSHManager) UploadFileContent(sessionId string, fileName string, remoteDir string, content []byte) error {
+	_, sftpClient, err := m.getClientEntry(sessionId)
+	if err != nil {
+		return err
+	}
+
+	destPath := filepath.ToSlash(filepath.Join(remoteDir, fileName))
+	dst, err := sftpClient.Create(destPath)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+
+	_, err = dst.Write(content)
+	return err
+}
+
+func (m *SSHManager) DownloadFile(sessionId string, remotePath string, localPath string) error {
+	_, sftpClient, err := m.getClientEntry(sessionId)
+	if err != nil {
+		return err
+	}
+
+	src, err := sftpClient.Open(remotePath)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	dst, err := os.Create(localPath)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+
+	var totalSize int64 = 0
+	if stat, err := src.Stat(); err == nil {
+		totalSize = stat.Size()
+	}
+
+	pr := &progressReader{
+		Reader:    src,
+		ctx:       m.ctx,
+		sessionId: sessionId,
+		total:     totalSize,
+		lastEmit:  time.Now(),
+	}
+
+	buf := make([]byte, 2*1024*1024)
+	_, err = io.CopyBuffer(dst, pr, buf)
+	return err
+}
+
+func (m *SSHManager) CompressItem(sessionId string, remotePath string) error {
+	client, _, err := m.getClientEntry(sessionId)
+	if err != nil {
+		return err
+	}
+
+	dir := filepath.Dir(remotePath)
+	base := filepath.Base(remotePath)
+	archiveName := base + ".tar.gz"
+
+	dir = strings.ReplaceAll(dir, "\\", "/")
+	cmd := fmt.Sprintf("cd '%s' && tar -czf '%s' '%s'", dir, archiveName, base)
+
+	out, err := m.executeCmdWithClient(client, cmd)
+	if err != nil {
+		return fmt.Errorf("compress failed: %v, output: %s", err, out)
+	}
+	return nil
+}
+
+func (m *SSHManager) UncompressItem(sessionId string, remotePath string) error {
+	client, _, err := m.getClientEntry(sessionId)
+	if err != nil {
+		return err
+	}
+
+	dir := filepath.Dir(remotePath)
+	base := filepath.Base(remotePath)
+	dir = strings.ReplaceAll(dir, "\\", "/")
+
+	var cmd string
+	lowerBase := strings.ToLower(base)
+	if strings.HasSuffix(lowerBase, ".zip") {
+		cmd = fmt.Sprintf("cd '%s' && unzip -o '%s'", dir, base)
+	} else if strings.HasSuffix(lowerBase, ".tar.gz") || strings.HasSuffix(lowerBase, ".tgz") {
+		cmd = fmt.Sprintf("cd '%s' && tar -xzf '%s'", dir, base)
+	} else if strings.HasSuffix(lowerBase, ".tar") {
+		cmd = fmt.Sprintf("cd '%s' && tar -xf '%s'", dir, base)
+	} else if strings.HasSuffix(lowerBase, ".tar.bz2") || strings.HasSuffix(lowerBase, ".tbz2") {
+		cmd = fmt.Sprintf("cd '%s' && tar -xjf '%s'", dir, base)
+	} else if strings.HasSuffix(lowerBase, ".gz") {
+		cmd = fmt.Sprintf("cd '%s' && gunzip -f -k '%s'", dir, base)
+	} else {
+		return fmt.Errorf("unsupported archive format")
+	}
+
+	out, err := m.executeCmdWithClient(client, cmd)
+	if err != nil {
+		return fmt.Errorf("uncompress failed: %v, output: %s", err, out)
+	}
+	return nil
+}

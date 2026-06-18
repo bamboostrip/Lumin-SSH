@@ -358,9 +358,7 @@ func (c *ConfigManager) getSyncProviders() []providerEntry {
 	add("ftp", c.newFTPStorage)
 	add("sftp", c.newSFTPStorage)
 
-	if mode == "all" || mode == "webdav" {
-		// 已在上方处理
-	} else {
+	if mode != "all" && mode != "webdav" {
 		// 选中的方式不可用则回退到 webdav
 		if len(entries) == 0 {
 			log.Printf("getSyncProviders: selected provider %s not available, falling back", mode)

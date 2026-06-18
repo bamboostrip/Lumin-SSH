@@ -1065,7 +1065,6 @@ func (m *SSHManager) GetSystemInfo(sessionId string) (result map[string]interfac
 			Avail:   formatGB(availKB),
 			UsedPct: pct,
 		})
-		_ = usedKB
 	}
 	diskTotalGB := float64(diskTotalKB) / (1024.0 * 1024.0)
 	diskUsedGB := float64(diskUsedKB) / (1024.0 * 1024.0)

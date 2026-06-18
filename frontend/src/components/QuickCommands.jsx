@@ -77,7 +77,7 @@ function filterTree(items, keyword, parentPath = '') {
 }
 
 // ── 树形节点渲染组件 ────────────────────────────────────
-function TreeNode({ item, index, path, selectedPath, onSelect, onDelete, onAddCmd, onAddGroup, contextMenu, onContextMenu, closeContextMenu, onExecute, onMove, onDragStart, onDropItem, onDragEnd, dragVersion }) {
+function TreeNode({ item, index, path, selectedPath, onSelect, onAddCmd, onAddGroup, contextMenu, onContextMenu, closeContextMenu, onExecute, onMove, onDragStart, onDropItem, onDragEnd, dragVersion }) {
   const [hover, setHover] = useState(false);
   const [dropPos, setDropPos] = useState(null); // 'before' | 'inside' | 'after'
 
@@ -168,7 +168,6 @@ function TreeNode({ item, index, path, selectedPath, onSelect, onDelete, onAddCm
                 path={`${path}/${ci}`}
                 selectedPath={selectedPath}
                 onSelect={onSelect}
-                onDelete={onDelete}
                 onAddCmd={onAddCmd}
                 onAddGroup={onAddGroup}
                 contextMenu={contextMenu}
@@ -886,7 +885,6 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
                     path={String(i)}
                     selectedPath={selectedPath}
                     onSelect={handleSelect}
-                    onDelete={() => {}}
                     onExecute={doExecute}
                     contextMenu={contextMenu}
                     onContextMenu={handleContextMenu}

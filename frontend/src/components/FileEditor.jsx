@@ -162,6 +162,9 @@ export default function FileEditor({
       case 'cut':
         document.execCommand('cut');
         break;
+      case 'selectAll':
+        document.execCommand('selectAll');
+        break;
     }
   };
 
@@ -600,6 +603,7 @@ export default function FileEditor({
             { label: '复制', action: 'copy', shortcut: 'Ctrl+C' },
             { label: '粘贴', action: 'paste', shortcut: 'Ctrl+V' },
             { label: '剪切', action: 'cut', shortcut: 'Ctrl+X' },
+            { label: '全选', action: 'selectAll', shortcut: 'Ctrl+A' },
           ].map((item) => (
             <div
               key={item.action}

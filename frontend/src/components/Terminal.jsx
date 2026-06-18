@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
-import { Copy, Clipboard, Trash2, CheckSquare, MoreHorizontal, Play, Clock, X } from 'lucide-react';
+import { Copy, Clipboard, Trash2, CheckSquare, Play, Clock, X } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/main/App.js';
 import QuickCommands from './QuickCommands.jsx';
 import '@xterm/xterm/css/xterm.css';
@@ -253,8 +253,6 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
       ws = new WebSocket(`ws://127.0.0.1:${port}/ws/${sessionId}${tokenQuery}`);
       ws.binaryType = 'arraybuffer';
       wsRef.current = ws;
-
-      ws.onopen = () => {};
 
       ws.onmessage = (ev) => {
         if (!termRef.current) return;
@@ -530,6 +528,14 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
   const closeContextMenu = () => {
     if (contextMenu) setContextMenu(null);
   };
+
+  // 点击外部关闭右键菜单
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handler = () => setContextMenu(null);
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [contextMenu]);
 
   const handleMenuAction = (action) => {
     closeContextMenu();
@@ -1174,6 +1180,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
       {contextMenu && (
         <div
           className="context-menu"
+          onMouseDown={(e) => e.stopPropagation()}
           style={{
             position: 'fixed',
             left: contextMenu.x,

@@ -459,26 +459,6 @@ func (c *ConfigManager) SetSyncMode(mode string) error {
 	return os.WriteFile(c.syncModeFile, data, 0600)
 }
 
-func (c *ConfigManager) isWebdavConfigured() bool {
-	conf := c.GetWebdavConfig()
-	return conf != nil && conf["url"] != ""
-}
-
-func (c *ConfigManager) isR2Configured() bool {
-	conf := c.GetR2Config()
-	return conf != nil && conf.Bucket != "" && conf.Endpoint != ""
-}
-
-func (c *ConfigManager) isFTPConfigured() bool {
-	conf := c.GetFTPConfig()
-	return conf != nil && conf.Host != "" && conf.Username != ""
-}
-
-func (c *ConfigManager) isSFTPConfigured() bool {
-	conf := c.GetSFTPConfig()
-	return conf != nil && conf.Host != "" && conf.Username != ""
-}
-
 // ─── 快捷命令 ──────────────────────────────────────
 
 // GetQuickCommands 读取快捷命令列表

@@ -13,9 +13,8 @@ import GlobalDialog from './components/GlobalDialog.jsx';
 import GlobalContextMenu from './components/GlobalContextMenu.jsx';
 import { clampPanelWidth } from './components/probeFormatting.js';
 import { useTranslation } from './i18n.js';
-import { APP_VERSION } from './config.js';
 import { useUpdateChecker } from './hooks/useUpdateChecker.js';
-import { Settings, House, Key, Minus, Square, X, RefreshCw, Wifi, Monitor, Eye, EyeOff } from 'lucide-react';
+import { Settings, House, Minus, Square, X, Monitor, Eye, EyeOff } from 'lucide-react';
 
 import logoImg from './assets/logo.png';
 
@@ -35,7 +34,6 @@ export default function App() {
   const [showAddServer, setShowAddServer] = useState(false);
   const [editServer, setEditServer] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [showKeys, setShowKeys] = useState(false);
   const [showTrayPanel, setShowTrayPanel] = useState(false);
   const [showProbe, setShowProbe] = useState(false); // 探针面板 toggle
   const [connectingServer, setConnectingServer] = useState(null); // { server, sessionId, startTime }
@@ -1539,71 +1537,6 @@ export default function App() {
           addToast={addToast}
           onRestored={loadServers}
         />
-      )}
-
-      {/* ── 密钥管理 Modal ─────────────────────────────────── */}
-      {showKeys && (
-        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowKeys(false)}>
-          <div className="modal modal-xl" style={{ display: 'flex', flexDirection: 'column', height: '70vh', background: 'var(--bg-1)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid var(--border)' }}>
-              <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-1)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Key size={16} /> SSH 密钥管理
-              </div>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowKeys(false)} style={{ color: 'var(--text-3)' }}>✕</button>
-            </div>
-            <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-              {/* 左栏：密钥列表 */}
-              <div style={{ width: 260, borderRight: '1px solid var(--border)', padding: '16px 12px', overflowY: 'auto', background: 'var(--bg-0)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {[
-                  { name: 'id_rsa', path: '~/.ssh/id_rsa', type: 'RSA 4096' },
-                  { name: 'id_ed25519', path: '~/.ssh/id_ed25519', type: 'ED25519' },
-                ].map((key, i) => (
-                  <div key={i} style={{
-                    display: 'flex', alignItems: 'center', gap: 12,
-                    padding: '12px 14px', borderRadius: 10,
-                    background: i === 0 ? 'rgba(16,185,129,0.1)' : 'var(--bg-2)',
-                    border: i === 0 ? '1px solid rgba(16,185,129,0.3)' : '1px solid var(--border)',
-                    cursor: 'pointer',
-                  }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(16,185,129,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Key size={18} style={{ color: '#10b981' }} /></div>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)', fontFamily: 'var(--font-mono)' }}>{key.path}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-4)', marginTop: 2 }}>Type {key.type}</div>
-                    </div>
-                  </div>
-                ))}
-                <button className="btn btn-secondary" style={{ marginTop: 8, fontSize: 13 }}>
-                  + 生成新密钥
-                </button>
-              </div>
-              {/* 右栏：密钥详情 */}
-              <div style={{ flex: 1, padding: '28px 32px', overflowY: 'auto' }}>
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-1)', marginBottom: 24 }}>密钥详情</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  {[
-                    { label: 'Label', value: '~/.ssh/id_ed25519' },
-                    { label: '类型', value: 'ED25519' },
-                  ].map(({ label, value }) => (
-                    <div key={label}>
-                      <div style={{ fontSize: 12, color: 'var(--text-4)', marginBottom: 4 }}>{label}</div>
-                      <div style={{ fontSize: 14, color: 'var(--text-1)', fontFamily: 'var(--font-mono)' }}>{value}</div>
-                    </div>
-                  ))}
-                  <div>
-                    <div style={{ fontSize: 12, color: 'var(--text-4)', marginBottom: 8 }}>密钥导出</div>
-                    <button
-                      className="btn btn-primary"
-                      style={{ width: '100%', justifyContent: 'center' }}
-                      onClick={() => addToast('密钥功能需要在连接到服务器后使用', 'info', 3000)}
-                    >
-                      导出到主机
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* ── Toasts ────────────────────────────────────────── */}

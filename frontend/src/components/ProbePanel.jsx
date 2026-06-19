@@ -180,9 +180,18 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, onEnabl
     try {
       const data = await AppGo.SystemInfo(sessionId);
       const si = staticInfoRef.current || { os: 'Linux', timezone: 'UTC', hostname: '', cpuModel: '' };
+      const uptimeData = data.uptime || {};
+      let uptimeStr = t('0 小时');
+      if (uptimeData.days > 0) {
+        uptimeStr = `${uptimeData.days}${t('天')} ${uptimeData.hours}${t('小时')}`;
+      } else if (uptimeData.hours > 0) {
+        uptimeStr = `${uptimeData.hours}${t('小时')} ${uptimeData.mins}${t('分')}`;
+      } else {
+        uptimeStr = `${uptimeData.mins || 0}${t('分钟')}`;
+      }
       const ni = {
         ...si,
-        uptime: data.uptime || '--',
+        uptime: uptimeStr,
         cpuUsage: data.cpu?.usage || 0,
         cpuCores: data.cpu?.cores || [],
         memUsed: data.memory?.used || 0,

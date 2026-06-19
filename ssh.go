@@ -986,20 +986,15 @@ func (m *SSHManager) GetSystemInfo(sessionId string) (result map[string]interfac
 	lines2 := strings.Split(part2, "\n")
 
 	// ── Parse uptime ──────────────────────────────────────────────────
-	uptimeStr := "0 小时"
+	uptimeSeconds := 0.0
+	uptimeDays := 0
+	uptimeHours := 0
+	uptimeMins := 0
 	if len(lines1) > 0 {
-		var uptimeVal float64
-		fmt.Sscanf(strings.TrimSpace(lines1[0]), "%f", &uptimeVal)
-		days := int(uptimeVal / 86400)
-		hours := int((uptimeVal - float64(days*86400)) / 3600)
-		mins := int((uptimeVal - float64(days*86400) - float64(hours*3600)) / 60)
-		if days > 0 {
-			uptimeStr = fmt.Sprintf("%d 天 %d 小时", days, hours)
-		} else if hours > 0 {
-			uptimeStr = fmt.Sprintf("%d 小时 %d 分", hours, mins)
-		} else {
-			uptimeStr = fmt.Sprintf("%d 分钟", mins)
-		}
+		fmt.Sscanf(strings.TrimSpace(lines1[0]), "%f", &uptimeSeconds)
+		uptimeDays = int(uptimeSeconds / 86400)
+		uptimeHours = int((uptimeSeconds - float64(uptimeDays*86400)) / 3600)
+		uptimeMins = int((uptimeSeconds - float64(uptimeDays*86400) - float64(uptimeHours*3600)) / 60)
 	}
 
 	// ── Parse memory ──────────────────────────────────────────────────
@@ -1295,7 +1290,7 @@ func (m *SSHManager) GetSystemInfo(sessionId string) (result map[string]interfac
 	}
 
 	return map[string]interface{}{
-		"uptime": uptimeStr,
+		"uptime": map[string]int{"days": uptimeDays, "hours": uptimeHours, "mins": uptimeMins},
 		"cpu": map[string]interface{}{
 			"usage": cpuTotalUsage,
 			"cores": cpuCoreUsages,

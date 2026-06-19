@@ -343,7 +343,7 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, onEnabl
           </div>
           {displayIP && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 3, minWidth: 0 }}>
-              <span title={hideIP ? '' : displayIP} style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: '#fbbf24', fontWeight: 700, background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.25)', padding: '1px 6px', borderRadius: 4, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1 }}>
+              <span title={hideIP ? '' : displayIP} style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-1)', fontWeight: 700, background: 'var(--bg-3)', border: '1px solid var(--border)', padding: '1px 6px', borderRadius: 4, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1 }}>
                 {hideIP ? '***.***.***.***' : displayIP}
               </span>
               <button onClick={() => { navigator.clipboard.writeText(displayIP); addToast?.(t('已复制') + ' ' + displayIP, 'success'); }} title={t('复制 IP')}

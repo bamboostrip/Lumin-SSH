@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import * as AppGo from '../../wailsjs/go/main/App.js';
 import { useTranslation } from '../i18n.js';
 

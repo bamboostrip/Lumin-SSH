@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { useTranslation, t } from '../i18n.js';
+import { Z } from '../constants/zIndex';
 
 export default function GlobalDialog() {
   const [dialogs, setDialogs] = useState([]);
@@ -99,7 +100,7 @@ export default function GlobalDialog() {
   };
 
   return (
-    <div className="modal-overlay" style={{ zIndex: 9999 }}>
+    <div className="modal-overlay" style={{ zIndex: Z.MODAL }}>
       <DialogContent key={current.id} current={current} onClose={handleClose} onConfirm={handleConfirm} onChoice={handleChoice} />
     </div>
   );

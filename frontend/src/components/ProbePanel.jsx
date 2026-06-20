@@ -6,6 +6,7 @@ import {
   formatRate,
   formatTransferTotal,
 } from './probeFormatting.js';
+import { Z } from '../constants/zIndex';
 import { useTranslation } from '../i18n.js';
 
 // ── Sparkline SVG ──────────────────────────────────────────────────────────
@@ -287,7 +288,7 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, onEnabl
           </button>
         </div>
         {showConfirm && (
-          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14, zIndex: 50 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 14, zIndex: Z.COMPONENT_OVERLAY }}>
             <div style={{ background: 'var(--bg-1)', border: '1px solid rgba(34,197,94,0.22)', borderRadius: 14, padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 14, boxShadow: '0 24px 64px rgba(0,0,0,0.65)', maxWidth: 260 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ width: 36, height: 36, borderRadius: 8, background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>🔍</div>

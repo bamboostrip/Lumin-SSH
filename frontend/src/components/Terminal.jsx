@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { Copy, Clipboard, Trash2, CheckSquare, Play, Clock, X } from 'lucide-react';
@@ -6,8 +6,9 @@ import * as AppGo from '../../wailsjs/go/main/App.js';
 import { getModKey, formatShortcut } from '../utils/platform.js';
 import QuickCommands from './QuickCommands.jsx';
 import '@xterm/xterm/css/xterm.css';
-import { t } from '../i18n';
+import { useTranslation } from '../i18n.js';
 import defaultTermBg from '../assets/term_bg.png';
+import { Z } from '../constants/zIndex';
 
 const textDecoder = new TextDecoder();
 const textEncoder = new TextEncoder();
@@ -95,6 +96,7 @@ function getXtermTheme() {
 }
 
 export default function Terminal({ sessionId, serverId, historyServerId, status, isActive, serverName, connectedSessions = [] }) {
+  const { t } = useTranslation();
   const containerRef   = useRef(null);
   const termRef        = useRef(null);
   const fitAddonRef    = useRef(null);
@@ -604,6 +606,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
   const isConnected  = status === 'connected';
   const isConnecting = status === 'connecting';
   const isError      = status === 'error';
+  const cmdTrimmed   = cmdInput.trim();
 
   // 连接成功时触发一次性涟漪动画
   useEffect(() => {
@@ -734,7 +737,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
   };
 
   const copyCommand = () => {
-    if (!cmdInput.trim()) return;
+    if (!cmdTrimmed) return;
     navigator.clipboard.writeText(cmdInput).catch(() => {});
   };
 
@@ -770,11 +773,11 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
         backgroundPosition: 'center',
         opacity: bgInfo.opacity,
         pointerEvents: 'none',
-        zIndex: 0
+        zIndex: Z.BG
       }} />
       
       {/* 内容层(置于背景之上) */}
-      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ position: 'relative', zIndex: Z.CONTENT, display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* ── Session 状态栏（极简、高颜值设计） ── */}
       <div style={{
         display: 'flex',
@@ -932,16 +935,16 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
         {/* 执行按钮（绿色） */}
         <button
           onClick={executeCommand}
-          disabled={!cmdInput.trim() || !isConnected}
+          disabled={!cmdTrimmed || !isConnected}
           title={t('执行')}
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             width: 30, height: 30,
-            background: (cmdInput.trim() && isConnected) ? 'rgba(34,197,94,0.15)' : 'transparent',
-            border: `1px solid ${(cmdInput.trim() && isConnected) ? 'rgba(34,197,94,0.35)' : 'rgba(255,255,255,0.08)'}`,
+            background: (cmdTrimmed && isConnected) ? 'rgba(34,197,94,0.15)' : 'transparent',
+            border: `1px solid ${(cmdTrimmed && isConnected) ? 'rgba(34,197,94,0.35)' : 'rgba(255,255,255,0.08)'}`,
             borderRadius: 4,
-            color: (cmdInput.trim() && isConnected) ? '#22c55e' : '#484f58',
-            cursor: (cmdInput.trim() && isConnected) ? 'pointer' : 'not-allowed',
+            color: (cmdTrimmed && isConnected) ? '#22c55e' : '#484f58',
+            cursor: (cmdTrimmed && isConnected) ? 'pointer' : 'not-allowed',
             transition: 'all 0.15s',
             flexShrink: 0,
           }}
@@ -952,16 +955,16 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
         {/* 复制按钮（蓝色） */}
         <button
           onClick={copyCommand}
-          disabled={!cmdInput.trim()}
+          disabled={!cmdTrimmed}
           title={t('复制')}
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             width: 30, height: 30,
-            background: cmdInput.trim() ? 'rgba(88,166,255,0.15)' : 'transparent',
-            border: `1px solid ${cmdInput.trim() ? 'rgba(88,166,255,0.35)' : 'rgba(255,255,255,0.08)'}`,
+            background: cmdTrimmed ? 'rgba(88,166,255,0.15)' : 'transparent',
+            border: `1px solid ${cmdTrimmed ? 'rgba(88,166,255,0.35)' : 'rgba(255,255,255,0.08)'}`,
             borderRadius: 4,
-            color: cmdInput.trim() ? '#58a6ff' : '#484f58',
-            cursor: cmdInput.trim() ? 'pointer' : 'not-allowed',
+            color: cmdTrimmed ? '#58a6ff' : '#484f58',
+            cursor: cmdTrimmed ? 'pointer' : 'not-allowed',
             transition: 'all 0.15s',
             flexShrink: 0,
           }}
@@ -978,7 +981,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
           <div
             onClick={() => { setShowHistory(false); setHistoryPopupPos(null); }}
             style={{
-              position: 'fixed', inset: 0, zIndex: 99,
+              position: 'fixed', inset: 0, zIndex: Z.POPUP_BACKDROP,
               background: 'transparent',
             }}
           />
@@ -993,7 +996,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
             border: '1px solid rgba(48,54,61,0.9)',
             borderRadius: 8,
             boxShadow: '0 -8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)',
-            zIndex: 100,
+            zIndex: Z.POPUP,
             fontFamily: "'JetBrains Mono', monospace",
             fontSize: 12,
           }}>
@@ -1159,7 +1162,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
               }
             }}
             style={{
-              position: 'fixed', inset: 0, zIndex: 99,
+              position: 'fixed', inset: 0, zIndex: Z.POPUP_BACKDROP,
               background: 'transparent',
             }}
           />
@@ -1173,7 +1176,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
             border: '1px solid rgba(48,54,61,0.9)',
             borderRadius: 8,
             boxShadow: '0 -8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)',
-            zIndex: 100,
+            zIndex: Z.POPUP,
             overflow: 'hidden',
           }}>
             <QuickCommands ref={quickCmdsRef} sessionId={sessionId} addToast={() => {}} connectedSessions={connectedSessions} onClose={() => { setShowCommands(false); setCommandsPopupPos(null); }} />
@@ -1194,7 +1197,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
             border: '1px solid rgba(48,54,61,0.9)',
             borderRadius: '8px',
             boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4)',
-            zIndex: 9999,
+            zIndex: Z.MODAL,
             padding: '4px 0',
             minWidth: '190px',
             fontFamily: 'var(--font-ui)',

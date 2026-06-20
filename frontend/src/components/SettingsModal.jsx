@@ -5,6 +5,7 @@ import { getModKey } from '../utils/platform.js';
 import logoImg from '../assets/logo.png';
 import { APP_VERSION } from '../config.js';
 import { useUpdateChecker } from '../hooks/useUpdateChecker.js';
+import { Z } from '../constants/zIndex';
 
 const I18N = {
   'zh-CN': {
@@ -940,7 +941,7 @@ export default function SettingsModal({ onClose, addToast, onRestored }) {
                           {downloadProgress >= 0 && (
                             <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, background: 'rgba(59, 130, 246, 0.4)', width: `${downloadProgress}%`, transition: 'width 0.2s ease-out' }}></div>
                           )}
-                          <span style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ position: 'relative', zIndex: Z.CONTENT, display: 'flex', alignItems: 'center', gap: 4 }}>
                             {downloadProgress >= 0 ? (
                                <>
                                  <svg className="spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path></svg>
@@ -1665,7 +1666,7 @@ export default function SettingsModal({ onClose, addToast, onRestored }) {
       </div>
       {/* 确认恢复弹窗（含列表选择） */}
       {confirmRestore && (
-        <div className="modal-overlay" style={{ zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
+        <div className="modal-overlay" style={{ zIndex: Z.MODAL, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
           <div className="glass-card" style={{ width: 450, padding: 24, animation: 'scaleIn 0.2s ease-out' }}>
             <div style={{ fontSize: 18, color: 'var(--text-1)', marginBottom: 16, fontWeight: 'bold' }}>{$t('选择要恢复的云端备份')}</div>
             <div style={{ color: 'var(--text-2)', marginBottom: 16, fontSize: 14 }}>

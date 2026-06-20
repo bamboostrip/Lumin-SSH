@@ -13,7 +13,8 @@ import { xml } from '@codemirror/lang-xml';
 import { sql } from '@codemirror/lang-sql';
 import { StreamLanguage } from '@codemirror/language';
 import { shell } from '@codemirror/legacy-modes/mode/shell';
-import { Maximize2, PictureInPicture, Columns2, X, PanelLeft, PanelRight, PanelBottom } from 'lucide-react';
+import { X } from 'lucide-react';
+import { Z } from '../constants/zIndex';
 
 // Debian sources.list 语法高亮
 const debianList = StreamLanguage.define({
@@ -80,22 +81,6 @@ function getLanguage(filename) {
   LANG_CACHE[ext] = lang;
   return lang;
 }
-
-const MODE_ICONS_KEYS = {
-  modal: { icon: Maximize2, titleKey: '全屏弹窗' },
-  popup: { icon: PictureInPicture, titleKey: '浮动面板' },
-  split: { icon: Columns2, titleKey: '分栏编辑' },
-};
-
-const MODE_ORDER = ['modal', 'popup', 'split'];
-
-const SPLIT_ICONS_KEYS = {
-  left: { icon: PanelLeft, titleKey: '左侧分栏' },
-  right: { icon: PanelRight, titleKey: '右侧分栏' },
-  bottom: { icon: PanelBottom, titleKey: '底部分栏' },
-};
-
-const SPLIT_ORDER = ['left', 'right', 'bottom'];
 
 const BASIC_SETUP = {
   lineNumbers: true,
@@ -273,18 +258,6 @@ export default function FileEditor({
     });
     if (hasModified && !(await window.luminDialog?.confirm(t('有文件未保存，确定全部关闭？')))) return;
     onCloseAll();
-  };
-
-  const toggleMode = () => {
-    const idx = MODE_ORDER.indexOf(mode);
-    const next = MODE_ORDER[(idx + 1) % MODE_ORDER.length];
-    onModeChange?.(next);
-  };
-
-  const toggleSplitPosition = () => {
-    const idx = SPLIT_ORDER.indexOf(splitPosition);
-    const next = SPLIT_ORDER[(idx + 1) % SPLIT_ORDER.length];
-    onSplitPositionChange?.(next);
   };
 
   // popup 拖拽逻辑
@@ -586,12 +559,12 @@ export default function FileEditor({
         </div>
         {mode !== 'split' && (
           <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setMinimized(true)} title={t('最小化')}
-            style={{ position: 'absolute', top: 8, right: 28, zIndex: 10 }}>
+            style={{ position: 'absolute', top: 8, right: 28, zIndex: Z.PANEL_BUTTON }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </button>
         )}
         <button className="btn btn-ghost btn-icon btn-sm" onClick={handleCloseCurrent} title={t('关闭当前文件')}
-          style={{ position: 'absolute', top: 8, right: 8, zIndex: 10 }}>
+          style={{ position: 'absolute', top: 8, right: 8, zIndex: Z.PANEL_BUTTON }}>
           <X size={14} />
         </button>
       </div>
@@ -657,7 +630,7 @@ export default function FileEditor({
             border: '1px solid rgba(48,54,61,0.9)',
             borderRadius: '8px',
             boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-            zIndex: 10000,
+            zIndex: Z.SEARCH_PANEL,
             padding: '4px 0',
             minWidth: '160px',
             fontFamily: 'var(--font-ui)',
@@ -697,7 +670,7 @@ export default function FileEditor({
           position: 'fixed',
           bottom: 16,
           right: 16,
-          zIndex: 998,
+          zIndex: Z.EDITOR_TOOLBAR,
           display: 'flex',
           alignItems: 'center',
           gap: 8,
@@ -735,7 +708,7 @@ export default function FileEditor({
           top: popupPos.y,
           width: popupPos.w,
           height: popupPos.h,
-          zIndex: 998,
+          zIndex: Z.EDITOR_TOOLBAR,
           display: 'flex',
           flexDirection: 'column',
           background: 'var(--bg-1)',
@@ -757,7 +730,7 @@ export default function FileEditor({
             width: 16,
             height: 16,
             cursor: 'se-resize',
-            zIndex: 2,
+            zIndex: Z.STACK,
           }}
           title={t('调整大小')}
         >

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImper
 import * as AppGo from '../../wailsjs/go/main/App.js';
 import { useTranslation } from '../i18n.js';
 import { getModKey } from '../utils/platform.js';
+import { Z } from '../constants/zIndex';
 
 // ── 加载命令数据（从 Go 后端文件）────────────────────
 async function loadCommands() {
@@ -117,7 +118,7 @@ function TreeNode({ item, index, path, selectedPath, onSelect, contextMenu, onCo
     return (
       <div style={{
         position: 'absolute', left: 4, right: 4, height: 2,
-        background: '#22c55e', borderRadius: 1, zIndex: 5,
+        background: '#22c55e', borderRadius: 1, zIndex: Z.SCROLLBAR,
         [pos === 'before' ? 'top' : 'bottom']: -1,
       }} />
     );
@@ -1106,7 +1107,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
                                   data-history-dropdown="true"
                                   onMouseDown={e => e.stopPropagation()}
                                   style={{
-                                    position: 'absolute', bottom: '100%', left: 0, zIndex: 100,
+                                    position: 'absolute', bottom: '100%', left: 0, zIndex: Z.POPUP,
                                     minWidth: 180, maxHeight: 200, display: 'flex', flexDirection: 'column',
                                     background: '#161b22', border: '1px solid #30363d',
                                     borderRadius: 4, boxShadow: '0 -4px 16px rgba(0,0,0,0.5)',
@@ -1296,9 +1297,9 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
       {/* ── 右键上下文菜单 ── */}
       {contextMenu && (
         <>
-          <div onClick={closeContextMenu} style={{ position: 'fixed', inset: 0, zIndex: 199, background: 'transparent' }} />
+          <div onClick={closeContextMenu} style={{ position: 'fixed', inset: 0, zIndex: Z.MENU_BACKDROP, background: 'transparent' }} />
           <div style={{
-            position: 'fixed', left: contextMenu.x, top: contextMenu.y, zIndex: 200,
+            position: 'fixed', left: contextMenu.x, top: contextMenu.y, zIndex: Z.MENU,
             background: '#1c2128', border: '1px solid #30363d', borderRadius: 6,
             boxShadow: '0 8px 24px rgba(0,0,0,0.5)', padding: '4px 0', minWidth: 160,
             fontSize: 12,
@@ -1327,9 +1328,9 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
       {/* ── 未保存修改确认对话框 ── */}
       {confirmUnsaved && (
         <>
-          <div onClick={handleConfirmCancel} style={{ position: 'fixed', inset: 0, zIndex: 299, background: 'rgba(0,0,0,0.4)' }} />
+          <div onClick={handleConfirmCancel} style={{ position: 'fixed', inset: 0, zIndex: Z.DIALOG_BACKDROP, background: 'rgba(0,0,0,0.4)' }} />
           <div style={{
-            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 300,
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: Z.DIALOG,
             width: 360, background: '#1c2128', border: '1px solid #30363d', borderRadius: 8,
             boxShadow: '0 12px 40px rgba(0,0,0,0.6)', padding: '16px 20px',
           }}>
@@ -1360,9 +1361,9 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
       {/* ── 添加/编辑对话框（覆盖层） ── */}
       {dialog && (
         <>
-          <div onClick={() => setShowGroupPicker(false)} style={{ position: 'fixed', inset: 0, zIndex: 299, background: 'rgba(0,0,0,0.4)' }} />
+          <div onClick={() => setShowGroupPicker(false)} style={{ position: 'fixed', inset: 0, zIndex: Z.DIALOG_BACKDROP, background: 'rgba(0,0,0,0.4)' }} />
           <div style={{
-            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 300,
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: Z.DIALOG,
             width: 480, background: '#1c2128', border: '1px solid #30363d', borderRadius: 8,
             boxShadow: '0 12px 40px rgba(0,0,0,0.6)', padding: '16px 20px',
           }}>
@@ -1500,11 +1501,11 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
               {/* 点击外部关闭 */}
               <div
                 onClick={() => setShowGroupPicker(false)}
-                style={{ position: 'fixed', inset: 0, zIndex: 301, background: 'transparent' }}
+                style={{ position: 'fixed', inset: 0, zIndex: Z.SUBMENU_BACKDROP, background: 'transparent' }}
               />
               {/* 下拉列表 */}
               <div style={{
-                position: 'fixed', left: groupPickerPos.x, top: groupPickerPos.y, zIndex: 302,
+                position: 'fixed', left: groupPickerPos.x, top: groupPickerPos.y, zIndex: Z.SUBMENU,
                 minWidth: 160, maxHeight: 220, overflowY: 'auto',
                 background: '#1c2128', border: '1px solid #30363d', borderRadius: 6,
                 boxShadow: '0 8px 24px rgba(0,0,0,0.5)', padding: '4px 0',

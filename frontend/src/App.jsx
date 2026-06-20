@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { EventsOn, WindowMinimise, WindowToggleMaximise, WindowHide } from '../wailsjs/runtime/runtime.js';
+import { EventsOn, WindowMinimise, WindowToggleMaximise, WindowHide, WindowShow } from '../wailsjs/runtime/runtime.js';
 import * as AppGo from '../wailsjs/go/main/App.js';
 import ServerList from './components/ServerList.jsx';
 import AddServerModal from './components/AddServerModal.jsx';
@@ -14,7 +14,11 @@ import GlobalContextMenu from './components/GlobalContextMenu.jsx';
 import { clampPanelWidth } from './components/probeFormatting.js';
 import { useTranslation } from './i18n.js';
 import { useUpdateChecker } from './hooks/useUpdateChecker.js';
-import { Settings, House, Minus, Square, X, Monitor, Eye, EyeOff } from 'lucide-react';
+import ConnectingCard from './components/ConnectingCard.jsx';
+import TrayPanel from './components/TrayPanel.jsx';
+import UpdateModal from './components/UpdateModal.jsx';
+import { Settings, House, Minus, Square, X, Eye, EyeOff } from 'lucide-react';
+import { Z } from './constants/zIndex';
 
 import logoImg from './assets/logo.png';
 
@@ -36,7 +40,6 @@ export default function App() {
   const [editServer, setEditServer] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showTrayPanel, setShowTrayPanel] = useState(false);
-  const [showProbe, setShowProbe] = useState(false); // 探针面板 toggle
   const [connectingServer, setConnectingServer] = useState(null); // { server, sessionId, startTime }
   const connectingServerRef = useRef(connectingServer);
   useEffect(() => { connectingServerRef.current = connectingServer; }, [connectingServer]);
@@ -92,7 +95,7 @@ export default function App() {
     keysToRemove.forEach(key => localStorage.removeItem(key));
   }, []);
 
-  const startDrag = (e, direction) => {
+  const startDrag = useCallback((e, direction) => {
     e.preventDefault();
     const startX = e.clientX;
     const startY = e.clientY;
@@ -147,7 +150,7 @@ export default function App() {
 
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-  };
+  }, []);
   // ────────────────────────────────────────────────────────
 
   const pingTimerRef = useRef(null);
@@ -309,11 +312,7 @@ export default function App() {
       await postConnectSetup(sessionId, savedServer.id);
 
       // 加入最近连接（仅保留非敏感字段）
-      setRecentServers((prev) => {
-        const filtered = prev.filter((s) => s.id !== savedServer.id);
-        const safeServer = { id: savedServer.id, name: savedServer.name, host: savedServer.host, port: savedServer.port, username: savedServer.username };
-        return [safeServer, ...filtered].slice(0, 4);
-      });
+      addRecentServer({ id: savedServer.id, name: savedServer.name, host: savedServer.host, port: savedServer.port, username: savedServer.username });
 
       // 清空表单
       setQuickName('');
@@ -322,18 +321,7 @@ export default function App() {
       setQuickKey('');
       setQuickPassphrase('');
     } catch (err) {
-      const errMsg = String(err);
-      // 主机密钥变更由专用弹窗处理，不显示 toast
-      const isHostKeyChange = errMsg.includes('主机密钥已变更');
-      // 认证失败由专用弹窗处理，不显示 toast
-      const isAuthFailed = errMsg.includes('认证失败');
-      setSessions((prev) =>
-        prev.map((s) => (s.id === sessionId ? { ...s, status: (isHostKeyChange || isAuthFailed) ? 'connecting' : 'error' } : s))
-      );
-      if (!isHostKeyChange && !isAuthFailed) {
-        setConnectingServer(null);
-        addToast(`${t('连接失败')}: ${err}`, 'error', 5000);
-      }
+      handleConnectError(sessionId, err);
     }
   };
 
@@ -344,6 +332,20 @@ export default function App() {
     setToasts((prev) => [...prev, { id, message, type }]);
     setTimeout(() => { if (mountedRef.current) setToasts((prev) => prev.filter((t) => t.id !== id)); }, duration);
   }, []);
+
+  // ── 连接错误通用处理 ──────────────────────────────────────
+  const handleConnectError = useCallback((sessionId, err) => {
+    const errMsg = String(err);
+    const isHostKeyChange = errMsg.includes('主机密钥已变更');
+    const isAuthFailed = errMsg.includes('认证失败');
+    setSessions((prev) =>
+      prev.map((s) => (s.id === sessionId ? { ...s, status: (isHostKeyChange || isAuthFailed) ? 'connecting' : 'error' } : s))
+    );
+    if (!isHostKeyChange && !isAuthFailed) {
+      setConnectingServer(null);
+      addToast(`${t('连接失败')}: ${err}`, 'error', 5000);
+    }
+  }, [addToast, t]);
 
   // ── 连接成功后通用设置：查询 OS 信息、启用监控、持久化 OS ──
   const postConnectSetup = useCallback(async (sessionId, serverId, extraServerFields = {}) => {
@@ -420,6 +422,40 @@ export default function App() {
     }
   }, []);
 
+  // ── 取消连接 ──────────────────────────────────────────────
+  const handleCancelConnection = useCallback(() => {
+    const cs = connectingServerRef.current;
+    if (!cs) return;
+    AppGo.DisconnectSSH(cs.sessionId).catch(() => {});
+    setSessions(prev => prev.filter(s => s.id !== cs.sessionId));
+    setActiveSessionId(null);
+    setActiveTerminalId(null);
+    setConnectingServer(null);
+  }, []);
+
+  // ── 加入最近连接列表 ──────────────────────────────────────
+  const addRecentServer = useCallback((serverData) => {
+    setRecentServers(prev => {
+      const filtered = prev.filter(s => s.id !== serverData.id);
+      return [serverData, ...filtered].slice(0, 4);
+    });
+  }, []);
+
+  // ── 切换到下一个可用 session ──────────────────────────────
+  const switchToNextSession = useCallback((currentSessionId) => {
+    const remaining = sessionsRef.current.filter(s => s.id !== currentSessionId);
+    if (remaining.length > 0) {
+      const nextSession = remaining[remaining.length - 1];
+      setActiveSessionId(nextSession.id);
+      const lastTid = lastTerminalRef.current[nextSession.id];
+      const validTerminal = nextSession.terminals?.find(t => t.id === lastTid);
+      setActiveTerminalId(validTerminal ? validTerminal.id : (nextSession.terminals?.[0]?.id || nextSession.id));
+    } else {
+      setActiveSessionId(null);
+      setActiveTerminalId(null);
+    }
+  }, []);
+
   // ── 重连会话核心逻辑 ────────────────────────────────────────
   const reconnectSession = useCallback(async (session, requestingTerminalId) => {
     setSessions((prev) =>
@@ -471,7 +507,7 @@ export default function App() {
         addToast(`${t('重新连接失败')}: ${err}`, 'error', 5000);
       }
     }
-  }, [servers, addToast, t]);
+  }, [servers, addToast, t, postConnectSetup]);
 
   // ── 监听 SSH 意外断开事件 ────────────────────────────────────
   useEffect(() => {
@@ -556,15 +592,7 @@ export default function App() {
             'success'
           );
 
-          try {
-            const info = await AppGo.SystemInfo(sessionId);
-            if (info) {
-              setSessions((prev) =>
-                prev.map((s) => (s.id === sessionId ? { ...s, osInfo: info } : s))
-              );
-              setMonitoringEnabled((prev) => ({ ...prev, [sessionId]: true }));
-            }
-          } catch (_) {}
+          await postConnectSetup(sessionId);
         } else {
           setSessions((prev) =>
             prev.map((s) =>
@@ -636,33 +664,10 @@ export default function App() {
         setConnectingServer(null);
         addToast(persist ? t('密码已保存，连接成功') : t('连接成功'), 'success', 3000);
 
-        // 连接成功后自动查询 OS 信息
-        try {
-          const info = await AppGo.SystemInfo(sessionId);
-          if (info) {
-            setSessions((prev) => prev.map((s) => s.id === sessionId ? { ...s, osInfo: info } : s));
-            setMonitoringEnabled((prev) => ({ ...prev, [sessionId]: true }));
-            const detectedOs = info.os || info.platform || '';
-            if (detectedOs) {
-              setServers(prevServers => {
-                const currentServer = prevServers.find(s => s.id === connId);
-                if (currentServer && currentServer.os !== detectedOs) {
-                  const updatedServer = { ...currentServer, os: detectedOs, password: newPassword };
-                  AppGo.SaveConnection(updatedServer).catch(console.error);
-                  return prevServers.map(s => s.id === updatedServer.id ? updatedServer : s);
-                }
-                return prevServers;
-              });
-            }
-          }
-        } catch (_) {}
+        await postConnectSetup(sessionId, connId, { password: newPassword });
 
         // 加入最近连接
-        setRecentServers((prev) => {
-          const filtered = prev.filter((s) => s.id !== connId);
-          const server = { id: connId, host, port, username };
-          return [server, ...filtered].slice(0, 4);
-        });
+        addRecentServer({ id: connId, host, port, username });
       } catch (retryErr) {
         setSessions((prev) =>
           prev.map((s) => (s.id === sessionId ? { ...s, status: 'error' } : s))
@@ -676,27 +681,29 @@ export default function App() {
     };
   }, [addToast]);
 
+  // ── 关闭窗口通用处理 ──────────────────────────────────────────
+  const handleCloseWindow = useCallback(async () => {
+    const choice = await window.luminDialog?.choice?.(
+      t('请选择操作'),
+      t('关闭窗口'),
+      [
+        { label: t('退出'), value: 'quit', primary: true },
+        { label: t('系统托盘'), value: 'tray', secondary: true },
+        { label: t('取消'), value: 'cancel', secondary: true },
+      ]
+    );
+    if (choice === 'quit') {
+      AppGo.DoQuit();
+    } else if (choice === 'tray') {
+      WindowHide();
+    }
+  }, [t]);
+
   // ── 监听关闭窗口请求，弹出选择对话框 ──────────────────────────
   useEffect(() => {
-    const unbind = EventsOn('close-request', async () => {
-      const choice = await window.luminDialog?.choice?.(
-        t('请选择操作'),
-        t('关闭窗口'),
-        [
-          { label: t('退出'), value: 'quit', primary: true },
-          { label: t('系统托盘'), value: 'tray', secondary: true },
-          { label: t('取消'), value: 'cancel', secondary: true },
-        ]
-      );
-      if (choice === 'quit') {
-        AppGo.DoQuit();
-      } else if (choice === 'tray') {
-        WindowHide();
-      }
-      // 'cancel' 或 null（点遮罩关闭）→ 不做任何操作
-    });
+    const unbind = EventsOn('close-request', handleCloseWindow);
     return () => { if (unbind) unbind(); };
-  }, []);
+  }, [handleCloseWindow]);
 
   // ── 监听终端触发的重连请求 ──────────────────────────────────
   useEffect(() => {
@@ -759,27 +766,11 @@ export default function App() {
       await postConnectSetup(sessionId, server.id);
 
       // 连接成功后加入最近连接列表（仅保留非敏感字段）
-      const safeServer = { id: server.id, name: server.name, host: server.host, port: server.port, username: server.username };
-      setRecentServers((prev) => {
-        const filtered = prev.filter((s) => s.id !== server.id);
-        return [safeServer, ...filtered].slice(0, 4);
-      });
+      addRecentServer({ id: server.id, name: server.name, host: server.host, port: server.port, username: server.username });
     } catch (err) {
-      const errMsg = String(err);
-      // 主机密钥变更由专用弹窗处理，不显示 toast
-      const isHostKeyChange = errMsg.includes('主机密钥已变更');
-      // 认证失败由专用弹窗处理，不显示 toast
-      const isAuthFailed = errMsg.includes('认证失败');
-      setSessions((prev) =>
-        prev.map((s) => (s.id === sessionId ? { ...s, status: (isHostKeyChange || isAuthFailed) ? 'connecting' : 'error' } : s))
-      );
-      if (!isHostKeyChange && !isAuthFailed) {
-        setConnectingServer(null);
-        addToast(`${t('连接失败')}: ${err}`, 'error', 5000);
-      }
-      // 主机密钥变更或认证失败时，保持 connectingServer 和 connecting 状态，等待弹窗确认
+      handleConnectError(sessionId, err);
     }
-  }, [addToast, t]);
+  }, [handleConnectError]);
 
   // ── Close session ──────────────────────────────────────────
   const closeSession = useCallback(async (sessionId, e) => {
@@ -798,17 +789,7 @@ export default function App() {
     // 立即从 UI 移除会话
     setSessions((prev) => prev.filter((s) => s.id !== sessionId));
     if (activeSessionId === sessionId) {
-      const remaining = sessionsRef.current.filter((s) => s.id !== sessionId);
-      if (remaining.length > 0) {
-        const nextSession = remaining[remaining.length - 1];
-        setActiveSessionId(nextSession.id);
-        const lastTid = lastTerminalRef.current[nextSession.id];
-        const validTerminal = nextSession.terminals?.find(t => t.id === lastTid);
-        setActiveTerminalId(validTerminal ? validTerminal.id : (nextSession.terminals?.[0]?.id || nextSession.id));
-      } else {
-        setActiveSessionId(null);
-        setActiveTerminalId(null);
-      }
+      switchToNextSession(sessionId);
     }
     // 如果正在连接中，也取消连接卡片
     if (connectingServerRef.current?.sessionId === sessionId) {
@@ -818,7 +799,7 @@ export default function App() {
 
   // ── 在当前服务器上新建终端标签 ──────────────────────────────
   const openNewTerminal = useCallback(async (sessionId) => {
-    const session = sessions.find(s => s.id === sessionId);
+    const session = sessionsRef.current.find(s => s.id === sessionId);
     if (!session || session.status !== 'connected') return;
     
     // 使用当前会话中任意一个现有终端的 ID，确保即使第一个终端已关闭也能找到共享连接
@@ -876,17 +857,7 @@ export default function App() {
           next.delete(sessionId);
           return next;
         });
-        const remainingSessions = sessionsRef.current.filter(s => s.id !== sessionId);
-        if (remainingSessions.length > 0) {
-          const nextSession = remainingSessions[remainingSessions.length - 1];
-          setActiveSessionId(nextSession.id);
-          const lastTid = lastTerminalRef.current[nextSession.id];
-          const validTerminal = nextSession.terminals?.find(t => t.id === lastTid);
-          setActiveTerminalId(validTerminal ? validTerminal.id : (nextSession.terminals?.[0]?.id || nextSession.id));
-        } else {
-          setActiveSessionId(null);
-          setActiveTerminalId(null);
-        }
+        switchToNextSession(sessionId);
       }
     }
   }, [activeTerminalId]);
@@ -1004,6 +975,11 @@ export default function App() {
       });
   }, [sessions]);
 
+  const pingCounts = useMemo(() => {
+    const vals = Object.values(pings);
+    return { online: vals.filter(p => p.online).length, offline: vals.filter(p => !p.online).length };
+  }, [pings]);
+
 
   return (
     <div className="app-layout">
@@ -1081,19 +1057,7 @@ export default function App() {
             <button
               className="btn btn-ghost btn-icon no-drag"
               title={t('关闭')}
-              onClick={async () => {
-                const choice = await window.luminDialog?.choice?.(
-                  t('请选择操作'),
-                  t('关闭窗口'),
-                  [
-                    { label: t('退出'), value: 'quit', primary: true },
-                    { label: t('系统托盘'), value: 'tray', secondary: true },
-                    { label: t('取消'), value: 'cancel', secondary: true },
-                  ]
-                );
-                if (choice === 'quit') AppGo.DoQuit();
-                else if (choice === 'tray') { WindowHide(); setShowTrayPanel(false); }
-              }}
+              onClick={handleCloseWindow}
             ><X size={14} /></button>
           </div>
         </div>
@@ -1177,11 +1141,11 @@ export default function App() {
                     <div className="stat-lbl">{t('服务器总数')}</div>
                   </div>
                   <div className="stat-item">
-                    <div className="stat-val" style={{ color: 'var(--green)' }}>{Object.values(pings).filter(p => p.online).length}</div>
+                    <div className="stat-val" style={{ color: 'var(--green)' }}>{pingCounts.online}</div>
                     <div className="stat-lbl">{t('在线节点')}</div>
                   </div>
                   <div className="stat-item">
-                    <div className="stat-val" style={{ color: 'var(--red)' }}>{Object.values(pings).filter(p => !p.online).length}</div>
+                    <div className="stat-val" style={{ color: 'var(--red)' }}>{pingCounts.offline}</div>
                     <div className="stat-lbl">{t('离线节点')}</div>
                   </div>
                 </div>
@@ -1362,7 +1326,7 @@ export default function App() {
                     background: 'transparent', color: 'var(--text-3)',
                     borderRadius: 4,
                   }}
-                >➕ {t('新终端')}</button>
+                >➕ {t('新建终端')}</button>
               </div>
             )}
 
@@ -1406,7 +1370,7 @@ export default function App() {
                             width: '4px',
                             cursor: 'col-resize',
                             background: 'rgba(255, 255, 255, 0.02)',
-                            zIndex: 10,
+                            zIndex: Z.PANEL_BUTTON,
                             position: 'relative',
                             marginLeft: '-2px',
                             marginRight: '-2px',
@@ -1419,7 +1383,7 @@ export default function App() {
                     {/* 主要视口 (终端/标签页模式下的文件) */}
                     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
                       <div style={{ display: (contentTab === 'terminal' || s.status !== 'connected') ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0, height: '100%', position: 'relative' }}>
-                        {(s.terminals && s.terminals.length > 0 ? s.terminals : [{ id: s.id, label: t('终端') }]).map((t) => (
+                        {mountedSessions.has(s.id) && (s.terminals && s.terminals.length > 0 ? s.terminals : [{ id: s.id, label: t('终端') }]).map((t) => (
                           <div key={t.id} style={{
                             position: 'absolute', inset: 0,
                             display: ((contentTab === 'terminal' || s.status !== 'connected') && activeTerminalId === t.id) ? 'flex' : 'none',
@@ -1467,7 +1431,7 @@ export default function App() {
                             height: '4px',
                             cursor: 'row-resize',
                             background: 'rgba(255, 255, 255, 0.02)',
-                            zIndex: 10,
+                            zIndex: Z.PANEL_BUTTON,
                             position: 'relative',
                             marginTop: '-2px',
                             marginBottom: '-2px',
@@ -1582,242 +1546,38 @@ export default function App() {
       <Toast toasts={toasts} />
       <GlobalDialog />
 
-      {/* ── 连接进度卡片 Overlay（参考图一）──────────────── */}
-      {connectingServer && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 9000,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)',
-        }}>
-          <div style={{
-            width: 380, borderRadius: 16, overflow: 'hidden',
-            background: 'rgba(22,27,34,0.97)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            boxShadow: '0 24px 60px rgba(0,0,0,0.6)',
-            padding: '20px 24px 22px',
-          }}>
-            {/* 标题行：图标 + 名称 + 按钮 */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 18 }}>
-              <div style={{
-                width: 42, height: 42, borderRadius: 10, flexShrink: 0,
-                background: 'linear-gradient(135deg,#ef4444,#dc2626)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}><Monitor size={22} style={{ color: '#fff' }} /></div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#f0f6fc', marginBottom: 3 }}>
-                  {connectingServer.server.name || connectingServer.server.host}
-                </div>
-                <div style={{ fontSize: 12, color: '#3fb950', fontFamily: 'monospace' }}>
-                  SSH {connectingServer.server.host}:{connectingServer.server.port || 22}
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                <button
-                  style={{
-                    padding: '5px 14px', fontSize: 12, borderRadius: 8, cursor: 'pointer',
-                    background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
-                    color: '#8b949e',
-                  }}
-                  onClick={() => {
-                    // 实际断开连接
-                    AppGo.DisconnectSSH(connectingServer.sessionId).catch(() => {});
-                    setSessions(prev => prev.filter(s => s.id !== connectingServer.sessionId));
-                    setActiveSessionId(null);
-                    setActiveTerminalId(null);
-                    setConnectingServer(null);
-                  }}
-                >
-                  {t('取消')}
-                </button>
-              </div>
-            </div>
+      {/* ── 连接进度卡片 ──────────────────────────────── */}
+      <ConnectingCard
+        connectingServer={connectingServer}
+        t={t}
+        onCancel={handleCancelConnection}
+      />
 
-            {/* 双进度条（参考图一）*/}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-              {/* 左进度点 */}
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#22c55e', flexShrink: 0, boxShadow: '0 0 8px #22c55e' }} />
-              {/* 进度条 */}
-              <div style={{ flex: 1, height: 4, borderRadius: 4, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%', borderRadius: 4,
-                  background: 'linear-gradient(90deg, #22c55e, #86efac)',
-                  animation: 'ssh-progress-indeterminate 1.4s ease-in-out infinite',
-                }} />
-              </div>
-              {/* WiFi 图标 */}
-              <div style={{ flexShrink: 0, fontSize: 14, color: '#22c55e' }}>📡</div>
-              {/* 第二段进度条 */}
-              <div style={{ flex: 1, height: 4, borderRadius: 4, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%', borderRadius: 4,
-                  background: 'linear-gradient(90deg, #22c55e, #86efac)',
-                  animation: 'ssh-progress-indeterminate 1.4s ease-in-out 0.4s infinite',
-                }} />
-              </div>
-              {/* 右旋转图标 */}
-              <div style={{ flexShrink: 0, animation: 'spin 1.2s linear infinite', fontSize: 14, color: '#6e7681' }}>⟳</div>
-            </div>
-
-            {/* 提示文字 */}
-            <div style={{ fontSize: 12, color: '#6e7681', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ animation: 'spin 1.5s linear infinite', display: 'inline-block' }}>⟳</span>
-              {t('正在建立 SSH 连接，请稍候...')}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── 托盘弹窗面板（参考图二/图三）─────────────────── */}
-      {showTrayPanel && (
-        <div
-          style={{
-            position: 'fixed', bottom: 48, right: 16, zIndex: 8000,
-            width: 280,
-            borderRadius: 14,
-            background: 'rgba(13,17,23,0.97)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            boxShadow: '0 16px 48px rgba(0,0,0,0.7)',
-            overflow: 'hidden',
-            display: 'flex', flexDirection: 'column',
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* 标题栏 */}
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '14px 16px 12px',
-            borderBottom: '1px solid rgba(255,255,255,0.07)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <img src={logoImg} alt="logo" style={{ width: 24, height: 24, borderRadius: 6 }} />
-              <span style={{ fontSize: 14, fontWeight: 700, color: '#f0f6fc' }}>Lumin</span>
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6e7681', fontSize: 14, padding: '2px 6px' }}
-                title={t('展开窗口')}
-                onClick={() => { import('../wailsjs/runtime/runtime.js').then(r => r.WindowShow()); setShowTrayPanel(false); }}
-              >⤢</button>
-              <button
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6e7681', fontSize: 14, padding: '2px 6px' }}
-                onClick={() => setShowTrayPanel(false)}
-              >✕</button>
-            </div>
-          </div>
-
-          {/* 内容区 */}
-          <div style={{ flex: 1, padding: '12px 0', minHeight: 120 }}>
-            {sessions.filter(s => s.status === 'connected').length > 0 ? (
-              <>
-                <div style={{ fontSize: 11, color: '#6e7681', padding: '0 16px 8px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: 1 }}>{t('会话')}</div>
-                {sessions.filter(s => s.status === 'connected').map(s => (
-                  <div key={s.id} style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '10px 16px', cursor: 'pointer',
-                    transition: 'background 0.15s',
-                  }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                    onClick={() => {
-                      import('../wailsjs/runtime/runtime.js').then(r => r.WindowShow());
-                      setActiveSessionId(s.id);
-                      setShowTrayPanel(false);
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px #22c55e' }} />
-                      <span style={{ fontSize: 14, color: '#f0f6fc', fontWeight: 500 }}>{s.serverName}</span>
-                    </div>
-                    <span style={{ fontSize: 12, color: '#6e7681' }}>{t('已连接')}</span>
-                  </div>
-                ))}
-              </>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '28px 16px', gap: 10 }}>
-                <div style={{ fontSize: 40 }}>😤</div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#f0f6fc' }}>{t('一切都很安静')}</div>
-                <div style={{ fontSize: 12, color: '#6e7681', textAlign: 'center', lineHeight: 1.6 }}>
-                  {t('去连接个服务器吧，已经想念你了 🌿')}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* 底部退出按钮 */}
-          <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', padding: '10px 16px' }}>
-            <button
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                width: '100%', background: 'none', border: 'none',
-                cursor: 'pointer', color: '#6e7681', fontSize: 13,
-                padding: '6px 0', transition: 'color 0.15s',
-              }}
-              onMouseEnter={e => e.currentTarget.style.color = '#f0f6fc'}
-              onMouseLeave={e => e.currentTarget.style.color = '#6e7681'}
-              onClick={() => AppGo.DoQuit()}
-            >
-              <span>⏻</span> {t('退出 Lumin')}
-            </button>
-          </div>
-        </div>
-      )}
+      {/* ── 托盘弹窗面板 ─────────────────────────────── */}
+      <TrayPanel
+         show={showTrayPanel}
+         sessions={sessions}
+         t={t}
+         logoImg={logoImg}
+         onSessionClick={(sessionId) => {
+           setActiveSessionId(sessionId);
+           setShowTrayPanel(false);
+         }}
+         onClose={() => setShowTrayPanel(false)}
+         onQuit={() => AppGo.DoQuit()}
+         onShowWindow={() => { WindowShow(); }}
+       />
 
 
-      {/* 🚀 右下角小巧自动更新弹窗 */}
-      {isUpdateModalVisible && startupUpdateInfo && (
-        <div style={{
-          position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
-          width: 340, background: 'rgba(22, 27, 34, 0.95)', backdropFilter: 'blur(20px)',
-          border: '1px solid rgba(255,255,255,0.15)',
-          boxShadow: '0 16px 40px rgba(0,0,0,0.4)',
-          borderRadius: 16, padding: '16px 20px',
-          animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-            <div style={{ fontSize: 28, lineHeight: 1, filter: 'drop-shadow(0 4px 8px rgba(16,185,129,0.3))' }}>🚀</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: '#f0f6fc', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-                {t('发现新版本')} <span style={{ color: '#34d399', fontSize: 13, background: 'rgba(52, 211, 153, 0.1)', padding: '2px 6px', borderRadius: 6 }}>{startupUpdateInfo.version}</span>
-              </div>
-              <div style={{ fontSize: 13, color: '#8b949e', lineHeight: 1.5, marginBottom: 16 }}>
-                {t('为了给您提供更极致的体验，建议您立即升级。')}
-              </div>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button 
-                  style={{ padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500, background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: '#8b949e', cursor: 'pointer', transition: 'all 0.2s' }}
-                  onClick={() => setIsUpdateModalVisible(false)}
-                  onMouseEnter={e => { e.currentTarget.style.color = '#f0f6fc'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = '#8b949e'; e.currentTarget.style.background = 'transparent'; }}
-                  disabled={downloadProgress >= 0}
-                >
-                  {t('稍等')}
-                </button>
-                <button 
-                  style={{ padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: '#10b981', border: 'none', color: '#fff', cursor: 'pointer', position: 'relative', overflow: 'hidden', transition: 'all 0.2s' }}
-                  onClick={handleApplyStartupUpdate}
-                  onMouseEnter={e => e.currentTarget.style.background = '#059669'}
-                  onMouseLeave={e => e.currentTarget.style.background = '#10b981'}
-                  disabled={downloadProgress >= 0}
-                >
-                  {downloadProgress >= 0 && (
-                    <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${downloadProgress}%`, background: 'rgba(0,0,0,0.2)', transition: 'width 0.2s ease-out' }} />
-                  )}
-                  <span style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {downloadProgress >= 0 ? (
-                      <>
-                        <svg className="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
-                        {downloadProgress}%
-                      </>
-                    ) : (
-                      t('立即更新')
-                    )}
-                  </span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ── 自动更新弹窗 ──────────────────────────────── */}
+      <UpdateModal
+        visible={isUpdateModalVisible}
+        updateInfo={startupUpdateInfo}
+        downloadProgress={downloadProgress}
+        t={t}
+        onClose={() => setIsUpdateModalVisible(false)}
+        onUpdate={handleApplyStartupUpdate}
+      />
       <GlobalContextMenu />
     </div>
   );

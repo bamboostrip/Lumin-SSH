@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import * as AppGo from '../../wailsjs/go/main/App.js';
 const FileEditor = React.lazy(() => import('./FileEditor.jsx'));
@@ -251,7 +251,7 @@ function ContextMenu({ pos, item, onClose, onDownload, onEdit, onRename, onDelet
   const ref = useRef(null);
   const [adjusted, setAdjusted] = useState({ left: pos.x, top: pos.y });
 
-  useLayoutEffect(() => {
+  React.useLayoutEffect(() => {
     if (!ref.current) return;
     const el = ref.current;
     const rect = el.getBoundingClientRect();
@@ -511,9 +511,7 @@ export default function FileManager({ sessionId, addToast, isActive = true }) {
 
   // Download file via Wails native file dialog
   const handleDownload = async (item) => {
-    const remotePath = currentPath === '/'
-      ? `/${item.name}`
-      : `${currentPath}/${item.name}`;
+    const remotePath = joinPath(currentPath, item.name);
     
     try {
       setTransferInfo({ name: item.name, progress: 0, direction: 'download' });
@@ -528,9 +526,7 @@ export default function FileManager({ sessionId, addToast, isActive = true }) {
 
   // Open file editor
   const handleEdit = async (item) => {
-    const remotePath = currentPath === '/'
-      ? `/${item.name}`
-      : `${currentPath}/${item.name}`;
+    const remotePath = joinPath(currentPath, item.name);
 
     // 文件大小检查，避免加载过大文件导致卡顿
     if (item.size && item.size > MAX_EDIT_SIZE) {
@@ -622,7 +618,7 @@ export default function FileManager({ sessionId, addToast, isActive = true }) {
   const handleMkdir = async () => {
     const name = await window.luminDialog?.prompt(t('新文件夹名称:'));
     if (!name) return;
-    const remotePath = currentPath === '/' ? `/${name}` : `${currentPath}/${name}`;
+    const remotePath = joinPath(currentPath, name);
     try {
       await AppGo.Mkdir(sessionId, remotePath);
       addToast(`${t('文件夹创建成功')}: ${name}`, 'success');
@@ -636,7 +632,7 @@ export default function FileManager({ sessionId, addToast, isActive = true }) {
   const handleNewFile = async () => {
     const name = await window.luminDialog?.prompt(t('新文件名称:'));
     if (!name) return;
-    const remotePath = currentPath === '/' ? `/${name}` : `${currentPath}/${name}`;
+    const remotePath = joinPath(currentPath, name);
     try {
       await AppGo.WriteFile(sessionId, remotePath, '');
       addToast(`${t('文件创建成功')}: ${name}`, 'success');
@@ -648,7 +644,7 @@ export default function FileManager({ sessionId, addToast, isActive = true }) {
 
   // Compress
   const handleCompress = async (item) => {
-    const remotePath = currentPath === '/' ? `/${item.name}` : `${currentPath}/${item.name}`;
+    const remotePath = joinPath(currentPath, item.name);
     try {
       setLoading(true);
       addToast(`${t('正在压缩')} ${item.name}...`, 'info');
@@ -663,7 +659,7 @@ export default function FileManager({ sessionId, addToast, isActive = true }) {
 
   // Uncompress
   const handleUncompress = async (item) => {
-    const remotePath = currentPath === '/' ? `/${item.name}` : `${currentPath}/${item.name}`;
+    const remotePath = joinPath(currentPath, item.name);
     try {
       setLoading(true);
       addToast(`${t('正在解压')} ${item.name}...`, 'info');
@@ -687,8 +683,8 @@ export default function FileManager({ sessionId, addToast, isActive = true }) {
       setRenamingItem(null);
       return;
     }
-    const oldPath = currentPath === '/' ? `/${renamingItem.name}` : `${currentPath}/${renamingItem.name}`;
-    const newPath = currentPath === '/' ? `/${renameValue}` : `${currentPath}/${renameValue}`;
+    const oldPath = joinPath(currentPath, renamingItem.name);
+    const newPath = joinPath(currentPath, renameValue);
     try {
       await AppGo.RenameItem(sessionId, oldPath, newPath);
       addToast(t('重命名成功'), 'success');

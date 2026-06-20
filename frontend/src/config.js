@@ -1,5 +1,5 @@
 // 全局配置文件
-export const APP_VERSION = '1.0.1';
+export const APP_VERSION = '1.0.2';
 
 
 

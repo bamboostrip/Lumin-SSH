@@ -1397,6 +1397,92 @@ a { color: var(--accent); text-decoration: none; }
 }
 
 /* ── prefers-reduced-motion ─────────────────────────────────── */
+/* ── 终端命令栏按钮 ── */
+.term-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  font-size: 11px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+}
+.term-btn.active {
+  color: var(--success);
+  background: rgba(var(--success-rgb), 0.1);
+  border-color: rgba(var(--success-rgb), 0.3);
+}
+.term-btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  transition: all 0.15s;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+.term-btn-icon.enabled {
+  cursor: pointer;
+}
+.term-btn-icon.success.enabled {
+  background: rgba(var(--success-rgb), 0.15);
+  border-color: rgba(var(--success-rgb), 0.35);
+  color: var(--success);
+}
+.term-btn-icon.accent.enabled {
+  background: rgba(var(--accent-rgb), 0.15);
+  border-color: rgba(var(--accent-rgb), 0.35);
+  color: var(--accent);
+}
+
+/* ── 终端弹窗通用样式 ── */
+.term-popup {
+  position: fixed;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+}
+.term-popup-backdrop {
+  position: fixed;
+  inset: 0;
+  background: transparent;
+}
+
+/* ── 历史条目 hover ── */
+.history-item:hover {
+  background: rgba(var(--success-rgb), 0.06);
+}
+
+/* ── ProbePanel 按钮 hover ── */
+.probe-btn:hover {
+  background: rgba(var(--accent-rgb), 0.2);
+}
+.probe-icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 13px;
+  line-height: 1;
+  border-radius: 3px;
+}
+.probe-icon-btn:hover {
+  color: var(--text-primary);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .context-menu,
   .status-dot.just-connected,

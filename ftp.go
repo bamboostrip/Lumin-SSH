@@ -97,10 +97,7 @@ func (c *ConfigManager) SaveFTPConfig(config map[string]string) error {
 		remoteDir += "/"
 	}
 
-	maxBackups := 0
-	if config["maxBackups"] != "" {
-		fmt.Sscanf(config["maxBackups"], "%d", &maxBackups)
-	}
+	maxBackups := parseIntOrDefault(config["maxBackups"], 0)
 
 	conf := FTPConfig{
 		Host:       config["host"],

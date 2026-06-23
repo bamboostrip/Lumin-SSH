@@ -49,3 +49,8 @@ pnpm-debug.log*
 .env.production.local
 run-dev.bat
 CLAUDE.md
+
+# Ponytail
+AGENTS.md
+.cursor/
+ponytail/

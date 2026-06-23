@@ -96,10 +96,7 @@ func (c *ConfigManager) SaveR2Config(config map[string]string) error {
 		region = "auto"
 	}
 
-	maxBackups := 0
-	if config["maxBackups"] != "" {
-		fmt.Sscanf(config["maxBackups"], "%d", &maxBackups)
-	}
+	maxBackups := parseIntOrDefault(config["maxBackups"], 0)
 
 	conf := R2Config{
 		Bucket:     config["bucket"],

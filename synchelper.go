@@ -131,24 +131,28 @@ func (c *ConfigManager) mergeAndDedupe(localConns, remoteConns []Connection) []C
 	return deduped
 }
 
-// connsEqual 比较两个连接列表是否内容一致（按 ID 排序后比 JSON）
+// connsEqual 比较两个连接列表是否内容一致（按 ID 建 map 逐字段比较）
 func connsEqual(a, b []Connection) bool {
 	if len(a) != len(b) {
 		return false
 	}
-	sa := sortedConnsJSON(a)
-	sb := sortedConnsJSON(b)
-	return sa == sb
-}
-
-func sortedConnsJSON(conns []Connection) string {
-	sorted := make([]Connection, len(conns))
-	copy(sorted, conns)
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].ID < sorted[j].ID
-	})
-	data, _ := json.Marshal(sorted)
-	return string(data)
+	m := make(map[string]Connection, len(a))
+	for _, c := range a {
+		m[c.ID] = c
+	}
+	for _, c := range b {
+		e, ok := m[c.ID]
+		if !ok {
+			return false
+		}
+		if e.Name != c.Name || e.Host != c.Host || e.Port != c.Port ||
+			e.Username != c.Username || e.Password != c.Password ||
+			e.AuthMethod != c.AuthMethod || e.PrivateKey != c.PrivateKey ||
+			e.Passphrase != c.Passphrase || e.Os != c.Os {
+			return false
+		}
+	}
+	return true
 }
 
 // snapshotEqual 比较本地快照和远端快照是否一致
@@ -297,7 +301,7 @@ func (c *ConfigManager) syncFromProvider(s RemoteStorage) (map[string]interface{
 	// 合并快捷命令（双向：按 name 去重合并）
 	localQuickCmds := c.loadRawFile(c.quickCmdFile)
 	mergedQuickCmds := c.mergeQuickCommands(localQuickCmds, remoteSnap.QuickCommands)
-	if err := os.WriteFile(c.quickCmdFile, []byte(mergedQuickCmds), 0600); err != nil {
+	if err := atomicWriteFile(c.quickCmdFile, []byte(mergedQuickCmds), 0600); err != nil {
 		log.Printf("[syncFromProvider] failed to write quick commands: %v", err)
 	}
 

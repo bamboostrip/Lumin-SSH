@@ -108,10 +108,7 @@ func (c *ConfigManager) SaveSFTPConfig(config map[string]string) error {
 		remoteDir += "/"
 	}
 
-	maxBackups := 0
-	if config["maxBackups"] != "" {
-		fmt.Sscanf(config["maxBackups"], "%d", &maxBackups)
-	}
+	maxBackups := parseIntOrDefault(config["maxBackups"], 0)
 
 	conf := SFTPConfig{
 		Host:       config["host"],

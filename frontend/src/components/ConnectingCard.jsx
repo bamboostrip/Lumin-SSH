@@ -1,10 +1,11 @@
+import { useMemo } from 'react';
 import { Monitor, Radio, Loader2 } from 'lucide-react';
 import { Z } from '../constants/zIndex';
 import { getTerminalTheme } from '../utils/theme.js';
 
 export default function ConnectingCard({ connectingServer, t, onCancel }) {
   if (!connectingServer) return null;
-  const C = getTerminalTheme().container;
+  const C = useMemo(() => getTerminalTheme().container, []);
   const server = connectingServer.server;
   const host = server.host;
   const port = server.port || 22;

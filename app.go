@@ -637,30 +637,6 @@ func (a *App) PingServer(host string, port int) map[string]interface{} {
 	return PingServer(host, port)
 }
 
-// downloadProgressReader wraps an io.Reader to track download progress and emit Wails events
-type downloadProgressReader struct {
-	io.Reader
-	ctx        context.Context
-	total      int64
-	downloaded int64
-	lastEmit   time.Time
-}
-
-func (pr *downloadProgressReader) Read(p []byte) (int, error) {
-	n, err := pr.Reader.Read(p)
-	pr.downloaded += int64(n)
-
-	if pr.total > 0 {
-		now := time.Now()
-		if now.Sub(pr.lastEmit) >= 200*time.Millisecond || pr.downloaded == pr.total {
-			progress := int(float64(pr.downloaded) / float64(pr.total) * 100)
-			runtime.EventsEmit(pr.ctx, "app-update-progress", progress)
-			pr.lastEmit = now
-		}
-	}
-	return n, err
-}
-
 // UpdateApp downloads the new exe from the given url, replaces the current running exe, and restarts the app.
 func (a *App) UpdateApp(downloadUrl string, filename string) error {
 	// 1. 强制 HTTPS，防止明文下载可执行文件被篡改
@@ -699,14 +675,16 @@ func (a *App) UpdateApp(downloadUrl string, filename string) error {
 		return fmt.Errorf("could not create temporary update file: %w", err)
 	}
 
-	progressReader := &downloadProgressReader{
-		Reader: resp.Body,
-		ctx:    a.ctx,
-		total:  resp.ContentLength,
+	pr := &progressReader{
+		Reader:    resp.Body,
+		ctx:       a.ctx,
+		eventName: "app-update-progress",
+		total:     resp.ContentLength,
+		lastEmit:  time.Now(),
 	}
 
 	// 2. 写入到带有进度的缓冲并存入 .update 临时文件
-	_, err = io.Copy(out, progressReader)
+	_, err = io.Copy(out, pr)
 	out.Close() // Ensure the file is completely flushed and closed
 	if err != nil {
 		os.Remove(targetPath) // Cleanup on failure

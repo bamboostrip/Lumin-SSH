@@ -149,53 +149,29 @@ func (m *SSHManager) Connect(sessionId string, conn Connection) error {
 			}
 
 			var keyErr *knownhosts.KeyError
-			if errors.As(err, &keyErr) {
-				if len(keyErr.Want) == 0 {
-					fingerprint := ssh.FingerprintSHA256(key)
-
-					// 检查是否为临时接受的密钥（仅本次会话，按 sessionId 匹配）
-					m.mu.RLock()
-					if fp, ok := m.tempAcceptedKeys[sessionId]; ok && fp == fingerprint {
-						m.mu.RUnlock()
-						return nil
-					}
-					m.mu.RUnlock()
-
-					// 新主机密钥 —— 需要用户确认
-					m.mu.Lock()
-					m.pendingHostKeys[sessionId] = &PendingHostKey{
-						Conn:           conn,
-						Hostname:       hostname,
-						NewKey:         key,
-						NewFingerprint: fingerprint,
-						OldKeys:        nil, // nil 表示首次连接
-					}
-					m.mu.Unlock()
-					return ErrHostKeyChanged
-				} else {
-					fingerprint := ssh.FingerprintSHA256(key)
-
-					// 检查是否为临时接受的密钥（仅本次会话，按 sessionId 匹配）
-					m.mu.RLock()
-					if fp, ok := m.tempAcceptedKeys[sessionId]; ok && fp == fingerprint {
-						m.mu.RUnlock()
-						return nil // 本次接受该密钥
-					}
-					m.mu.RUnlock()
-
-					m.mu.Lock()
-					m.pendingHostKeys[sessionId] = &PendingHostKey{
-						Conn:           conn,
-						Hostname:       hostname,
-						NewKey:         key,
-						NewFingerprint: fingerprint,
-						OldKeys:        keyErr.Want,
-					}
-					m.mu.Unlock()
-					return ErrHostKeyChanged
-				}
+			if !errors.As(err, &keyErr) {
+				return err
 			}
-			return err
+
+			fingerprint := ssh.FingerprintSHA256(key)
+			// ponytail: 临时密钥检查统一放在分支前
+			m.mu.RLock()
+			if fp, ok := m.tempAcceptedKeys[sessionId]; ok && fp == fingerprint {
+				m.mu.RUnlock()
+				return nil
+			}
+			m.mu.RUnlock()
+
+			m.mu.Lock()
+			m.pendingHostKeys[sessionId] = &PendingHostKey{
+				Conn:           conn,
+				Hostname:       hostname,
+				NewKey:         key,
+				NewFingerprint: fingerprint,
+				OldKeys:        keyErr.Want, // nil when first connection
+			}
+			m.mu.Unlock()
+			return ErrHostKeyChanged
 		}
 
 		config := &ssh.ClientConfig{
@@ -392,15 +368,17 @@ func (m *SSHManager) Connect(sessionId string, conn Connection) error {
 					stdin   io.WriteCloser
 					session *ssh.Session
 				}
+				// ponytail: 批量锁，减少 N 次 lock/unlock 为 1 次
+				m.mu.Lock()
 				var items []closeItem
 				for _, tid := range terminalIds {
-					m.mu.Lock()
-					ts, tsOk := m.sessions[tid]
-					if tsOk {
+					if ts, ok := m.sessions[tid]; ok {
 						items = append(items, closeItem{stdin: ts.Stdin, session: ts.Session})
 						delete(m.sessions, tid)
 					}
-					m.mu.Unlock()
+				}
+				m.mu.Unlock()
+				for _, tid := range terminalIds {
 					if m.ctx != nil {
 						runtime.EventsEmit(m.ctx, "ssh-disconnected", tid)
 					}
@@ -716,10 +694,7 @@ func (m *SSHManager) OpenTerminal(sessionId string) (string, error) {
 
 // getKnownHostsPath 返回跨平台的 known_hosts 文件路径
 func getKnownHostsPath() string {
-	home := os.Getenv("HOME")
-	if home == "" {
-		home = os.Getenv("USERPROFILE") // Windows
-	}
+	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".ssh", "known_hosts")
 }
 
@@ -793,6 +768,11 @@ func (m *SSHManager) AcceptHostKeyChange(sessionId string, action int) error {
 			}
 
 			var newLines []string
+			// ponytail: 预计算旧密钥字符串，避免循环内重复 MarshalAuthorizedKey
+			oldKeyStrs := make([]string, len(pending.OldKeys))
+			for i, k := range pending.OldKeys {
+				oldKeyStrs[i] = strings.TrimSpace(string(ssh.MarshalAuthorizedKey(k.Key)))
+			}
 			for _, line := range strings.Split(string(data), "\n") {
 				line = strings.TrimSpace(line)
 				if line == "" || strings.HasPrefix(line, "#") {
@@ -800,8 +780,8 @@ func (m *SSHManager) AcceptHostKeyChange(sessionId string, action int) error {
 					continue
 				}
 				isOld := false
-				for _, oldKey := range pending.OldKeys {
-					if strings.Contains(line, strings.TrimSpace(string(ssh.MarshalAuthorizedKey(oldKey.Key)))) {
+				for _, oldStr := range oldKeyStrs {
+					if strings.Contains(line, oldStr) {
 						isOld = true
 						break
 					}
@@ -911,9 +891,6 @@ func (m *SSHManager) executeCmdWithClient(client *ssh.Client, cmd string) (strin
 	}
 	defer session.Close()
 
-	var stdoutBuf bytes.Buffer
-	session.Stdout = &stdoutBuf
-
 	return runCommandWithSession(session, cmd, 30*time.Second)
 }
 
@@ -932,10 +909,14 @@ func runCommandWithSession(session *ssh.Session, cmd string, timeout time.Durati
 		errCh <- session.Run(cmd)
 	}()
 
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
 	select {
 	case err := <-errCh:
 		return stdoutBuf.String(), err
-	case <-time.After(timeout):
+	case <-timer.C:
+		// ponytail: session.Close() may block if server is unresponsive.
+		// The goroutine will be cleaned up when the parent SSH client is closed.
 		go session.Close()
 		return "", fmt.Errorf("command timed out after %v", timeout)
 	}
@@ -1719,7 +1700,7 @@ func (m *SSHManager) RenameItem(sessionId string, oldPath string, newPath string
 type progressReader struct {
 	io.Reader
 	ctx       context.Context
-	sessionId string
+	eventName string
 	total     int64
 	current   int64
 	lastEmit  time.Time
@@ -1739,7 +1720,7 @@ func (p *progressReader) Read(data []byte) (int, error) {
 				}
 			}
 			if p.ctx != nil {
-				runtime.EventsEmit(p.ctx, "transfer-progress-"+p.sessionId, pct)
+				runtime.EventsEmit(p.ctx, p.eventName, pct)
 			}
 			p.lastEmit = now
 		}
@@ -1774,7 +1755,7 @@ func (m *SSHManager) UploadFile(sessionId string, localPath string, remotePath s
 	pr := &progressReader{
 		Reader:    src,
 		ctx:       m.ctx,
-		sessionId: sessionId,
+		eventName: "transfer-progress-" + sessionId,
 		total:     totalSize,
 		lastEmit:  time.Now(),
 	}
@@ -1833,7 +1814,7 @@ func (m *SSHManager) UploadDir(sessionId string, localDir string, remoteDir stri
 		pr := &progressReader{
 			Reader:    src,
 			ctx:       m.ctx,
-			sessionId: sessionId,
+			eventName: "transfer-progress-" + sessionId,
 			total:     totalSize,
 			lastEmit:  time.Now(),
 		}
@@ -1887,7 +1868,7 @@ func (m *SSHManager) UploadFileContentBase64(sessionId string, fileName string, 
 	pr := &progressReader{
 		Reader:    bytes.NewReader(content),
 		ctx:       m.ctx,
-		sessionId: sessionId,
+		eventName: "transfer-progress-" + sessionId,
 		total:     int64(len(content)),
 		lastEmit:  time.Now(),
 	}
@@ -1926,7 +1907,7 @@ func (m *SSHManager) DownloadFile(sessionId string, remotePath string, localPath
 	pr := &progressReader{
 		Reader:    src,
 		ctx:       m.ctx,
-		sessionId: sessionId,
+		eventName: "transfer-progress-" + sessionId,
 		total:     totalSize,
 		lastEmit:  time.Now(),
 	}
@@ -1947,10 +1928,7 @@ func (m *SSHManager) CompressItem(sessionId string, remotePath string) error {
 	archiveName := base + ".tar.gz"
 
 	dir = strings.ReplaceAll(dir, "\\", "/")
-	safeDir := strings.ReplaceAll(dir, "'", "'\\''")
-	safeBase := strings.ReplaceAll(base, "'", "'\\''")
-	safeArchive := strings.ReplaceAll(archiveName, "'", "'\\''")
-	cmd := fmt.Sprintf("cd '%s' && tar -czf '%s' '%s'", safeDir, safeArchive, safeBase)
+	cmd := fmt.Sprintf("cd %s && tar -czf %s %s", shellQuotePath(dir), shellQuotePath(archiveName), shellQuotePath(base))
 
 	out, err := m.executeCmdWithClient(client, cmd)
 	if err != nil {
@@ -1968,8 +1946,8 @@ func (m *SSHManager) UncompressItem(sessionId string, remotePath string) error {
 	dir := filepath.Dir(remotePath)
 	base := filepath.Base(remotePath)
 	dir = strings.ReplaceAll(dir, "\\", "/")
-	safeDir := strings.ReplaceAll(dir, "'", "'\\''")
-	safeBase := strings.ReplaceAll(base, "'", "'\\''")
+	safeDir := shellQuotePath(dir)
+	safeBase := shellQuotePath(base)
 
 	var cmd string
 	lowerBase := strings.ToLower(base)
@@ -1978,15 +1956,15 @@ func (m *SSHManager) UncompressItem(sessionId string, remotePath string) error {
 	// 缓解 tar slip 路径穿越风险；BSD tar 不识别该选项会报错，但多数 Linux 发行版默认为 GNU tar）。
 	if strings.HasSuffix(lowerBase, ".zip") {
 		// unzip 无等价选项，无法在命令行层面防御路径穿越
-		cmd = fmt.Sprintf("cd '%s' && unzip -o '%s'", safeDir, safeBase)
+		cmd = fmt.Sprintf("cd %s && unzip -o %s", safeDir, safeBase)
 	} else if strings.HasSuffix(lowerBase, ".tar.gz") || strings.HasSuffix(lowerBase, ".tgz") {
-		cmd = fmt.Sprintf("cd '%s' && tar --no-unsafe-paths -xzf '%s'", safeDir, safeBase)
+		cmd = fmt.Sprintf("cd %s && tar --no-unsafe-paths -xzf %s", safeDir, safeBase)
 	} else if strings.HasSuffix(lowerBase, ".tar") {
-		cmd = fmt.Sprintf("cd '%s' && tar --no-unsafe-paths -xf '%s'", safeDir, safeBase)
+		cmd = fmt.Sprintf("cd %s && tar --no-unsafe-paths -xf %s", safeDir, safeBase)
 	} else if strings.HasSuffix(lowerBase, ".tar.bz2") || strings.HasSuffix(lowerBase, ".tbz2") {
-		cmd = fmt.Sprintf("cd '%s' && tar --no-unsafe-paths -xjf '%s'", safeDir, safeBase)
+		cmd = fmt.Sprintf("cd %s && tar --no-unsafe-paths -xjf %s", safeDir, safeBase)
 	} else if strings.HasSuffix(lowerBase, ".gz") {
-		cmd = fmt.Sprintf("cd '%s' && gunzip -f -k '%s'", safeDir, safeBase)
+		cmd = fmt.Sprintf("cd %s && gunzip -f -k %s", safeDir, safeBase)
 	} else {
 		return fmt.Errorf("unsupported archive format")
 	}

@@ -142,9 +142,8 @@ function isInternalIP(ip) {
 export default function ProbePanel({ sessionId, host, addToast, enabled, onEnable }) {
   const { t } = useTranslation();
   const [info, setInfo] = useState(null);
-  const [uploadHist, setUploadHist] = useState(Array(30).fill(0));
-  const [downloadHist, setDownloadHist] = useState(Array(30).fill(0));
-  const [cpuHist, setCpuHist] = useState(Array(30).fill(0));
+  // ponytail: 合并 3 个历史数组为 1 个状态更新，减少 3 次渲染为 1 次
+  const [hist, setHist] = useState({ cpu: Array(30).fill(0), up: Array(30).fill(0), down: Array(30).fill(0) });
   const [showConfirm, setShowConfirm] = useState(false);
   const [enabling, setEnabling] = useState(false);
   const [hideIP, setHideIP] = useState(false);
@@ -155,15 +154,15 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, onEnabl
   useEffect(() => {
     setInfo(null);
     staticInfoRef.current = null;
-    setCpuHist(Array(30).fill(0));
-    setUploadHist(Array(30).fill(0));
-    setDownloadHist(Array(30).fill(0));
+    setHist({ cpu: Array(30).fill(0), up: Array(30).fill(0), down: Array(30).fill(0) });
     setCpuExpanded(false);
   }, [sessionId]);
 
   // 启用监控时获取一次静态信息（OS/时区/主机名/CPU 型号）
+  // ponytail: 已缓存则跳过，避免重复 IPC
   useEffect(() => {
     if (!enabled || !sessionId) return;
+    if (staticInfoRef.current) return;
     (async () => {
       try {
         const data = await AppGo.GetServerStaticInfo(sessionId);
@@ -221,9 +220,11 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, onEnabl
         processes: data.processes || [],
       };
       setInfo(ni);
-      setCpuHist(prev => [...prev, ni.cpuUsage].slice(-30));
-      setUploadHist(prev => [...prev, ni.netUp].slice(-30));
-      setDownloadHist(prev => [...prev, ni.netDown].slice(-30));
+      setHist(prev => ({
+        cpu: [...prev.cpu, ni.cpuUsage].slice(-30),
+        up: [...prev.up, ni.netUp].slice(-30),
+        down: [...prev.down, ni.netDown].slice(-30),
+      }));
     } catch (_) {}
   }, [sessionId, enabled]);
 
@@ -282,9 +283,7 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, onEnabl
               </div>
             ))}
           </div>
-          <button onClick={() => setShowConfirm(true)} style={{ marginTop: 8, padding: '9px 26px', borderRadius: 8, border: '1px solid rgba(var(--accent-rgb),0.5)', background: 'rgba(var(--accent-rgb),0.12)', color: 'var(--success)', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.5px' }}
-            onMouseOver={e => { e.currentTarget.style.background = 'rgba(var(--accent-rgb),0.2)'; }}
-            onMouseOut={e => { e.currentTarget.style.background = 'rgba(var(--accent-rgb),0.12)'; }}>
+          <button onClick={() => setShowConfirm(true)} className="probe-btn" style={{ marginTop: 8, padding: '9px 26px', borderRadius: 8, border: '1px solid rgba(var(--accent-rgb),0.5)', background: 'rgba(var(--accent-rgb),0.12)', color: 'var(--success)', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.5px' }}>
             {t('开启监控')}
           </button>
         </div>
@@ -355,13 +354,9 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, onEnabl
                 {hideIP ? '***.***.***.***' : displayIP}
               </span>
               <button onClick={() => { navigator.clipboard.writeText(displayIP); addToast?.(t('已复制') + ' ' + displayIP, 'success'); }} title={t('复制 IP')}
-                style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '2px 4px', fontSize: 13, lineHeight: 1, borderRadius: 3 }}
-                onMouseOver={e => e.currentTarget.style.color = 'var(--text-primary)'}
-                onMouseOut={e => e.currentTarget.style.color = 'var(--text-tertiary)'}><Clipboard size={13} /></button>
+                className="probe-icon-btn"><Clipboard size={13} /></button>
               <button onClick={() => setHideIP(p => !p)} title={hideIP ? t('显示 IP') : t('隐藏 IP')}
-                style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '2px 4px', fontSize: 13, lineHeight: 1, borderRadius: 3 }}
-                onMouseOver={e => e.currentTarget.style.color = 'var(--text-primary)'}
-                onMouseOut={e => e.currentTarget.style.color = 'var(--text-tertiary)'}>{hideIP ? <Eye size={13} /> : <EyeOff size={13} />}</button>
+                className="probe-icon-btn">{hideIP ? <Eye size={13} /> : <EyeOff size={13} />}</button>
             </div>
           )}
         </div>
@@ -381,7 +376,7 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, onEnabl
           <span style={{ display: 'flex', alignItems: 'center', color: 'var(--info)' }}><Cpu size={14} /></span>
           <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-primary)', flex: 1 }}>CPU {cores.length > 0 ? `${cores.length}${t('核')}` : ''}</span>
           <div style={{ width: 76, height: 24 }}>
-            <Sparkline data={cpuHist} color="var(--info)" height={24} />
+            <Sparkline data={hist.cpu} color="var(--info)" height={24} />
           </div>
           <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--info)', fontWeight: 700, width: 34, textAlign: 'right' }}>{cpuAvg}%</span>
         </div>
@@ -448,7 +443,7 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, onEnabl
           <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-primary)', flex: 1 }}>{t('网络')}</span>
         </div>
         <div style={{ marginBottom: 6 }}>
-          <Sparkline data={downloadHist} color="var(--accent)" height={36} />
+          <Sparkline data={hist.down} color="var(--accent)" height={36} />
         </div>
         {/* Table */}
         <div style={{ display: 'grid', gridTemplateColumns: '62px 1fr 1fr', gap: '5px 0' }}>

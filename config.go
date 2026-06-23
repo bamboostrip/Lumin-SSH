@@ -5,18 +5,29 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/studio-b12/gowebdav"
 )
+
+// parseIntOrDefault 解析字符串为整数，失败时返回默认值
+func parseIntOrDefault(s string, def int) int {
+	if s == "" {
+		return def
+	}
+	v, _ := strconv.Atoi(s)
+	return v
+}
 
 // Connection struct
 type Connection struct {
@@ -37,12 +48,13 @@ type ConfigManager struct {
 	connFile       string
 	davFile        string
 	key            []byte
+	gcm            cipher.AEAD // ponytail: 缓存 GCM cipher，避免每次 encrypt/decrypt 重建
 	syncModeFile   string
 	quickCmdFile   string
 	paramHistFile  string
 	historyDir     string
 	globalHistFile string
-	mu             sync.Mutex
+	mu             sync.RWMutex
 	connCache      []Connection // 缓存连接列表
 	connCacheDirty bool         // 缓存是否需要刷新
 }
@@ -57,7 +69,6 @@ func NewConfigManager() *ConfigManager {
 
 	keyFile := filepath.Join(dir, "lumin.key")
 	var key []byte
-	var keyErr error
 
 	connFile := filepath.Join(dir, "connections.json")
 	davFile := filepath.Join(dir, "webdav.json")
@@ -68,37 +79,29 @@ func NewConfigManager() *ConfigManager {
 		log.Printf("[NewConfigManager] 无法创建历史目录 %s: %v", historyDir, err)
 	}
 
-	// 检查是否存在本地独立密钥文件
-	if _, err := os.Stat(keyFile); err == nil {
-		// 密钥已存在，直接读取
-		key, keyErr = os.ReadFile(keyFile)
-		if keyErr != nil || len(key) != 32 {
-			// 如果读取损坏或长度不符，重新生成
-			key = make([]byte, 32)
-			if _, err := rand.Read(key); err != nil {
-				log.Fatalf("无法生成加密密钥: %v", err)
-			}
-			if err := os.WriteFile(keyFile, key, 0600); err != nil {
-				log.Fatalf("无法写入密钥文件: %v", err)
-			}
-		}
+	// ponytail: os.ReadFile 不存在时自动返回 err，无需 os.Stat 前置检查
+	data, err := os.ReadFile(keyFile)
+	if err == nil && len(data) == 32 {
+		key = data
 	} else {
-		// 密钥文件不存在，生成全新密钥
-		newKey := make([]byte, 32)
-		if _, err := rand.Read(newKey); err != nil {
+		key = make([]byte, 32)
+		if _, err := rand.Read(key); err != nil {
 			log.Fatalf("无法生成加密密钥: %v", err)
 		}
-		if err := os.WriteFile(keyFile, newKey, 0600); err != nil {
+		if err := os.WriteFile(keyFile, key, 0600); err != nil {
 			log.Fatalf("无法写入密钥文件: %v", err)
 		}
-		key = newKey
 	}
+
+	block, _ := aes.NewCipher(key)
+	gcm, _ := cipher.NewGCM(block)
 
 	return &ConfigManager{
 		configDir:      dir,
 		connFile:       connFile,
 		davFile:        davFile,
 		key:            key,
+		gcm:            gcm,
 		syncModeFile:   filepath.Join(dir, "sync_mode.json"),
 		quickCmdFile:   quickCmdFile,
 		paramHistFile:  paramHistFile,
@@ -108,9 +111,34 @@ func NewConfigManager() *ConfigManager {
 }
 
 func (c *ConfigManager) encrypt(text string) (string, error) {
-	return c.encryptWithKey(text, c.key)
+	if text == "" {
+		return "", nil
+	}
+	nonce := make([]byte, c.gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", fmt.Errorf("generate nonce: %w", err)
+	}
+	ciphertext := c.gcm.Seal(nonce, nonce, []byte(text), nil)
+	return hex.EncodeToString(ciphertext), nil
 }
 
+func (c *ConfigManager) decrypt(hexText string) string {
+	if hexText == "" {
+		return ""
+	}
+	ciphertext, _ := hex.DecodeString(hexText)
+	if len(ciphertext) < c.gcm.NonceSize() {
+		return ""
+	}
+	nonce, ct := ciphertext[:c.gcm.NonceSize()], ciphertext[c.gcm.NonceSize():]
+	plaintext, err := c.gcm.Open(nil, nonce, ct, nil)
+	if err != nil {
+		return ""
+	}
+	return string(plaintext)
+}
+
+// encryptWithKey 使用指定密钥加密（用于云端备份等场景）
 func (c *ConfigManager) encryptWithKey(text string, key []byte) (string, error) {
 	if text == "" {
 		return "", nil
@@ -128,20 +156,15 @@ func (c *ConfigManager) encryptWithKey(text string, key []byte) (string, error) 
 		return "", fmt.Errorf("generate nonce: %w", err)
 	}
 	ciphertext := gcm.Seal(nonce, nonce, []byte(text), nil)
-	return fmt.Sprintf("%x", ciphertext), nil
+	return hex.EncodeToString(ciphertext), nil
 }
 
-func (c *ConfigManager) decrypt(hexText string) string {
-	return c.decryptWithKey(hexText, c.key)
-}
-
+// decryptWithKey 使用指定密钥解密
 func (c *ConfigManager) decryptWithKey(hexText string, key []byte) string {
 	if hexText == "" {
 		return ""
 	}
-	var ciphertext []byte
-	fmt.Sscanf(hexText, "%x", &ciphertext)
-
+	ciphertext, _ := hex.DecodeString(hexText)
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return ""
@@ -153,8 +176,8 @@ func (c *ConfigManager) decryptWithKey(hexText string, key []byte) string {
 	if len(ciphertext) < gcm.NonceSize() {
 		return ""
 	}
-	nonce, ciphertext := ciphertext[:gcm.NonceSize()], ciphertext[gcm.NonceSize():]
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	nonce, ct := ciphertext[:gcm.NonceSize()], ciphertext[gcm.NonceSize():]
+	plaintext, err := gcm.Open(nil, nonce, ct, nil)
 	if err != nil {
 		return ""
 	}
@@ -162,8 +185,8 @@ func (c *ConfigManager) decryptWithKey(hexText string, key []byte) string {
 }
 
 func (c *ConfigManager) GetConnections() []Connection {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	if !c.connCacheDirty && c.connCache != nil {
 		// 返回缓存副本
 		result := make([]Connection, len(c.connCache))
@@ -230,7 +253,7 @@ func (c *ConfigManager) SaveConnection(conn Connection) Connection {
 	defer c.mu.Unlock()
 	conns := c.getConnectionsLocked()
 	if conn.ID == "" {
-		conn.ID = fmt.Sprintf("%d", time.Now().UnixNano())
+		conn.ID = strconv.FormatInt(time.Now().UnixNano(), 10)
 		conns = append(conns, conn)
 	} else {
 		found := false
@@ -292,8 +315,8 @@ func (c *ConfigManager) saveConnectionsFile(conns []Connection) error {
 
 // loadRawFile 读取配置文件的原始 JSON 字符串（用于同步快照）
 func (c *ConfigManager) loadRawFile(path string) string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return ""
@@ -347,8 +370,8 @@ type WebdavConfig struct {
 }
 
 func (c *ConfigManager) GetWebdavConfig() map[string]string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.getWebdavConfigLocked()
 }
 
@@ -392,10 +415,7 @@ func (c *ConfigManager) SaveWebdavConfig(config map[string]string) error {
 		}
 	}
 
-	maxBackups := 0
-	if config["maxBackups"] != "" {
-		fmt.Sscanf(config["maxBackups"], "%d", &maxBackups)
-	}
+	maxBackups := parseIntOrDefault(config["maxBackups"], 0)
 
 	encUser, err := c.encrypt(config["username"])
 	if err != nil {
@@ -483,8 +503,7 @@ func (c *ConfigManager) newWebdavStorage() (RemoteStorage, int, error) {
 		return nil, 0, fmt.Errorf("WebDAV not configured")
 	}
 	client := gowebdav.NewClient(conf["url"], conf["username"], conf["password"])
-	var maxBackups int
-	fmt.Sscanf(conf["maxBackups"], "%d", &maxBackups)
+	maxBackups := parseIntOrDefault(conf["maxBackups"], 0)
 	return &webdavStorage{
 		client:     client,
 		remotePath: conf["remotePath"],
@@ -515,8 +534,8 @@ func (c *ConfigManager) RestoreFromWebdavFile(filename string) (map[string]inter
 
 // GetSyncMode 获取自动同步模式：webdav / r2 / ftp / sftp / all
 func (c *ConfigManager) GetSyncMode() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	data, err := os.ReadFile(c.syncModeFile)
 	if err != nil {
 		return "webdav"
@@ -540,8 +559,8 @@ func (c *ConfigManager) SetSyncMode(mode string) error {
 
 // GetQuickCommands 读取快捷命令列表
 func (c *ConfigManager) GetQuickCommands() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	data, err := os.ReadFile(c.quickCmdFile)
 	if err != nil {
 		return "[]"
@@ -569,8 +588,8 @@ func (c *ConfigManager) SaveQuickCommandsLocal(jsonStr string) error {
 
 // GetParamHistory 读取参数历史
 func (c *ConfigManager) GetParamHistory() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	data, err := os.ReadFile(c.paramHistFile)
 	if err != nil {
 		return "{}"
@@ -592,8 +611,8 @@ func (c *ConfigManager) GetCommandHistory(sessionId string) string {
 	// 防止路径穿越
 	sessionId = filepath.Base(sessionId)
 	path := filepath.Join(c.historyDir, sessionId+".json")
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "[]"
@@ -613,8 +632,8 @@ func (c *ConfigManager) SaveCommandHistory(sessionId, jsonStr string) error {
 
 // GetGlobalCommandHistory 读取全局命令历史
 func (c *ConfigManager) GetGlobalCommandHistory() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	data, err := os.ReadFile(c.globalHistFile)
 	if err != nil {
 		return "[]"

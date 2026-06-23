@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, useReducer } from 'react';
 import { EventsOn, WindowMinimise, WindowToggleMaximise, WindowHide, WindowShow } from '../wailsjs/runtime/runtime.js';
 import * as AppGo from '../wailsjs/go/main/App.js';
 import ServerList from './components/ServerList.jsx';
@@ -60,6 +60,11 @@ export default function App() {
   const [hideSensitive, setHideSensitive] = useState(localStorage.getItem('hideSensitive') === 'true');
   const [fileManagerPosition, setFileManagerPosition] = useState(localStorage.getItem('fileManagerPosition') || 'tab'); // 'tab' | 'right' | 'bottom'
   
+  // ponytail: 9 处 setSessions(prev => prev.map(s => s.id === id ? { ...s, status } : s)) 提取为帮助函数
+  const updateSessionStatus = useCallback((id, status) => {
+    setSessions(prev => prev.map(s => s.id === id ? { ...s, status } : s));
+  }, []);
+  
   // ── 新增自动检测更新状态 ──────────────────────────────
   const [startupUpdateInfo, setStartupUpdateInfo] = useState(null);
   const [isUpdateModalVisible, setIsUpdateModalVisible] = useState(false);
@@ -79,19 +84,19 @@ export default function App() {
   const bottomSplitHeightRef = useRef(bottomSplitHeight);
   const probePanelWidthRef = useRef(probePanelWidth);
 
-  const updateLeftSplitWidth = (w) => {
+  const updateLeftSplitWidth = useCallback((w) => {
     setLeftSplitWidth(w);
     leftSplitWidthRef.current = w;
-  };
-  const updateBottomSplitHeight = (h) => {
+  }, []);
+  const updateBottomSplitHeight = useCallback((h) => {
     setBottomSplitHeight(h);
     bottomSplitHeightRef.current = h;
-  };
-  const updateProbePanelWidth = (w) => {
+  }, []);
+  const updateProbePanelWidth = useCallback((w) => {
     const next = clampPanelWidth(w);
     setProbePanelWidth(next);
     probePanelWidthRef.current = next;
-  };
+  }, []);
 
   // ── 清理旧 localStorage 残留数据 ──────────────────────
   useEffect(() => {
@@ -180,16 +185,11 @@ export default function App() {
   }, []);
 
   // 闪电直连的表单状态
-  const [quickName, setQuickName] = useState('');
-  const [quickHost, setQuickHost] = useState('');
-  const [quickPort, setQuickPort] = useState('22');
-  const [quickUser, setQuickUser] = useState('root');
-  const [quickAuth, setQuickAuth] = useState('password');
-  const [quickPass, setQuickPass] = useState('');
-  const [quickKey, setQuickKey] = useState('');
-  const [quickPassphrase, setQuickPassphrase] = useState('');
-  const [showQuickPass, setShowQuickPass] = useState(false);
-  const [showQuickPassphrase, setShowQuickPassphrase] = useState(false);
+  const quickFormInit = { name: '', host: '', port: '22', user: 'root', auth: 'password', pass: '', key: '', passphrase: '', showPass: false, showPassphrase: false };
+  const [quickForm, dispatchQuick] = useReducer((s, a) => {
+    if (a.type === 'reset') return quickFormInit;
+    return { ...s, [a.type]: a.value };
+  }, quickFormInit);
 
   // ── 初始化全局主题 ──────────────────────────────────────
   useEffect(() => {
@@ -249,7 +249,7 @@ export default function App() {
     try {
       const content = await AppGo.ReadPrivateKeyFile();
       if (content) {
-        setQuickKey(content);
+        dispatchQuick({ type: 'key', value: content });
       }
     } catch (e) {
       if (e) window.luminDialog?.alert(`${t('读取私钥文件失败')}: ${e}`, t('错误'));
@@ -267,19 +267,19 @@ export default function App() {
   // ── 闪电直连逻辑 ────────────────────────────────────────
   const handleQuickConnectDirect = async (e) => {
     if (e) e.preventDefault();
-    if (!quickHost.trim()) return window.luminDialog?.alert(t('请填写主机地址'));
+    if (!quickForm.host.trim()) return window.luminDialog?.alert(t('请填写主机地址'));
 
     const tempId = `temp_${Date.now()}`;
     const tempServer = {
       id: '',
-      name: quickName.trim() || quickHost.trim(),
-      host: quickHost.trim(),
-      port: Math.max(1, Math.min(65535, parseInt(quickPort, 10) || 22)),
-      username: quickUser.trim(),
-      authMethod: quickAuth === 'key' ? 'privateKey' : 'password',
-      password: quickPass,
-      privateKey: quickKey,
-      passphrase: quickPassphrase,
+      name: quickForm.name.trim() || quickForm.host.trim(),
+      host: quickForm.host.trim(),
+      port: Math.max(1, Math.min(65535, parseInt(quickForm.port, 10) || 22)),
+      username: quickForm.user.trim(),
+      authMethod: quickForm.auth === 'key' ? 'privateKey' : 'password',
+      password: quickForm.pass,
+      privateKey: quickForm.key,
+      passphrase: quickForm.passphrase,
     };
 
     const sessionId = `session_${Date.now()}`;
@@ -314,11 +314,7 @@ export default function App() {
       await postConnectSetup(sessionId, savedServer.id);
 
       // 清空表单
-      setQuickName('');
-      setQuickHost('');
-      setQuickPass('');
-      setQuickKey('');
-      setQuickPassphrase('');
+      dispatchQuick({ type: 'reset' });
     } catch (err) {
       handleConnectError(sessionId, err);
     }
@@ -410,11 +406,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (activeSessionId !== null) return; // ponytail: 不在主页时不 ping
     pingAll();
     // 修改为动态刷新延迟，降低后台消耗或提高实时性
     pingTimerRef.current = setInterval(pingAll, pingInterval * 1000);
     return () => clearInterval(pingTimerRef.current);
-  }, [pingAll, pingInterval]);
+  }, [pingAll, pingInterval, activeSessionId]);
 
   // ── 自动云端备份 ──────────────────────────────────────────
   const triggerAutoBackup = useCallback(async () => {
@@ -457,11 +454,19 @@ export default function App() {
     }
   }, []);
 
+  // ponytail: 提取 tab 点击处理，避免每次渲染创建 N 个闭包
+  const handleTabClick = useCallback((sessionId) => {
+    setTabContextMenu(null);
+    setActiveSessionId(sessionId);
+    const sess = sessionsRef.current.find(x => x.id === sessionId);
+    const lastTid = lastTerminalRef.current[sessionId];
+    const validTerminal = sess?.terminals?.find(t => t.id === lastTid);
+    setActiveTerminalId(validTerminal ? validTerminal.id : (sess?.terminals?.[0]?.id || sessionId));
+  }, []);
+
   // ── 重连会话核心逻辑 ────────────────────────────────────────
   const reconnectSession = useCallback(async (session, requestingTerminalId) => {
-    setSessions((prev) =>
-      prev.map((s) => (s.id === session.id ? { ...s, status: 'connecting' } : s))
-    );
+    updateSessionStatus(session.id, 'connecting');
 
     // 如果是当前激活的会话，展示连接等待卡片
     const serverObj = serversRef.current.find((sv) => sv.id === session.serverId);
@@ -595,19 +600,11 @@ export default function App() {
 
           await postConnectSetup(sessionId);
         } else {
-          setSessions((prev) =>
-            prev.map((s) =>
-              s.id === sessionId ? { ...s, status: 'error' } : s
-            )
-          );
+          updateSessionStatus(sessionId, 'error');
           setConnectingServer(null);
         }
       } catch (err) {
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === sessionId ? { ...s, status: 'error' } : s
-          )
-        );
+        updateSessionStatus(sessionId, 'error');
         setConnectingServer(null);
         addToast(`${t('连接失败')}: ${err}`, 'error', 5000);
       }
@@ -638,9 +635,7 @@ export default function App() {
 
       if (password === null) {
         // 用户取消
-        setSessions((prev) =>
-          prev.map((s) => (s.id === sessionId ? { ...s, status: 'error' } : s))
-        );
+        updateSessionStatus(sessionId, 'error');
         setConnectingServer(null);
         addToast(t('用户取消连接'), 'warning', 3000);
         return;
@@ -650,9 +645,7 @@ export default function App() {
       const persist = typeof password === 'object' ? password.checked : false;
 
       if (!newPassword) {
-        setSessions((prev) =>
-          prev.map((s) => (s.id === sessionId ? { ...s, status: 'error' } : s))
-        );
+        updateSessionStatus(sessionId, 'error');
         setConnectingServer(null);
         return;
       }
@@ -669,9 +662,7 @@ export default function App() {
 
         // 加入最近连接
       } catch (retryErr) {
-        setSessions((prev) =>
-          prev.map((s) => (s.id === sessionId ? { ...s, status: 'error' } : s))
-        );
+        updateSessionStatus(sessionId, 'error');
         setConnectingServer(null);
         addToast(`${t('重新连接失败')}: ${String(retryErr)}`, 'error', 5000);
       }
@@ -1006,7 +997,7 @@ export default function App() {
                 <div
                   key={s.id}
                   className={`tab-item no-drag ${activeSessionId === s.id ? 'active' : ''}`}
-                  onClick={() => { setTabContextMenu(null); setActiveSessionId(s.id); const sess = sessions.find(x => x.id === s.id); const lastTid = lastTerminalRef.current[s.id]; const validTerminal = sess?.terminals?.find(t => t.id === lastTid); setActiveTerminalId(validTerminal ? validTerminal.id : (sess?.terminals?.[0]?.id || s.id)); }}
+                  onClick={() => handleTabClick(s.id)}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     const rect = e.currentTarget.getBoundingClientRect();
@@ -1069,32 +1060,32 @@ export default function App() {
                 <form onSubmit={handleQuickConnectDirect} className="quick-connect-form">
                   <div className="form-group-compact">
                     <label>{t('服务器别名（选填）')}</label>
-                    <input className="input-compact" placeholder={t('例如：我的测试服')} value={quickName} onChange={e => setQuickName(e.target.value)} />
+                    <input className="input-compact" placeholder={t('例如：我的测试服')} value={quickForm.name} onChange={e => dispatchQuick({ type: 'name', value: e.target.value })} />
                   </div>
                   <div className="form-group-compact">
                     <label>{t('主机地址 *')}</label>
                     <div className="form-row-compact">
-                      <input className="input-compact" style={{ flex: 3 }} placeholder="192.168.1.1" value={quickHost} onChange={e => setQuickHost(e.target.value)} required />
-                      <input className="input-compact" style={{ flex: 1.2 }} placeholder="22" value={quickPort} onChange={e => setQuickPort(e.target.value)} />
+                      <input className="input-compact" style={{ flex: 3 }} placeholder="192.168.1.1" value={quickForm.host} onChange={e => dispatchQuick({ type: 'host', value: e.target.value })} required />
+                      <input className="input-compact" style={{ flex: 1.2 }} placeholder="22" value={quickForm.port} onChange={e => dispatchQuick({ type: 'port', value: e.target.value })} />
                     </div>
                   </div>
                   <div className="form-group-compact">
                     <label>{t('用户名')}</label>
-                    <input className="input-compact" placeholder="root" value={quickUser} onChange={e => setQuickUser(e.target.value)} />
+                    <input className="input-compact" placeholder="root" value={quickForm.user} onChange={e => dispatchQuick({ type: 'user', value: e.target.value })} />
                   </div>
                   <div className="form-group-compact">
                     <label>{t('认证方式')}</label>
-                    <select className="select-compact" value={quickAuth} onChange={e => setQuickAuth(e.target.value)}>
+                    <select className="select-compact" value={quickForm.auth} onChange={e => dispatchQuick({ type: 'auth', value: e.target.value })}>
                       <option value="password">{t('密码认证')}</option>
                       <option value="key">{t('私钥认证')}</option>
                     </select>
                   </div>
-                  {quickAuth === 'password' ? (
+                  {quickForm.auth === 'password' ? (
                     <div className="form-group-compact" style={{ position: 'relative' }}>
                       <label>{t('密码')}</label>
-                      <input className="input-compact" type={showQuickPass ? "text" : "password"} placeholder={t('请输入密码')} value={quickPass} onChange={e => setQuickPass(e.target.value)} style={{ paddingRight: 32 }} />
-                      <button type="button" aria-label={showQuickPass ? t('隐藏密码') : t('显示密码')} onClick={() => setShowQuickPass(!showQuickPass)} style={{ position: 'absolute', right: 6, bottom: 4, background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px', display: 'flex' }}>
-                        {showQuickPass ? <EyeOff size={14} /> : <Eye size={14} />}
+                      <input className="input-compact" type={quickForm.showPass ? "text" : "password"} placeholder={t('请输入密码')} value={quickForm.pass} onChange={e => dispatchQuick({ type: 'pass', value: e.target.value })} style={{ paddingRight: 32 }} />
+                      <button type="button" aria-label={quickForm.showPass ? t('隐藏密码') : t('显示密码')} onClick={() => dispatchQuick({ type: 'showPass', value: !quickForm.showPass })} style={{ position: 'absolute', right: 6, bottom: 4, background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px', display: 'flex' }}>
+                        {quickForm.showPass ? <EyeOff size={14} /> : <Eye size={14} />}
                       </button>
                     </div>
                   ) : (
@@ -1104,13 +1095,13 @@ export default function App() {
                           <label style={{ marginBottom: 0 }}>{t('私钥内容')}</label>
                           <button type="button" className="btn-text-action" onClick={handleQuickPrivateKeyFile}><FolderOpen size={14} /> {t('浏览')}</button>
                         </div>
-                        <textarea className="textarea-compact" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" value={quickKey} onChange={e => setQuickKey(e.target.value)} />
+                        <textarea className="textarea-compact" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" value={quickForm.key} onChange={e => dispatchQuick({ type: 'key', value: e.target.value })} />
                       </div>
                       <div className="form-group-compact" style={{ position: 'relative' }}>
                         <label>{t('私钥密码短语 (可选)')}</label>
-                        <input className="input-compact" type={showQuickPassphrase ? "text" : "password"} placeholder={t('私钥密码短语')} value={quickPassphrase} onChange={e => setQuickPassphrase(e.target.value)} style={{ paddingRight: 32 }} />
-                        <button type="button" aria-label={showQuickPassphrase ? t('隐藏密码短语') : t('显示密码短语')} onClick={() => setShowQuickPassphrase(!showQuickPassphrase)} style={{ position: 'absolute', right: 6, bottom: 4, background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px', display: 'flex' }}>
-                          {showQuickPassphrase ? <EyeOff size={14} /> : <Eye size={14} />}
+                        <input className="input-compact" type={quickForm.showPassphrase ? "text" : "password"} placeholder={t('私钥密码短语')} value={quickForm.passphrase} onChange={e => dispatchQuick({ type: 'passphrase', value: e.target.value })} style={{ paddingRight: 32 }} />
+                        <button type="button" aria-label={quickForm.showPassphrase ? t('隐藏密码短语') : t('显示密码短语')} onClick={() => dispatchQuick({ type: 'showPassphrase', value: !quickForm.showPassphrase })} style={{ position: 'absolute', right: 6, bottom: 4, background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px', display: 'flex' }}>
+                          {quickForm.showPassphrase ? <EyeOff size={14} /> : <Eye size={14} />}
                         </button>
                       </div>
                     </>
@@ -1321,7 +1312,7 @@ export default function App() {
                       }}
                     >
                     {/* 辅助视口 (分屏模式下的文件管理器，如果是左侧则排在前面) */}
-                    {s.status === 'connected' && fileManagerPosition === 'left' && (
+                    {s.status === 'connected' && fileManagerPosition === 'left' && mountedSessions.has(s.id) && (
                       <>
                         <div style={{
                           width: leftSplitWidth + 'px',
@@ -1368,7 +1359,7 @@ export default function App() {
                           </div>
                         ))}
                       </div>
-                      {s.status === 'connected' && fileManagerPosition === 'tab' && (
+                      {s.status === 'connected' && fileManagerPosition === 'tab' && mountedSessions.has(s.id) && (
                         <div style={{ display: contentTab === 'files' ? 'flex' : 'none', height: '100%', flex: 1, flexDirection: 'column' }}>
                           {(s.terminals?.length > 0 ? s.terminals : [{ id: s.id }]).map(t => (
                             <div key={t.id} style={activeSessionId === s.id && activeTerminalId === t.id ? { display: 'contents' } : { display: 'none' }}>
@@ -1377,7 +1368,7 @@ export default function App() {
                           ))}
                         </div>
                       )}
-                      {s.status === 'connected' && (
+                      {s.status === 'connected' && mountedSessions.has(s.id) && (
                         <div style={{ display: contentTab === 'history' ? 'block' : 'none', height: '100%', flex: 1 }}>
                           <CommandHistory
                             sessionId={s.id}
@@ -1389,7 +1380,7 @@ export default function App() {
                     </div>
 
                     {/* 辅助视口 (分屏模式下的文件管理器，如果是底部则排在后面) */}
-                    {s.status === 'connected' && fileManagerPosition === 'bottom' && (
+                    {s.status === 'connected' && fileManagerPosition === 'bottom' && mountedSessions.has(s.id) && (
                       <>
                         <div
                           className="split-resizer-h"

@@ -59,8 +59,38 @@ func ensureSingleInstance() {
 	}
 }
 
-// applyPlatformOptions 设置 Windows 特定的 Wails 选项
+// getScreenSize 用 Windows API 获取主显示器可用逻辑像素（已扣除 DPI 缩放）
+func getScreenSize() (int, int) {
+	user32 := syscall.NewLazyDLL("user32.dll")
+	// 获取系统 DPI（Per-Monitor DPI Aware 下 GetSystemMetrics 返回物理像素，需除以缩放比）
+	getDpi := user32.NewProc("GetDpiForSystem")
+	dpi, _, _ := getDpi.Call()
+	if dpi == 0 {
+		dpi = 96
+	}
+	scale := float64(dpi) / 96.0
+
+	smCx := user32.NewProc("GetSystemMetrics")
+	const SM_CXSCREEN = 0
+	const SM_CYSCREEN = 1
+	cx, _, _ := smCx.Call(SM_CXSCREEN)
+	cy, _, _ := smCx.Call(SM_CYSCREEN)
+	return int(float64(cx) / scale), int(float64(cy) / scale)
+}
+
+// applyPlatformOptions 设置 Windows 特定的 Wails 选项，并根据屏幕大小自适应窗口尺寸
 func applyPlatformOptions(opts *options.App) {
+	// ponytail: 根据屏幕分辨率自适应窗口大小，上限 1440x900，留 10% 边距
+	sw, sh := getScreenSize()
+	targetW := int(float64(sw) * 0.9)
+	targetH := int(float64(sh) * 0.9)
+	if opts.Width > targetW {
+		opts.Width = targetW
+	}
+	if opts.Height > targetH {
+		opts.Height = targetH
+	}
+
 	opts.Windows = &windows.Options{
 		WebviewIsTransparent:              true,
 		WindowIsTranslucent:               true,

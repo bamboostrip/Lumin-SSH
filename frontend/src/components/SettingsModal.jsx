@@ -7,6 +7,7 @@ import { APP_VERSION } from '../config.js';
 import { useUpdateChecker } from '../hooks/useUpdateChecker.js';
 import { Sun, Monitor, Moon, Keyboard, Cloud, Info, Database, Folder, FolderOpen, Save, X, Lightbulb, RefreshCw, Globe, Palette, Lock, Plug, Sparkles } from 'lucide-react';
 import { Z } from '../constants/zIndex';
+import { WindowSetSize } from '../../wailsjs/runtime/runtime.js';
 
 const TAB_ICON = { network: Globe, appearance: Palette, shortcuts: Keyboard, sync: Cloud, app: Info };
 const PROVIDER_ICON_CMP = { webdav: Cloud, r2: Database, ftp: Folder, sftp: Lock };
@@ -64,6 +65,10 @@ const I18N = {
       termBgOpacityLabel: '壁纸可见度',
       termBgUpload: '上传图片',
       termBgReset: '恢复默认',
+      windowSizeTitle: '窗口大小',
+      windowSizeLabel: '记住窗口大小',
+      windowSizeDesc: '下次启动时恢复上次调整的窗口尺寸',
+      windowSizeReset: '恢复默认大小',
     }
   },
   'en-US': {
@@ -118,6 +123,10 @@ const I18N = {
       termBgOpacityLabel: 'Wallpaper Visibility',
       termBgUpload: 'Upload Image',
       termBgReset: 'Reset Default',
+      windowSizeTitle: 'Window Size',
+      windowSizeLabel: 'Remember Window Size',
+      windowSizeDesc: 'Restore last window size on startup',
+      windowSizeReset: 'Reset to Default',
     }
   }
 };
@@ -488,6 +497,7 @@ export default function SettingsModal({ onClose, addToast, onRestored }) {
   const [termBgOpacity, setTermBgOpacity] = useState(parseFloat(localStorage.getItem('termBgOpacity') || '0.15'));
   const [terminalColorTheme, setTerminalColorTheme] = useState(localStorage.getItem('terminalColorTheme') || 'lumin');
   const [terminalLocalEcho, setTerminalLocalEcho] = useState(localStorage.getItem('terminalLocalEcho') === 'true');
+  const [rememberWindowSize, setRememberWindowSize] = useState(localStorage.getItem('rememberWindowSize') !== 'false');
 
   const t = I18N[language] || I18N['zh-CN'];
 
@@ -663,6 +673,21 @@ export default function SettingsModal({ onClose, addToast, onRestored }) {
     setTermBgOpacity(val);
     localStorage.setItem('termBgOpacity', String(val));
     window.dispatchEvent(new CustomEvent('terminal-bg-changed'));
+  };
+
+  const handleToggleRememberWindowSize = () => {
+    const next = !rememberWindowSize;
+    setRememberWindowSize(next);
+    localStorage.setItem('rememberWindowSize', String(next));
+    if (!next) localStorage.removeItem('windowSize');
+  };
+
+  const handleResetWindowSize = () => {
+    localStorage.removeItem('windowSize');
+    const w = Math.min(1440, Math.floor(screen.width * 0.9));
+    const h = Math.min(900, Math.floor(screen.height * 0.9));
+    WindowSetSize(w, h);
+    addToast($t('窗口大小已恢复默认'), 'success');
   };
 
 
@@ -1372,6 +1397,44 @@ export default function SettingsModal({ onClose, addToast, onRestored }) {
                         />
                         <span style={{ fontSize: 13, width: 32, textAlign: 'right', color: 'var(--text-primary)' }}>{Math.round(termBgOpacity * 100)}%</span>
                       </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 12, fontWeight: 600 }}>{t.appearance.windowSizeTitle}</h3>
+                  <div className="form-group" style={{ background: 'var(--surface-overlay)', padding: 16, borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ color: 'var(--text-primary)', fontSize: 13 }}>{t.appearance.windowSizeLabel}</div>
+                        <div style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{t.appearance.windowSizeDesc}</div>
+                      </div>
+                      <div
+                        onClick={handleToggleRememberWindowSize}
+                        style={{
+                          width: 40, height: 24,
+                          background: rememberWindowSize ? 'var(--success)' : 'var(--surface-hover)',
+                          borderRadius: 12, position: 'relative', cursor: 'pointer',
+                          transition: 'background 0.2s ease',
+                          border: '1px solid var(--border)'
+                        }}
+                      >
+                        <div style={{
+                          position: 'absolute',
+                          left: rememberWindowSize ? 18 : 2,
+                          top: 1, width: 20, height: 20,
+                          background: '#fff', borderRadius: '50%',
+                          transition: 'left 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.4)'
+                        }}></div>
+                      </div>
+                    </div>
+                    <div className="divider" style={{ margin: '12px 0', borderTop: '1px solid var(--border)' }} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{t.appearance.windowSizeDesc}</div>
+                      <button className="btn btn-secondary btn-sm" onClick={handleResetWindowSize} style={{ fontSize: 12, borderRadius: 'var(--radius-sm)' }}>
+                        {t.appearance.windowSizeReset}
+                      </button>
                     </div>
                   </div>
                 </div>

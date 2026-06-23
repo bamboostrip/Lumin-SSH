@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useReducer } from 'react';
-import { EventsOn, WindowMinimise, WindowToggleMaximise, WindowHide, WindowShow } from '../wailsjs/runtime/runtime.js';
+import { EventsOn, WindowMinimise, WindowToggleMaximise, WindowHide, WindowShow, WindowSetSize, WindowGetSize } from '../wailsjs/runtime/runtime.js';
 import * as AppGo from '../wailsjs/go/main/App.js';
 import ServerList from './components/ServerList.jsx';
 import AddServerModal from './components/AddServerModal.jsx';
@@ -108,6 +108,35 @@ export default function App() {
       }
     }
     keysToRemove.forEach(key => localStorage.removeItem(key));
+  }, []);
+
+  // ── 智能窗口状态管理：记住窗口大小 ──────────────────────
+  // 启动时恢复上次窗口大小
+  useEffect(() => {
+    if (localStorage.getItem('rememberWindowSize') === 'false') return;
+    try {
+      const saved = JSON.parse(localStorage.getItem('windowSize') || 'null');
+      if (saved?.w > 100 && saved?.h > 100) {
+        requestAnimationFrame(() => WindowSetSize(saved.w, saved.h));
+      }
+    } catch {}
+  }, []);
+
+  // 定时轮询保存窗口大小（Wails 无边框窗口 resize 事件不可靠）
+  useEffect(() => {
+    if (localStorage.getItem('rememberWindowSize') === 'false') return;
+    let lastW = 0, lastH = 0;
+    const interval = setInterval(async () => {
+      try {
+        const size = await WindowGetSize(); // { w, h }
+        if (size?.w > 100 && size?.h > 100 && (size.w !== lastW || size.h !== lastH)) {
+          lastW = size.w;
+          lastH = size.h;
+          localStorage.setItem('windowSize', JSON.stringify({ w: size.w, h: size.h }));
+        }
+      } catch {}
+    }, 2000);
+    return () => clearInterval(interval);
   }, []);
 
   const startDrag = useCallback((e, direction) => {

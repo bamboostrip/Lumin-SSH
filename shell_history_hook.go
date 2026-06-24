@@ -55,6 +55,7 @@ func isBashShell(shellPath string) bool {
 	return strings.EqualFold(path.Base(strings.TrimSpace(shellPath)), "bash")
 }
 
+// shellQuote 用单引号包裹字符串并转义内部单引号（复用 ssh.go 的 shellQuotePath）
 func shellQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
+	return shellQuotePath(value)
 }

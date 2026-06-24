@@ -39,8 +39,7 @@ export default function App() {
   const lastTerminalRef = useRef({}); // 记录每个 session 最后选中的终端
   const [mountedSessions, setMountedSessions] = useState(new Set());
   const [contentTab, setContentTab] = useState('terminal'); // 'terminal' | 'files'
-  const [showAddServer, setShowAddServer] = useState(false);
-  const [editServer, setEditServer] = useState(null);
+  const [addServerModal, setAddServerModal] = useState({ open: false, server: null });
   const [showSettings, setShowSettings] = useState(false);
   const [tabContextMenu, setTabContextMenu] = useState(null);
   useEffect(() => {
@@ -900,7 +899,7 @@ export default function App() {
     }
   }, [activeTerminalId]);
 
-  const activeSession = sessions.find((s) => s.id === activeSessionId);
+  const activeSession = useMemo(() => sessions.find((s) => s.id === activeSessionId), [sessions, activeSessionId]);
 
   // 同步 activeTerminalId 到 ref，记住每个 session 最后选中的终端
   useEffect(() => {
@@ -955,14 +954,16 @@ export default function App() {
     }
 
     // Open Add Server Modal pre-filled
-    setEditServer({
-      name: host,
-      host,
-      port,
-      username: user,
-      authMode: 'password'
+    setAddServerModal({
+      open: true,
+      server: {
+        name: host,
+        host,
+        port,
+        username: user,
+        authMode: 'password'
+      }
     });
-    setShowAddServer(true);
     setSearchQuery('');
 
   }, [searchQuery, servers, connectServer]);
@@ -977,8 +978,7 @@ export default function App() {
     } catch (err) {
       addToast(err, 'error');
     }
-    setShowAddServer(false);
-    setEditServer(null);
+    setAddServerModal({ open: false, server: null });
   }, [loadServers, addToast, triggerAutoBackup]);
 
   const handleDeleteServer = useCallback(async (id) => {
@@ -1054,7 +1054,7 @@ export default function App() {
                     });
                   }}
                 >
-                  <span className={`status-dot ${s.status === 'connecting' ? 'connecting' : s.status === 'connected' ? 'online' : (s.status === 'error' || s.status === 'closed') ? 'offline' : 'offline'}`} />
+                  <span className={`status-dot ${s.status === 'connecting' ? 'connecting' : s.status === 'connected' ? 'online' : 'offline'}`} />
                   <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {s.serverName}
                   </span>
@@ -1111,7 +1111,7 @@ export default function App() {
             sessions={sessions}
             activeSessionId={activeSessionId}
             onConnect={connectServer}
-            onEdit={(s) => { setEditServer(s); setShowAddServer(true); }}
+            onEdit={(s) => setAddServerModal({ open: true, server: s })}
             onDelete={handleDeleteServer}
           />
         </div>
@@ -1380,11 +1380,11 @@ export default function App() {
       </main>
 
       {/* ── Modals ────────────────────────────────────────── */}
-      {showAddServer && (
+      {addServerModal.open && (
         <AddServerModal
-          server={editServer}
+          server={addServerModal.server}
           onSave={handleSaveServer}
-          onClose={() => { setShowAddServer(false); setEditServer(null); }}
+          onClose={() => setAddServerModal({ open: false, server: null })}
         />
       )}
 

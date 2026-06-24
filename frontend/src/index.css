@@ -1535,6 +1535,50 @@ textarea:focus:not(:focus-visible) {
   color: var(--accent);
 }
 
+/* ── 终端顶部状态栏 ── */
+.term-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--term-status-bg);
+  backdrop-filter: blur(8px);
+  border-bottom: var(--term-status-border);
+  font-size: 12px;
+  color: var(--term-status-color);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.term-reconnect-btn {
+  padding: 2px 8px;
+  background: rgba(var(--success-rgb), 0.15);
+  border: 1px solid rgba(var(--success-rgb), 0.3);
+  border-radius: 4px;
+  color: var(--success);
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+.term-reconnect-btn:hover {
+  background: rgba(var(--success-rgb), 0.25);
+  border-color: rgba(var(--success-rgb), 0.5);
+}
+
+/* ── 终端底部命令输入栏 ── */
+.term-input-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--term-input-bar-bg);
+  backdrop-filter: blur(8px);
+  border-top: var(--term-input-bar-border);
+  flex-shrink: 0;
+  position: relative;
+}
+
 /* ── 终端容器 CSS 变量默认值（JS 主题切换时覆盖） ── */
 :root {
   --term-container-bg: #0e1218;

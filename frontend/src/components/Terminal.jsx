@@ -859,20 +859,8 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
       
       {/* 内容层（置于背景之上) */}
       <div style={{ position: 'relative', zIndex: Z.CONTENT, display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* ── Session 状态栏（极简、高颜值设计） ── */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        padding: '8px 14px',
-        background: 'var(--term-status-bg)',
-        backdropFilter: 'blur(8px)',
-        borderBottom: 'var(--term-status-border)',
-        fontSize: 12,
-        color: 'var(--term-status-color)',
-        userSelect: 'none',
-        flexShrink: 0,
-      }}>
+      {/* ── Session 状态栏 ── */}
+      <div className="term-status-bar">
         {/* 状态指示灯 - 使用全局 CSS 类，连接成功时触发涟漪动画 */}
         <div className={[
           'status-dot',
@@ -895,27 +883,9 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
           </span>
           {(isError || status === 'closed') && (
             <button
+              className="term-reconnect-btn"
               onClick={() => {
                 window.dispatchEvent(new CustomEvent('ssh-reconnect-trigger', { detail: sessionId }));
-              }}
-              style={{
-                padding: '2px 8px',
-                background: 'rgba(var(--success-rgb), 0.15)',
-                border: '1px solid rgba(var(--success-rgb), 0.3)',
-                borderRadius: '4px',
-                color: 'var(--success)',
-                fontSize: '11px',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                transition: 'all 0.2s',
-              }}
-              onMouseEnter={(e) => {
-                e.target.style.background = 'rgba(var(--success-rgb), 0.25)';
-                e.target.style.borderColor = 'rgba(var(--success-rgb), 0.5)';
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.background = 'rgba(var(--success-rgb), 0.15)';
-                e.target.style.borderColor = 'rgba(var(--success-rgb), 0.3)';
               }}
             >
               {t('重新连接')}
@@ -936,17 +906,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
       />
 
       {/* ── 底部命令输入栏 ── */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: '6px 10px',
-        background: 'var(--term-input-bar-bg)',
-        backdropFilter: 'blur(8px)',
-        borderTop: 'var(--term-input-bar-border)',
-        flexShrink: 0,
-        position: 'relative',
-      }}>
+      <div className="term-input-bar">
         {/* 命令输入框 */}
         <input
           ref={cmdInputRef}

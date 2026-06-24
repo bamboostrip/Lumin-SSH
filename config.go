@@ -186,11 +186,21 @@ func (c *ConfigManager) decryptWithKey(hexText string, key []byte) string {
 
 func (c *ConfigManager) GetConnections() []Connection {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
 	if !c.connCacheDirty && c.connCache != nil {
-		// 返回缓存副本
 		result := make([]Connection, len(c.connCache))
 		copy(result, c.connCache)
+		c.mu.RUnlock()
+		return result
+	}
+	c.mu.RUnlock()
+
+	// 缓存未命中，升级为写锁刷新缓存
+	c.mu.Lock()
+	// double-check：另一个 goroutine 可能已经刷新了
+	if !c.connCacheDirty && c.connCache != nil {
+		result := make([]Connection, len(c.connCache))
+		copy(result, c.connCache)
+		c.mu.Unlock()
 		return result
 	}
 	conns := c.getConnectionsLocked()
@@ -198,6 +208,7 @@ func (c *ConfigManager) GetConnections() []Connection {
 	c.connCacheDirty = false
 	result := make([]Connection, len(conns))
 	copy(result, conns)
+	c.mu.Unlock()
 	return result
 }
 

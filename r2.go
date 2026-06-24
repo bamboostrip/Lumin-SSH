@@ -42,8 +42,8 @@ func (c *ConfigManager) getR2Key() []byte {
 }
 
 func (c *ConfigManager) GetR2Config() *R2Config {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.getR2ConfigLocked()
 }
 

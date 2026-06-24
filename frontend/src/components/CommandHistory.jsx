@@ -239,10 +239,10 @@ export default function CommandHistory({ sessionId, historyServerId, addToast })
               </div>
 
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 6 }}>
-                <button className="btn btn-ghost btn-sm" onClick={() => copy(item.command)} style={{ fontSize: 12, padding: '4px 12px' }}>
+                <button className="btn btn-sm" onClick={() => copy(item.command)} style={{ fontSize: 12, padding: '4px 12px', background: 'var(--surface-raised)', color: 'var(--text-secondary)', border: '1px solid var(--border-light)' }}>
                   <Clipboard size={12} style={{ verticalAlign: 'middle', marginRight: 2 }} /> {t('复制')}
                 </button>
-                <button className="btn btn-ghost btn-sm" onClick={() => deleteItem(item.id)} style={{ fontSize: 12, padding: '4px 12px', color: 'var(--danger)' }}>
+                <button className="btn btn-sm" onClick={() => deleteItem(item.id)} style={{ fontSize: 12, padding: '4px 12px', background: 'rgba(var(--danger-rgb), 0.08)', color: 'var(--danger)', border: '1px solid rgba(var(--danger-rgb), 0.15)' }}>
                   <Trash2 size={12} style={{ verticalAlign: 'middle', marginRight: 2 }} /> {t('删除')}
                 </button>
                 <button className="btn btn-primary btn-sm" onClick={() => exec(item.command)} style={{ fontSize: 12, padding: '4px 12px', background: 'var(--accent-dim)', color: 'var(--accent)', border: '1px solid rgba(var(--accent-rgb), 0.2)' }}>

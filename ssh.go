@@ -1504,12 +1504,9 @@ ip route get 1.1.1.1 2>/dev/null | grep -oE 'src [0-9.]+' | awk '{print $2}' || 
 // SFTP Methods
 
 func (m *SSHManager) ListDir(sessionId string, path string) ([]map[string]interface{}, error) {
-	_, sftpClient, err := m.getClientEntry(sessionId)
+	sftpClient, err := m.getSFTPClient(sessionId)
 	if err != nil {
 		return nil, err
-	}
-	if sftpClient == nil {
-		return nil, fmt.Errorf("SFTP not available")
 	}
 
 	files, err := sftpClient.ReadDir(path)
@@ -1555,12 +1552,9 @@ func (m *SSHManager) ListDir(sessionId string, path string) ([]map[string]interf
 }
 
 func (m *SSHManager) ChmodFile(sessionId string, path string, modeStr string) error {
-	_, sftpClient, err := m.getClientEntry(sessionId)
+	sftpClient, err := m.getSFTPClient(sessionId)
 	if err != nil {
 		return err
-	}
-	if sftpClient == nil {
-		return fmt.Errorf("SFTP not available")
 	}
 
 	// 解析八进制权限字符串（如 "0755"、"644"）
@@ -1572,12 +1566,9 @@ func (m *SSHManager) ChmodFile(sessionId string, path string, modeStr string) er
 }
 
 func (m *SSHManager) ReadFile(sessionId string, path string) (string, error) {
-	_, sftpClient, err := m.getClientEntry(sessionId)
+	sftpClient, err := m.getSFTPClient(sessionId)
 	if err != nil {
 		return "", err
-	}
-	if sftpClient == nil {
-		return "", fmt.Errorf("SFTP not available")
 	}
 
 	f, err := sftpClient.Open(path)
@@ -1728,6 +1719,20 @@ func (p *progressReader) Read(data []byte) (int, error) {
 	return n, err
 }
 
+// copyWithProgress 复制数据并通过 Wails 事件报告进度
+func (m *SSHManager) copyWithProgress(dst io.Writer, src io.Reader, sessionId string, totalSize int64) error {
+	pr := &progressReader{
+		Reader:    src,
+		ctx:       m.ctx,
+		eventName: "transfer-progress-" + sessionId,
+		total:     totalSize,
+		lastEmit:  time.Now(),
+	}
+	buf := make([]byte, 2*1024*1024)
+	_, err := io.CopyBuffer(dst, pr, buf)
+	return err
+}
+
 func (m *SSHManager) UploadFile(sessionId string, localPath string, remotePath string) error {
 	sftpClient, err := m.getSFTPClient(sessionId)
 	if err != nil {
@@ -1747,37 +1752,22 @@ func (m *SSHManager) UploadFile(sessionId string, localPath string, remotePath s
 	}
 	defer dst.Close()
 
-	var totalSize int64 = 0
+	var totalSize int64
 	if stat, err := src.Stat(); err == nil {
 		totalSize = stat.Size()
 	}
-
-	pr := &progressReader{
-		Reader:    src,
-		ctx:       m.ctx,
-		eventName: "transfer-progress-" + sessionId,
-		total:     totalSize,
-		lastEmit:  time.Now(),
-	}
-
-	buf := make([]byte, 2*1024*1024)
-	_, err = io.CopyBuffer(dst, pr, buf)
-	return err
+	return m.copyWithProgress(dst, src, sessionId, totalSize)
 }
 
 // UploadDir recursively uploads a local directory to a remote path
 func (m *SSHManager) UploadDir(sessionId string, localDir string, remoteDir string) error {
-	_, sftpClient, err := m.getClientEntry(sessionId)
+	sftpClient, err := m.getSFTPClient(sessionId)
 	if err != nil {
 		return err
-	}
-	if sftpClient == nil {
-		return fmt.Errorf("SFTP not available")
 	}
 
 	remoteDir = filepath.ToSlash(remoteDir)
 
-	buf := make([]byte, 2*1024*1024)
 	return filepath.Walk(localDir, func(localPath string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -1806,32 +1796,20 @@ func (m *SSHManager) UploadDir(sessionId string, localDir string, remoteDir stri
 		}
 		defer dst.Close()
 
-		var totalSize int64 = 0
+		var totalSize int64
 		if stat, err := src.Stat(); err == nil {
 			totalSize = stat.Size()
 		}
 
-		pr := &progressReader{
-			Reader:    src,
-			ctx:       m.ctx,
-			eventName: "transfer-progress-" + sessionId,
-			total:     totalSize,
-			lastEmit:  time.Now(),
-		}
-
-		_, err = io.CopyBuffer(dst, pr, buf)
-		return err
+		return m.copyWithProgress(dst, src, sessionId, totalSize)
 	})
 }
 
 // UploadFileContent uploads file content from memory to a remote path
 func (m *SSHManager) UploadFileContent(sessionId string, fileName string, remoteDir string, content []byte) error {
-	_, sftpClient, err := m.getClientEntry(sessionId)
+	sftpClient, err := m.getSFTPClient(sessionId)
 	if err != nil {
 		return err
-	}
-	if sftpClient == nil {
-		return fmt.Errorf("SFTP not available")
 	}
 
 	destPath := filepath.ToSlash(filepath.Join(remoteDir, fileName))
@@ -1865,26 +1843,13 @@ func (m *SSHManager) UploadFileContentBase64(sessionId string, fileName string, 
 	}
 	defer dst.Close()
 
-	pr := &progressReader{
-		Reader:    bytes.NewReader(content),
-		ctx:       m.ctx,
-		eventName: "transfer-progress-" + sessionId,
-		total:     int64(len(content)),
-		lastEmit:  time.Now(),
-	}
-
-	buf := make([]byte, 2*1024*1024)
-	_, err = io.CopyBuffer(dst, pr, buf)
-	return err
+	return m.copyWithProgress(dst, bytes.NewReader(content), sessionId, int64(len(content)))
 }
 
 func (m *SSHManager) DownloadFile(sessionId string, remotePath string, localPath string) error {
-	_, sftpClient, err := m.getClientEntry(sessionId)
+	sftpClient, err := m.getSFTPClient(sessionId)
 	if err != nil {
 		return err
-	}
-	if sftpClient == nil {
-		return fmt.Errorf("SFTP not available")
 	}
 
 	src, err := sftpClient.Open(remotePath)
@@ -1899,22 +1864,11 @@ func (m *SSHManager) DownloadFile(sessionId string, remotePath string, localPath
 	}
 	defer dst.Close()
 
-	var totalSize int64 = 0
+	var totalSize int64
 	if stat, err := src.Stat(); err == nil {
 		totalSize = stat.Size()
 	}
-
-	pr := &progressReader{
-		Reader:    src,
-		ctx:       m.ctx,
-		eventName: "transfer-progress-" + sessionId,
-		total:     totalSize,
-		lastEmit:  time.Now(),
-	}
-
-	buf := make([]byte, 2*1024*1024)
-	_, err = io.CopyBuffer(dst, pr, buf)
-	return err
+	return m.copyWithProgress(dst, src, sessionId, totalSize)
 }
 
 func (m *SSHManager) CompressItem(sessionId string, remotePath string) error {
@@ -1954,18 +1908,19 @@ func (m *SSHManager) UncompressItem(sessionId string, remotePath string) error {
 	// 注意：解压在远程服务器执行，无法在客户端校验归档成员路径。
 	// 对 tar 命令追加 --no-unsafe-paths（GNU tar 支持，可拒绝包含 .. 或绝对路径的成员，
 	// 缓解 tar slip 路径穿越风险；BSD tar 不识别该选项会报错，但多数 Linux 发行版默认为 GNU tar）。
-	if strings.HasSuffix(lowerBase, ".zip") {
-		// unzip 无等价选项，无法在命令行层面防御路径穿越
+	// unzip 无等价选项，无法在命令行层面防御路径穿越。
+	switch {
+	case strings.HasSuffix(lowerBase, ".zip"):
 		cmd = fmt.Sprintf("cd %s && unzip -o %s", safeDir, safeBase)
-	} else if strings.HasSuffix(lowerBase, ".tar.gz") || strings.HasSuffix(lowerBase, ".tgz") {
+	case strings.HasSuffix(lowerBase, ".tar.gz") || strings.HasSuffix(lowerBase, ".tgz"):
 		cmd = fmt.Sprintf("cd %s && tar --no-unsafe-paths -xzf %s", safeDir, safeBase)
-	} else if strings.HasSuffix(lowerBase, ".tar") {
+	case strings.HasSuffix(lowerBase, ".tar"):
 		cmd = fmt.Sprintf("cd %s && tar --no-unsafe-paths -xf %s", safeDir, safeBase)
-	} else if strings.HasSuffix(lowerBase, ".tar.bz2") || strings.HasSuffix(lowerBase, ".tbz2") {
+	case strings.HasSuffix(lowerBase, ".tar.bz2") || strings.HasSuffix(lowerBase, ".tbz2"):
 		cmd = fmt.Sprintf("cd %s && tar --no-unsafe-paths -xjf %s", safeDir, safeBase)
-	} else if strings.HasSuffix(lowerBase, ".gz") {
+	case strings.HasSuffix(lowerBase, ".gz"):
 		cmd = fmt.Sprintf("cd %s && gunzip -f -k %s", safeDir, safeBase)
-	} else {
+	default:
 		return fmt.Errorf("unsupported archive format")
 	}
 

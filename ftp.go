@@ -40,8 +40,8 @@ func (c *ConfigManager) getFTPKey() []byte {
 }
 
 func (c *ConfigManager) GetFTPConfig() *FTPConfig {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.getFTPConfigLocked()
 }
 

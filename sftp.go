@@ -46,8 +46,8 @@ func (c *ConfigManager) getSFTPKey() []byte {
 }
 
 func (c *ConfigManager) GetSFTPConfig() *SFTPConfig {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.getSFTPConfigLocked()
 }
 
@@ -174,21 +174,29 @@ func sftpHostKeyCallback() ssh.HostKeyCallback {
 	}
 }
 
-func (c *ConfigManager) TestSFTPConnection(host string, port int, username, password, authMethod, privateKey string) error {
+// buildSSHConfig 构建 SFTP 用的 SSH 配置，复用于 TestSFTPConnection 和 newSFTPClient
+func buildSSHConfig(username, password, authMethod, privateKey string) (*ssh.ClientConfig, error) {
 	sshConfig := &ssh.ClientConfig{
 		User:            username,
 		HostKeyCallback: sftpHostKeyCallback(),
 		Timeout:         10 * time.Second,
 	}
-
 	if authMethod == "key" {
 		signer, err := ssh.ParsePrivateKey([]byte(privateKey))
 		if err != nil {
-			return fmt.Errorf("解析私钥失败：%w", err)
+			return nil, fmt.Errorf("解析私钥失败：%w", err)
 		}
 		sshConfig.Auth = []ssh.AuthMethod{ssh.PublicKeys(signer)}
 	} else {
 		sshConfig.Auth = []ssh.AuthMethod{ssh.Password(password)}
+	}
+	return sshConfig, nil
+}
+
+func (c *ConfigManager) TestSFTPConnection(host string, port int, username, password, authMethod, privateKey string) error {
+	sshConfig, err := buildSSHConfig(username, password, authMethod, privateKey)
+	if err != nil {
+		return err
 	}
 
 	sshClient, err := ssh.Dial("tcp", dialAddr(host, port), sshConfig)
@@ -217,20 +225,9 @@ func (c *ConfigManager) newSFTPClient() (*sftp.Client, *ssh.Client, error) {
 		return nil, nil, fmt.Errorf("SFTP not configured")
 	}
 
-	sshConfig := &ssh.ClientConfig{
-		User:            conf.Username,
-		HostKeyCallback: sftpHostKeyCallback(),
-		Timeout:         10 * time.Second,
-	}
-
-	if conf.AuthMethod == "key" {
-		signer, err := ssh.ParsePrivateKey([]byte(conf.PrivateKey))
-		if err != nil {
-			return nil, nil, fmt.Errorf("解析私钥失败：%w", err)
-		}
-		sshConfig.Auth = []ssh.AuthMethod{ssh.PublicKeys(signer)}
-	} else {
-		sshConfig.Auth = []ssh.AuthMethod{ssh.Password(conf.Password)}
+	sshConfig, err := buildSSHConfig(conf.Username, conf.Password, conf.AuthMethod, conf.PrivateKey)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	sshClient, err := ssh.Dial("tcp", dialAddr(conf.Host, conf.Port), sshConfig)
@@ -247,14 +244,10 @@ func (c *ConfigManager) newSFTPClient() (*sftp.Client, *ssh.Client, error) {
 	return sftpClient, sshClient, nil
 }
 
-func (c *ConfigManager) ensureSFTPDir(client *sftp.Client) error {
-	conf := c.GetSFTPConfig()
-	if conf == nil {
-		return fmt.Errorf("SFTP not configured")
-	}
-	_, err := client.Stat(conf.RemoteDir)
+func ensureSFTPDir(client *sftp.Client, remoteDir string) error {
+	_, err := client.Stat(remoteDir)
 	if err != nil {
-		err = client.MkdirAll(conf.RemoteDir)
+		err = client.MkdirAll(remoteDir)
 		if err != nil {
 			return fmt.Errorf("创建远程目录失败：%w", err)
 		}
@@ -321,7 +314,7 @@ func (s *sftpStorage) ReadFile(name string) ([]byte, error) {
 }
 
 func (s *sftpStorage) WriteFile(name string, data []byte) error {
-	if err := s.c.ensureSFTPDir(s.client); err != nil {
+	if err := ensureSFTPDir(s.client, s.remoteDir); err != nil {
 		return err
 	}
 

@@ -20,7 +20,9 @@ async function loadCommands() {
 async function saveCommands(list) {
   try {
     await AppGo.SaveQuickCommands(JSON.stringify(list));
-  } catch (_) {}
+  } catch (e) {
+    console.error('[QuickCommands] saveCommands failed:', e);
+  }
 }
 
 // ── 本地保存（不同步到云端）───────────────────────────
@@ -335,6 +337,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
     const src = resolvePath(list, srcPath);
     if (!src.item) { clearDrag(); return; }
     const [moved] = src.parent.splice(src.idx, 1);
+    moved.last_modified = Date.now();
     list.push(moved);
     save(list);
     setSelectedPath(null);
@@ -406,17 +409,19 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
   };
 
   // ── 将本地编辑的命令名/内容写回树 ────────────────────
+  // 返回修改后的列表（若无修改返回 null）
   const commitCmdEdit = useCallback(() => {
-    if (!selectedPath || dirty === false) return false;
+    if (!selectedPath || dirty === false) return null;
     const sel = resolvePath(commands, selectedPath);
-    if (!sel || sel.item.children) return false; // 不是命令节点
-    if (sel.item.name === editCmdName && sel.item.command === editCmdText) return false;
+    if (!sel || sel.item.children) return null; // 不是命令节点
+    if (sel.item.name === editCmdName && sel.item.command === editCmdText) return null;
     const list = cloneAlongPath(commands, selectedPath);
     const r = resolvePath(list, selectedPath);
     r.parent[r.idx].name = editCmdName;
     r.parent[r.idx].command = editCmdText;
+    r.parent[r.idx].last_modified = Date.now();
     setCommands(list);
-    return true;
+    return list;
   }, [commands, selectedPath, editCmdName, editCmdText, dirty]);
 
   // ── 上移/下移 ──────────────────────────────────────
@@ -426,6 +431,8 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
     const newIdx = idx + direction;
     if (newIdx < 0 || newIdx >= parent.length) return;
     [parent[idx], parent[newIdx]] = [parent[newIdx], parent[idx]];
+    parent[idx].last_modified = Date.now();
+    parent[newIdx].last_modified = Date.now();
     save(list);
     setSelectedPath(path.replace(/\/\d+$/, '/' + newIdx));
     closeContextMenu();
@@ -496,7 +503,8 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
       const list = cloneAlongPath(commands, path);
       const r = resolvePath(list, path);
       r.item.expanded = !r.item.expanded;
-      save(list);
+      setCommands(list);
+      saveCommandsLocal(list);
       // 保留选中状态以便右侧显示分组详情
       setParamValues({});
       setDirty(false);
@@ -520,7 +528,8 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
     if (!confirmUnsaved) return;
     const isClose = confirmUnsaved.close;
     const path = confirmUnsaved.pendingPath;
-    save(commands);
+    const committed = commitCmdEdit();
+    save(committed || commands);
     setDirty(false);
     dirtyRef.current = false;
     setConfirmUnsaved(null);
@@ -710,19 +719,20 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
         const list = structuredClone(dialog.parentList || commands);
         const parts = (dialog.contextPath || '').split('/').map(Number);
         if (dialog.contextPath && parts.length === 1 && list[parts[0]]?.type === 'group') {
-          list[parts[0]].children = [...(list[parts[0]].children || []), { type: 'group', name: dlgName.trim(), expanded: true, children: [] }];
+          list[parts[0]].children = [...(list[parts[0]].children || []), { type: 'group', name: dlgName.trim(), expanded: true, children: [], last_modified: Date.now() }];
         } else if (dialog.contextPath) {
           let cur = list;
           for (let i = 0; i < parts.length - 1; i++) cur = cur[parts[i]].children || [];
-          cur.splice(parts[parts.length - 1] + 1, 0, { type: 'group', name: dlgName.trim(), expanded: true, children: [] });
+          cur.splice(parts[parts.length - 1] + 1, 0, { type: 'group', name: dlgName.trim(), expanded: true, children: [], last_modified: Date.now() });
         } else {
-          list.push({ type: 'group', name: dlgName.trim(), expanded: true, children: [] });
+          list.push({ type: 'group', name: dlgName.trim(), expanded: true, children: [], last_modified: Date.now() });
         }
         save(list);
       } else if (dialog.type === 'editGroup') {
         const list = cloneAlongPath(commands, dialog.contextPath);
         const r = resolvePath(list, dialog.contextPath);
         r.parent[r.idx].name = dlgName.trim();
+        r.parent[r.idx].last_modified = Date.now();
         save(list);
       }
       setDialog(null);
@@ -731,7 +741,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
 
     // 命令：需要名称和命令内容
     if (!dlgCmd.trim()) return;
-    const newItem = { name: dlgName.trim(), command: dlgCmd.trim(), addCR: dlgAddCR };
+    const newItem = { name: dlgName.trim(), command: dlgCmd.trim(), addCR: dlgAddCR, last_modified: Date.now() };
 
     if (dialog.type === 'add') {
       dialog.targetChildren.push(newItem);
@@ -1064,7 +1074,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
                     {editCmdText || ''}
                   </span>
                   <button
-                    onClick={() => { commitCmdEdit(); save(commands); setDirty(false); if (addToast) addToast(t('已保存'), 'success', 1500); }}
+                    onClick={() => { const committed = commitCmdEdit(); save(committed || commands); setDirty(false); if (addToast) addToast(t('已保存'), 'success', 1500); }}
                     style={{ background: 'rgba(var(--success-rgb), 0.15)', border: '1px solid rgba(var(--success-rgb), 0.3)', color: 'var(--success)', borderRadius: 3, padding: '2px 10px', fontSize: 11, cursor: 'pointer' }}
                   >{t('保存')}</button>
                   <button

@@ -537,7 +537,7 @@ const dict = {
     "合并": "合并",
     "已上传": "已上传",
     "数据一致，无需变更": "数据一致，无需变更",
-    "首次同步：本地数据已上传到云端": "首次同步：本地数据已上传到云端",
+    "本地数据已同步到云端": "本地数据已同步到云端",
   },
   "en-US": {
     "闪电直连": "Quick Connect",
@@ -1077,7 +1077,7 @@ const dict = {
     "合并": "merged",
     "已上传": "uploaded",
     "数据一致，无需变更": "Data is in sync, no changes needed",
-    "首次同步：本地数据已上传到云端": "Initial sync: local data uploaded to cloud",
+    "本地数据已同步到云端": "Local data synced to cloud",
   }
 };
 

@@ -338,7 +338,6 @@ export default function App() {
     try {
       const savedServer = await AppGo.SaveConnection(tempServer);
       await loadServers();
-      triggerAutoBackup();
 
       await AppGo.ConnectSSH(sessionId, savedServer.id);
       setSessions((prev) =>
@@ -448,18 +447,6 @@ export default function App() {
     pingTimerRef.current = setInterval(pingAll, pingInterval * 1000);
     return () => clearInterval(pingTimerRef.current);
   }, [pingAll, pingInterval, activeSessionId]);
-
-  // ── 自动云端备份 ──────────────────────────────────────────
-  const triggerAutoBackup = useCallback(async () => {
-    try {
-      const cfg = await AppGo.GetWebdavConfig();
-      if (cfg && cfg.username) {
-        await AppGo.BackupToWebdav();
-      }
-    } catch (e) {
-      // 忽略失败，防止打扰用户
-    }
-  }, []);
 
   // ── 取消连接 ──────────────────────────────────────────────
   const handleCancelConnection = useCallback(() => {
@@ -770,7 +757,7 @@ export default function App() {
           : t('同步完成') + `：${t('数据一致，无需变更')}`;
         addToast(msg, 'info', 4000);
       } else if (data.action === 'upload') {
-        addToast(t('首次同步：本地数据已上传到云端'), 'info', 4000);
+        addToast(t('本地数据已同步到云端'), 'info', 4000);
       }
     });
     return () => { if (unbind) unbind(); };
@@ -1021,23 +1008,21 @@ export default function App() {
       await AppGo.SaveConnection(data);
       await loadServers();
       addToast(data.id ? t('服务器配置已更新') : t('服务器添加成功'), 'success');
-      triggerAutoBackup();
     } catch (err) {
       addToast(err, 'error');
     }
     setAddServerModal({ open: false, server: null });
-  }, [loadServers, addToast, triggerAutoBackup]);
+  }, [loadServers, addToast]);
 
   const handleDeleteServer = useCallback(async (id) => {
     try {
       await AppGo.DeleteConnection(id);
       setServers((prev) => prev.filter((s) => s.id !== id));
       addToast(t('服务器已删除'), 'success');
-      triggerAutoBackup();
     } catch {
       addToast(t('删除失败'), 'error');
     }
-  }, [addToast, triggerAutoBackup]);
+  }, [addToast]);
 
   const filteredServers = useMemo(() => {
     if (!searchQuery) return servers;

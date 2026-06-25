@@ -155,8 +155,8 @@ func (c *ConfigManager) backupConnections(s RemoteStorage, maxBackups int) (map[
 		return nil, fmt.Errorf("encrypt snapshot: %w", err)
 	}
 
-	// 文件名精度到毫秒，避免自动同步与手动同步在同一秒触发时写入同一文件名导致覆盖
-	timestamp := time.Now().Format("20060102_150405.000")
+	// 文件名精度到毫秒 + 时区，避免服务器 ModTime 时区不同导致显示错误
+	timestamp := time.Now().Format("20060102_150405.000_-0700")
 	fileName := fmt.Sprintf("connections_backup_%s.enc", timestamp)
 	if err := s.WriteFile(fileName, []byte(encrypted)); err != nil {
 		return nil, err
@@ -168,7 +168,7 @@ func (c *ConfigManager) backupConnections(s RemoteStorage, maxBackups int) (map[
 
 	return map[string]interface{}{
 		"path":  fileName,
-		"time":  time.Now().Format("2006-01-02 15:04:05"),
+		"time":  time.Now().Format("2006-01-02 15:04:05 -0700"),
 		"count": len(snap.Connections),
 	}, nil
 }
@@ -212,10 +212,19 @@ func (c *ConfigManager) listBackupFiles(s RemoteStorage) ([]map[string]interface
 	var backups []map[string]interface{}
 	for _, f := range files {
 		if !f.IsDir && strings.HasPrefix(f.Name, "connections_backup_") {
+			// 从文件名解析时间：优先新格式（带时区），fallback 旧格式（无时区用本地时间）
+			timeStr := ""
+			if t, err := time.Parse("connections_backup_20060102_150405.000_-0700.enc", f.Name); err == nil {
+				timeStr = t.Local().Format("2006-01-02 15:04:05 -0700")
+			} else if t, err := time.ParseInLocation("connections_backup_20060102_150405.000.enc", f.Name, time.Local); err == nil {
+				timeStr = t.Format("2006-01-02 15:04:05 -0700")
+			} else {
+				timeStr = f.ModTime.In(time.Local).Format("2006-01-02 15:04:05 -0700")
+			}
 			backups = append(backups, map[string]interface{}{
 				"name": f.Name,
 				"size": f.Size,
-				"time": f.ModTime.Format("2006-01-02 15:04:05"),
+				"time": timeStr,
 			})
 		}
 	}
@@ -248,9 +257,9 @@ func (c *ConfigManager) syncFromProvider(s RemoteStorage) (map[string]interface{
 	c.mu.Unlock()
 	c.CleanupOrphanedHistory() // 清理已不存在的连接的历史文件
 
-	// 合并快捷命令（双向：按 name 去重合并）
+	// 合并快捷命令（按 last_modified 取最新，单侧独有按 lastSyncTime 判断删除）
 	localQuickCmds := c.loadRawFile(c.quickCmdFile)
-	mergedQuickCmds := c.mergeQuickCommands(localQuickCmds, remoteSnap.QuickCommands)
+	mergedQuickCmds := c.mergeQuickCommands(localQuickCmds, remoteSnap.QuickCommands, lastSyncTime)
 	if err := atomicWriteFile(c.quickCmdFile, []byte(mergedQuickCmds), 0600); err != nil {
 		log.Printf("[syncFromProvider] failed to write quick commands: %v", err)
 	}
@@ -317,25 +326,31 @@ func (c *ConfigManager) autoSyncProvider(s RemoteStorage, maxBackups int) error 
 	// 连接合并：重叠按 LastModified 取最新，单侧独有按 lastSyncTime 判断删除
 	merged := c.mergeWithDeletionPropagation(localConns, remoteSnap.Connections, lastSyncTime)
 
-	// 快捷命令按方向处理
+	// 快捷命令合并：重叠按 last_modified 取最新，单侧独有按 lastSyncTime 判断删除
 	localQuickCmds := c.loadRawFile(c.quickCmdFile)
-	var mergedQuickCmds string
-	var action string
-
-	switch {
-	case remoteSnapTime > localSnapTime:
-		mergedQuickCmds = remoteSnap.QuickCommands
-		action = "download"
-	case localSnapTime > remoteSnapTime:
-		mergedQuickCmds = localQuickCmds
-		action = "upload"
-	default:
-		mergedQuickCmds = c.mergeQuickCommands(localQuickCmds, remoteSnap.QuickCommands)
-		action = "merge"
-	}
+	mergedQuickCmds := c.mergeQuickCommands(localQuickCmds, remoteSnap.QuickCommands, lastSyncTime)
 
 	// 本地有变化 → 保存
 	localChanged := !connsEqual(merged, localConns) || mergedQuickCmds != localQuickCmds
+
+	// 云端有变化 → 需要上传
+	cloudChanged := !connsEqual(merged, remoteSnap.Connections) || mergedQuickCmds != remoteSnap.QuickCommands
+
+	// 无变化 → 静默跳过
+	if !localChanged && !cloudChanged {
+		c.saveLastSyncTime(time.Now().UnixMilli())
+		return nil
+	}
+
+	// 确定同步方向（用于前端通知）
+	var action string
+	if cloudChanged && localChanged {
+		action = "merge"
+	} else if cloudChanged {
+		action = "upload"
+	} else {
+		action = "download"
+	}
 	if localChanged {
 		c.mu.Lock()
 		if err := c.saveConnectionsFile(merged); err != nil {
@@ -350,7 +365,6 @@ func (c *ConfigManager) autoSyncProvider(s RemoteStorage, maxBackups int) error 
 	}
 
 	// 云端有变化 → 上传
-	cloudChanged := !connsEqual(merged, remoteSnap.Connections) || mergedQuickCmds != remoteSnap.QuickCommands
 	if cloudChanged {
 		c.bumpSnapshotTime()
 		if _, berr := c.backupConnections(s, maxBackups); berr != nil {
@@ -391,38 +405,35 @@ func (c *ConfigManager) mergeWithDeletionPropagation(localConns, remoteConns []C
 		remoteMap[rc.ID] = rc
 	}
 
-	// 收集所有 ID
-	allIDs := make(map[string]struct{})
-	for id := range localMap {
-		allIDs[id] = struct{}{}
-	}
-	for id := range remoteMap {
-		allIDs[id] = struct{}{}
-	}
+	merged := make([]Connection, 0, len(localConns)+len(remoteConns))
+	added := make(map[string]bool)
 
-	merged := make([]Connection, 0, len(allIDs))
-	for id := range allIDs {
-		lc, hasLocal := localMap[id]
-		rc, hasRemote := remoteMap[id]
-
-		switch {
-		case hasLocal && hasRemote:
-			// 重叠：按 LastModified 取最新
+	// 按本地原始顺序遍历
+	for _, lc := range localConns {
+		if added[lc.ID] {
+			continue
+		}
+		if rc, hasRemote := remoteMap[lc.ID]; hasRemote {
 			if lc.LastModified >= rc.LastModified {
 				merged = append(merged, lc)
 			} else {
 				merged = append(merged, rc)
 			}
-		case hasLocal:
-			// 本地独有：LastModified > lastSyncTime → 新增保留，否则视为被云端删除
+			added[lc.ID] = true
+		} else {
 			if lc.LastModified > lastSyncTime {
 				merged = append(merged, lc)
 			}
-		case hasRemote:
-			// 云端独有：LastModified > lastSyncTime → 新增保留，否则视为被本地删除
+			added[lc.ID] = true
+		}
+	}
+	// 远程独有（按远程原始顺序）
+	for _, rc := range remoteConns {
+		if !added[rc.ID] {
 			if rc.LastModified > lastSyncTime {
 				merged = append(merged, rc)
 			}
+			added[rc.ID] = true
 		}
 	}
 
@@ -557,8 +568,17 @@ func cmdKey(m map[string]interface{}) string {
 	return name + "|||" + cmd
 }
 
-// mergeQuickCommands 合并本地和远端的快捷命令列表（按 名称+命令 去重合并，组内 children 同样）
-func (c *ConfigManager) mergeQuickCommands(localStr, remoteStr string) string {
+// cmdLastModified 从 map 中读取 last_modified（JSON 数字是 float64）
+func cmdLastModified(m map[string]interface{}) int64 {
+	v, _ := m["last_modified"].(float64)
+	return int64(v)
+}
+
+// mergeQuickCommands 合并本地和远端的快捷命令列表：
+// - 重叠项（同 name+command）：按 last_modified 取最新
+// - 单侧独有：last_modified > lastSyncTime → 保留，否则视为已删除
+// - 组内 children 同样逻辑
+func (c *ConfigManager) mergeQuickCommands(localStr, remoteStr string, lastSyncTime int64) string {
 	if remoteStr == "" || remoteStr == "[]" {
 		return localStr
 	}
@@ -574,49 +594,71 @@ func (c *ConfigManager) mergeQuickCommands(localStr, remoteStr string) string {
 		return localStr
 	}
 
-	// build key-indexed map from local
-	localMap := make(map[string]interface{})
-	var localOrder []string
+	// build key-indexed maps
+	type cmdEntry struct {
+		item map[string]interface{}
+		key  string
+	}
+	localMap := make(map[string]cmdEntry)
 	for _, item := range local {
 		if m, ok := item.(map[string]interface{}); ok {
 			key := cmdKey(m)
-			localMap[key] = m
-			localOrder = append(localOrder, key)
+			localMap[key] = cmdEntry{m, key}
 		}
 	}
-
-	// merge remote into local
+	remoteMap := make(map[string]cmdEntry)
 	for _, item := range remote {
 		if m, ok := item.(map[string]interface{}); ok {
 			key := cmdKey(m)
-			if existing, ok := localMap[key]; ok {
-				// group with children on both sides → merge children
-				if ex, eok := existing.(map[string]interface{}); eok {
-					if exCh, exOk := ex["children"]; exOk {
-						if rmCh, rmOk := m["children"]; rmOk {
-							mergedCh := c.mergeCmdChildren(exCh, rmCh)
-							m["children"] = mergedCh
-						}
-					}
-				}
-			}
-			localMap[key] = m
+			remoteMap[key] = cmdEntry{m, key}
 		}
 	}
 
-	// build result preserving local order, then append new remote items
 	result := make([]interface{}, 0)
 	added := make(map[string]bool)
-	for _, key := range localOrder {
-		if _, ok := localMap[key]; ok {
-			result = append(result, localMap[key])
+
+	// 本地的每项（按原始顺序）：重叠按 last_modified 取最新，本地独有按 lastSyncTime 判断删除
+	for _, item := range local {
+		m, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		key := cmdKey(m)
+		if added[key] {
+			continue
+		}
+		if re, inRemote := remoteMap[key]; inRemote {
+			// 重叠：按 last_modified 取最新
+			if cmdLastModified(re.item) > cmdLastModified(m) {
+				if lCh, ok := m["children"]; ok {
+					if rCh, ok := re.item["children"]; ok {
+						re.item["children"] = c.mergeCmdChildren(lCh, rCh, lastSyncTime)
+					}
+				}
+				result = append(result, re.item)
+			} else {
+				if lCh, ok := m["children"]; ok {
+					if rCh, ok := re.item["children"]; ok {
+						m["children"] = c.mergeCmdChildren(lCh, rCh, lastSyncTime)
+					}
+				}
+				result = append(result, m)
+			}
+			added[key] = true
+		} else {
+			// 本地独有：last_modified > lastSyncTime → 保留（新增），否则删除
+			if cmdLastModified(m) > lastSyncTime {
+				result = append(result, m)
+			}
 			added[key] = true
 		}
 	}
+
+	// 远程独有（按远程原始顺序）：last_modified > lastSyncTime → 保留
 	for _, item := range remote {
 		if m, ok := item.(map[string]interface{}); ok {
 			key := cmdKey(m)
-			if !added[key] {
+			if !added[key] && cmdLastModified(m) > lastSyncTime {
 				result = append(result, m)
 			}
 		}
@@ -626,37 +668,58 @@ func (c *ConfigManager) mergeQuickCommands(localStr, remoteStr string) string {
 	return string(data)
 }
 
-// mergeCmdChildren 合并两个 children 数组（按 名称+命令 去重，remote 覆盖同名的 local）
-func (c *ConfigManager) mergeCmdChildren(localCh, remoteCh interface{}) interface{} {
+// mergeCmdChildren 合并两个 children 数组（同 mergeQuickCommands 逻辑）
+func (c *ConfigManager) mergeCmdChildren(localCh, remoteCh interface{}, lastSyncTime int64) interface{} {
 	lArr, lok := localCh.([]interface{})
 	rArr, rok := remoteCh.([]interface{})
 	if !lok || !rok {
 		return remoteCh
 	}
 
-	childMap := make(map[string]interface{})
-	var order []string
-	for _, c := range lArr {
-		if m, ok := c.(map[string]interface{}); ok {
-			key := cmdKey(m)
-			childMap[key] = m
-			order = append(order, key)
+	lMap := make(map[string]map[string]interface{})
+	for _, item := range lArr {
+		if m, ok := item.(map[string]interface{}); ok {
+			lMap[cmdKey(m)] = m
 		}
 	}
-	for _, c := range rArr {
-		if m, ok := c.(map[string]interface{}); ok {
-			key := cmdKey(m)
-			if _, exists := childMap[key]; !exists {
-				order = append(order, key)
-			}
-			childMap[key] = m
+	rMap := make(map[string]map[string]interface{})
+	for _, item := range rArr {
+		if m, ok := item.(map[string]interface{}); ok {
+			rMap[cmdKey(m)] = m
 		}
 	}
 
-	result := make([]interface{}, 0, len(childMap))
-	for _, n := range order {
-		if v, ok := childMap[n]; ok {
-			result = append(result, v)
+	var result []interface{}
+	added := make(map[string]bool)
+	for _, item := range lArr {
+		m, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		key := cmdKey(m)
+		if added[key] {
+			continue
+		}
+		if rm, inRemote := rMap[key]; inRemote {
+			if cmdLastModified(rm) > cmdLastModified(m) {
+				result = append(result, rm)
+			} else {
+				result = append(result, m)
+			}
+			added[key] = true
+		} else {
+			if cmdLastModified(m) > lastSyncTime {
+				result = append(result, m)
+			}
+			added[key] = true
+		}
+	}
+	for _, item := range rArr {
+		if m, ok := item.(map[string]interface{}); ok {
+			key := cmdKey(m)
+			if !added[key] && cmdLastModified(m) > lastSyncTime {
+				result = append(result, m)
+			}
 		}
 	}
 	return result

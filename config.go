@@ -674,6 +674,7 @@ func (c *ConfigManager) SaveQuickCommands(jsonStr string) error {
 	defer c.mu.Unlock()
 	err := atomicWriteFile(c.quickCmdFile, []byte(jsonStr), 0600)
 	if err == nil {
+		c.bumpSnapshotTime()
 		go c.AutoSync()
 	}
 	return err

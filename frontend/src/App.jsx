@@ -1276,10 +1276,14 @@ export default function App() {
                     {/* 主要视口 (终端/标签页模式下的文件) */}
                     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
                       <div style={{ display: (contentTab === 'terminal' || s.status !== 'connected') ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0, height: '100%', position: 'relative' }}>
-                        {mountedSessions.has(s.id) && (s.terminals && s.terminals.length > 0 ? s.terminals : [{ id: s.id, label: t('终端') }]).map((t) => (
+                        {mountedSessions.has(s.id) && (s.terminals && s.terminals.length > 0 ? s.terminals : [{ id: s.id, label: t('终端') }]).map((t) => {
+                          const isTermActive = (contentTab === 'terminal' || s.status !== 'connected') && activeTerminalId === t.id;
+                          return (
                           <div key={t.id} style={{
                             position: 'absolute', inset: 0,
-                            display: ((contentTab === 'terminal' || s.status !== 'connected') && activeTerminalId === t.id) ? 'flex' : 'none',
+                            display: 'flex',
+                            visibility: isTermActive ? 'visible' : 'hidden',
+                            pointerEvents: isTermActive ? 'auto' : 'none',
                             flexDirection: 'column',
                           }}>
                             <ErrorBoundary label={`终端 ${t.id} 渲染出错`}>
@@ -1294,7 +1298,8 @@ export default function App() {
                               />
                             </ErrorBoundary>
                           </div>
-                        ))}
+                        );
+                        })}
                       </div>
                       {s.status === 'connected' && fileManagerPosition === 'tab' && mountedSessions.has(s.id) && (
                         <div style={{ display: contentTab === 'files' ? 'flex' : 'none', height: '100%', flex: 1, flexDirection: 'column' }}>

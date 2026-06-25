@@ -241,7 +241,8 @@ func (s *ftpStorage) ReadFile(name string) ([]byte, error) {
 
 func (s *ftpStorage) WriteFile(name string, data []byte) error {
 	// 目录在 newFTPStorage 时已确保创建，此处无需每次检查
-	return s.client.Stor(name, bytes.NewReader(data))
+	path := strings.TrimRight(s.remoteDir, "/") + "/" + name
+	return s.client.Stor(path, bytes.NewReader(data))
 }
 
 func (s *ftpStorage) DeleteFile(name string) error {

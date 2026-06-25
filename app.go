@@ -129,7 +129,9 @@ func (a *App) startup(ctx context.Context) {
 		a.wsListener = listener
 		a.wsServer = &http.Server{Handler: mux}
 		go func() {
-			_ = a.wsServer.Serve(listener)
+			if err := a.wsServer.Serve(listener); err != nil && err != http.ErrServerClosed {
+				log.Printf("WebSocket server stopped: %v", err)
+			}
 		}()
 	}
 
@@ -414,13 +416,13 @@ func (a *App) DownloadFile(sessionId string, remotePath string) error {
 
 // ReadPrivateKeyFile opens a file dialog to read a private key file
 func (a *App) ReadPrivateKeyFile() (string, error) {
-	filepath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+	keyPath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
 		Title: "选择私钥文件",
 	})
-	if err != nil || filepath == "" {
+	if err != nil || keyPath == "" {
 		return "", err
 	}
-	content, err := os.ReadFile(filepath)
+	content, err := os.ReadFile(keyPath)
 	if err != nil {
 		return "", err
 	}
@@ -568,8 +570,8 @@ func (a *App) SaveSFTPConfig(config map[string]string) error {
 	return a.configManager.SaveSFTPConfig(config)
 }
 
-func (a *App) TestSFTPConnection(host string, port int, username, password, authMethod, privateKey string) error {
-	return a.configManager.TestSFTPConnection(host, port, username, password, authMethod, privateKey)
+func (a *App) TestSFTPConnection(host string, port int, username, password, authMethod, privateKey, passphrase string) error {
+	return a.configManager.TestSFTPConnection(host, port, username, password, authMethod, privateKey, passphrase)
 }
 
 func (a *App) BackupToSFTP() (map[string]interface{}, error) {

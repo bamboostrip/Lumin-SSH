@@ -255,7 +255,6 @@ func (m *SSHManager) Connect(sessionId string, conn Connection) error {
 							"error":     errStr,
 						})
 					}
-					netConn.Close()
 					return fmt.Errorf("认证失败")
 				}
 				// 瞬态错误继续重试
@@ -351,14 +350,16 @@ func (m *SSHManager) Connect(sessionId string, conn Connection) error {
 		sftpClient, sftpErr = sftp.NewClient(client)
 		if sftpErr != nil {
 			// SFTP 不可用（如部分嵌入式系统不支持 sftp subsystem），文件管理功能不可用但不影响终端
-			runtime.EventsEmit(m.ctx, "ssh-status", map[string]interface{}{
-				"sessionId": sessionId,
-				"status":    "sftp-unavailable",
-				"host":      conn.Host,
-				"port":      conn.Port,
-				"username":  conn.Username,
-				"error":     sftpErr.Error(),
-			})
+			if m.ctx != nil {
+				runtime.EventsEmit(m.ctx, "ssh-status", map[string]interface{}{
+					"sessionId": sessionId,
+					"status":    "sftp-unavailable",
+					"host":      conn.Host,
+					"port":      conn.Port,
+					"username":  conn.Username,
+					"error":     sftpErr.Error(),
+				})
+			}
 			sftpClient = nil
 		}
 
@@ -440,7 +441,21 @@ func (m *SSHManager) Connect(sessionId string, conn Connection) error {
 	shellPath := detectRemoteShell(client)
 	launchCmd, remoteHistoryActive := buildShellLaunchCommand(shellPath)
 
-	return m.setupSession(client, connKey, sessionId, "", launchCmd, remoteHistoryActive)
+	err := m.setupSession(client, connKey, sessionId, "", launchCmd, remoteHistoryActive)
+	if err != nil {
+		// setupSession 失败（如 PTY 请求失败），清理刚创建的客户端
+		m.mu.Lock()
+		if entry, ok := m.clients[connKey]; ok && entry.Client == client {
+			delete(m.clients, connKey)
+			delete(m.connTerminals, connKey)
+		}
+		m.mu.Unlock()
+		if sftpClient != nil {
+			sftpClient.Close()
+		}
+		client.Close()
+	}
+	return err
 }
 
 // setupSession 创建 shell session 的共享逻辑
@@ -600,7 +615,7 @@ func (m *SSHManager) getSFTPClient(sessionId string) (*sftp.Client, error) {
 func (m *SSHManager) Disconnect(sessionId string) {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("[Disconnect] panic recovered: %v\n", r)
+			log.Printf("[Disconnect] panic recovered: %v", r)
 		}
 	}()
 
@@ -914,7 +929,9 @@ func (m *SSHManager) Resize(sessionId string, cols, rows int) {
 	s, ok := m.sessions[sessionId]
 	m.mu.RUnlock()
 	if ok {
-		s.Session.WindowChange(rows, cols)
+		if err := s.Session.WindowChange(rows, cols); err != nil {
+			log.Printf("[Resize] WindowChange failed for %s: %v", sessionId, err)
+		}
 	}
 }
 
@@ -1426,7 +1443,7 @@ func (m *SSHManager) GetSystemInfo(sessionId string) (result map[string]interfac
 		},
 		"disk": map[string]interface{}{
 			"device":     diskDevice,
-			"type":       "ext4",
+			"type":       "",
 			"total":      diskTotalGB,
 			"used":       diskUsedGB,
 			"usage":      diskPercent,

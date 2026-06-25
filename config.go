@@ -62,7 +62,14 @@ type ConfigManager struct {
 }
 
 func NewConfigManager() *ConfigManager {
-	appData, _ := os.UserConfigDir()
+	appData, err := os.UserConfigDir()
+	if err != nil {
+		home, herr := os.UserHomeDir()
+		if herr != nil {
+			log.Fatalf("无法确定配置目录: %v / %v", err, herr)
+		}
+		appData = home
+	}
 	dir := filepath.Join(appData, "Lumin", "config")
 
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -95,8 +102,14 @@ func NewConfigManager() *ConfigManager {
 		}
 	}
 
-	block, _ := aes.NewCipher(key)
-	gcm, _ := cipher.NewGCM(block)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		log.Fatalf("无法创建 AES cipher: %v", err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		log.Fatalf("无法创建 GCM: %v", err)
+	}
 
 	return &ConfigManager{
 		configDir:      dir,
@@ -128,7 +141,11 @@ func (c *ConfigManager) decrypt(hexText string) string {
 	if hexText == "" {
 		return ""
 	}
-	ciphertext, _ := hex.DecodeString(hexText)
+	ciphertext, err := hex.DecodeString(hexText)
+	if err != nil {
+		log.Printf("[decrypt] hex decode failed: %v", err)
+		return ""
+	}
 	if len(ciphertext) < c.gcm.NonceSize() {
 		return ""
 	}
@@ -166,7 +183,11 @@ func (c *ConfigManager) decryptWithKey(hexText string, key []byte) string {
 	if hexText == "" {
 		return ""
 	}
-	ciphertext, _ := hex.DecodeString(hexText)
+	ciphertext, err := hex.DecodeString(hexText)
+	if err != nil {
+		log.Printf("[decryptWithKey] hex decode failed: %v", err)
+		return ""
+	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return ""
@@ -266,7 +287,13 @@ func (c *ConfigManager) SaveConnection(conn Connection) Connection {
 	defer c.mu.Unlock()
 	conns := c.getConnectionsLocked()
 	if conn.ID == "" {
-		conn.ID = strconv.FormatInt(time.Now().UnixNano(), 10)
+		// ponytail: 用 crypto/rand 替代 UnixNano，避免 Windows 精度不足导致 ID 冲突
+		b := make([]byte, 8)
+		if _, err := rand.Read(b); err != nil {
+			conn.ID = strconv.FormatInt(time.Now().UnixNano(), 10)
+		} else {
+			conn.ID = fmt.Sprintf("%x", b)
+		}
 		conns = append(conns, conn)
 	} else {
 		found := false

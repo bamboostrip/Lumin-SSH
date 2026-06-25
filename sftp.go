@@ -25,6 +25,7 @@ type SFTPConfig struct {
 	AuthMethod string `json:"authMethod"` // "password" 或 "key"
 	Password   string `json:"password"`
 	PrivateKey string `json:"privateKey"`
+	Passphrase string `json:"passphrase,omitempty"`
 	RemoteDir  string `json:"remoteDir"`
 	MaxBackups int    `json:"maxBackups"`
 }
@@ -175,14 +176,20 @@ func sftpHostKeyCallback() ssh.HostKeyCallback {
 }
 
 // buildSSHConfig 构建 SFTP 用的 SSH 配置，复用于 TestSFTPConnection 和 newSFTPClient
-func buildSSHConfig(username, password, authMethod, privateKey string) (*ssh.ClientConfig, error) {
+func buildSSHConfig(username, password, authMethod, privateKey, passphrase string) (*ssh.ClientConfig, error) {
 	sshConfig := &ssh.ClientConfig{
 		User:            username,
 		HostKeyCallback: sftpHostKeyCallback(),
 		Timeout:         10 * time.Second,
 	}
 	if authMethod == "key" {
-		signer, err := ssh.ParsePrivateKey([]byte(privateKey))
+		var signer ssh.Signer
+		var err error
+		if passphrase != "" {
+			signer, err = ssh.ParsePrivateKeyWithPassphrase([]byte(privateKey), []byte(passphrase))
+		} else {
+			signer, err = ssh.ParsePrivateKey([]byte(privateKey))
+		}
 		if err != nil {
 			return nil, fmt.Errorf("解析私钥失败：%w", err)
 		}
@@ -193,8 +200,8 @@ func buildSSHConfig(username, password, authMethod, privateKey string) (*ssh.Cli
 	return sshConfig, nil
 }
 
-func (c *ConfigManager) TestSFTPConnection(host string, port int, username, password, authMethod, privateKey string) error {
-	sshConfig, err := buildSSHConfig(username, password, authMethod, privateKey)
+func (c *ConfigManager) TestSFTPConnection(host string, port int, username, password, authMethod, privateKey, passphrase string) error {
+	sshConfig, err := buildSSHConfig(username, password, authMethod, privateKey, passphrase)
 	if err != nil {
 		return err
 	}
@@ -225,7 +232,7 @@ func (c *ConfigManager) newSFTPClient() (*sftp.Client, *ssh.Client, error) {
 		return nil, nil, fmt.Errorf("SFTP not configured")
 	}
 
-	sshConfig, err := buildSSHConfig(conf.Username, conf.Password, conf.AuthMethod, conf.PrivateKey)
+	sshConfig, err := buildSSHConfig(conf.Username, conf.Password, conf.AuthMethod, conf.PrivateKey, conf.Passphrase)
 	if err != nil {
 		return nil, nil, err
 	}

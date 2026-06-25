@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -582,7 +581,7 @@ func (c *ConfigManager) restoreSnapshotToLocal(snap *SyncSnapshot) {
 	c.connCacheDirty = true
 	c.mu.Unlock()
 	if snap.QuickCommands != "" {
-		if err := os.WriteFile(c.quickCmdFile, []byte(snap.QuickCommands), 0600); err != nil {
+		if err := atomicWriteFile(c.quickCmdFile, []byte(snap.QuickCommands), 0600); err != nil {
 			log.Printf("[restoreSnapshotToLocal] failed to write quick commands: %v", err)
 		}
 	}

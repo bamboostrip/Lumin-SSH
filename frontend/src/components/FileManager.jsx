@@ -355,6 +355,8 @@ export default function FileManager({ sessionId, addToast, isActive = true }) {
   const { t } = useTranslation();
   const joinPath = (base, name) => base === '/' ? `/${name}` : `${base}/${name}`;
   const [currentPath, setCurrentPath] = useState('/');
+  const currentPathRef = useRef(currentPath);
+  useEffect(() => { currentPathRef.current = currentPath; }, [currentPath]);
   const [editingPath, setEditingPath] = useState(null);
   const [items, setItems] = useState([]);
   const [sortField, setSortField] = useState('name');  // name, size, permissions, modified
@@ -471,7 +473,7 @@ export default function FileManager({ sessionId, addToast, isActive = true }) {
     const handleTerminalCwd = async (e) => {
       if (e.detail && e.detail.sessionId === sessionId) {
         const newPath = e.detail.cwd;
-        if (newPath && newPath !== currentPath) {
+        if (newPath && newPath !== currentPathRef.current) {
           const ok = await loadDir(newPath, true);
           if (!ok) loadDir('/');
         }
@@ -483,7 +485,7 @@ export default function FileManager({ sessionId, addToast, isActive = true }) {
       if (window.__cwdListeners) delete window.__cwdListeners[sessionId];
       window.removeEventListener('ssh-terminal-cwd-changed', handleTerminalCwd);
     };
-  }, [sessionId, currentPath, loadDir]);
+  }, [sessionId, loadDir]);
 
   useEffect(() => {
     const off = EventsOn(`transfer-progress-${sessionId}`, (progress) => {

@@ -35,6 +35,8 @@ export default function App() {
   useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
   const cancelledConnectionsRef = useRef(new Set());
   const [activeSessionId, setActiveSessionId] = useState(null);
+  const activeSessionIdRef = useRef(null);
+  useEffect(() => { activeSessionIdRef.current = activeSessionId; }, [activeSessionId]);
   const [activeTerminalId, setActiveTerminalId] = useState(null);
   const lastTerminalRef = useRef({}); // 记录每个 session 最后选中的终端
   const [mountedSessions, setMountedSessions] = useState(new Set());
@@ -848,13 +850,13 @@ export default function App() {
       AppGo.DisconnectSSH(id).catch(() => {});
     }
     setSessions((prev) => prev.filter((s) => s.id !== sessionId));
-    if (activeSessionId === sessionId) {
+    if (activeSessionIdRef.current === sessionId) {
       switchToNextSession(sessionId);
     }
     if (connectingServerRef.current?.sessionId === sessionId) {
       setConnectingServer(null);
     }
-  }, [activeSessionId]);
+  }, []);
 
   const closeSession = useCallback(async (sessionId, e) => {
     e?.stopPropagation();

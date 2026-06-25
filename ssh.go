@@ -255,6 +255,7 @@ func (m *SSHManager) Connect(sessionId string, conn Connection) error {
 							"error":     errStr,
 						})
 					}
+					netConn.Close()
 					return fmt.Errorf("认证失败")
 				}
 				// 瞬态错误继续重试
@@ -283,9 +284,11 @@ func (m *SSHManager) Connect(sessionId string, conn Connection) error {
 
 			if handshakeErr != nil {
 				if cancelCtx.Err() != nil {
+					netConn.Close()
 					return fmt.Errorf("连接已取消")
 				}
 				if errors.Is(handshakeErr, ErrHostKeyChanged) {
+					netConn.Close()
 					if m.ctx != nil {
 						m.mu.RLock()
 						pending, ok := m.pendingHostKeys[sessionId]
@@ -330,10 +333,12 @@ func (m *SSHManager) Connect(sessionId string, conn Connection) error {
 					return fmt.Errorf("认证失败")
 				}
 
-				// 瞬态错误继续重试
+				// 瞬态错误关闭连接后重试
 				if attempt < maxRetries && isTransientNetError(handshakeErr) {
+					netConn.Close()
 					continue
 				}
+				netConn.Close()
 				return handshakeErr
 			}
 

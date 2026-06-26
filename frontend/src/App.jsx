@@ -1029,7 +1029,8 @@ export default function App() {
     return servers.filter((s) =>
       (s.name || '').toLowerCase().includes(q) ||
       (s.host || '').toLowerCase().includes(q) ||
-      (s.username || '').toLowerCase().includes(q)
+      (s.username || '').toLowerCase().includes(q) ||
+      (s.group || '').toLowerCase().includes(q)
     );
   }, [servers, searchQuery]);
 

@@ -394,9 +394,12 @@ export default function App() {
           if (detectedOs) {
             setServers(prevServers => {
               const currentServer = prevServers.find(s => s.id === serverId);
-              if (currentServer && currentServer.os !== detectedOs) {
+              if (currentServer) {
+                // 总是调用：OS 变了会更新 OS，OS 没变也会触发同步（确保 noSync 保存的密码等数据被同步）
                 AppGo.SetConnectionOS(serverId, detectedOs).catch(console.error);
-                setServers(prev => prev.map(s => s.id === serverId ? { ...s, os: detectedOs } : s));
+                if (currentServer.os !== detectedOs) {
+                  setServers(prev => prev.map(s => s.id === serverId ? { ...s, os: detectedOs } : s));
+                }
               }
               return prevServers;
             });

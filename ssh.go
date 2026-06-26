@@ -1962,18 +1962,16 @@ func (m *SSHManager) UncompressItem(sessionId string, remotePath string) error {
 	var cmd string
 	lowerBase := strings.ToLower(base)
 	// 注意：解压在远程服务器执行，无法在客户端校验归档成员路径。
-	// 对 tar 命令追加 --no-unsafe-paths（GNU tar 支持，可拒绝包含 .. 或绝对路径的成员，
-	// 缓解 tar slip 路径穿越风险；BSD tar 不识别该选项会报错，但多数 Linux 发行版默认为 GNU tar）。
-	// unzip 无等价选项，无法在命令行层面防御路径穿越。
+	// tar slip 路径穿越风险由用户在信任的服务器上自行评估。
 	switch {
 	case strings.HasSuffix(lowerBase, ".zip"):
 		cmd = fmt.Sprintf("cd %s && unzip -o %s", safeDir, safeBase)
 	case strings.HasSuffix(lowerBase, ".tar.gz") || strings.HasSuffix(lowerBase, ".tgz"):
-		cmd = fmt.Sprintf("cd %s && tar --no-unsafe-paths -xzf %s", safeDir, safeBase)
+		cmd = fmt.Sprintf("cd %s && tar -xzf %s", safeDir, safeBase)
 	case strings.HasSuffix(lowerBase, ".tar"):
-		cmd = fmt.Sprintf("cd %s && tar --no-unsafe-paths -xf %s", safeDir, safeBase)
+		cmd = fmt.Sprintf("cd %s && tar -xf %s", safeDir, safeBase)
 	case strings.HasSuffix(lowerBase, ".tar.bz2") || strings.HasSuffix(lowerBase, ".tbz2"):
-		cmd = fmt.Sprintf("cd %s && tar --no-unsafe-paths -xjf %s", safeDir, safeBase)
+		cmd = fmt.Sprintf("cd %s && tar -xjf %s", safeDir, safeBase)
 	case strings.HasSuffix(lowerBase, ".gz"):
 		cmd = fmt.Sprintf("cd %s && gunzip -f -k %s", safeDir, safeBase)
 	default:

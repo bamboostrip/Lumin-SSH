@@ -19,6 +19,11 @@ export function compareVersions(latestVer, currentVer) {
   return false;
 }
 
+// 判断当前是否 Linux 平台
+function isLinux() {
+  return navigator.userAgent.includes('Linux') || navigator.platform.includes('Linux');
+}
+
 // 匹配下载资源（便携版/安装版/兜底）
 async function resolveDownloadAsset(data) {
   let isPortable = false;
@@ -27,6 +32,19 @@ async function resolveDownloadAsset(data) {
   }
   if (data.assets && data.assets.length > 0) {
     let targetAsset = null;
+
+    // Linux: 优先选取 .deb 包，其次 .rpm
+    if (isLinux()) {
+      targetAsset = data.assets.find(a => a.name.endsWith('.deb'));
+      if (!targetAsset) {
+        targetAsset = data.assets.find(a => a.name.endsWith('.rpm'));
+      }
+      if (targetAsset) {
+        return { url: targetAsset.browser_download_url, filename: targetAsset.name };
+      }
+    }
+
+    // Windows: 原有逻辑
     if (isPortable) {
       targetAsset = data.assets.find(a => !/installer|setup/i.test(a.name) && a.name.endsWith('.exe'));
     } else {
@@ -39,7 +57,8 @@ async function resolveDownloadAsset(data) {
       return { url: targetAsset.browser_download_url, filename: targetAsset.name };
     }
   }
-  return { url: data.html_url || '', filename: 'update.exe' };
+  const fallbackName = isLinux() ? 'update.deb' : 'update.exe';
+  return { url: data.html_url || '', filename: fallbackName };
 }
 
 /**
@@ -90,13 +109,17 @@ export function useUpdateChecker({ onResult, onError } = {}) {
   const applyUpdate = useCallback(async (updateInfo) => {
     if (!updateInfo || !updateInfo.url) return;
     if (downloadProgress >= 0) return;
-    if (!updateInfo.url.endsWith('.exe')) {
+    // 非 exe/deb/rpm 的链接直接打开浏览器
+    if (!updateInfo.url.endsWith('.exe') && !updateInfo.url.endsWith('.deb') && !updateInfo.url.endsWith('.rpm')) {
       window.runtime?.BrowserOpenURL(updateInfo.url);
       return;
     }
     setDownloadProgress(0);
+    let defaultName = 'update.exe';
+    if (updateInfo.url.endsWith('.deb')) defaultName = 'update.deb';
+    else if (updateInfo.url.endsWith('.rpm')) defaultName = 'update.rpm';
     try {
-      await AppGo.UpdateApp(updateInfo.url, updateInfo.filename || 'update.exe');
+      await AppGo.UpdateApp(updateInfo.url, updateInfo.filename || defaultName);
     } catch (err) {
       setDownloadProgress(-1);
       throw err;

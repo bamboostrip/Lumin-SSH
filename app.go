@@ -689,24 +689,47 @@ func (a *App) UpdateApp(downloadUrl string, filename string) error {
 	}
 	defer resp.Body.Close()
 
+	isDeb := strings.HasSuffix(strings.ToLower(filename), ".deb")
+	isRpm := strings.HasSuffix(strings.ToLower(filename), ".rpm")
 	isSetup := strings.Contains(strings.ToLower(filename), "installer") || strings.Contains(strings.ToLower(filename), "setup")
 	var targetPath string
 	var exePath string
+	var needsElevated bool
 
-	if isSetup {
+	// 获取可执行文件路径，后续 deb 安装和便携版替换都可能需要
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("could not determine executable path: %w", err)
+	}
+	exePath = exe
+
+	if isSetup || isDeb || isRpm {
+		// 安装包、.deb 和 .rpm 都下载到临时目录
 		targetPath = filepath.Join(os.TempDir(), filename)
 	} else {
-		exe, err := os.Executable()
-		if err != nil {
-			return fmt.Errorf("could not determine executable path: %w", err)
-		}
-		exePath = exe
+		// 便携版：下载到 exe 同级目录，或权限不足时降级到临时目录
 		targetPath = exePath + ".update"
+
+		// Test write access to exe directory upfront.
+		// On Linux the app may be installed in /usr/bin/ where regular users
+		// lack write permission, so we fall back to the temp directory.
+		testFile, err := os.Create(targetPath)
+		if err != nil {
+			if os.IsPermission(err) {
+				targetPath = filepath.Join(os.TempDir(), filepath.Base(exePath)+".update")
+				needsElevated = true
+			} else {
+				return fmt.Errorf("could not create temporary update file: %w", err)
+			}
+		} else {
+			testFile.Close()
+			os.Remove(targetPath)
+		}
 	}
 
 	out, err := os.Create(targetPath)
 	if err != nil {
-		return fmt.Errorf("could not create temporary update file: %w", err)
+		return fmt.Errorf("could not create update file: %w", err)
 	}
 
 	pr := &progressReader{
@@ -770,7 +793,32 @@ func (a *App) UpdateApp(downloadUrl string, filename string) error {
 		}
 	}
 
-	// 3. 区分 Setup 还是 Portable 替换
+	// 3. 处理 .deb 包安装（Linux）
+	if isDeb {
+		if err := installDebPackage(targetPath); err != nil {
+			return err
+		}
+		// dpkg -i 已替换 /usr/bin/lumin，重启为新版本
+		if err := restartApp(exePath); err != nil {
+			return err
+		}
+		os.Exit(0)
+		return nil
+	}
+
+	// 3.5 处理 .rpm 包安装（Linux）
+	if isRpm {
+		if err := installRpmPackage(targetPath); err != nil {
+			return err
+		}
+		if err := restartApp(exePath); err != nil {
+			return err
+		}
+		os.Exit(0)
+		return nil
+	}
+
+	// 4. 区分 Setup 还是 Portable 替换
 	if isSetup {
 		if err := launchInstaller(targetPath); err != nil {
 			return err
@@ -781,6 +829,14 @@ func (a *App) UpdateApp(downloadUrl string, filename string) error {
 	}
 
 	// Portable 热更替换逻辑
+	if needsElevated {
+		if err := applyUpdateElevated(targetPath, exePath); err != nil {
+			return err
+		}
+		os.Exit(0)
+		return nil
+	}
+
 	oldPath := exePath + ".old"
 	// 清理上次更新残留的 .old 文件
 	os.Remove(oldPath)

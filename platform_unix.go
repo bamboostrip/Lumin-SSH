@@ -12,7 +12,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 )
 
-//go:embed build/windows/icon.ico
+//go:embed build/appicon.png
 var icon []byte
 
 // singletonLock holds the lock file descriptor to prevent GC from closing it

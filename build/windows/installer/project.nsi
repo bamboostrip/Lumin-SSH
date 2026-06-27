@@ -55,6 +55,8 @@ ManifestDPIAware true
 !define MUI_WELCOMEFINISHPAGE_BITMAP "resources\leftimage.bmp"
 !define MUI_UNWELCOMEFINISHPAGE_BITMAP "resources\leftimage.bmp"
 !define MUI_FINISHPAGE_NOAUTOCLOSE # Wait on the INSTFILES page so the user can take a look into the details of the installation steps
+!define MUI_FINISHPAGE_RUN "$INSTDIR\${PRODUCT_EXECUTABLE}"
+!define MUI_FINISHPAGE_RUN_TEXT "运行 ${INFO_PRODUCTNAME}"
 !define MUI_ABORTWARNING # This will warn the user if they exit from the installer.
 
 !insertmacro MUI_PAGE_WELCOME # Welcome to the installer page.

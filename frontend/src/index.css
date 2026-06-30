@@ -834,6 +834,10 @@ textarea:focus:not(:focus-visible) {
   margin-right: -2px;
 }
 
+/* ponytail: 监控面板在左侧时，把垂直滚动条翻到左侧（远离终端），内容保持 LTR */
+.probe-panel-wrapper-left .probe-panel { direction: rtl; }
+.probe-panel-wrapper-left .probe-panel > * { direction: ltr; }
+
 .probe-panel {
   padding: var(--space-3);
   display: flex;

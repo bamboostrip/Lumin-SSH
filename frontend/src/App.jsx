@@ -87,6 +87,7 @@ export default function App() {
   const [probePanelWidth, setProbePanelWidth] = useState(() => {
     return clampPanelWidth(localStorage.getItem('probePanelWidth') || '320');
   });
+  const [probePanelPosition, setProbePanelPosition] = useState(() => localStorage.getItem('probePanelPosition') || 'left');
 
   const leftSplitWidthRef = useRef(leftSplitWidth);
   const bottomSplitHeightRef = useRef(bottomSplitHeight);
@@ -167,7 +168,9 @@ export default function App() {
         const newWidth = Math.max(180, Math.min(800, startWidth + deltaX));
         updateLeftSplitWidth(newWidth);
       } else if (direction === 'probe') {
-        const deltaX = startX - moveEvent.clientX;
+        const deltaX = probePanelPosition === 'left'
+          ? moveEvent.clientX - startX
+          : startX - moveEvent.clientX;
         updateProbePanelWidth(startProbeWidth + deltaX);
       } else {
         const deltaY = startY - moveEvent.clientY; // 往上拖高度变大
@@ -202,7 +205,7 @@ export default function App() {
 
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-  }, []);
+  }, [probePanelPosition]);
   // ────────────────────────────────────────────────────────
 
   const pingTimerRef = useRef(null);
@@ -937,6 +940,18 @@ export default function App() {
 
   const activeSession = useMemo(() => sessions.find((s) => s.id === activeSessionId), [sessions, activeSessionId]);
 
+  const probePanelNode = activeSession && activeSession.status === 'connected' ? (
+    <ProbePanel
+      key={activeSession.id}
+      sessionId={activeSession.id}
+      host={activeSession.host}
+      addToast={addToast}
+      enabled={!!monitoringEnabled[activeSession.id]}
+      onEnable={() => setMonitoringEnabled(prev => ({ ...prev, [activeSession.id]: true }))}
+      onShowAllProcesses={() => setContentTab('process')}
+    />
+  ) : null;
+
   // 同步 activeTerminalId 到 ref，记住每个 session 最后选中的终端
   useEffect(() => {
     if (activeSessionId && activeTerminalId) {
@@ -1169,7 +1184,30 @@ export default function App() {
           />
         </div>
 
-        <div style={{ display: activeSessionId !== null ? 'flex' : 'none', flexDirection: 'column', height: '100%', flex: 1 }}>
+        <div style={{ display: activeSessionId !== null ? 'flex' : 'none', flexDirection: 'row', height: '100%', flex: 1, overflow: 'hidden' }}>
+          {/* 系统监控探针面板（独立分栏，左侧） */}
+          {probePanelNode && probePanelPosition === 'left' && (
+            <>
+              <div
+                className="probe-panel-wrapper probe-panel-wrapper-left"
+                style={{
+                  width: probePanelWidth,
+                  minWidth: probePanelWidth,
+                  borderLeft: 'none',
+                  borderRight: '1px solid var(--border)',
+                }}
+              >
+                {probePanelNode}
+              </div>
+              <div
+                className="split-resizer-v probe-resizer"
+                onMouseDown={(e) => startDrag(e, 'probe')}
+                title={t('调整监控边栏宽度')}
+              />
+            </>
+          )}
+          {/* 左侧主区域：标签、终端子标签、会话内容 */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100%', overflow: 'hidden' }}>
             {/* Content Type Tabs */}
             {activeSession && (
               <div className="content-tab-bar">
@@ -1206,25 +1244,43 @@ export default function App() {
                 </div>
                 
                 {activeSession.status === 'connected' && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, alignSelf: 'center' }}>
-                    <span style={{ fontSize: 12, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{t('文件管理器布局')}:</span>
-                    <select
-                      className="select-compact"
-                      style={{ padding: '2px 8px', fontSize: 12 }}
-                      value={fileManagerPosition}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setFileManagerPosition(val);
-                        localStorage.setItem('fileManagerPosition', val);
-                        if (val !== 'tab' && contentTab === 'files') {
-                          setContentTab('terminal');
-                        }
-                      }}
-                    >
-                      <option value="tab">{t('标签页')}</option>
-                      <option value="left">{t('左侧分屏')}</option>
-                      <option value="bottom">{t('底部分屏')}</option>
-                    </select>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, alignSelf: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 12, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{t('文件管理器布局')}:</span>
+                      <select
+                        className="select-compact"
+                        style={{ padding: '2px 8px', fontSize: 12 }}
+                        value={fileManagerPosition}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFileManagerPosition(val);
+                          localStorage.setItem('fileManagerPosition', val);
+                          if (val !== 'tab' && contentTab === 'files') {
+                            setContentTab('terminal');
+                          }
+                        }}
+                      >
+                        <option value="tab">{t('标签页')}</option>
+                        <option value="left">{t('左侧分屏')}</option>
+                        <option value="bottom">{t('底部分屏')}</option>
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 12, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{t('监控面板位置')}:</span>
+                      <select
+                        className="select-compact"
+                        style={{ padding: '2px 8px', fontSize: 12 }}
+                        value={probePanelPosition}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setProbePanelPosition(val);
+                          localStorage.setItem('probePanelPosition', val);
+                        }}
+                      >
+                        <option value="left">{t('左侧')}</option>
+                        <option value="right">{t('右侧')}</option>
+                      </select>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1423,35 +1479,29 @@ export default function App() {
               />
               <div id="editor-split-host" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', order: 2, width: 0, transition: 'width 0.2s ease, height 0.2s ease' }} />
             </div>
-
-            {/* 右侧：系统监控探针面板（强制常显）*/}
-              {activeSession && activeSession.status === 'connected' && (
-                <>
-                  <div
-                    className="split-resizer-v probe-resizer"
-                    onMouseDown={(e) => startDrag(e, 'probe')}
-                    title={t('调整监控边栏宽度')}
-                  />
-                  <div
-                    className="probe-panel-wrapper"
-                    style={{
-                      width: probePanelWidth,
-                      minWidth: probePanelWidth,
-                    }}
-                  >
-                    <ProbePanel
-                    sessionId={activeSession.id}
-                    host={activeSession.host}
-                    addToast={addToast}
-                    enabled={!!monitoringEnabled[activeSession.id]}
-                    onEnable={() => setMonitoringEnabled(prev => ({ ...prev, [activeSession.id]: true }))}
-                    onShowAllProcesses={() => setContentTab('process')}
-                  />
-                  </div>
-                </>
-              )}
             </div>
           </div>
+
+          {/* 系统监控探针面板（独立分栏，右侧） */}
+          {probePanelNode && probePanelPosition === 'right' && (
+            <>
+              <div
+                className="split-resizer-v probe-resizer"
+                onMouseDown={(e) => startDrag(e, 'probe')}
+                title={t('调整监控边栏宽度')}
+              />
+              <div
+                className="probe-panel-wrapper"
+                style={{
+                  width: probePanelWidth,
+                  minWidth: probePanelWidth,
+                }}
+              >
+                {probePanelNode}
+              </div>
+            </>
+          )}
+        </div>
       </main>
 
       {/* ── Modals ────────────────────────────────────────── */}

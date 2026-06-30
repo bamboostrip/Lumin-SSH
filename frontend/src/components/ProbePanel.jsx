@@ -401,13 +401,13 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, onEnabl
 
       {/* ── CPU ── */}
       <Card>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
           <span style={{ display: 'flex', alignItems: 'center', color: 'var(--info)' }}><Cpu size={14} /></span>
           <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-primary)', flex: 1 }}>CPU {cores.length > 0 ? `${cores.length}${t('核')}` : ''}</span>
-          <div style={{ width: 76, height: 24 }}>
-            <Sparkline data={hist.cpu} color="var(--info)" height={24} />
-          </div>
-          <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--info)', fontWeight: 700, width: 34, textAlign: 'right' }}>{cpuAvg}%</span>
+          <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--success)', background: 'rgba(var(--accent-rgb),0.1)', border: '1px solid rgba(var(--accent-rgb),0.3)', padding: '2px 7px', borderRadius: 4 }}>{cpuAvg}%</span>
+        </div>
+        <div style={{ marginBottom: 8 }}>
+          <Sparkline data={hist.cpu} color="var(--info)" height={36} />
         </div>
         {info.cpuModel && <div style={{ fontSize: 11.5, color: 'var(--text-tertiary)', marginBottom: 6, wordBreak: 'break-all' }}>{info.cpuModel}</div>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>

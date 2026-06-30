@@ -384,6 +384,10 @@ const dict = {
     "标签页": "标签页",
     "左侧分屏": "左侧分屏",
     "底部分屏": "底部分屏",
+    "监控面板位置": "监控面板位置",
+    "右侧": "右侧",
+    "左侧": "左侧",
+    "调整监控边栏宽度": "调整监控边栏宽度",
     "主机密钥已变更": "主机密钥已变更",
     "正在建立 SSH 连接，请稍候...": "正在建立 SSH 连接，请稍候...",
 
@@ -966,6 +970,10 @@ const dict = {
     "标签页": "Tabs",
     "左侧分屏": "Left Split",
     "底部分屏": "Bottom Split",
+    "监控面板位置": "Probe Panel Position",
+    "右侧": "Right",
+    "左侧": "Left",
+    "调整监控边栏宽度": "Adjust probe panel width",
     "主机密钥已变更": "Host key changed",
     "正在建立 SSH 连接，请稍候...": "Establishing SSH connection, please wait...",
 

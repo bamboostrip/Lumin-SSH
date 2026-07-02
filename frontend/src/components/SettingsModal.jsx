@@ -5,7 +5,7 @@ import { getModKey } from '../utils/platform.js';
 import logoImg from '../assets/logo.png';
 import { APP_VERSION } from '../config.js';
 import { useUpdateChecker } from '../hooks/useUpdateChecker.js';
-import { Sun, Monitor, Moon, Keyboard, Cloud, Info, Database, Folder, X, RefreshCw, Globe, Palette, Lock } from 'lucide-react';
+import { Sun, Monitor, Moon, Keyboard, Cloud, Info, Database, Folder, X, RefreshCw, Globe, Palette } from 'lucide-react';
 import { Z } from '../constants/zIndex';
 import { WindowSetSize } from '../../wailsjs/runtime/runtime.js';
 import { hexToRgb } from '../utils/theme.js';

@@ -7,6 +7,7 @@ import ErrorBoundary from './components/ErrorBoundary.jsx';
 import ProbePanel from './components/ProbePanel.jsx';
 import FileManager from './components/FileManager.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
+import CredentialsModal from './components/CredentialsModal.jsx';
 import Toast from './components/Toast.jsx';
 import CommandHistory from './components/CommandHistory.jsx';
 import ProcessPage from './components/ProcessPage.jsx';
@@ -28,6 +29,7 @@ import logoImg from './assets/logo.png';
 export default function App() {
   const { t } = useTranslation();
   const [servers, setServers] = useState([]);
+  const [credentials, setCredentials] = useState([]);
   const serversRef = useRef([]);
   useEffect(() => { serversRef.current = servers; }, [servers]);
   const [pings, setPings] = useState({});
@@ -44,6 +46,7 @@ export default function App() {
   const [contentTab, setContentTab] = useState('terminal'); // 'terminal' | 'files'
   const [addServerModal, setAddServerModal] = useState({ open: false, server: null });
   const [showSettings, setShowSettings] = useState(false);
+  const [showCredentials, setShowCredentials] = useState(false);
   const [tabContextMenu, setTabContextMenu] = useState(null);
   useEffect(() => {
     if (!tabContextMenu) return;
@@ -225,7 +228,7 @@ export default function App() {
   }, []);
 
   // 闪电直连的表单状态
-  const quickFormInit = { name: '', host: '', port: '', user: 'root', auth: 'password', pass: '', key: '', passphrase: '', showPass: false, showPassphrase: false };
+  const quickFormInit = { name: '', host: '', port: '', user: 'root', auth: 'password', pass: '', key: '', passphrase: '', credId: '', showPass: false, showPassphrase: false };
   const [quickForm, dispatchQuick] = useReducer((s, a) => {
     if (a.type === 'reset') return quickFormInit;
     return { ...s, [a.type]: a.value };
@@ -308,6 +311,7 @@ export default function App() {
   const handleQuickConnectDirect = async (e) => {
     if (e) e.preventDefault();
     if (!quickForm.host.trim()) return window.luminDialog?.alert(t('请填写主机地址'));
+    if (quickForm.auth === 'credential' && !quickForm.credId) return window.luminDialog?.alert(t('请选择凭据'));
 
     const tempId = `temp_${Date.now()}`;
     const tempServer = {
@@ -315,11 +319,12 @@ export default function App() {
       name: quickForm.name.trim() || quickForm.host.trim(),
       host: quickForm.host.trim(),
       port: Math.max(1, Math.min(65535, parseInt(quickForm.port, 10) || 22)),
-      username: quickForm.user.trim(),
+      username: quickForm.auth === 'credential' ? '' : quickForm.user.trim(),
       authMethod: quickForm.auth === 'key' ? 'privateKey' : 'password',
-      password: quickForm.pass,
-      privateKey: quickForm.key,
-      passphrase: quickForm.passphrase,
+      password: quickForm.auth === 'password' ? quickForm.pass : '',
+      privateKey: quickForm.auth === 'key' ? quickForm.key : '',
+      passphrase: quickForm.auth === 'key' ? quickForm.passphrase : '',
+      credentialId: quickForm.auth === 'credential' ? quickForm.credId : '',
     };
 
     const sessionId = `session_${Date.now()}`;
@@ -422,6 +427,10 @@ export default function App() {
     } catch (e) {
       addToast(t('加载服务器配置失败'), 'error');
     }
+    try {
+      const creds = await AppGo.GetCredentials();
+      setCredentials(creds || []);
+    } catch (_) {}
   }, [addToast]);
 
   useEffect(() => { loadServers(); }, [loadServers]);
@@ -646,6 +655,7 @@ export default function App() {
   useEffect(() => {
     const unbind = EventsOn('ssh-auth-failed', async (data) => {
       const { sessionId, connId, host, port, username, error } = data;
+      const usesCredential = serversRef.current.some(s => s.id === connId && s.credentialId);
 
       const password = await window.luminDialog?.prompt?.(
         [
@@ -658,7 +668,7 @@ export default function App() {
         ].join('\n'),
         '',
         t('认证失败'),
-        t('记住密码')
+        usesCredential ? t('更新凭据密码') : t('记住密码')
       );
 
       if (password === null) {
@@ -1165,6 +1175,7 @@ export default function App() {
             dispatchQuick={dispatchQuick}
             onQuickConnect={handleQuickConnectDirect}
             onQuickPrivateKeyFile={handleQuickPrivateKeyFile}
+            credentials={credentials}
             searchQuery={searchQuery}
             onSearchChange={e => setSearchQuery(e.target.value)}
             hideSensitive={hideSensitive}
@@ -1184,6 +1195,7 @@ export default function App() {
             onDelete={handleDeleteServer}
             onMoveGroup={handleMoveGroup}
             addToast={addToast}
+            onOpenCredentials={() => setShowCredentials(true)}
           />
         </div>
 
@@ -1515,14 +1527,24 @@ export default function App() {
           onSave={handleSaveServer}
           onClose={() => setAddServerModal({ open: false, server: null })}
           allGroups={allGroups}
+          credentials={credentials}
+          onOpenCredentials={() => setShowCredentials(true)}
         />
       )}
 
       {showSettings && (
         <SettingsModal
-          onClose={() => setShowSettings(false)}
+          onClose={() => { setShowSettings(false); loadServers(); }}
           addToast={addToast}
           onRestored={loadServers}
+        />
+      )}
+
+      {showCredentials && (
+        <CredentialsModal
+          onClose={() => { setShowCredentials(false); loadServers(); }}
+          onChange={loadServers}
+          addToast={addToast}
         />
       )}
 

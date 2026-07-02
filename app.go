@@ -694,33 +694,16 @@ func (a *App) UpdateApp(downloadUrl string, filename string) error {
 	if filename == "." || filename == "" {
 		return fmt.Errorf("更新文件名无效")
 	}
-	// 2. 发起请求下载新文件（带超时，防止慢网络永久阻塞）
+	// 2. 下载新文件（带超时，防止慢网络永久阻塞）
+	// ponytail: 对每个 URL 尝试完整的 下载→写入磁盘 流程，失败再试下一个。
+	// 旧实现只在 Get() 阶段切换 URL，io.Copy 阶段超时直接放弃（"failed to save update file"），
+	// 不会重试代理 URL。大文件 + 慢网络下直连极易在 body 读取阶段超时。
 	client := &http.Client{Timeout: 10 * time.Minute}
-	// ponytail: 尝试直连，失败后走 ghfast 代理加速
 	const ghProxy = "https://ghfast.top/"
 	tryUrls := []string{downloadUrl}
 	if strings.Contains(downloadUrl, "github.com") {
 		tryUrls = append(tryUrls, ghProxy+downloadUrl)
 	}
-
-	var resp *http.Response
-	var err error
-	for _, u := range tryUrls {
-		resp, err = client.Get(u)
-		if err == nil && resp.StatusCode == http.StatusOK {
-			downloadUrl = u // 记录实际成功的 URL，后续 .sha256 也走同源
-			break
-		}
-		if resp != nil {
-			resp.Body.Close()
-		}
-		fmt.Printf("[UpdateApp] download from %s failed: err=%v, trying next\n", u, err)
-		resp = nil
-	}
-	if resp == nil {
-		return fmt.Errorf("failed to download update from all sources: %w", err)
-	}
-	defer resp.Body.Close()
 
 	isDeb := strings.HasSuffix(strings.ToLower(filename), ".deb")
 	isRpm := strings.HasSuffix(strings.ToLower(filename), ".rpm")
@@ -761,25 +744,49 @@ func (a *App) UpdateApp(downloadUrl string, filename string) error {
 		}
 	}
 
-	out, err := os.Create(targetPath)
-	if err != nil {
-		return fmt.Errorf("could not create update file: %w", err)
-	}
+	var lastErr error
+	for _, u := range tryUrls {
+		resp, err := client.Get(u)
+		if err != nil || resp.StatusCode != http.StatusOK {
+			if resp != nil {
+				resp.Body.Close()
+			}
+			fmt.Printf("[UpdateApp] download from %s failed: err=%v, trying next\n", u, err)
+			lastErr = err
+			continue
+		}
 
-	pr := &progressReader{
-		Reader:    resp.Body,
-		ctx:       a.ctx,
-		eventName: "app-update-progress",
-		total:     resp.ContentLength,
-		lastEmit:  time.Now(),
-	}
+		pr := &progressReader{
+			Reader:    resp.Body,
+			ctx:       a.ctx,
+			eventName: "app-update-progress",
+			total:     resp.ContentLength,
+			lastEmit:  time.Now(),
+		}
 
-	// 2. 写入到带有进度的缓冲并存入 .update 临时文件
-	_, err = io.Copy(out, pr)
-	out.Close() // Ensure the file is completely flushed and closed
-	if err != nil {
-		os.Remove(targetPath) // Cleanup on failure
-		return fmt.Errorf("failed to save update file: %w", err)
+		out, createErr := os.Create(targetPath)
+		if createErr != nil {
+			resp.Body.Close()
+			return fmt.Errorf("could not create update file: %w", createErr)
+		}
+
+		_, copyErr := io.Copy(out, pr)
+		out.Close()
+		resp.Body.Close()
+
+		if copyErr != nil {
+			os.Remove(targetPath)
+			fmt.Printf("[UpdateApp] save from %s failed: err=%v, trying next\n", u, copyErr)
+			lastErr = copyErr
+			continue
+		}
+
+		downloadUrl = u // 记录实际成功的 URL，后续 .sha256 也走同源
+		lastErr = nil
+		break
+	}
+	if lastErr != nil {
+		return fmt.Errorf("failed to download update from all sources: %w", lastErr)
 	}
 
 	// 2.5 校验下载文件的 SHA256（如果发布方提供了 .sha256 文件）

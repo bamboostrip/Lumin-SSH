@@ -151,6 +151,9 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, onEnabl
   const [probeError, setProbeError] = useState(null);
   const probeErrorCountRef = useRef(0);
   const staticInfoRef = useRef(null);
+  // ponytail: 跟踪当前 sessionId，用于丢弃切换服务器前在飞的异步响应（key remount 下冗余但安全）
+  const activeSessionIdRef = useRef(sessionId);
+  useEffect(() => { activeSessionIdRef.current = sessionId; }, [sessionId]);
 
   // 切换服务器时立即清空旧数据和静态缓存
   useEffect(() => {
@@ -167,9 +170,11 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, onEnabl
   useEffect(() => {
     if (!enabled || !sessionId) return;
     if (staticInfoRef.current) return;
+    let active = true;
     (async () => {
       try {
         const data = await AppGo.GetServerStaticInfo(sessionId);
+        if (!active) return;
         staticInfoRef.current = {
           os: data.os || 'Linux',
           timezone: data.timezone || 'UTC',
@@ -178,9 +183,11 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, onEnabl
           ip: data.ip || '',
         };
       } catch (_) {
+        if (!active) return;
         staticInfoRef.current = { os: 'Linux', timezone: 'UTC', hostname: '', cpuModel: '', ip: '' };
       }
     })();
+    return () => { active = false; };
   }, [enabled, sessionId]);
 
   const handleShowAllProcesses = useCallback(() => {
@@ -192,6 +199,7 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, onEnabl
     if (!sessionId || !enabled) return;
     try {
       const data = await AppGo.SystemInfo(sessionId);
+      if (activeSessionIdRef.current !== sessionId) return; // 切换服务器后丢弃旧响应
       const si = staticInfoRef.current || { os: 'Linux', timezone: 'UTC', hostname: '', cpuModel: '' };
       const uptimeData = data.uptime || {};
       let uptimeStr = t('0 小时');
@@ -255,15 +263,25 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, onEnabl
   useEffect(() => {
     if (!enabled) return;
     fetchInfo();
-    const startInterval = (intervalSec) => {
-      if (probeTimerRef.current) clearInterval(probeTimerRef.current);
-      probeTimerRef.current = setInterval(fetchInfo, intervalSec * 1000);
+    // ponytail: 递归 setTimeout 替代 setInterval，确保上一次 fetchInfo 完成后才排下一次，
+    // 避免慢网络下多个 SystemInfo 并发在飞（请求堆叠 + 加剧竞态）
+    const scheduleNext = () => {
+      probeTimerRef.current = setTimeout(async () => {
+        await fetchInfo();
+        if (probeTimerRef.current !== null) scheduleNext();
+      }, getProbeInterval() * 1000);
     };
-    startInterval(getProbeInterval());
-    const onIntervalChange = () => startInterval(getProbeInterval());
+    scheduleNext();
+    const onIntervalChange = () => {
+      if (probeTimerRef.current) clearTimeout(probeTimerRef.current);
+      scheduleNext();
+    };
     window.addEventListener('probeIntervalChanged', onIntervalChange);
     return () => {
-      if (probeTimerRef.current) clearInterval(probeTimerRef.current);
+      if (probeTimerRef.current) {
+        clearTimeout(probeTimerRef.current);
+        probeTimerRef.current = null;
+      }
       window.removeEventListener('probeIntervalChanged', onIntervalChange);
     };
   }, [fetchInfo, enabled]);

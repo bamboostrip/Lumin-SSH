@@ -930,7 +930,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
           value={cmdInput}
           onChange={e => setCmdInput(e.target.value)}
           onKeyDown={e => {
-            if (e.key === 'Enter') executeCommand();
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing) executeCommand();
             if (e.key === 'Escape') setShowHistory(false);
           }}
           placeholder={t('输入命令')}

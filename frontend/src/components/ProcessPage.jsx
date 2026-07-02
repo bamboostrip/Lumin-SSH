@@ -158,7 +158,8 @@ export default function ProcessPage({ sessionId, addToast, active }) {
     else { setSortKey(key); setSortAsc(false); }
   };
 
-  const SortIcon = ({ col }) => {
+  // ponytail: 改为函数调用而非组件定义，避免每次 polling 渲染时 React 视为新组件类型导致表头 unmount/remount
+  const renderSortIcon = (col) => {
     if (col !== sortKey) return <ArrowUpDown size={13} style={{ opacity: 0.7, marginLeft: 2, flexShrink: 0 }} />;
     return sortAsc
       ? <ArrowUp size={13} style={{ marginLeft: 2, flexShrink: 0, color: 'var(--accent)' }} />
@@ -379,7 +380,7 @@ export default function ProcessPage({ sessionId, addToast, active }) {
                   background: key && sortKey === key ? 'rgba(var(--accent-rgb), 0.08)' : 'transparent',
                   color: key && sortKey === key ? 'var(--accent)' : undefined,
                 }} onClick={(e) => { if (colDragging.current) { colDragging.current = false; return; } key && handleSort(key); }}>
-                  {label} {key && <SortIcon col={key} />}
+                  {label} {key && renderSortIcon(key)}
                   {key !== 'loc' && (
                   <div onMouseDown={e => { e.stopPropagation(); startColResize(key, e); }}
                     style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 12, cursor: 'col-resize', zIndex: 2 }} />

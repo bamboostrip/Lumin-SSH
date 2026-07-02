@@ -212,7 +212,6 @@ func (m *SSHManager) Connect(sessionId string, conn Connection) error {
 				"ecdsa-sha2-nistp521",
 				"rsa-sha2-512",
 				"rsa-sha2-256",
-				"ssh-rsa",
 			},
 		}
 
@@ -995,8 +994,8 @@ func runCommandWithSession(session *ssh.Session, cmd string, timeout time.Durati
 	case <-timer.C:
 		// ponytail: session.Close() may block if server is unresponsive.
 		// The goroutine will be cleaned up when the parent SSH client is closed.
-		// 切到 Discard 避免超时后远端持续输出把 stdoutBuf 撑爆（Close 生效前的窗口期）
-		session.Stdout = io.Discard
+		// 仅 Close()，不动 Stdout 字段：session.Run goroutine 仍读 Stdout，主 goroutine 写入会触发数据竞争。
+		// stdoutBuf 撑爆风险接受：Close 生效前的窗口期短，且 buf 容量足够容纳一次命令输出。
 		go session.Close()
 		return "", fmt.Errorf("command timed out after %v", timeout)
 	}

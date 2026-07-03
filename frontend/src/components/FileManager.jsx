@@ -9,7 +9,7 @@ import {
   Folder, FolderOpen, FolderPlus, File, FileText, FilePlus, FileCode,
   FileArchive, Settings, ClipboardList, Wrench, Image, Code, Globe,
   Palette, Database, Terminal, Film, Music, Archive, HardDrive, BookOpen,
-  Pencil, PenLine, Download, Upload, Trash2, RefreshCw, Lock, FolderUp, SquarePen,
+  Pencil, PenLine, Download, Upload, Trash2, RefreshCw, Lock, FolderUp, SquarePen, Copy,
 } from 'lucide-react';
 
 // 格式化文件大小
@@ -273,7 +273,7 @@ function ChmodDialog({ path, permission, mode, onSave, onClose, t }) {
 }
 
 // Context menu component
-function ContextMenu({ pos, item, onClose, onDownload, onEdit, onRename, onDelete, onDeleteShell, onMkdir, onNewFile, onCompress, onUncompress, onChmod, t }) {
+function ContextMenu({ pos, item, onClose, onDownload, onEdit, onRename, onDelete, onDeleteShell, onMkdir, onNewFile, onCompress, onUncompress, onChmod, onCopyPath, t }) {
   const ref = useRef(null);
   const [adjusted, setAdjusted] = useState({ left: pos.x, top: pos.y });
 
@@ -298,6 +298,11 @@ function ContextMenu({ pos, item, onClose, onDownload, onEdit, onRename, onDelet
       className="context-menu"
       style={{ left: adjusted.left, top: adjusted.top }}
     >
+      {item && (
+        <div className="context-menu-item" onClick={onCopyPath}>
+          <Copy size={14} /> {t('复制路径')}
+        </div>
+      )}
       {item && !item.isDirectory && isEditable(item.name) && (
         <div className="context-menu-item" onClick={onEdit}>
           <SquarePen size={14} /> {t('编辑')}
@@ -389,6 +394,7 @@ export default function FileManager({ sessionId, addToast, isActive = true }) {
   };
   const [loading, setLoading] = useState(false);
   const mountedRef = useRef(true);
+  const fileListRef = useRef(null);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
   const [contextMenu, setContextMenu] = useState(null); // { pos, item }
   const [renamingItem, setRenamingItem] = useState(null);
@@ -434,6 +440,7 @@ export default function FileManager({ sessionId, addToast, isActive = true }) {
       if (!mountedRef.current) return false;
       setItems(data || []);
       setCurrentPath(path);
+      if (fileListRef.current) fileListRef.current.scrollTop = 0;
       return true;
     } catch (err) {
       if (!mountedRef.current) return false;
@@ -536,6 +543,16 @@ export default function FileManager({ sessionId, addToast, isActive = true }) {
   };
 
   // Download file via Wails native file dialog
+  const handleCopyPath = (item) => {
+    let fullPath = joinPath(currentPath, item.name);
+    if (item.isDirectory && !fullPath.endsWith('/')) fullPath += '/';
+    navigator.clipboard?.writeText(fullPath).then(() => {
+      addToast(`${t('已复制')}: ${fullPath}`, 'success');
+    }).catch(() => {
+      addToast(t('复制失败'), 'error');
+    });
+  };
+
   const handleDownload = async (item) => {
     const remotePath = joinPath(currentPath, item.name);
     
@@ -996,7 +1013,7 @@ export default function FileManager({ sessionId, addToast, isActive = true }) {
       {/* Content area: file list + optional split editor */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* File List */}
-        <div className="file-list" style={{ flex: 1, minWidth: 0 }}>
+        <div className="file-list" ref={fileListRef} style={{ flex: 1, minWidth: 0 }}>
           <div className="file-list-header">
             <span onClick={() => handleSort('name')} style={{ cursor: 'pointer' }}>
               {t('名称')} {sortField === 'name' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
@@ -1136,6 +1153,7 @@ export default function FileManager({ sessionId, addToast, isActive = true }) {
           item={contextMenu.item}
           t={t}
           onClose={closeContextMenu}
+          onCopyPath={() => { handleCopyPath(contextMenu.item); closeContextMenu(); }}
           onDownload={() => { handleDownload(contextMenu.item); closeContextMenu(); }}
           onEdit={() => { handleEdit(contextMenu.item); closeContextMenu(); }}
           onRename={() => { startRename(contextMenu.item); closeContextMenu(); }}

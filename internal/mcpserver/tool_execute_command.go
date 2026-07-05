@@ -24,7 +24,7 @@ func executeCommandToolDefinition() ToolDefinition {
 				},
 				"purpose": map[string]any{
 					"type": "string",
-					"description": "Short purpose statement for the command.",
+					"description": "Plain-text purpose statement only. Do not use markdown, XML, JSON, code fences, or other structured formatting.",
 				},
 				"is_mutating": map[string]any{
 					"type": "integer",
@@ -85,7 +85,7 @@ func (c *Catalog) callExecuteCommand(arguments map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return c.commandProvider.ExecuteCommand(session.SessionID, command, purpose, isMutatingValue == 1, cwd, shellType, defaultExecuteCommandTimeout)
+	return executeCommandWithContext(c.commandProvider, c.callCtx, session.SessionID, command, purpose, isMutatingValue == 1, cwd, shellType, defaultExecuteCommandTimeout)
 }
 
 func parseZeroOrOneValue(rawValue any) (int, bool) {

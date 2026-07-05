@@ -586,11 +586,20 @@ textarea:focus:not(:focus-visible) {
   padding: 0 var(--space-3);
   gap: var(--space-1);
   height: var(--topbar-h);
-  overflow-x: auto;
   flex: 1;
   flex-shrink: 0;
+  min-width: 0;
 }
-.tab-bar::-webkit-scrollbar { height: 0; }
+.tab-scroll {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  height: 100%;
+}
+.tab-scroll::-webkit-scrollbar { height: 0; }
 
 .tab-item {
   display: flex;

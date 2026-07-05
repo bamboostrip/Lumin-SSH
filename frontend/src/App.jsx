@@ -22,7 +22,7 @@ import { useUpdateChecker } from './hooks/useUpdateChecker.js';
 import ConnectingCard from './components/ConnectingCard.jsx';
 import UpdateModal from './components/UpdateModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
-import { Bot, Settings, House, Minus, Square, X, Plus, Monitor, RefreshCw, Terminal as TerminalIcon, Folder, ScrollText, ClipboardList, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Bot, Settings, House, Minus, Square, X, Plus, Monitor, RefreshCw, Terminal as TerminalIcon, Folder, ScrollText, ClipboardList, ChevronLeft, ChevronRight, ChevronDown, Search } from 'lucide-react';
 import { Z } from './constants/zIndex';
 
 import logoImg from './assets/logo.png';
@@ -95,6 +95,15 @@ export default function App() {
   });
   const [probePanelPosition, setProbePanelPosition] = useState(() => localStorage.getItem('probePanelPosition') || 'left');
   const [probePanelCollapsed, setProbePanelCollapsed] = useState(() => localStorage.getItem('probePanelCollapsed') === 'true');
+  const [showSessionList, setShowSessionList] = useState(false);
+  const [sessionListPos, setSessionListPos] = useState({ x: 0, y: 0 });
+  const [sessionListQuery, setSessionListQuery] = useState('');
+  const sessionListBtnRef = useRef(null);
+  const sessionListRef = useRef(null);
+  const [tabsOverflow, setTabsOverflow] = useState(false);
+  const tabScrollRef = useRef(null);
+  const tabListRef = useRef(null);
+  const tabActionsRef = useRef(null);
   const toggleProbePanel = useCallback(() => {
     setProbePanelCollapsed(v => {
       const next = !v;
@@ -102,6 +111,38 @@ export default function App() {
       return next;
     });
   }, []);
+  useEffect(() => {
+    if (!showSessionList) return;
+    const handler = (e) => {
+      if (sessionListRef.current && !sessionListRef.current.contains(e.target) &&
+          sessionListBtnRef.current && !sessionListBtnRef.current.contains(e.target)) {
+        setShowSessionList(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showSessionList]);
+  const toggleSessionList = useCallback(() => {
+    if (showSessionList) { setShowSessionList(false); return; }
+    const rect = sessionListBtnRef.current.getBoundingClientRect();
+    setSessionListPos({ x: rect.right, y: rect.bottom + 4 });
+    setSessionListQuery('');
+    setShowSessionList(true);
+  }, [showSessionList]);
+  useEffect(() => {
+    const scroll = tabScrollRef.current;
+    const list = tabListRef.current;
+    const actions = tabActionsRef.current;
+    if (!scroll || !list) return;
+    const check = () => {
+      const actionsWidth = actions ? actions.offsetWidth : 0;
+      setTabsOverflow(list.scrollWidth > scroll.clientWidth - actionsWidth + 1);
+    };
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(scroll);
+    return () => ro.disconnect();
+  }, [sessions]);
   const [aiPanelWidth, setAiPanelWidth] = useState(() => {
     return clampPanelWidth(localStorage.getItem('aiPanelWidth') || '320');
   });
@@ -1343,59 +1384,77 @@ export default function App() {
           
           {sessions.length > 0 && (
             <div className="tab-bar">
-              <button 
-                className="btn btn-ghost btn-sm no-drag" 
-                onClick={() => { setActiveSessionId(null); setActiveTerminalId(null); }} 
+              <button
+                className="btn btn-ghost btn-sm no-drag"
+                onClick={() => { setActiveSessionId(null); setActiveTerminalId(null); }}
                 title={t('返回主页')}
+                style={{ flexShrink: 0 }}
               >
                 <House size={14} />
               </button>
-              {sessions.map((s) => (
-                <div
-                  key={s.id}
-                  className={`tab-item no-drag ${activeSessionId === s.id ? 'active' : ''}`}
-                  onClick={() => handleTabClick(s.id)}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setTabContextMenu({
-                      sessionId: s.id,
-                      serverName: s.serverName || s.host,
-                      x: rect.left,
-                      y: rect.bottom + 4,
-                    });
-                  }}
-                >
-                  <span className={`status-dot ${s.status === 'connecting' ? 'connecting' : s.status === 'connected' ? 'online' : 'offline'}`} />
-                  <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {s.serverName}
-                  </span>
-                  {(s.status === 'closed' || s.status === 'error') && (
-                    <span
-                      className="tab-reconnect no-drag"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        reconnectSession(s);
+              <div className="tab-scroll" ref={tabScrollRef}>
+                <div ref={tabListRef} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', height: '100%' }}>
+                  {sessions.map((s) => (
+                    <div
+                      key={s.id}
+                      className={`tab-item no-drag ${activeSessionId === s.id ? 'active' : ''}`}
+                      onClick={() => handleTabClick(s.id)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setTabContextMenu({
+                          sessionId: s.id,
+                          serverName: s.serverName || s.host,
+                          x: rect.left,
+                          y: rect.bottom + 4,
+                        });
                       }}
-                      title={t('重新连接')}
-                      style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                     >
-                      <RefreshCw size={12} />
-                    </span>
-                  )}
-                  <span className="tab-close no-drag" onClick={(e) => closeSession(s.id, e)}><X size={12} /></span>
+                      <span className={`status-dot ${s.status === 'connecting' ? 'connecting' : s.status === 'connected' ? 'online' : 'offline'}`} />
+                      <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {s.serverName}
+                      </span>
+                      {(s.status === 'closed' || s.status === 'error') && (
+                        <span
+                          className="tab-reconnect no-drag"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            reconnectSession(s);
+                          }}
+                          title={t('重新连接')}
+                          style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                        >
+                          <RefreshCw size={12} />
+                        </span>
+                      )}
+                      <span className="tab-close no-drag" onClick={(e) => closeSession(s.id, e)}><X size={12} /></span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-              {sessions.length >= 2 && (
-                <button
-                  className="btn btn-ghost btn-sm no-drag"
-                  onClick={closeAllSessions}
-                  title={t('关闭全部')}
-                  style={{ marginLeft: 4, padding: '2px 8px', fontSize: 12, color: 'var(--text-tertiary)', flexShrink: 0 }}
-                >
-                  <X size={12} /> {t('关闭全部')}
-                </button>
-              )}
+                <div ref={tabActionsRef} style={{ position: 'sticky', right: 0, display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, background: 'transparent' }}>
+                  {tabsOverflow && (
+                    <button
+                      ref={sessionListBtnRef}
+                      className="btn btn-sm no-drag"
+                      onClick={toggleSessionList}
+                      title={t('服务器列表')}
+                      style={{ padding: '2px 6px', background: 'color-mix(in srgb, var(--accent) 18%, var(--surface-raised))', color: 'var(--accent)', border: '1px solid var(--accent-border)' }}
+                    >
+                      <ChevronDown size={14} />
+                    </button>
+                  )}
+                  {sessions.length >= 2 && (
+                    <button
+                      className="btn btn-sm no-drag"
+                      onClick={closeAllSessions}
+                      title={t('关闭全部')}
+                      style={{ padding: '2px 8px', fontSize: 12, background: 'color-mix(in srgb, var(--danger) 18%, var(--surface-raised))', color: 'var(--danger)', border: '1px solid rgba(var(--danger-rgb), 0.35)' }}
+                    >
+                      <X size={12} /> {t('关闭全部')}
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           )}
           {sessions.length === 0 && <div style={{ flex: 1 }}></div>}
@@ -1957,6 +2016,51 @@ export default function App() {
               </>
             )}
           </div>
+      )}
+      {/* ── 服务器列表下拉 ── */}
+      {showSessionList && (
+        <div
+          ref={sessionListRef}
+          className="tab-context-menu"
+          style={{ left: sessionListPos.x - 240, top: sessionListPos.y, minWidth: 240, maxHeight: 400, display: 'flex', flexDirection: 'column' }}
+        >
+          <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)', position: 'relative' }}>
+            <input
+              type="text"
+              value={sessionListQuery}
+              onChange={(e) => setSessionListQuery(e.target.value)}
+              placeholder={t('搜索服务器')}
+              autoFocus
+              style={{ width: '100%', padding: '4px 8px 4px 26px', fontSize: 12, background: 'var(--surface-sunken)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-primary)', outline: 'none' }}
+            />
+            <Search size={13} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
+          </div>
+          <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
+            {sessions
+              .filter(s => !sessionListQuery || (s.serverName || '').toLowerCase().includes(sessionListQuery.toLowerCase()) || (s.host || '').toLowerCase().includes(sessionListQuery.toLowerCase()))
+              .map(s => (
+                <div
+                  key={s.id}
+                  className="tab-context-menu-item"
+                  onClick={() => { handleTabClick(s.id); setShowSessionList(false); }}
+                  style={{ fontWeight: activeSessionId === s.id ? 700 : 400, color: activeSessionId === s.id ? 'var(--accent)' : 'var(--text-secondary)' }}
+                >
+                  <span className={`status-dot ${s.status === 'connecting' ? 'connecting' : s.status === 'connected' ? 'online' : 'offline'}`} />
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.serverName}</span>
+                  <span
+                    onClick={(e) => { e.stopPropagation(); closeSession(s.id, e); }}
+                    title={t('关闭')}
+                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', opacity: 0.5, flexShrink: 0 }}
+                  >
+                    <X size={13} />
+                  </span>
+                </div>
+              ))}
+            {sessions.filter(s => !sessionListQuery || (s.serverName || '').toLowerCase().includes(sessionListQuery.toLowerCase()) || (s.host || '').toLowerCase().includes(sessionListQuery.toLowerCase())).length === 0 && (
+              <div style={{ padding: '12px 16px', fontSize: 12, color: 'var(--text-tertiary)', textAlign: 'center' }}>{t('无匹配结果')}</div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

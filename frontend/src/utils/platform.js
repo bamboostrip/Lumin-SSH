@@ -1,9 +1,6 @@
 // 平台检测工具
 const _isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
-/** 是否为 macOS 平台 */
-export const isMac = _isMac;
-
 /**
  * 获取修饰键状态（macOS 上将 Meta/⌘ 映射为 Ctrl）
  * 用于快捷键检测：const mod = getModKey(e);

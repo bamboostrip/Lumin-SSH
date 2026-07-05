@@ -225,8 +225,6 @@ export function getTerminalTheme() {
   return theme[mode] || theme.dark;
 }
 
-export { TERMINAL_THEMES };
-
 // ponytail: hex 颜色转 "r, g, b" 字符串，供 CSS rgba() 使用
 export function hexToRgb(hex) {
   const r = parseInt(hex.slice(1, 3), 16);

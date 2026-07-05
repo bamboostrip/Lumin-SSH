@@ -18,6 +18,8 @@ const DEFAULT_AI_GLOBAL_SETTINGS = {
   alwaysAllowSubtasks: false,
   alwaysAllowFollowupQuestions: false,
   terminalIsolation: true,
+  confirmDelete: true,
+  messageActionBarAtBottom: true,
   approvalButtonOrder: 'reject-approve',
   commandActionButtonOrder: 'terminate-continue',
 }
@@ -87,6 +89,8 @@ export function normalizeAIGlobalSettings(settings) {
     alwaysAllowSubtasks: Boolean(settings?.alwaysAllowSubtasks),
     alwaysAllowFollowupQuestions: Boolean(settings?.alwaysAllowFollowupQuestions),
     terminalIsolation: settings?.terminalIsolation !== false,
+    confirmDelete: settings?.confirmDelete !== false,
+    messageActionBarAtBottom: Boolean(settings?.messageActionBarAtBottom),
     approvalButtonOrder: normalizeApprovalButtonOrder(settings?.approvalButtonOrder),
     commandActionButtonOrder: normalizeCommandActionButtonOrder(settings?.commandActionButtonOrder),
   }

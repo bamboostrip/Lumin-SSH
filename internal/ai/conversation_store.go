@@ -13,50 +13,51 @@ import (
 )
 
 type AIConversationTaskSettings struct {
-	CurrentProviderID                string   `json:"currentProviderId"`
-	AutoApprovalEnabled              bool     `json:"autoApprovalEnabled"`
-	AlwaysAllowReadOnly              bool     `json:"alwaysAllowReadOnly"`
-	AlwaysAllowReadOnlyOutsideWorkspace bool  `json:"alwaysAllowReadOnlyOutsideWorkspace"`
-	AlwaysAllowWrite                 bool     `json:"alwaysAllowWrite"`
-	AlwaysAllowWriteOutsideWorkspace bool     `json:"alwaysAllowWriteOutsideWorkspace"`
-	AlwaysAllowWriteProtected        bool     `json:"alwaysAllowWriteProtected"`
-	AlwaysAllowExecute               bool     `json:"alwaysAllowExecute"`
-	AlwaysAllowExecuteAllCommands    bool     `json:"alwaysAllowExecuteAllCommands"`
-	AllowedCommands                  []string `json:"allowedCommands,omitempty"`
-	DeniedCommands                   []string `json:"deniedCommands,omitempty"`
-	AlwaysAllowMcp                   bool     `json:"alwaysAllowMcp"`
-	AlwaysAllowModeSwitch            bool     `json:"alwaysAllowModeSwitch"`
-	AlwaysAllowSubtasks              bool     `json:"alwaysAllowSubtasks"`
-	AlwaysAllowFollowupQuestions     bool     `json:"alwaysAllowFollowupQuestions"`
+	CurrentProviderID                   string   `json:"currentProviderId"`
+	AutoApprovalEnabled                 bool     `json:"autoApprovalEnabled"`
+	AlwaysAllowReadOnly                 bool     `json:"alwaysAllowReadOnly"`
+	AlwaysAllowReadOnlyOutsideWorkspace bool     `json:"alwaysAllowReadOnlyOutsideWorkspace"`
+	AlwaysAllowWrite                    bool     `json:"alwaysAllowWrite"`
+	AlwaysAllowWriteOutsideWorkspace    bool     `json:"alwaysAllowWriteOutsideWorkspace"`
+	AlwaysAllowWriteProtected           bool     `json:"alwaysAllowWriteProtected"`
+	AlwaysAllowExecute                  bool     `json:"alwaysAllowExecute"`
+	AlwaysAllowExecuteAllCommands       bool     `json:"alwaysAllowExecuteAllCommands"`
+	AllowedCommands                     []string `json:"allowedCommands,omitempty"`
+	DeniedCommands                      []string `json:"deniedCommands,omitempty"`
+	AlwaysAllowMcp                      bool     `json:"alwaysAllowMcp"`
+	AlwaysAllowModeSwitch               bool     `json:"alwaysAllowModeSwitch"`
+	AlwaysAllowSubtasks                 bool     `json:"alwaysAllowSubtasks"`
+	AlwaysAllowFollowupQuestions        bool     `json:"alwaysAllowFollowupQuestions"`
 }
 
 type AIConversationMessage struct {
-	ID          string                 `json:"id,omitempty"`
-	TurnID      string                 `json:"turnId,omitempty"`
-	Kind        string                 `json:"kind"`
-	Text        string                 `json:"text,omitempty"`
-	Time        string                 `json:"time,omitempty"`
-	Metrics     []string               `json:"metrics,omitempty"`
-	Streaming   bool                   `json:"streaming,omitempty"`
-	Duration    string                 `json:"duration,omitempty"`
-	ActionLabel string                 `json:"actionLabel,omitempty"`
-	Title       string                 `json:"title,omitempty"`
-	Summary     string                 `json:"summary,omitempty"`
-	Code        string                 `json:"code,omitempty"`
-	Status      string                 `json:"status,omitempty"`
+	ID                 string                 `json:"id,omitempty"`
+	TurnID             string                 `json:"turnId,omitempty"`
+	Kind               string                 `json:"kind"`
+	Text               string                 `json:"text,omitempty"`
+	Time               string                 `json:"time,omitempty"`
+	Metrics            []string               `json:"metrics,omitempty"`
+	Streaming          bool                   `json:"streaming,omitempty"`
+	Duration           string                 `json:"duration,omitempty"`
+	ActionLabel        string                 `json:"actionLabel,omitempty"`
+	Title              string                 `json:"title,omitempty"`
+	Summary            string                 `json:"summary,omitempty"`
+	Code               string                 `json:"code,omitempty"`
+	Status             string                 `json:"status,omitempty"`
 	Result             string                 `json:"result,omitempty"`
 	RemainingFileEdits int                    `json:"remainingFileEdits,omitempty"`
 	Purpose            string                 `json:"purpose,omitempty"`
 	Command            string                 `json:"command,omitempty"`
-	Output      string                 `json:"output,omitempty"`
-	Images      []string               `json:"images,omitempty"`
-	ServerName  string                 `json:"serverName,omitempty"`
-	ToolName    string                 `json:"toolName,omitempty"`
-	Args        string                 `json:"args,omitempty"`
-	Response    string                 `json:"response,omitempty"`
-	Question    string                 `json:"question,omitempty"`
-	Suggestions []string               `json:"suggestions,omitempty"`
-	Extra       map[string]interface{} `json:"extra,omitempty"`
+	Output             string                 `json:"output,omitempty"`
+	Images             []string               `json:"images,omitempty"`
+	ServerName         string                 `json:"serverName,omitempty"`
+	ToolName           string                 `json:"toolName,omitempty"`
+	Args               string                 `json:"args,omitempty"`
+	Response           string                 `json:"response,omitempty"`
+	RequestID          string                 `json:"requestId,omitempty"`
+	Question           string                 `json:"question,omitempty"`
+	Suggestions        []string               `json:"suggestions,omitempty"`
+	Extra              map[string]interface{} `json:"extra,omitempty"`
 }
 
 type AIConversationAPIMessage struct {
@@ -69,13 +70,13 @@ type AIConversationAPIMessage struct {
 }
 
 type AIConversationSummary struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	CreatedAt   int64  `json:"createdAt"`
-	UpdatedAt   int64  `json:"updatedAt"`
-	Status      string `json:"status"`
+	ID           string `json:"id"`
+	Title        string `json:"title"`
+	CreatedAt    int64  `json:"createdAt"`
+	UpdatedAt    int64  `json:"updatedAt"`
+	Status       string `json:"status"`
 	ToolProtocol string `json:"toolProtocol"`
-	MessageCount int   `json:"messageCount"`
+	MessageCount int    `json:"messageCount"`
 }
 
 type AIConversationSnapshot struct {
@@ -92,19 +93,19 @@ type AIConversationSnapshot struct {
 
 func defaultAIConversationTaskSettings(globalSettings AIGlobalSettings) AIConversationTaskSettings {
 	return AIConversationTaskSettings{
-		CurrentProviderID:                strings.TrimSpace(globalSettings.CurrentProviderID),
-		AutoApprovalEnabled:              globalSettings.AutoApprovalEnabled,
-		AlwaysAllowReadOnly:              globalSettings.AlwaysAllowReadOnly,
+		CurrentProviderID:                   strings.TrimSpace(globalSettings.CurrentProviderID),
+		AutoApprovalEnabled:                 globalSettings.AutoApprovalEnabled,
+		AlwaysAllowReadOnly:                 globalSettings.AlwaysAllowReadOnly,
 		AlwaysAllowReadOnlyOutsideWorkspace: globalSettings.AlwaysAllowReadOnlyOutsideWorkspace,
-		AlwaysAllowWrite:                 globalSettings.AlwaysAllowWrite,
-		AlwaysAllowWriteOutsideWorkspace: globalSettings.AlwaysAllowWriteOutsideWorkspace,
-		AlwaysAllowWriteProtected:        globalSettings.AlwaysAllowWriteProtected,
-		AlwaysAllowExecute:               globalSettings.AlwaysAllowExecute,
-		AlwaysAllowExecuteAllCommands:    globalSettings.AlwaysAllowExecuteAllCommands,
-		AlwaysAllowMcp:                   globalSettings.AlwaysAllowMcp,
-		AlwaysAllowModeSwitch:            globalSettings.AlwaysAllowModeSwitch,
-		AlwaysAllowSubtasks:              globalSettings.AlwaysAllowSubtasks,
-		AlwaysAllowFollowupQuestions:     globalSettings.AlwaysAllowFollowupQuestions,
+		AlwaysAllowWrite:                    globalSettings.AlwaysAllowWrite,
+		AlwaysAllowWriteOutsideWorkspace:    globalSettings.AlwaysAllowWriteOutsideWorkspace,
+		AlwaysAllowWriteProtected:           globalSettings.AlwaysAllowWriteProtected,
+		AlwaysAllowExecute:                  globalSettings.AlwaysAllowExecute,
+		AlwaysAllowExecuteAllCommands:       globalSettings.AlwaysAllowExecuteAllCommands,
+		AlwaysAllowMcp:                      globalSettings.AlwaysAllowMcp,
+		AlwaysAllowModeSwitch:               globalSettings.AlwaysAllowModeSwitch,
+		AlwaysAllowSubtasks:                 globalSettings.AlwaysAllowSubtasks,
+		AlwaysAllowFollowupQuestions:        globalSettings.AlwaysAllowFollowupQuestions,
 	}
 }
 
@@ -149,7 +150,21 @@ func normalizeAIConversationMessages(messages []AIConversationMessage) []AIConve
 		message.ToolName = strings.TrimSpace(message.ToolName)
 		message.Args = strings.TrimSpace(message.Args)
 		message.Response = strings.TrimSpace(message.Response)
+		message.RequestID = strings.TrimSpace(message.RequestID)
 		message.Question = strings.TrimSpace(message.Question)
+		if message.Suggestions == nil {
+			message.Suggestions = []string{}
+		} else {
+			suggestions := make([]string, 0, len(message.Suggestions))
+			for _, item := range message.Suggestions {
+				trimmedSuggestion := strings.TrimSpace(item)
+				if trimmedSuggestion == "" {
+					continue
+				}
+				suggestions = append(suggestions, trimmedSuggestion)
+			}
+			message.Suggestions = suggestions
+		}
 		normalized = append(normalized, message)
 	}
 	return normalized

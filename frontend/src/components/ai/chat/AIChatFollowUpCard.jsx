@@ -1,8 +1,27 @@
-import { MessageCircleQuestionMark } from 'lucide-react';
-import { useTranslation } from '../../../i18n.js';
+import { MessageCircleQuestionMark } from 'lucide-react'
+import { useState } from 'react'
+import { useTranslation } from '../../../i18n.js'
 
-export default function AIChatFollowUpCard({ question, suggestions }) {
+export default function AIChatFollowUpCard({ question, suggestions, onSelectSuggestion }) {
   const { t } = useTranslation()
+  const [submittingValue, setSubmittingValue] = useState('')
+
+  const handleSelectSuggestion = async (value) => {
+    const nextValue = typeof value === 'string' ? value.trim() : ''
+    if (!nextValue || submittingValue || typeof onSelectSuggestion !== 'function') {
+      return
+    }
+    setSubmittingValue(nextValue)
+    try {
+      const accepted = await onSelectSuggestion(nextValue)
+      if (accepted === false) {
+        setSubmittingValue('')
+      }
+    } catch {
+      setSubmittingValue('')
+    }
+  }
+
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
@@ -18,6 +37,8 @@ export default function AIChatFollowUpCard({ question, suggestions }) {
             <button
               key={item}
               type="button"
+              disabled={typeof onSelectSuggestion !== 'function' || Boolean(submittingValue)}
+              onClick={() => void handleSelectSuggestion(item)}
               style={{
                 minHeight: 38,
                 padding: '8px 12px',
@@ -28,6 +49,8 @@ export default function AIChatFollowUpCard({ question, suggestions }) {
                 fontSize: 13,
                 textAlign: 'left',
                 transition: 'var(--transition)',
+                cursor: typeof onSelectSuggestion !== 'function' || submittingValue ? 'not-allowed' : 'pointer',
+                opacity: typeof onSelectSuggestion !== 'function' || submittingValue ? 0.6 : 1,
               }}
             >
               {item}
@@ -36,5 +59,5 @@ export default function AIChatFollowUpCard({ question, suggestions }) {
         </div>
       </div>
     </div>
-  );
+  )
 }

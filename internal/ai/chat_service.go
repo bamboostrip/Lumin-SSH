@@ -82,6 +82,8 @@ var aiSupportedToolNames = []string{
 	"read_file",
 	"write_to_file",
 	"execute_command",
+	"ask_followup_question",
+	"attempt_completion",
 	"search_replace",
 	"apply_diff",
 	"edit_file",
@@ -112,6 +114,9 @@ var aiSupportedToolParamNames = []string{
 	"patch",
 	"recursive",
 	"query",
+	"question",
+	"follow_up",
+	"result",
 }
 
 var (
@@ -994,19 +999,73 @@ func parseToolUsesFromXML(xmlContent string, conversationID string) []aiParsedTo
 	return parsedUses
 }
 
-func parseAssistantToolUses(content string, conversationID string) []aiParsedToolUse {
+func extractAssistantToolXMLSegment(content string, conversationID string) (string, string, string, bool) {
 	tagSet := getTaskScopedToolXMLTagSet(conversationID)
 	startTag := fmt.Sprintf("<%s>", tagSet.ExecuteMultipleToolsTagName)
 	endTag := fmt.Sprintf("</%s>", tagSet.ExecuteMultipleToolsTagName)
 	trimmedContent := strings.TrimSpace(content)
-	if !strings.HasPrefix(trimmedContent, startTag) || !strings.HasSuffix(trimmedContent, endTag) {
-		return nil
+	if trimmedContent == "" {
+		return "", "", "", false
 	}
-	innerXML := strings.TrimSpace(trimmedContent[len(startTag) : len(trimmedContent)-len(endTag)])
+	startIndex := strings.Index(trimmedContent, startTag)
+	if startIndex == -1 {
+		return trimmedContent, "", "", false
+	}
+	innerStartIndex := startIndex + len(startTag)
+	endOffset := strings.Index(trimmedContent[innerStartIndex:], endTag)
+	if endOffset == -1 {
+		return trimmedContent, "", "", false
+	}
+	innerEndIndex := innerStartIndex + endOffset
+	innerXML := strings.TrimSpace(trimmedContent[innerStartIndex:innerEndIndex])
 	if innerXML == "" {
+		return strings.TrimSpace(trimmedContent[:startIndex]), "", strings.TrimSpace(trimmedContent[innerEndIndex+len(endTag):]), false
+	}
+	return strings.TrimSpace(trimmedContent[:startIndex]), innerXML, strings.TrimSpace(trimmedContent[innerEndIndex+len(endTag):]), true
+}
+
+func parseAssistantToolUses(content string, conversationID string) []aiParsedToolUse {
+	_, innerXML, _, ok := extractAssistantToolXMLSegment(content, conversationID)
+	if !ok {
 		return nil
 	}
-	return dedupeParsedToolUses(parseToolUsesFromXML(innerXML, conversationID))
+	parsedTools := dedupeParsedToolUses(parseToolUsesFromXML(innerXML, conversationID))
+	return filterAIStandaloneOnlyBatchTools(parsedTools)
+}
+
+func isAIStandaloneOnlyBatchTool(name string) bool {
+	switch strings.TrimSpace(name) {
+	case "ask_followup_question", "attempt_completion":
+		return true
+	default:
+		return false
+	}
+}
+
+func filterAIStandaloneOnlyBatchTools(tools []aiParsedToolUse) []aiParsedToolUse {
+	if len(tools) <= 1 {
+		return tools
+	}
+	filtered := make([]aiParsedToolUse, 0, len(tools))
+	for _, tool := range tools {
+		if isAIStandaloneOnlyBatchTool(tool.Name) {
+			continue
+		}
+		filtered = append(filtered, tool)
+	}
+	return filtered
+}
+
+func buildNoToolRetryMessage(conversationID string) string {
+	tagSet := getTaskScopedToolXMLTagSet(conversationID)
+	return strings.TrimSpace(fmt.Sprintf(`[ERROR] You did not use a tool in your previous response. Every assistant response must contain exactly one top-level <%s>...</%s> block with at least one tool call inside it.
+
+You may include concise natural-language text before or after that block when needed, but do not emit more than one top-level tool wrapper in a single response.
+
+If you have completed the task, use the attempt_completion tool as the only tool call in the response.
+If you need additional information from the user, use the ask_followup_question tool as the only tool call in the response.
+Never batch attempt_completion or ask_followup_question with any other tool. If they appear alongside other tools, they will be ignored.
+Otherwise, continue with the next step using an appropriate tool.`, tagSet.ExecuteMultipleToolsTagName, tagSet.ExecuteMultipleToolsTagName))
 }
 
 func dedupeParsedToolUses(tools []aiParsedToolUse) []aiParsedToolUse {
@@ -1034,14 +1093,18 @@ func dedupeParsedToolUses(tools []aiParsedToolUse) []aiParsedToolUse {
 }
 
 func stripAssistantToolXML(content string, conversationID string) string {
-	tagSet := getTaskScopedToolXMLTagSet(conversationID)
-	startTag := fmt.Sprintf("<%s>", tagSet.ExecuteMultipleToolsTagName)
-	endTag := fmt.Sprintf("</%s>", tagSet.ExecuteMultipleToolsTagName)
-	trimmedContent := strings.TrimSpace(content)
-	if strings.HasPrefix(trimmedContent, startTag) && strings.HasSuffix(trimmedContent, endTag) {
-		return ""
+	before, _, after, ok := extractAssistantToolXMLSegment(content, conversationID)
+	if !ok {
+		return strings.TrimSpace(content)
 	}
-	return trimmedContent
+	parts := make([]string, 0, 2)
+	if before != "" {
+		parts = append(parts, before)
+	}
+	if after != "" {
+		parts = append(parts, after)
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n\n"))
 }
 
 func (a *App) getAIProviderProfileByID(providerID string) (AIProviderProfile, error) {
@@ -1149,11 +1212,32 @@ func (a *App) popAIChatPendingToolBatch(requestID string) *aiPendingToolBatch {
 	return batch
 }
 
+func (a *App) setAIChatPendingFollowupBatch(requestID string, batch *aiPendingToolBatch) {
+	if a == nil || requestID == "" || batch == nil {
+		return
+	}
+	a.aiPendingFollowupMu.Lock()
+	a.aiPendingFollowupBatches[requestID] = batch
+	a.aiPendingFollowupMu.Unlock()
+}
+
+func (a *App) popAIChatPendingFollowupBatch(requestID string) *aiPendingToolBatch {
+	if a == nil || requestID == "" {
+		return nil
+	}
+	a.aiPendingFollowupMu.Lock()
+	batch := a.aiPendingFollowupBatches[requestID]
+	delete(a.aiPendingFollowupBatches, requestID)
+	a.aiPendingFollowupMu.Unlock()
+	return batch
+}
+
 func (a *App) finishAIChatRequest(requestID string) {
 	if a == nil || requestID == "" {
 		return
 	}
 	a.popAIChatPendingToolBatch(requestID)
+	a.popAIChatPendingFollowupBatch(requestID)
 	a.popAIChatRequestCancel(requestID)
 	a.setAIChatSkipNextAutomaticRequest(requestID, false)
 }
@@ -1282,7 +1366,8 @@ func (a *App) CancelAIChat(requestID string) {
 		}
 	}
 	pendingBatch := a.popAIChatPendingToolBatch(trimmedRequestID)
-	if pendingBatch != nil {
+	pendingFollowup := a.popAIChatPendingFollowupBatch(trimmedRequestID)
+	if pendingBatch != nil || pendingFollowup != nil {
 		a.emitAIChatRuntimePhase(trimmedRequestID, "ready")
 		a.emitAIChatEvent(map[string]interface{}{
 			"kind":      "cancelled",
@@ -1433,7 +1518,7 @@ func convertToolArguments(tool aiParsedToolUse, sessionID string) map[string]any
 }
 
 func summarizeParsedToolUse(tool aiParsedToolUse) string {
-	for _, key := range []string{"path", "file_path", "command", "query", "purpose"} {
+	for _, key := range []string{"path", "file_path", "command", "query", "purpose", "result"} {
 		if value := strings.TrimSpace(tool.Params[key]); value != "" {
 			return value
 		}
@@ -1451,6 +1536,8 @@ func titleForParsedToolUse(tool aiParsedToolUse) string {
 		return "应用差异"
 	case "execute_command":
 		return "执行命令"
+	case "attempt_completion":
+		return "任务完成"
 	case "list_files":
 		return "列出文件"
 	case "list_connected_sessions":
@@ -1545,6 +1632,31 @@ func (a *App) executeParsedToolUses(requestID string, assistantMessageID string,
 					"status":  statusText,
 				},
 			})
+		} else if tool.Name == "attempt_completion" {
+			statusText := "已完成"
+			resultText := strings.TrimSpace(tool.Params["result"])
+			rawResultText = "Done"
+			if resultText == "" {
+				resultText = uiResultText
+			}
+			if callErr != nil {
+				statusText = "错误"
+				resultText = uiResultText
+				rawResultText = uiResultText
+			}
+			a.emitAIChatEvent(map[string]interface{}{
+				"kind":      "upsert_message",
+				"requestId": requestID,
+				"message": map[string]interface{}{
+					"id":      buildToolMessageID(assistantMessageID, index),
+					"turnId":  assistantMessageID,
+					"kind":    "completion",
+					"title":   titleForParsedToolUse(tool),
+					"summary": "",
+					"result":  resultText,
+					"status":  statusText,
+				},
+			})
 		} else {
 			statusText := "已执行"
 			if callErr != nil {
@@ -1567,21 +1679,23 @@ func (a *App) executeParsedToolUses(requestID string, assistantMessageID string,
 			})
 		}
 
-		a.emitAIChatEvent(map[string]interface{}{
-			"kind":      "api_message_append",
-			"requestId": requestID,
-			"message": map[string]interface{}{
-				"messageId":    fmt.Sprintf("api-tool-result-%d", time.Now().UnixNano()),
-				"role":         "user",
-				"content":      fmt.Sprintf("[%s] Result:\n%s", tool.Name, rawResultText),
-				"uiMessageIds": []string{buildToolMessageID(assistantMessageID, index)},
-				"ts":           time.Now().UnixMilli(),
-			},
-		})
-		results = append(results, AIChatRequestMessage{
-			Role:    "user",
-			Content: fmt.Sprintf("[%s] Result:\n%s", tool.Name, rawResultText),
-		})
+		if !shouldSuppressAIChatToolResultUserMessage(tool.Name) {
+			a.emitAIChatEvent(map[string]interface{}{
+				"kind":      "api_message_append",
+				"requestId": requestID,
+				"message": map[string]interface{}{
+					"messageId":    fmt.Sprintf("api-tool-result-%d", time.Now().UnixNano()),
+					"role":         "user",
+					"content":      fmt.Sprintf("[%s] Result:\n%s", tool.Name, rawResultText),
+					"uiMessageIds": []string{buildToolMessageID(assistantMessageID, index)},
+					"ts":           time.Now().UnixMilli(),
+				},
+			})
+			results = append(results, AIChatRequestMessage{
+				Role:    "user",
+				Content: fmt.Sprintf("[%s] Result:\n%s", tool.Name, rawResultText),
+			})
+		}
 	}
 
 	return results
@@ -1613,9 +1727,15 @@ func (a *App) continueCompatibleAIChatAfterTools(ctx context.Context, requestID 
 }
 
 func (a *App) runCompatibleAIChatLoop(ctx context.Context, requestID string, payload AIChatRequestPayload, profile AIProviderProfile, requestMessages []AIChatRequestMessage, autoApprovalSettings AIConversationTaskSettings, assistantMessageID string) {
+	consecutiveNoToolCount := 0
+	consecutiveNoAssistantCount := 0
 	for round := 0; round < 6; round++ {
 		var roundResult aiChatRoundResult
 		var err error
+
+		if payload.ConversationID != "" {
+			_, _ = a.CreateAIConversationAutoBackup(payload.ConversationID)
+		}
 
 		for attempt := 1; attempt <= aiChatRequestMaxAttempts; attempt++ {
 			roundResult, err = a.requestAIProviderChatRound(ctx, requestID, payload, profile, requestMessages)
@@ -1654,22 +1774,165 @@ func (a *App) runCompatibleAIChatLoop(ctx context.Context, requestID string, pay
 			return
 		}
 
+		trimmedText := strings.TrimSpace(roundResult.Text)
+		if trimmedText == "" {
+			consecutiveNoAssistantCount++
+			consecutiveNoToolCount = 0
+			if consecutiveNoAssistantCount >= 2 {
+				a.emitAIChatRuntimePhase(requestID, "ready")
+				a.emitAIChatEvent(map[string]interface{}{
+					"kind":      "error",
+					"requestId": requestID,
+					"error":     "AI 连续返回空响应",
+				})
+				a.finishAIChatRequest(requestID)
+				return
+			}
+			requestMessages = append(requestMessages,
+				AIChatRequestMessage{
+					Role:    "assistant",
+					Content: "",
+				},
+				AIChatRequestMessage{
+					Role:    "user",
+					Content: "[ERROR] 你的上一次响应为空，请重新生成完整响应。",
+				},
+			)
+			a.emitAIChatEvent(map[string]interface{}{
+				"kind":        "assistant_retry_reset",
+				"requestId":   requestID,
+				"messageId":   assistantMessageID,
+				"attempt":     round + 2,
+				"maxAttempts": 6,
+			})
+			continue
+		}
+
 		parsedTools := parseAssistantToolUses(roundResult.Text, payload.ConversationID)
 		if len(parsedTools) == 0 {
-			a.emitAIChatRuntimePhase(requestID, "ready")
+			consecutiveNoToolCount++
+			consecutiveNoAssistantCount = 0
+			visibleText := stripAssistantToolXML(roundResult.Text, payload.ConversationID)
+			if consecutiveNoToolCount == 1 {
+				a.emitAIChatEvent(map[string]interface{}{
+					"kind":      "api_message_append",
+					"requestId": requestID,
+					"message": map[string]interface{}{
+						"messageId": fmt.Sprintf("api-assistant-%d", time.Now().UnixNano()),
+						"turnId":    assistantMessageID,
+						"role":      "assistant",
+						"content":   roundResult.Text,
+						"ts":        time.Now().UnixMilli(),
+					},
+				})
+				a.emitAIChatEvent(map[string]interface{}{
+					"kind":            "assistant_replace",
+					"requestId":       requestID,
+					"text":            visibleText,
+					"streaming":       false,
+					"firstTokenMs":    roundResult.FirstTokenMs,
+					"elapsedMs":       roundResult.ElapsedMs,
+					"inputTokens":     roundResult.InputTokens,
+					"outputTokens":    roundResult.OutputTokens,
+					"tokensPerSecond": roundResult.TokensPerSecond,
+				})
+				requestMessages = append(requestMessages,
+					AIChatRequestMessage{
+						Role:    "assistant",
+						Content: roundResult.Text,
+					},
+					AIChatRequestMessage{
+						Role:    "user",
+						Content: buildNoToolRetryMessage(payload.ConversationID),
+					},
+				)
+				a.emitAIChatEvent(map[string]interface{}{
+					"kind":      "api_message_append",
+					"requestId": requestID,
+					"message": map[string]interface{}{
+						"messageId": fmt.Sprintf("api-user-notool-%d", time.Now().UnixNano()),
+						"role":      "user",
+						"content":   buildNoToolRetryMessage(payload.ConversationID),
+						"ts":        time.Now().UnixMilli(),
+					},
+				})
+				nextAssistantMessageID := fmt.Sprintf("%s-cont-%d", requestID, time.Now().UnixNano())
+				a.emitAIChatEvent(map[string]interface{}{
+					"kind":      "assistant_continue",
+					"requestId": requestID,
+					"messageId": nextAssistantMessageID,
+				})
+				assistantMessageID = nextAssistantMessageID
+				continue
+			}
+			errorText := "AI 连续两次回复未包含必需工具，请检查响应格式"
 			a.emitAIChatEvent(map[string]interface{}{
-				"kind":            "done",
+				"kind":      "api_message_append",
+				"requestId": requestID,
+				"message": map[string]interface{}{
+					"messageId": fmt.Sprintf("api-assistant-%d", time.Now().UnixNano()),
+					"turnId":    assistantMessageID,
+					"role":      "assistant",
+					"content":   roundResult.Text,
+					"ts":        time.Now().UnixMilli(),
+				},
+			})
+			a.emitAIChatEvent(map[string]interface{}{
+				"kind":            "assistant_replace",
 				"requestId":       requestID,
-				"text":            roundResult.Text,
+				"text":            visibleText,
+				"streaming":       false,
 				"firstTokenMs":    roundResult.FirstTokenMs,
 				"elapsedMs":       roundResult.ElapsedMs,
 				"inputTokens":     roundResult.InputTokens,
 				"outputTokens":    roundResult.OutputTokens,
 				"tokensPerSecond": roundResult.TokensPerSecond,
+				"extra": map[string]interface{}{
+					"errorText": errorText,
+				},
+			})
+			if round < 5 {
+				requestMessages = append(requestMessages,
+					AIChatRequestMessage{
+						Role:    "assistant",
+						Content: roundResult.Text,
+					},
+					AIChatRequestMessage{
+						Role:    "user",
+						Content: buildNoToolRetryMessage(payload.ConversationID),
+					},
+				)
+				a.emitAIChatEvent(map[string]interface{}{
+					"kind":      "api_message_append",
+					"requestId": requestID,
+					"message": map[string]interface{}{
+						"messageId": fmt.Sprintf("api-user-notool-%d", time.Now().UnixNano()),
+						"role":      "user",
+						"content":   buildNoToolRetryMessage(payload.ConversationID),
+						"ts":        time.Now().UnixMilli(),
+					},
+				})
+				nextAssistantMessageID := fmt.Sprintf("%s-cont-%d", requestID, time.Now().UnixNano())
+				a.emitAIChatEvent(map[string]interface{}{
+					"kind":      "assistant_continue",
+					"requestId": requestID,
+					"messageId": nextAssistantMessageID,
+				})
+				assistantMessageID = nextAssistantMessageID
+				continue
+			}
+			a.emitAIChatRuntimePhase(requestID, "ready")
+			a.emitAIChatEvent(map[string]interface{}{
+				"kind":      "error",
+				"requestId": requestID,
+				"error":     "AI 回复未包含必需工具，重试后仍未满足协议要求",
 			})
 			a.finishAIChatRequest(requestID)
 			return
 		}
+
+		consecutiveNoToolCount = 0
+		consecutiveNoAssistantCount = 0
 
 		visibleText := stripAssistantToolXML(roundResult.Text, payload.ConversationID)
 		a.emitAIChatEvent(map[string]interface{}{

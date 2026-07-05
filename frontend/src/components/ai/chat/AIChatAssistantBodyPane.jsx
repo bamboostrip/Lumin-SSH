@@ -1,5 +1,7 @@
 import AIChatMarkdown from './AIChatMarkdown.jsx'
 
+const streamingAnimatedTailLength = 12
+
 const streamingCursorKeyframes = `
 @keyframes ai-chat-stream-cursor-beam {
   0% {
@@ -107,18 +109,32 @@ const streamingCursorKeyframes = `
   }
 }
 
-@keyframes ai-chat-stream-text-breathe {
+@keyframes ai-chat-stream-char-enter {
   0% {
-    text-shadow: 0 0 0 rgba(28, 62, 92, 0);
-    filter: brightness(0.95);
+    opacity: 0;
+    transform: translateY(10px) scale(0.88);
   }
-  50% {
-    text-shadow: 0 0 8px rgba(30, 58, 84, 0.12), 0 0 18px rgba(10, 22, 38, 0.1);
-    filter: brightness(0.99);
+  58% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.04);
   }
   100% {
-    text-shadow: 0 0 0 rgba(28, 62, 92, 0);
-    filter: brightness(0.95);
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes ai-chat-stream-char-sheen {
+  0% {
+    opacity: 0;
+    background-position: 120% 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    background-position: -20% 0;
   }
 }
 `
@@ -204,6 +220,53 @@ function StreamingCursor() {
   )
 }
 
+function renderStreamingCharacter(char, index, isLatest) {
+  if (char === '\r') {
+    return null
+  }
+  if (char === '\n') {
+    return <br key={`br-${index}`} />
+  }
+  const displayChar = char === ' ' ? '\u00A0' : char === '\t' ? '\u00A0\u00A0\u00A0\u00A0' : char
+  const showSweep = isLatest && char !== ' ' && char !== '\t'
+  return (
+    <span
+      key={`${index}-${char}`}
+      style={{
+        position: 'relative',
+        display: 'inline-block',
+        verticalAlign: 'baseline',
+        animation: 'ai-chat-stream-char-enter 220ms cubic-bezier(0.22, 1, 0.36, 1)',
+        transformOrigin: '50% 100%',
+        willChange: 'transform, opacity',
+      }}
+    >
+      <span style={{ position: 'relative', zIndex: 1 }}>{displayChar}</span>
+      {showSweep ? (
+        <span
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 2,
+            pointerEvents: 'none',
+            backgroundImage: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(var(--accent-rgb), 0.18) 36%, rgba(255,255,255,0.92) 50%, rgba(var(--accent-rgb), 0.22) 64%, rgba(255,255,255,0) 100%)',
+            backgroundSize: '180% 100%',
+            backgroundPosition: '120% 0',
+            WebkitBackgroundClip: 'text',
+            backgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            color: 'transparent',
+            animation: 'ai-chat-stream-char-sheen 360ms ease-out both',
+          }}
+        >
+          {char}
+        </span>
+      ) : null}
+    </span>
+  )
+}
+
 export default function AIChatAssistantBodyPane({ text }) {
   const content = typeof text === 'string' ? text.trim() : ''
   const isStreaming = content.endsWith('▍')
@@ -214,6 +277,11 @@ export default function AIChatAssistantBodyPane({ text }) {
   }
 
   if (isStreaming) {
+    const streamingCharacters = Array.from(displayContent)
+    const animatedTailStart = Math.max(streamingCharacters.length - streamingAnimatedTailLength, 0)
+    const stablePrefix = streamingCharacters.slice(0, animatedTailStart).join('')
+    const animatedTail = streamingCharacters.slice(animatedTailStart)
+
     return (
       <div style={{ minWidth: 0, color: 'var(--text-primary)', fontSize: 13, lineHeight: 1.7 }}>
         <style>{streamingCursorKeyframes}</style>
@@ -223,10 +291,10 @@ export default function AIChatAssistantBodyPane({ text }) {
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
             minHeight: '1.6em',
-            animation: 'ai-chat-stream-text-breathe 2.4s ease-in-out infinite',
           }}
         >
-          <span>{displayContent}</span>
+          {stablePrefix}
+          {animatedTail.map((char, index) => renderStreamingCharacter(char, animatedTailStart + index, animatedTailStart + index === streamingCharacters.length - 1))}
           <StreamingCursor />
         </div>
       </div>

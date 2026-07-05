@@ -10,14 +10,6 @@ export function getModKey(e) {
 }
 
 /**
- * 获取修饰键显示文本
- * macOS 显示 ⌘，其他显示 Ctrl
- */
-export function getModLabel() {
-  return _isMac ? '⌘' : 'Ctrl';
-}
-
-/**
  * 标准化快捷键字符串显示（macOS 将 Ctrl 替换为 ⌘）
  * 如 "Ctrl+C" → "⌘C" (macOS)
  */

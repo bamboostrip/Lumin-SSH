@@ -144,9 +144,9 @@ export default function App() {
     return () => ro.disconnect();
   }, [sessions]);
   const [aiPanelWidth, setAiPanelWidth] = useState(() => {
-    return clampPanelWidth(localStorage.getItem('aiPanelWidth') || '320');
+    return clampPanelWidth(localStorage.getItem('aiPanelWidth') || '450', 450);
   });
-  const [showAIPanel, setShowAIPanel] = useState(localStorage.getItem('showAIPanel') === 'true');
+  const [showAIPanel, setShowAIPanel] = useState(localStorage.getItem('showAIPanel') !== 'false');
 
   const leftSplitWidthRef = useRef(leftSplitWidth);
   const bottomSplitHeightRef = useRef(bottomSplitHeight);
@@ -167,7 +167,7 @@ export default function App() {
     probePanelWidthRef.current = next;
   }, []);
   const updateAiPanelWidth = useCallback((w) => {
-    const next = clampPanelWidth(w);
+    const next = clampPanelWidth(w, 450);
     setAiPanelWidth(next);
     aiPanelWidthRef.current = next;
   }, []);
@@ -296,7 +296,7 @@ export default function App() {
         setShowAIPanel(e.detail);
         return;
       }
-      setShowAIPanel(localStorage.getItem('showAIPanel') === 'true');
+      setShowAIPanel(localStorage.getItem('showAIPanel') !== 'false');
     };
     window.addEventListener('ai-panel-visibility-changed', handler);
     return () => window.removeEventListener('ai-panel-visibility-changed', handler);

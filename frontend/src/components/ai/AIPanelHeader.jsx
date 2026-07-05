@@ -35,7 +35,7 @@ export default function AIPanelHeader({
   const contextTokenLabel = useMemo(() => formatAIContextTokens(contextTokens), [contextTokens])
 
   return (
-    <div style={{ height: 54, padding: '0 14px', display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 12, borderBottom: '1px solid var(--border)', background: 'var(--surface-raised)', flexShrink: 0 }}>
+    <div style={{ height: 54, padding: '0 14px', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto minmax(0,1fr)', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border)', background: 'var(--surface-raised)', flexShrink: 0 }}>
       <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: 0.2 }}>{t('AI 助手')}</div>
       {showContextTokens ? (
         <button
@@ -46,9 +46,14 @@ export default function AIPanelHeader({
           onClick={onCondenseContext}
           style={{
             justifySelf: 'center',
-            height: 30,
-            minWidth: 92,
-            padding: '0 12px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 'fit-content',
+            minWidth: 0,
+            maxWidth: '100%',
+            height: 28,
+            padding: '0 10px',
             borderRadius: 999,
             border: `1px solid ${isCondensingContext ? 'var(--accent-border)' : 'var(--border)'}`,
             background: isCondensingContext ? 'var(--accent-dim)' : 'transparent',
@@ -58,6 +63,8 @@ export default function AIPanelHeader({
             opacity: canCondenseContext || isCondensingContext ? 1 : 0.6,
             transition: 'var(--transition)',
             whiteSpace: 'nowrap',
+            lineHeight: 1,
+            fontVariantNumeric: 'tabular-nums',
           }}
         >
           {contextTokenLabel}

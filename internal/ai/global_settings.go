@@ -30,6 +30,8 @@ type AIGlobalSettings struct {
 	AlwaysAllowSubtasks               bool     `json:"alwaysAllowSubtasks"`
 	AlwaysAllowFollowupQuestions      bool     `json:"alwaysAllowFollowupQuestions"`
 	TerminalIsolation                 bool     `json:"terminalIsolation"`
+	ConfirmDelete                     bool     `json:"confirmDelete"`
+	MessageActionBarAtBottom          bool     `json:"messageActionBarAtBottom"`
 	ApprovalButtonOrder               string   `json:"approvalButtonOrder"`
 	CommandActionButtonOrder          string   `json:"commandActionButtonOrder"`
 }
@@ -37,6 +39,8 @@ type AIGlobalSettings struct {
 func defaultAIGlobalSettings() AIGlobalSettings {
 	return AIGlobalSettings{
 		TerminalIsolation:        true,
+		ConfirmDelete:            true,
+		MessageActionBarAtBottom: true,
 		ApprovalButtonOrder:      "reject-approve",
 		CommandActionButtonOrder: "terminate-continue",
 	}

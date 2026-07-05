@@ -79,6 +79,7 @@ export function normalizeAIConversationMessage(message) {
     toolName: typeof message?.toolName === 'string' ? message.toolName : '',
     args: typeof message?.args === 'string' ? message.args : '',
     response: typeof message?.response === 'string' ? message.response : '',
+    requestId: typeof message?.requestId === 'string' ? message.requestId : '',
     question: typeof message?.question === 'string' ? message.question : '',
     suggestions: Array.isArray(message?.suggestions) ? message.suggestions.filter((item) => typeof item === 'string') : [],
     extra: message?.extra && typeof message.extra === 'object' ? message.extra : {},

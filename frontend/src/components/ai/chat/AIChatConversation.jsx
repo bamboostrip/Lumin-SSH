@@ -6,114 +6,7 @@ import AIChatContextCondenseCard from './AIChatContextCondenseCard.jsx'
 import AIChatReasoningBlock from './AIChatReasoningBlock.jsx'
 import AIChatToolSessionPane from './AIChatToolSessionPane.jsx'
 import AIChatUserMessage from './AIChatUserMessage.jsx'
-
-function createAssistantTurn(message) {
-  return {
-    type: 'assistant-turn',
-    id: message.id,
-    turnId: typeof message.turnId === 'string' && message.turnId.trim() ? message.turnId.trim() : message.id,
-    assistant: message,
-    reasoning: [],
-    tools: [],
-  }
-}
-
-function getMessageTurnId(message) {
-  if (typeof message?.turnId === 'string' && message.turnId.trim()) {
-    return message.turnId.trim()
-  }
-  if (message?.kind === 'assistant' && typeof message?.id === 'string') {
-    return message.id
-  }
-  if (typeof message?.id === 'string') {
-    for (const marker of ['-tool-', '-command-', '-mcp-', '-followup-']) {
-      const index = message.id.indexOf(marker)
-      if (index > 0) {
-        return message.id.slice(0, index)
-      }
-    }
-    if (message.id.endsWith('-reasoning')) {
-      return message.id.slice(0, -'-reasoning'.length)
-    }
-  }
-  return ''
-}
-
-function attachMessageToTurn(turnEntry, message) {
-  if (!turnEntry || !message) {
-    return
-  }
-  if (message.kind === 'reasoning') {
-    turnEntry.reasoning.push(message)
-    return
-  }
-  turnEntry.tools.push(message)
-}
-
-function groupMessages(messages) {
-  const grouped = []
-  const turnMap = new Map()
-  const pendingChildren = new Map()
-
-  for (const message of messages) {
-    if (!message || typeof message !== 'object') {
-      continue
-    }
-
-    if (message.kind === 'user') {
-      grouped.push({ type: 'user', id: message.id, message })
-      continue
-    }
-
-    if (message.kind === 'condense_context') {
-      grouped.push({ type: 'context-condense', id: message.id, message })
-      continue
-    }
-
-    if (message.kind === 'assistant') {
-      const turnEntry = createAssistantTurn(message)
-      turnMap.set(turnEntry.turnId, turnEntry)
-      const queuedChildren = pendingChildren.get(turnEntry.turnId)
-      if (Array.isArray(queuedChildren) && queuedChildren.length > 0) {
-        queuedChildren.forEach((child) => attachMessageToTurn(turnEntry, child))
-        pendingChildren.delete(turnEntry.turnId)
-      }
-      grouped.push(turnEntry)
-      continue
-    }
-
-    if (message.kind === 'reasoning' || message.kind === 'tool' || message.kind === 'command' || message.kind === 'mcp' || message.kind === 'followup') {
-      const turnId = getMessageTurnId(message)
-      if (turnId && turnMap.has(turnId)) {
-        attachMessageToTurn(turnMap.get(turnId), message)
-        continue
-      }
-      if (turnId) {
-        const currentPending = pendingChildren.get(turnId) || []
-        pendingChildren.set(turnId, [...currentPending, message])
-        continue
-      }
-      if (message.kind === 'reasoning') {
-        grouped.push({ type: 'reasoning', id: message.id, message })
-      } else {
-        grouped.push({ type: 'tool-session', id: message.id, tools: [message] })
-      }
-    }
-  }
-
-  for (const [turnId, queuedChildren] of pendingChildren.entries()) {
-    const fallbackReasoning = queuedChildren.filter((item) => item.kind === 'reasoning')
-    const fallbackTools = queuedChildren.filter((item) => item.kind !== 'reasoning')
-    if (fallbackReasoning.length > 0) {
-      fallbackReasoning.forEach((item) => grouped.push({ type: 'reasoning', id: item.id, message: item }))
-    }
-    if (fallbackTools.length > 0) {
-      grouped.push({ type: 'tool-session', id: `orphan-${turnId}`, tools: fallbackTools })
-    }
-  }
-
-  return grouped
-}
+import { groupConversationMessages } from './aiChatMessageTopology.js'
 
 function renderGroupedEntry(entry, handlers, entryMeta = {}) {
   switch (entry.type) {
@@ -124,6 +17,7 @@ function renderGroupedEntry(entry, handlers, entryMeta = {}) {
           onRetry={handlers.onRetryUserMessage}
           onEdit={handlers.onEditUserMessage}
           onDelete={handlers.onDeleteMessage}
+          messageActionBarAtBottom={Boolean(handlers.messageActionBarAtBottom)}
         />
       )
     case 'assistant-turn':
@@ -136,6 +30,8 @@ function renderGroupedEntry(entry, handlers, entryMeta = {}) {
           hasSubsequentAssistantMessage={Boolean(entryMeta.hasSubsequentAssistantMessage)}
           onDelete={handlers.onDeleteMessage}
           onRetry={handlers.onRetryAssistantMessage}
+          onSendUserMessage={handlers.onSendUserMessage}
+          messageActionBarAtBottom={Boolean(handlers.messageActionBarAtBottom)}
         />
       )
     case 'reasoning':
@@ -143,7 +39,7 @@ function renderGroupedEntry(entry, handlers, entryMeta = {}) {
     case 'context-condense':
       return <AIChatContextCondenseCard message={entry.message} />
     case 'tool-session':
-      return <AIChatToolSessionPane items={entry.tools} />
+      return <AIChatToolSessionPane items={entry.tools} onSendUserMessage={handlers.onSendUserMessage} />
     default:
       return null
   }
@@ -183,32 +79,132 @@ function hasSubsequentAssistantTurn(entries, currentIndex) {
   return false
 }
 
-export default function AIChatConversation({ messages = [], onRetryUserMessage, onRetryAssistantMessage, onEditUserMessage, onDeleteMessage }) {
+export default function AIChatConversation({ messages = [], onSendUserMessage, onRetryUserMessage, onRetryAssistantMessage, onEditUserMessage, onDeleteMessage, messageActionBarAtBottom = false, scrollToBottomSignal = 0 }) {
+  const containerRef = useRef(null)
   const virtuosoRef = useRef(null)
   const followIntentRef = useRef(true)
+  const programmaticScrollRef = useRef(false)
+  const programmaticScrollResetRef = useRef(0)
+  const scrollAnimationFrameRef = useRef(0)
+  const hasHydratedRef = useRef(false)
+  const lastContainerHeightRef = useRef(0)
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
-  const groupedMessages = useMemo(() => groupMessages(Array.isArray(messages) ? messages : []), [messages])
+  const groupedMessages = useMemo(() => groupConversationMessages(messages), [messages])
   const lastAssistantTurnIndex = useMemo(() => getLastAssistantTurnIndex(groupedMessages), [groupedMessages])
+
+  const markProgrammaticScroll = useCallback(() => {
+    programmaticScrollRef.current = true
+    if (programmaticScrollResetRef.current) {
+      window.clearTimeout(programmaticScrollResetRef.current)
+    }
+    programmaticScrollResetRef.current = window.setTimeout(() => {
+      programmaticScrollRef.current = false
+      programmaticScrollResetRef.current = 0
+    }, 480)
+  }, [])
+
+  const scrollToBottom = useCallback((behavior = 'smooth') => {
+    if (groupedMessages.length === 0) {
+      return
+    }
+    markProgrammaticScroll()
+    if (typeof virtuosoRef.current?.scrollToIndex === 'function') {
+      virtuosoRef.current.scrollToIndex({
+        index: groupedMessages.length - 1,
+        align: 'end',
+        behavior,
+      })
+      return
+    }
+    virtuosoRef.current?.scrollTo?.({
+      top: Number.MAX_SAFE_INTEGER,
+      behavior,
+    })
+  }, [groupedMessages.length, markProgrammaticScroll])
+
+  const scheduleScrollToBottom = useCallback((behavior = 'smooth', force = false) => {
+    if (groupedMessages.length === 0) {
+      return
+    }
+    if (!force && !followIntentRef.current) {
+      return
+    }
+    if (scrollAnimationFrameRef.current) {
+      cancelAnimationFrame(scrollAnimationFrameRef.current)
+    }
+    scrollAnimationFrameRef.current = requestAnimationFrame(() => {
+      scrollAnimationFrameRef.current = 0
+      scrollToBottom(behavior)
+    })
+  }, [groupedMessages.length, scrollToBottom])
 
   useEffect(() => {
     if (groupedMessages.length === 0) {
       followIntentRef.current = true
+      programmaticScrollRef.current = false
+      hasHydratedRef.current = false
+      lastContainerHeightRef.current = 0
       setShowScrollToBottom(false)
+      return
     }
-  }, [groupedMessages.length])
+    if (!hasHydratedRef.current) {
+      hasHydratedRef.current = true
+      return
+    }
+    scheduleScrollToBottom('smooth')
+  }, [groupedMessages, scheduleScrollToBottom])
 
-  const scrollToBottomAuto = useCallback(() => {
-    virtuosoRef.current?.scrollTo({
-      top: Number.MAX_SAFE_INTEGER,
-      behavior: 'auto',
+  useEffect(() => {
+    if (!scrollToBottomSignal || groupedMessages.length === 0) {
+      return
+    }
+    followIntentRef.current = true
+    setShowScrollToBottom(false)
+    scheduleScrollToBottom('smooth', true)
+  }, [groupedMessages.length, scheduleScrollToBottom, scrollToBottomSignal])
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container || typeof ResizeObserver !== 'function') {
+      return undefined
+    }
+    const observer = new ResizeObserver((entries) => {
+      const nextHeight = entries[0]?.contentRect?.height || 0
+      if (!nextHeight) {
+        return
+      }
+      if (!lastContainerHeightRef.current) {
+        lastContainerHeightRef.current = nextHeight
+        return
+      }
+      if (Math.abs(nextHeight - lastContainerHeightRef.current) < 1) {
+        return
+      }
+      lastContainerHeightRef.current = nextHeight
+      scheduleScrollToBottom('smooth')
     })
+    observer.observe(container)
+    return () => {
+      observer.disconnect()
+    }
+  }, [scheduleScrollToBottom])
+
+  useEffect(() => {
+    return () => {
+      if (programmaticScrollResetRef.current) {
+        window.clearTimeout(programmaticScrollResetRef.current)
+      }
+      if (scrollAnimationFrameRef.current) {
+        cancelAnimationFrame(scrollAnimationFrameRef.current)
+      }
+    }
   }, [])
 
   const handleScrollToBottom = useCallback(() => {
     followIntentRef.current = true
     setShowScrollToBottom(false)
-    scrollToBottomAuto()
-  }, [scrollToBottomAuto])
+    scrollToBottom('smooth')
+  }, [scrollToBottom])
 
   if (groupedMessages.length === 0) {
     return (
@@ -221,7 +217,7 @@ export default function AIChatConversation({ messages = [], onRetryUserMessage, 
   }
 
   return (
-    <div style={{ flex: 1, minHeight: 0, height: '100%', background: 'transparent', position: 'relative' }}>
+    <div ref={containerRef} style={{ flex: 1, minHeight: 0, height: '100%', background: 'transparent', position: 'relative' }}>
       <Virtuoso
         ref={virtuosoRef}
         style={{ height: '100%' }}
@@ -229,19 +225,26 @@ export default function AIChatConversation({ messages = [], onRetryUserMessage, 
         increaseViewportBy={{ top: 1200, bottom: 800 }}
         initialTopMostItemIndex={Math.max(groupedMessages.length - 1, 0)}
         atBottomThreshold={24}
-        followOutput={(isAtBottom) => isAtBottom || followIntentRef.current}
+        followOutput={(isAtBottom) => (isAtBottom || followIntentRef.current ? 'smooth' : false)}
         atBottomStateChange={(isAtBottom) => {
-          followIntentRef.current = isAtBottom
-          setShowScrollToBottom(!isAtBottom)
+          if (isAtBottom) {
+            followIntentRef.current = true
+            programmaticScrollRef.current = false
+          } else if (!programmaticScrollRef.current) {
+            followIntentRef.current = false
+          }
+          setShowScrollToBottom(!isAtBottom && !programmaticScrollRef.current)
         }}
         computeItemKey={(index, entry) => getEntryKey(entry, index)}
         itemContent={(index, entry) => (
           <div style={{ padding: `0 14px ${index === groupedMessages.length - 1 ? 18 : 14}px` }}>
             {renderGroupedEntry(entry, {
+              onSendUserMessage,
               onRetryUserMessage,
               onRetryAssistantMessage,
               onEditUserMessage,
               onDeleteMessage,
+              messageActionBarAtBottom,
             }, {
               isLastAssistantTurn: index === lastAssistantTurnIndex,
               hasSubsequentAssistantMessage: hasSubsequentAssistantTurn(groupedMessages, index),

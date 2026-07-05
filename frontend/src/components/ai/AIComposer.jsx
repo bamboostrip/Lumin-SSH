@@ -245,10 +245,12 @@ export default function AIComposer({
   editModeLabel = '',
   slashCommands = [],
   onCancelEdit,
+  dismissSignal = 0,
 }) {
   const { t } = useTranslation()
   const [localInputValue, setLocalInputValue] = useState('')
   const [isDraggingOver, setIsDraggingOver] = useState(false)
+  const [isTextareaFocused, setIsTextareaFocused] = useState(false)
   const [mentionMenu, setMentionMenu] = useState(createMentionMenuState())
   const [slashCommandMenu, setSlashCommandMenu] = useState(defaultSlashCommandMenuState)
   const [currentCwd, setCurrentCwd] = useState('/')
@@ -501,6 +503,10 @@ export default function AIComposer({
     }
   }, [closeInlineMenus, isQueuedSubmissionBlocked])
 
+  useEffect(() => {
+    closeInlineMenus()
+  }, [closeInlineMenus, dismissSignal])
+
   useEffect(() => () => clearMentionDebounce(), [clearMentionDebounce])
 
   const loadSlashCommandSuggestions = useCallback((nextText, nextCursorPosition) => {
@@ -673,6 +679,16 @@ export default function AIComposer({
     focusTextAreaAt(mentionIndex + mentionValue.length + 1)
     closeInlineMenus()
   }, [closeInlineMenus, focusTextAreaAt, isQueuedSubmissionBlocked, readClipboardText, setValue, value])
+
+  const handleHintMouseDown = useCallback((event) => {
+    event.preventDefault()
+    if (isQueuedSubmissionBlocked) {
+      return
+    }
+    const textarea = textareaRef.current
+    const nextCursorPosition = textarea ? (textarea.selectionStart ?? value.length) : value.length
+    focusTextAreaAt(nextCursorPosition)
+  }, [focusTextAreaAt, isQueuedSubmissionBlocked, value])
 
   const handleRemoveImage = useCallback((targetIndex) => {
     setImages((prev) => prev.filter((_, index) => index !== targetIndex))
@@ -1220,7 +1236,9 @@ export default function AIComposer({
                 onSelect={updateCursorPosition}
                 onMouseUp={updateCursorPosition}
                 onClick={syncInlineMenusWithCursor}
+                onFocus={() => setIsTextareaFocused(true)}
                 onBlur={() => {
+                  setIsTextareaFocused(false)
                   setTimeout(() => {
                     if (document.activeElement !== textareaRef.current) {
                       closeInlineMenus()
@@ -1303,8 +1321,20 @@ export default function AIComposer({
                 ))}
               </div>
             ) : null}
-            {!value ? (
-              <div style={{ marginTop: 'auto', padding: '0 14px 10px', fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+            {!value && !isTextareaFocused ? (
+              <div
+                onMouseDown={handleHintMouseDown}
+                style={{
+                  marginTop: 'auto',
+                  width: '100%',
+                  padding: '0 14px 10px',
+                  fontSize: 11,
+                  color: 'var(--text-tertiary)',
+                  lineHeight: 1.5,
+                  textAlign: 'left',
+                  cursor: 'text',
+                  userSelect: 'none',
+                }}>
                 {`@ ${t('支持远端文件,远端文件夹,当前终端输出;右键图片按钮粘贴远端绝对路径;支持粘贴/拖拽本地图片')}`}
               </div>
             ) : null}
@@ -1348,11 +1378,13 @@ export default function AIComposer({
               currentProviderId={currentProviderId}
               onCurrentProviderChange={onCurrentProviderChange}
               persistSelectedProviderId={persistProviderSelection}
+              dismissSignal={dismissSignal}
             />
             <AIAutoApproveDropdown
               settings={autoApprovalSettings}
               onPatchSettings={onPatchAutoApprovalSettings}
               disabled={false}
+              dismissSignal={dismissSignal}
             />
           </div>
         </div>

@@ -6,7 +6,9 @@ import "github.com/energye/systray"
 
 // Keep the existing standalone systray event loop on Windows and Linux.
 func prepareSystray(app *App) func() {
-	return func() {}
+	return func() {
+		systray.Quit()
+	}
 }
 
 func startSystray(app *App) {

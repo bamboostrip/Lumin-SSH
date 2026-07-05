@@ -64,6 +64,7 @@ func main() {
 
 	// Create an instance of the app structure
 	app := NewApp()
+	app.onBeforeQuit = func() { systray.Quit() }
 
 	systrayEnd := prepareSystray(app)
 

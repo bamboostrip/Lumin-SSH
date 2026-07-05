@@ -7,7 +7,7 @@ import { APP_VERSION } from '../config.js';
 import { useUpdateChecker } from '../hooks/useUpdateChecker.js';
 import { Sun, Monitor, Moon, Keyboard, Cloud, Info, Database, Folder, X, RefreshCw, Globe, Palette, Lock, Bot, SlidersHorizontal } from 'lucide-react';
 import { Z } from '../constants/zIndex';
-import { WindowSetSize } from '../../wailsjs/runtime/runtime.js';
+import { WindowSetSize, WindowUnmaximise } from '../../wailsjs/runtime/runtime.js';
 import { hexToRgb } from '../utils/theme.js';
 import AppTab from './settings/AppTab';
 import GeneralTab from './settings/GeneralTab';
@@ -449,6 +449,7 @@ export default function SettingsModal({ onClose, addToast, onRestored }) {
 
   const handleResetWindowSize = () => {
     localStorage.removeItem('windowSize');
+    WindowUnmaximise();
     const w = Math.min(1440, Math.floor(screen.width * 0.9));
     const h = Math.min(900, Math.floor(screen.height * 0.9));
     WindowSetSize(w, h);

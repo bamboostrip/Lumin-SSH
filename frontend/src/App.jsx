@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useReducer } from 'react';
-import { EventsOn, WindowMinimise, WindowToggleMaximise, WindowHide, WindowShow, WindowSetSize, WindowGetSize } from '../wailsjs/runtime/runtime.js';
+import { EventsOn, WindowMinimise, WindowToggleMaximise, WindowHide, WindowShow, WindowSetSize, WindowGetSize, WindowIsMaximised, WindowMaximise } from '../wailsjs/runtime/runtime.js';
 import * as AppGo from '../wailsjs/go/main/App.js';
 import AddServerModal from './components/AddServerModal.jsx';
 import Terminal from './components/Terminal.jsx';
@@ -135,29 +135,38 @@ export default function App() {
     keysToRemove.forEach(key => localStorage.removeItem(key));
   }, []);
 
-  // ── 智能窗口状态管理：记住窗口大小 ──────────────────────
-  // 启动时恢复上次窗口大小
+  // ── 智能窗口状态管理：记住窗口大小与最大化 ──────────────
+  // 启动时恢复上次窗口状态
   useEffect(() => {
     if (localStorage.getItem('rememberWindowSize') === 'false') return;
     try {
       const saved = JSON.parse(localStorage.getItem('windowSize') || 'null');
       if (saved?.w > 100 && saved?.h > 100) {
-        requestAnimationFrame(() => WindowSetSize(saved.w, saved.h));
+        requestAnimationFrame(async () => {
+          await WindowSetSize(saved.w, saved.h);
+          if (saved.maximized) await WindowMaximise();
+        });
       }
     } catch {}
   }, []);
 
-  // 定时轮询保存窗口大小（Wails 无边框窗口 resize 事件不可靠）
+  // 定时轮询保存窗口大小与最大化状态
   useEffect(() => {
     if (localStorage.getItem('rememberWindowSize') === 'false') return;
-    let lastW = 0, lastH = 0;
+    let lastW = 0, lastH = 0, lastMaximized = false;
     const interval = setInterval(async () => {
       try {
-        const size = await WindowGetSize(); // { w, h }
-        if (size?.w > 100 && size?.h > 100 && (size.w !== lastW || size.h !== lastH)) {
+        const [size, maximized] = await Promise.all([WindowGetSize(), WindowIsMaximised()]);
+        if (maximized) {
+          if (!lastMaximized) {
+            lastMaximized = true;
+            localStorage.setItem('windowSize', JSON.stringify({ w: size.w, h: size.h, maximized: true }));
+          }
+        } else if (size?.w > 100 && size?.h > 100 && (size.w !== lastW || size.h !== lastH)) {
           lastW = size.w;
           lastH = size.h;
-          localStorage.setItem('windowSize', JSON.stringify({ w: size.w, h: size.h }));
+          lastMaximized = false;
+          localStorage.setItem('windowSize', JSON.stringify({ w: size.w, h: size.h, maximized: false }));
         }
       } catch {}
     }, 2000);

@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"strconv"
@@ -48,6 +49,72 @@ type ToolExecutionState struct {
 }
 
 type aiToolExecutionState = ToolExecutionState
+
+type aiFollowupXMLPayload struct {
+	Suggestions []aiFollowupXMLSuggestion `xml:"suggest"`
+}
+
+type aiFollowupXMLSuggestion struct {
+	Text string `xml:",chardata"`
+}
+
+func parseAIFollowupSuggestions(raw string) ([]string, error) {
+	payload := strings.TrimSpace(raw)
+	if payload == "" {
+		return nil, fmt.Errorf("follow_up 不能为空")
+	}
+	if !strings.HasPrefix(payload, "<follow_up") {
+		payload = "<follow_up>" + payload + "</follow_up>"
+	}
+	var parsed aiFollowupXMLPayload
+	if err := xml.Unmarshal([]byte(payload), &parsed); err != nil {
+		return nil, fmt.Errorf("follow_up XML 非法: %w", err)
+	}
+	suggestions := make([]string, 0, len(parsed.Suggestions))
+	for _, item := range parsed.Suggestions {
+		text := strings.TrimSpace(item.Text)
+		if text == "" {
+			continue
+		}
+		suggestions = append(suggestions, text)
+	}
+	if len(suggestions) < 2 || len(suggestions) > 4 {
+		return nil, fmt.Errorf("follow_up 必须包含 2 到 4 个建议")
+	}
+	return suggestions, nil
+}
+
+func decodeAIFollowupImages(raw string) []string {
+	payload := strings.TrimSpace(raw)
+	if payload == "" {
+		return []string{}
+	}
+	var images []string
+	if err := json.Unmarshal([]byte(payload), &images); err != nil {
+		return []string{}
+	}
+	return normalizeAIStringList(images)
+}
+
+func buildAIFollowupMessage(turnID string, requestID string, tool aiParsedToolUse, index int) (map[string]interface{}, error) {
+	question := strings.TrimSpace(tool.Params["question"])
+	if question == "" {
+		return nil, fmt.Errorf("ask_followup_question 缺少 question")
+	}
+	suggestions, err := parseAIFollowupSuggestions(tool.Params["follow_up"])
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{
+		"id":          buildToolMessageID(turnID, index),
+		"turnId":      turnID,
+		"kind":        "followup",
+		"requestId":   requestID,
+		"question":    question,
+		"suggestions": suggestions,
+		"status":      "等待回复",
+	}, nil
+}
 
 func (e *aiToolExecutionState) setSnapshotOutput(value string) {
 	if e == nil {
@@ -160,6 +227,23 @@ func buildToolPreviewMessage(turnID string, tool aiParsedToolUse, index int) map
 			"command": tool.Params["command"],
 			"output":  "等待批准后执行",
 			"status":  "待批准",
+		}
+	}
+	if tool.Name == "ask_followup_question" {
+		message, err := buildAIFollowupMessage(turnID, "", tool, index)
+		if err == nil {
+			return message
+		}
+	}
+	if tool.Name == "attempt_completion" {
+		return map[string]interface{}{
+			"id":      buildToolMessageID(turnID, index),
+			"turnId":  turnID,
+			"kind":    "completion",
+			"title":   titleForParsedToolUse(tool),
+			"summary": "",
+			"result":  strings.TrimSpace(tool.Params["result"]),
+			"status":  "待完成",
 		}
 	}
 	return map[string]interface{}{
@@ -470,8 +554,20 @@ func buildAIChatToolResultMessage(toolName string, resultText string) AIChatRequ
 	}
 }
 
+func shouldSuppressAIChatToolResultUserMessage(toolName string) bool {
+	switch strings.TrimSpace(toolName) {
+	case "ask_followup_question", "attempt_completion":
+		return true
+	default:
+		return false
+	}
+}
+
 func (a *App) emitAIChatToolResultMessage(requestID string, execution *aiToolExecutionState, resultText string) {
 	if a == nil || execution == nil || execution.Batch == nil {
+		return
+	}
+	if shouldSuppressAIChatToolResultUserMessage(execution.Tool.Name) {
 		return
 	}
 	execution.Batch.RequestMessages = append(execution.Batch.RequestMessages, buildAIChatToolResultMessage(execution.Tool.Name, resultText))
@@ -479,11 +575,11 @@ func (a *App) emitAIChatToolResultMessage(requestID string, execution *aiToolExe
 		"kind":      "api_message_append",
 		"requestId": requestID,
 		"message": map[string]interface{}{
-			"messageId":   fmt.Sprintf("api-tool-result-%d", time.Now().UnixNano()),
-			"role":        "user",
-			"content":     fmt.Sprintf("[%s] Result:\n%s", execution.Tool.Name, resultText),
+			"messageId":    fmt.Sprintf("api-tool-result-%d", time.Now().UnixNano()),
+			"role":         "user",
+			"content":      fmt.Sprintf("[%s] Result:\n%s", execution.Tool.Name, resultText),
 			"uiMessageIds": []string{execution.ToolMessageID},
-			"ts":          time.Now().UnixMilli(),
+			"ts":           time.Now().UnixMilli(),
 		},
 	})
 }
@@ -577,6 +673,14 @@ func (a *App) advanceAIChatToolBatch(requestID string, batch *aiPendingToolBatch
 
 	a.emitAIChatRuntimePhase(requestID, "tool_session")
 	tool := batch.ParsedTools[batch.NextToolIndex]
+	if tool.Name == "ask_followup_question" {
+		a.startAIChatFollowup(requestID, batch)
+		return
+	}
+	if tool.Name == "attempt_completion" {
+		a.startAIChatToolExecution(requestID, batch)
+		return
+	}
 	decision := getAIParsedToolUseDecision(batch.AutoApprovalSettings, tool)
 
 	if decision == aiApprovalDecisionAutoDeny {
@@ -643,6 +747,25 @@ func (a *App) advanceAIChatToolBatch(requestID string, batch *aiPendingToolBatch
 	a.startAIChatToolExecution(requestID, batch)
 }
 
+func (a *App) startAIChatFollowup(requestID string, batch *aiPendingToolBatch) {
+	if a == nil || batch == nil || batch.NextToolIndex >= len(batch.ParsedTools) {
+		return
+	}
+	tool := batch.ParsedTools[batch.NextToolIndex]
+	message, err := buildAIFollowupMessage(batch.AssistantMessageID, requestID, tool, batch.NextToolIndex)
+	if err != nil {
+		a.failAIChatToolPreview(requestID, batch, tool, err.Error())
+		return
+	}
+	a.emitAIChatRuntimePhase(requestID, "ready")
+	a.emitAIChatEvent(map[string]interface{}{
+		"kind":      "followup_required",
+		"requestId": requestID,
+		"message":   message,
+	})
+	a.finishAIChatRequest(requestID)
+}
+
 func (a *App) startAIChatToolExecution(requestID string, batch *aiPendingToolBatch) {
 	if a == nil || batch == nil || batch.NextToolIndex >= len(batch.ParsedTools) {
 		return
@@ -672,6 +795,10 @@ func (a *App) startAIChatToolExecution(requestID string, batch *aiPendingToolBat
 	}
 	a.emitAIChatToolExecutionStarted(requestID, execution, message)
 
+	if tool.Name == "attempt_completion" {
+		go a.runAIChatAttemptCompletionExecution(execution)
+		return
+	}
 	if tool.Name == "execute_command" {
 		go a.runAIChatCommandToolExecution(execution)
 		return
@@ -681,6 +808,51 @@ func (a *App) startAIChatToolExecution(requestID string, batch *aiPendingToolBat
 		return
 	}
 	go a.runAIChatGenericToolExecution(execution)
+}
+
+func (a *App) runAIChatAttemptCompletionExecution(execution *aiToolExecutionState) {
+	if a == nil || execution == nil || execution.Batch == nil {
+		return
+	}
+	if !a.isAIChatToolExecutionCurrent(execution.RequestID, execution.ExecutionID) {
+		return
+	}
+	a.popAIChatToolExecutionIfMatches(execution.RequestID, execution.ExecutionID)
+	if execution.Cancel != nil {
+		execution.Cancel()
+	}
+	resultText := sanitizeAIToolResultText(strings.TrimSpace(execution.Tool.Params["result"]))
+	statusText := "已完成"
+	toolResultText := "Done"
+	if resultText == "" {
+		resultText = "任务已完成"
+	}
+	if execution.isTerminated() {
+		statusText = "已终止"
+		resultText = "工具已终止"
+		toolResultText = "工具已终止"
+	}
+	a.emitAIChatEvent(map[string]interface{}{
+		"kind":      "upsert_message",
+		"requestId": execution.RequestID,
+		"message": map[string]interface{}{
+			"id":      execution.ToolMessageID,
+			"turnId":  execution.AssistantMessageID,
+			"kind":    "completion",
+			"title":   titleForParsedToolUse(execution.Tool),
+			"summary": "",
+			"result":  resultText,
+			"status":  statusText,
+		},
+	})
+	a.emitAIChatToolResultMessage(execution.RequestID, execution, toolResultText)
+	a.emitAIChatToolExecutionPersistRequested(execution.RequestID)
+	a.emitAIChatRuntimePhase(execution.RequestID, "ready")
+	a.emitAIChatEvent(map[string]interface{}{
+		"kind":      "automatic_request_skipped",
+		"requestId": execution.RequestID,
+	})
+	a.finishAIChatRequest(execution.RequestID)
 }
 
 func (a *App) runAIChatGenericToolExecution(execution *aiToolExecutionState) {
@@ -994,6 +1166,65 @@ func (a *App) runAIChatCommandToolExecution(execution *aiToolExecutionState) {
 
 	execution.Batch.NextToolIndex++
 	a.advanceAIChatToolBatch(execution.RequestID, execution.Batch)
+}
+
+func (a *App) ResolveAIChatFollowup(requestID string, answer string, imagesJSON string) error {
+	trimmedRequestID := strings.TrimSpace(requestID)
+	answerText := strings.TrimSpace(answer)
+	followupImages := decodeAIFollowupImages(imagesJSON)
+	if trimmedRequestID == "" {
+		return fmt.Errorf("request id is required")
+	}
+	if answerText == "" && len(followupImages) == 0 {
+		return fmt.Errorf("followup answer is required")
+	}
+	batch := a.popAIChatPendingFollowupBatch(trimmedRequestID)
+	if batch == nil {
+		return fmt.Errorf("没有待回复的追问")
+	}
+	if batch.NextToolIndex >= len(batch.ParsedTools) {
+		return fmt.Errorf("追问批次状态无效")
+	}
+	tool := batch.ParsedTools[batch.NextToolIndex]
+	if tool.Name != "ask_followup_question" {
+		return fmt.Errorf("当前待处理工具不是 ask_followup_question")
+	}
+	now := time.Now()
+	userMessageID := fmt.Sprintf("%s-followup-answer-%d", buildToolMessageID(batch.AssistantMessageID, batch.NextToolIndex), now.UnixNano())
+	followupContent := fmt.Sprintf("<user_message>\n%s\n</user_message>", answerText)
+	a.emitAIChatEvent(map[string]interface{}{
+		"kind":      "append_message",
+		"requestId": trimmedRequestID,
+		"message": map[string]interface{}{
+			"id":     userMessageID,
+			"kind":   "user",
+			"text":   answerText,
+			"time":   now.Format("15:04"),
+			"turnId": "",
+			"images": followupImages,
+		},
+	})
+	batch.RequestMessages = append(batch.RequestMessages, AIChatRequestMessage{
+		Role:    "user",
+		Content: followupContent,
+		Images:  followupImages,
+	})
+	a.emitAIChatEvent(map[string]interface{}{
+		"kind":      "api_message_append",
+		"requestId": trimmedRequestID,
+		"message": map[string]interface{}{
+			"messageId":    fmt.Sprintf("api-user-followup-%d", now.UnixNano()),
+			"role":         "user",
+			"content":      followupContent,
+			"uiMessageIds": []string{userMessageID},
+			"images":       followupImages,
+			"ts":           now.UnixMilli(),
+		},
+	})
+	a.emitAIChatToolExecutionPersistRequested(trimmedRequestID)
+	batch.NextToolIndex++
+	a.advanceAIChatToolBatch(trimmedRequestID, batch)
+	return nil
 }
 
 func (a *App) ContinueAIChatTool(requestID string) error {

@@ -3,6 +3,7 @@ import { EventsOn } from '../../wailsjs/runtime/runtime.js'
 import * as AppGo from '../../wailsjs/go/main/App.js'
 import { useTranslation, t as translate } from '../i18n.js'
 import AIPanelHeader from './ai/AIPanelHeader.jsx'
+import AIConversationBackupSettings from './ai/AIConversationBackupSettings.jsx'
 import AIPanelSettingsOverlay from './ai/AIPanelSettingsOverlay.jsx'
 import AIComposer from './ai/AIComposer.jsx'
 import { approveAIChatTools, cancelAIChat, continueAIChatTool, rejectAIChatTools, rejectAIChatToolsForQueuedSubmission, setAIChatSkipNextAutomaticRequest, startAIChat, terminateAIChatTool } from './ai/aiChatBridge.js'
@@ -12,6 +13,7 @@ import { getAIGlobalSettings, normalizeAIGlobalSettings, saveAIGlobalSettings } 
 import { processRemoteFileMentions } from './ai/aiMentions.js'
 import { expandFirstSlashCommandForPrompt } from './ai/aiSlashCommands.js'
 import AIChatConversation from './ai/chat/AIChatConversation.jsx'
+import { getConversationBranchAnchor } from './ai/chat/aiChatMessageTopology.js'
 
 function formatMessageTime() {
   return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
@@ -254,13 +256,18 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   const { t } = useTranslation()
   const [mcpInfo, setMcpInfo] = useState({ url: '', transport: 'streamable-http', endpoint: '/mcp', instructions: '', logs: '', tools: [] })
   const [showSettingsPanel, setShowSettingsPanel] = useState(false)
+  const [popupDismissVersion, setPopupDismissVersion] = useState(0)
   const [activeSettingsTab, setActiveSettingsTab] = useState('mcp')
   const [conversationList, setConversationList] = useState([])
   const [globalAISettings, setGlobalAISettings] = useState(null)
+  const [terminalOutputLineLimit, setTerminalOutputLineLimit] = useState(500)
+  const [terminalOutputCharacterLimit, setTerminalOutputCharacterLimit] = useState(35000)
   const [terminalPanels, setTerminalPanels] = useState({})
   const [composerInputValue, setComposerInputValue] = useState('')
   const [composerImages, setComposerImages] = useState([])
   const [composerEditState, setComposerEditState] = useState({ mode: 'new', targetMessageId: '', targetMessageText: '' })
+  const [conversationScrollSignal, setConversationScrollSignal] = useState(0)
+  const [hoveredConversationDeleteId, setHoveredConversationDeleteId] = useState('')
   const terminalPanelsRef = useRef({})
   const panelMountedRef = useRef(true)
   const panelInstanceKey = `${sessionId || 'session'}::${terminalId || 'terminal'}`
@@ -301,6 +308,16 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   const shouldPersistProviderSelection = !activeConversation
   const approvalButtonOrder = normalizedGlobalAISettings.approvalButtonOrder
   const commandActionButtonOrder = normalizedGlobalAISettings.commandActionButtonOrder
+  const messageActionBarAtBottom = Boolean(normalizedGlobalAISettings.messageActionBarAtBottom)
+  const requestConversationSmoothScrollToBottom = useCallback(() => {
+    setConversationScrollSignal((current) => current + 1)
+  }, [])
+
+  useEffect(() => {
+    if (!activeConversation && activeSettingsTab === 'backup') {
+      setActiveSettingsTab('ai')
+    }
+  }, [activeConversation, activeSettingsTab])
 
   const resetComposerEditState = useCallback(() => {
     setComposerEditState({ mode: 'new', targetMessageId: '', targetMessageText: '' })
@@ -341,30 +358,11 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       return conversation
     }
 
-    const targetMessage = messages[messageIndex]
-    const targetTurnId =
-      typeof targetMessage?.turnId === 'string' && targetMessage.turnId.trim()
-        ? targetMessage.turnId.trim()
-        : (targetMessage?.kind === 'assistant' && typeof targetMessage?.id === 'string' ? targetMessage.id : '')
-
-    let cutIndex = messageIndex
-    if (targetTurnId) {
-      const firstTurnIndex = messages.findIndex((message) => {
-        if (!message || typeof message !== 'object') {
-          return false
-        }
-        if (typeof message.turnId === 'string' && message.turnId.trim() === targetTurnId) {
-          return true
-        }
-        return message.kind === 'assistant' && message.id === targetTurnId
-      })
-      if (firstTurnIndex >= 0) {
-        cutIndex = firstTurnIndex
-      }
-    }
-
+    const { cutIndex, turnId: targetTurnId } = getConversationBranchAnchor(messages, messageId)
     const anchorMessage = messages[cutIndex]
     const nextMessages = messages.slice(0, cutIndex)
+    // Assistant-turn child messages truncate from their owning assistant turn.
+    // Plain user messages remain independent round boundaries.
     const apiAnchorUIMessageId = targetTurnId || anchorMessage?.id || messageId
     let apiCutIndex = findApiAnchorIndexByUiMessageId(conversation.apiMessages, apiAnchorUIMessageId)
 
@@ -487,6 +485,26 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         setConversationList([])
         setGlobalAISettings(null)
       })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    AppGo.GetMCPOutputCompressionSettings()
+      .then((settings) => {
+        if (cancelled || !settings) {
+          return
+        }
+        const nextLineLimit = Math.max(10, Math.min(5000, settings.terminalOutputLineLimit || 0))
+        const nextCharacterLimit = Math.max(1000, Math.min(500000, settings.terminalOutputCharacterLimit || 0))
+        setTerminalOutputLineLimit(nextLineLimit)
+        setTerminalOutputCharacterLimit(nextCharacterLimit)
+      })
+      .catch(() => {})
 
     return () => {
       cancelled = true
@@ -626,7 +644,9 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       if (payload.kind === 'append_message' && payload.message) {
         setPanelState(matchedPanelKey, (current) => ({
           ...current,
-          messages: insertMessageBeforeAssistant(current.messages, requestId, payload.message),
+          messages: payload.message.kind === 'user'
+            ? [...(Array.isArray(current.messages) ? current.messages : []), payload.message]
+            : insertMessageBeforeAssistant(current.messages, current.activeAssistantMessageId || requestId, payload.message),
         }))
         return
       }
@@ -634,7 +654,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       if (payload.kind === 'upsert_message' && payload.message) {
         setPanelState(matchedPanelKey, (current) => ({
           ...current,
-          messages: upsertMessageBeforeAssistant(current.messages, requestId, payload.message),
+          messages: upsertMessageBeforeAssistant(current.messages, current.activeAssistantMessageId || requestId, payload.message),
         }))
         return
       }
@@ -647,14 +667,49 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         return
       }
 
+      if (payload.kind === 'followup_required' && payload.message) {
+        let nextConversation = null
+        setPanelState(matchedPanelKey, (current) => {
+          const anchorAssistantMessageId = current.activeAssistantMessageId || requestId
+          const nextMessages = upsertMessageBeforeAssistant(current.messages, anchorAssistantMessageId, payload.message)
+          nextConversation = current.conversation
+            ? {
+                ...current.conversation,
+                updatedAt: Date.now(),
+                status: 'idle',
+                messages: nextMessages,
+                apiMessages: current.apiMessages,
+              }
+            : null
+          return {
+            ...current,
+            activeRequestId: '',
+            activeAssistantMessageId: '',
+            activeToolExecution: null,
+            requestPhase: 'idle',
+            toolApprovalMode: '',
+            runtimePhase: 'ready',
+            skipNextAutomaticRequest: false,
+            resumeAfterCancelRequestId: '',
+            conversation: nextConversation || current.conversation,
+            messages: nextMessages,
+          }
+        })
+        if (nextConversation) {
+          void saveConversationSnapshot(nextConversation, matchedPanelKey)
+        }
+        return
+      }
+
       if (payload.kind === 'tool_approval_required' && Array.isArray(payload.messages)) {
         let nextConversation = null
         setPanelState(matchedPanelKey, (current) => {
+          const anchorAssistantMessageId = current.activeAssistantMessageId || requestId
           let nextMessages = Array.isArray(current.messages) ? [...current.messages] : []
           const toolMessages = payload.messages.filter((message) => message && typeof message === 'object')
           nextMessages = nextMessages.filter((message) => !toolMessages.some((toolMessage) => toolMessage.id && toolMessage.id === message.id))
           toolMessages.forEach((toolMessage) => {
-            nextMessages = insertMessageBeforeAssistant(nextMessages, requestId, toolMessage)
+            nextMessages = insertMessageBeforeAssistant(nextMessages, anchorAssistantMessageId, toolMessage)
           })
           nextConversation = {
             ...conversation,
@@ -665,7 +720,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
           }
           return {
             ...current,
-            activeAssistantMessageId: requestId,
+            activeAssistantMessageId: anchorAssistantMessageId,
             activeToolExecution: null,
             toolApprovalMode: typeof payload.approvalMode === 'string' ? payload.approvalMode : '',
             requestPhase: 'awaiting_tool_approval',
@@ -690,32 +745,38 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       }
 
       if (payload.kind === 'tool_execution_started' && payload.message) {
-        setPanelState(matchedPanelKey, (current) => ({
-          ...current,
-          requestPhase: 'running_tool',
-          toolApprovalMode: '',
-          activeToolExecution: {
-            executionId: typeof payload.executionId === 'string' ? payload.executionId.trim() : '',
-            allowContinue: false,
-            allowTerminate: payload.allowTerminate !== false,
-          },
-          messages: upsertMessageBeforeAssistant(current.messages, requestId, payload.message),
-        }))
+        setPanelState(matchedPanelKey, (current) => {
+          const anchorAssistantMessageId = current.activeAssistantMessageId || requestId
+          return {
+            ...current,
+            requestPhase: 'running_tool',
+            toolApprovalMode: '',
+            activeToolExecution: {
+              executionId: typeof payload.executionId === 'string' ? payload.executionId.trim() : '',
+              allowContinue: false,
+              allowTerminate: payload.allowTerminate !== false,
+            },
+            messages: upsertMessageBeforeAssistant(current.messages, anchorAssistantMessageId, payload.message),
+          }
+        })
         return
       }
 
       if (payload.kind === 'tool_execution_action_required' && payload.message) {
-        setPanelState(matchedPanelKey, (current) => ({
-          ...current,
-          requestPhase: 'awaiting_command_action',
-          toolApprovalMode: '',
-          activeToolExecution: {
-            executionId: typeof payload.executionId === 'string' ? payload.executionId.trim() : '',
-            allowContinue: payload.allowContinue === true,
-            allowTerminate: payload.allowTerminate !== false,
-          },
-          messages: upsertMessageBeforeAssistant(current.messages, requestId, payload.message),
-        }))
+        setPanelState(matchedPanelKey, (current) => {
+          const anchorAssistantMessageId = current.activeAssistantMessageId || requestId
+          return {
+            ...current,
+            requestPhase: 'awaiting_command_action',
+            toolApprovalMode: '',
+            activeToolExecution: {
+              executionId: typeof payload.executionId === 'string' ? payload.executionId.trim() : '',
+              allowContinue: payload.allowContinue === true,
+              allowTerminate: payload.allowTerminate !== false,
+            },
+            messages: upsertMessageBeforeAssistant(current.messages, anchorAssistantMessageId, payload.message),
+          }
+        })
         return
       }
 
@@ -1099,6 +1160,8 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         detail: { sessionId: terminalId },
       }))
     }
+    setShowSettingsPanel(false)
+    setPopupDismissVersion((current) => current + 1)
     resetComposerEditState()
     const previousRequestId = terminalPanelsRef.current[panelInstanceKey]?.activeRequestId
     if (previousRequestId) {
@@ -1160,7 +1223,38 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     void refreshAIConversationContextTokens(snapshot, panelInstanceKey)
   }, [panelInstanceKey, refreshAIConversationContextTokens, resetComposerEditState, setPanelState])
 
+  const handleRestoreConversationBackup = useCallback(async (snapshot) => {
+    if (!snapshot?.id) {
+      return
+    }
+    resetComposerEditState()
+    setConversationList((prev) => upsertConversationSummary(prev, snapshot))
+    setPanelState(panelInstanceKey, {
+      activeConversationId: snapshot.id,
+      conversation: snapshot,
+      messages: snapshot.messages,
+      apiMessages: snapshot.apiMessages,
+      activeRequestId: '',
+      activeAssistantMessageId: '',
+      activeToolExecution: null,
+      toolApprovalMode: '',
+      requestPhase: 'idle',
+      runtimePhase: 'ready',
+      queuedSubmission: null,
+      isFlushingQueuedSubmission: false,
+      skipNextAutomaticRequest: false,
+      resumeAfterCancelRequestId: '',
+      contextTokens: 0,
+      isCondensingContext: false,
+    })
+    void refreshAIConversationContextTokens(snapshot, panelInstanceKey)
+  }, [panelInstanceKey, refreshAIConversationContextTokens, resetComposerEditState, setPanelState])
+
   const handleDeleteConversation = useCallback(async (conversationId) => {
+    const confirmed = await requestDeleteConfirmation(t('确定删除这条对话吗？此操作不可撤销。'))
+    if (!confirmed) {
+      return
+    }
     await deleteAIConversation(conversationId)
     setConversationList((prev) => prev.filter((item) => item.id !== conversationId))
     setTerminalPanels((prev) => {
@@ -1178,7 +1272,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         ? { mode: 'new', targetMessageId: '', targetMessageText: '' }
         : current
     ))
-  }, [panelState.activeConversationId])
+  }, [panelState.activeConversationId, requestDeleteConfirmation, t])
 
   const handleProviderChange = useCallback(async (providerId) => {
     if (activeConversation) {
@@ -1253,6 +1347,48 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     return nextSettings
   }, [normalizedGlobalAISettings])
 
+  const saveMCPOutputCompressionSettings = useCallback(async (lineLimit, characterLimit) => {
+    const nextLineLimit = Math.max(10, Math.min(5000, lineLimit || 0))
+    const nextCharacterLimit = Math.max(1000, Math.min(500000, characterLimit || 0))
+    setTerminalOutputLineLimit(nextLineLimit)
+    setTerminalOutputCharacterLimit(nextCharacterLimit)
+    await AppGo.SaveMCPOutputCompressionSettings(nextLineLimit, nextCharacterLimit)
+  }, [])
+
+  async function requestDeleteConfirmation(message) {
+    if (!normalizedGlobalAISettings.confirmDelete) {
+      return true
+    }
+    const confirm = window?.luminDialog?.confirm
+    if (typeof confirm !== 'function') {
+      return true
+    }
+    const result = await confirm(message, t('操作确认'))
+    return result === true || result?.confirmed === true
+  }
+
+  const handleToggleAiTerminalIsolation = useCallback(async () => {
+    await handleSaveAIPanelGlobalSettings({
+      terminalIsolation: !normalizedGlobalAISettings.terminalIsolation,
+    })
+  }, [handleSaveAIPanelGlobalSettings, normalizedGlobalAISettings.terminalIsolation])
+
+  const handleToggleConfirmDelete = useCallback(async () => {
+    await handleSaveAIPanelGlobalSettings({
+      confirmDelete: !normalizedGlobalAISettings.confirmDelete,
+    })
+  }, [handleSaveAIPanelGlobalSettings, normalizedGlobalAISettings.confirmDelete])
+
+  const handleTerminalOutputLineLimitChange = useCallback((event) => {
+    const value = parseInt(event.target.value, 10) || 0
+    saveMCPOutputCompressionSettings(value, terminalOutputCharacterLimit).catch(() => {})
+  }, [saveMCPOutputCompressionSettings, terminalOutputCharacterLimit])
+
+  const handleTerminalOutputCharacterLimitChange = useCallback((event) => {
+    const value = parseInt(event.target.value, 10) || 0
+    saveMCPOutputCompressionSettings(terminalOutputLineLimit, value).catch(() => {})
+  }, [saveMCPOutputCompressionSettings, terminalOutputLineLimit])
+
   const handleSendMessage = useCallback(async (text, sendOptionsOrEditState = null, explicitEditState = null, runtimeOptions = {}) => {
     let sendOptions = null
     let overrideEditState = explicitEditState
@@ -1268,13 +1404,13 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       return false
     }
 
-    if (!effectiveProviderId) {
-      return false
-    }
-
     const activeComposerState = overrideEditState || composerEditState
     const isEditingExistingMessage = activeComposerState?.mode === 'edit' && activeComposerState?.targetMessageId
     const isRetryingMessage = activeComposerState?.mode === 'retry' && activeComposerState?.targetMessageId
+
+    if (!effectiveProviderId) {
+      return false
+    }
 
     if (runtimeOptions?.forceImmediate !== true && isQueueBlocked) {
       const queuedSubmission = buildAIQueuedSubmission({
@@ -1381,6 +1517,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     }
 
     resetComposerEditState()
+    requestConversationSmoothScrollToBottom()
     setConversationList((prev) => upsertConversationSummary(prev, nextConversation))
     setPanelState(panelInstanceKey, {
       activeConversationId: targetConversation.id,
@@ -1446,7 +1583,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       await saveConversationSnapshot(erroredConversation, panelInstanceKey)
       return false
     }
-  }, [activeConversation, composerEditState, composerImages, effectiveAutoApprovalEnabled, effectiveProviderId, isQueueBlocked, normalizedGlobalAISettings.slashCommands, panelInstanceKey, panelState.activeRequestId, panelState.requestPhase, resetComposerEditState, saveConversationSnapshot, setPanelState, terminalId, truncateConversationAfterMessage])
+  }, [activeConversation, composerEditState, composerImages, effectiveAutoApprovalEnabled, effectiveProviderId, isQueueBlocked, normalizedGlobalAISettings.slashCommands, panelInstanceKey, panelState.activeRequestId, panelState.requestPhase, requestConversationSmoothScrollToBottom, resetComposerEditState, saveConversationSnapshot, setPanelState, terminalId, truncateConversationAfterMessage])
 
   const handleRetryUserMessage = useCallback(async (messageId, text, images = []) => {
     if (!activeConversation) {
@@ -1538,6 +1675,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     }
 
     resetComposerEditState()
+    requestConversationSmoothScrollToBottom()
     setConversationList((prev) => upsertConversationSummary(prev, nextConversation))
     setPanelState(panelInstanceKey, {
       activeConversationId: activeConversation.id,
@@ -1603,7 +1741,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       await saveConversationSnapshot(erroredConversation, panelInstanceKey)
       return false
     }
-  }, [activeConversation, effectiveAutoApprovalEnabled, isQueueBlocked, panelInstanceKey, panelState.activeRequestId, panelState.requestPhase, resetComposerEditState, saveConversationSnapshot, setPanelState, terminalId, truncateConversationAfterMessage])
+  }, [activeConversation, effectiveAutoApprovalEnabled, isQueueBlocked, panelInstanceKey, panelState.activeRequestId, panelState.requestPhase, requestConversationSmoothScrollToBottom, resetComposerEditState, saveConversationSnapshot, setPanelState, terminalId, truncateConversationAfterMessage])
 
   const handleEditUserMessage = useCallback((messageId, text, images = []) => {
     if (!activeConversation) {
@@ -1616,10 +1754,15 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     })
     setComposerInputValue(text || '')
     setComposerImages(normalizeMessageImages(images))
-  }, [activeConversation])
+    requestConversationSmoothScrollToBottom()
+  }, [activeConversation, requestConversationSmoothScrollToBottom])
 
   const handleDeleteMessage = useCallback(async (messageId) => {
     if (!activeConversation) {
+      return
+    }
+    const confirmed = await requestDeleteConfirmation(t('确定删除这条消息及其后续对话吗？此操作不可撤销。'))
+    if (!confirmed) {
       return
     }
     const nextConversation = truncateConversationAfterMessage(activeConversation, messageId)
@@ -1641,8 +1784,9 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     if (composerEditState.targetMessageId === messageId) {
       resetComposerEditState()
     }
+    requestConversationSmoothScrollToBottom()
     await saveConversationSnapshot(nextConversation, panelInstanceKey)
-  }, [activeConversation, composerEditState.targetMessageId, panelInstanceKey, resetComposerEditState, saveConversationSnapshot, setPanelState, truncateConversationAfterMessage])
+  }, [activeConversation, composerEditState.targetMessageId, panelInstanceKey, requestConversationSmoothScrollToBottom, requestDeleteConfirmation, resetComposerEditState, saveConversationSnapshot, setPanelState, t, truncateConversationAfterMessage])
 
   const handleCondenseContext = useCallback(async () => {
     const bridge = window?.go?.main?.AIBindings || window?.go?.main?.App
@@ -1707,6 +1851,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       apiMessages: requestApiMessages,
     }
 
+    requestConversationSmoothScrollToBottom()
     setConversationList((prev) => upsertConversationSummary(prev, nextConversation))
     setPanelState(targetPanelKey, {
       activeConversationId: conversationSnapshot.id,
@@ -1778,7 +1923,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       await saveConversationSnapshot(erroredConversation, targetPanelKey)
       return false
     }
-  }, [effectiveAutoApprovalEnabled, effectiveProviderId, panelInstanceKey, saveConversationSnapshot, setPanelState, terminalId])
+  }, [effectiveAutoApprovalEnabled, effectiveProviderId, panelInstanceKey, requestConversationSmoothScrollToBottom, saveConversationSnapshot, setPanelState, terminalId])
 
   const handleCancelMessage = useCallback(async () => {
     if (!panelState.activeRequestId) {
@@ -1942,56 +2087,66 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
 
     return (
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: 'var(--surface-base)' }}>
-        {conversationList.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => void handleOpenConversation(item.id)}
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '10px 16px',
-              border: 'none',
-              borderBottom: '1px solid var(--border)',
-              background: panelState.activeConversationId === item.id ? 'rgba(var(--accent-rgb), 0.08)' : 'transparent',
-              borderLeft: panelState.activeConversationId === item.id ? '2px solid var(--accent)' : '2px solid transparent',
-              transition: 'var(--transition)',
-              textAlign: 'left',
-            }}
-          >
-            <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: 4 }}>
-              <div style={{ fontSize: 15, fontWeight: panelState.activeConversationId === item.id ? 700 : 600, color: 'var(--text-primary)', lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                <div style={{ fontSize: 12, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{new Date(item.updatedAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{item.messageCount} {t('消息')}</div>
-              </div>
-            </div>
+        {conversationList.map((item) => {
+          const isDeleteHovered = hoveredConversationDeleteId === item.id
+          return (
             <button
+              key={item.id}
               type="button"
-              onClick={(event) => {
-                event.stopPropagation()
-                void handleDeleteConversation(item.id)
-              }}
+              onClick={() => void handleOpenConversation(item.id)}
               style={{
-                width: 28,
-                height: 28,
-                display: 'inline-flex',
+                width: '100%',
+                display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: 8,
-                color: 'var(--text-muted)',
-                background: 'transparent',
-                border: '1px solid transparent',
-                flexShrink: 0,
-                cursor: 'pointer',
+                gap: 10,
+                padding: '10px 16px',
+                border: 'none',
+                borderBottom: '1px solid var(--border)',
+                background: panelState.activeConversationId === item.id ? 'rgba(var(--accent-rgb), 0.08)' : 'transparent',
+                borderLeft: panelState.activeConversationId === item.id ? '2px solid var(--accent)' : '2px solid transparent',
+                transition: 'var(--transition)',
+                textAlign: 'left',
               }}
             >
-              ×
+              <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: 4 }}>
+                <div style={{ fontSize: 15, fontWeight: panelState.activeConversationId === item.id ? 700 : 600, color: 'var(--text-primary)', lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{new Date(item.updatedAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{item.messageCount} {t('消息')}</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setHoveredConversationDeleteId('')
+                  void handleDeleteConversation(item.id)
+                }}
+                onMouseEnter={() => setHoveredConversationDeleteId(item.id)}
+                onMouseLeave={() => setHoveredConversationDeleteId((current) => (current === item.id ? '' : current))}
+                onFocus={() => setHoveredConversationDeleteId(item.id)}
+                onBlur={() => setHoveredConversationDeleteId((current) => (current === item.id ? '' : current))}
+                style={{
+                  width: 28,
+                  height: 28,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 8,
+                  color: isDeleteHovered ? '#ff9b9b' : 'var(--text-muted)',
+                  background: isDeleteHovered ? 'rgba(255, 107, 107, 0.12)' : 'transparent',
+                  border: isDeleteHovered ? '1px solid rgba(255, 107, 107, 0.32)' : '1px solid transparent',
+                  boxShadow: isDeleteHovered ? '0 0 0 1px rgba(255, 107, 107, 0.05)' : 'none',
+                  flexShrink: 0,
+                  cursor: 'pointer',
+                  transition: 'background 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease',
+                }}
+              >
+                ×
+              </button>
             </button>
-          </button>
-        ))}
+          )
+        })}
       </div>
     )
   }, [conversationList, handleDeleteConversation, handleOpenConversation, panelState.activeConversationId, t])
@@ -2030,10 +2185,13 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
           {activeConversation ? (
             <AIChatConversation
               messages={panelState.messages}
+              onSendUserMessage={(text) => handleSendMessage(text, { images: [] })}
               onRetryUserMessage={handleRetryUserMessage}
               onRetryAssistantMessage={handleRetryAssistantMessage}
               onEditUserMessage={handleEditUserMessage}
               onDeleteMessage={handleDeleteMessage}
+              messageActionBarAtBottom={messageActionBarAtBottom}
+              scrollToBottomSignal={conversationScrollSignal}
             />
           ) : renderedConversationList}
         </div>
@@ -2069,6 +2227,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
           editModeLabel={composerEditState.mode === 'edit' ? t('编辑消息后将从该消息起重建后续对话') : ''}
           slashCommands={normalizedGlobalAISettings.slashCommands}
           onCancelEdit={resetComposerEditState}
+          dismissSignal={popupDismissVersion}
         />
       </div>
       <AIPanelSettingsOverlay
@@ -2081,6 +2240,18 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         configRows={configRows}
         globalAISettings={normalizedGlobalAISettings}
         onSaveGlobalAISettings={handleSaveAIPanelGlobalSettings}
+        aiTerminalIsolation={normalizedGlobalAISettings.terminalIsolation}
+        onToggleAiTerminalIsolation={handleToggleAiTerminalIsolation}
+        confirmDelete={normalizedGlobalAISettings.confirmDelete}
+        onToggleConfirmDelete={handleToggleConfirmDelete}
+        activeConversationId={activeConversation?.id || ''}
+        conversationUpdatedAt={activeConversation?.updatedAt || 0}
+        backupRequestInFlight={panelState.requestPhase !== 'idle' || runtimePhase !== 'ready'}
+        onRestoreConversationBackup={handleRestoreConversationBackup}
+        terminalOutputLineLimit={terminalOutputLineLimit}
+        onTerminalOutputLineLimitChange={handleTerminalOutputLineLimitChange}
+        terminalOutputCharacterLimit={terminalOutputCharacterLimit}
+        onTerminalOutputCharacterLimitChange={handleTerminalOutputCharacterLimitChange}
       />
     </div>
   )

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from '../../i18n.js'
 import MCPAccessView from './MCPAccessView.jsx'
 import AISlashCommandsSettings from './AISlashCommandsSettings.jsx'
+import AIConversationBackupSettings from './AIConversationBackupSettings.jsx'
 
 function PreviewPill({ label, primary = false }) {
   return (
@@ -32,42 +33,97 @@ function PositionSelectorCard({ title, description, items, onToggle, toggleLabel
   return (
     <div style={{ padding: 14, borderRadius: 12, background: 'var(--surface-base)', border: '1px solid var(--border)', display: 'grid', gap: 12 }}>
       <div style={{ display: 'grid', gap: 4 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{title}</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ minWidth: 0, flex: 1, fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{title}</div>
+          <button
+            type="button"
+            onClick={onToggle}
+            title={toggleLabel}
+            aria-label={toggleLabel}
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              background: 'transparent',
+              color: 'var(--text-secondary)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'var(--transition)',
+              flexShrink: 0,
+            }}
+          >
+            <ArrowRightLeft size={14} />
+          </button>
+        </div>
         <div style={{ fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.6 }}>{description}</div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'center' }}>
-        <div style={{ minHeight: 58, padding: 12, borderRadius: 12, background: 'var(--surface-overlay)', border: '1px solid var(--border)', display: 'grid', gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))`, gap: 10, alignItems: 'center' }}>
-          {items.map((item) => (
-            <PreviewPill key={item.key} label={item.label} primary={item.primary} />
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={onToggle}
-          title={toggleLabel}
-          aria-label={toggleLabel}
-          style={{
-            width: 42,
-            height: 42,
-            borderRadius: 10,
-            border: '1px solid var(--border)',
-            background: 'transparent',
-            color: 'var(--text-secondary)',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            transition: 'var(--transition)',
-            flexShrink: 0,
-          }}
-        >
-          <ArrowRightLeft size={16} />
-        </button>
+      <div style={{ minHeight: 58, padding: 12, borderRadius: 12, background: 'var(--surface-overlay)', border: '1px solid var(--border)', display: 'grid', gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))`, gap: 10, alignItems: 'center' }}>
+        {items.map((item) => (
+          <PreviewPill key={item.key} label={item.label} primary={item.primary} />
+        ))}
       </div>
     </div>
   )
 }
 
-export default function AIPanelSettingsOverlay({ show, onClose, activeTab, onChangeTab, mcpInfo, configText, configRows, globalAISettings, onSaveGlobalAISettings }) {
+function ToggleSwitchControl({ checked, onChange }) {
+  return (
+    <button
+      type="button"
+      onClick={onChange}
+      aria-pressed={checked}
+      style={{
+        width: 42,
+        height: 24,
+        borderRadius: 999,
+        border: '1px solid var(--border)',
+        background: checked ? 'var(--success)' : 'var(--surface-hover)',
+        padding: 2,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: checked ? 'flex-end' : 'flex-start',
+        transition: 'var(--transition)',
+        flexShrink: 0,
+      }}
+    >
+      <span
+        style={{
+          width: 18,
+          height: 18,
+          borderRadius: '50%',
+          background: '#fff',
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.3)',
+        }}
+      />
+    </button>
+  )
+}
+
+export default function AIPanelSettingsOverlay({
+  show,
+  onClose,
+  activeTab,
+  onChangeTab,
+  mcpInfo,
+  configText,
+  configRows,
+  globalAISettings,
+  onSaveGlobalAISettings,
+  aiTerminalIsolation,
+  onToggleAiTerminalIsolation,
+  confirmDelete,
+  onToggleConfirmDelete,
+  activeConversationId,
+  conversationUpdatedAt,
+  backupRequestInFlight,
+  onRestoreConversationBackup,
+  terminalOutputLineLimit,
+  onTerminalOutputLineLimitChange,
+  terminalOutputCharacterLimit,
+  onTerminalOutputCharacterLimitChange,
+}) {
   const { t } = useTranslation()
   const overlayRef = useRef(null)
   const [overlayBounds, setOverlayBounds] = useState(null)
@@ -128,6 +184,7 @@ export default function AIPanelSettingsOverlay({ show, onClose, activeTab, onCha
 
   const approvalButtonOrder = globalAISettings?.approvalButtonOrder || 'reject-approve'
   const commandActionButtonOrder = globalAISettings?.commandActionButtonOrder || 'terminate-continue'
+  const messageActionBarAtBottom = Boolean(globalAISettings?.messageActionBarAtBottom)
 
   return (
     <div
@@ -163,6 +220,30 @@ export default function AIPanelSettingsOverlay({ show, onClose, activeTab, onCha
         </div>
         <div style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
           <div style={{ width: 'fit-content', borderRight: '1px solid var(--border)', background: 'var(--surface-base)', padding: 0, display: 'flex', flexDirection: 'column', gap: 0, flex: '0 0 auto' }}>
+            <button
+              type="button"
+              onClick={() => onChangeTab('ai')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-start',
+                minHeight: 52,
+                padding: '0 10px',
+                textAlign: 'left',
+                fontSize: 13,
+                fontWeight: activeTab === 'ai' ? 600 : 500,
+                color: activeTab === 'ai' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                background: activeTab === 'ai' ? 'rgba(var(--accent-rgb), 0.10)' : 'transparent',
+                border: 'none',
+                borderLeft: `2px solid ${activeTab === 'ai' ? 'var(--accent)' : 'transparent'}`,
+                borderRadius: 0,
+                transition: 'var(--transition)',
+                whiteSpace: 'nowrap',
+                width: '100%',
+              }}
+            >
+              <span>{t('基本')}</span>
+            </button>
             <button
               type="button"
               onClick={() => onChangeTab('mcp')}
@@ -235,9 +316,97 @@ export default function AIPanelSettingsOverlay({ show, onClose, activeTab, onCha
             >
               <span>{t('外观')}</span>
             </button>
+            {activeConversationId ? (
+              <button
+                type="button"
+                onClick={() => onChangeTab('backup')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-start',
+                  minHeight: 52,
+                  padding: '0 10px',
+                  textAlign: 'left',
+                  fontSize: 13,
+                  fontWeight: activeTab === 'backup' ? 600 : 500,
+                  color: activeTab === 'backup' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  background: activeTab === 'backup' ? 'rgba(var(--accent-rgb), 0.10)' : 'transparent',
+                  border: 'none',
+                  borderLeft: `2px solid ${activeTab === 'backup' ? 'var(--accent)' : 'transparent'}`,
+                  borderRadius: 0,
+                  transition: 'var(--transition)',
+                  whiteSpace: 'nowrap',
+                  width: '100%',
+                }}
+              >
+                <span>{t('自动备份')}</span>
+              </button>
+            ) : null}
           </div>
           <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
             {activeTab === 'mcp' && <MCPAccessView mcpInfo={mcpInfo} configText={configText} configRows={configRows} title={t('接入方式')} titleSize={18} showTools={true} />}
+            {activeTab === 'ai' ? (
+              <>
+                <div style={{ display: 'grid', gap: 4 }}>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3 }}>{t('基本')}</div>
+                </div>
+                <div style={{ background: 'var(--surface-base)', padding: 16, borderRadius: 12, border: '1px solid var(--border)', display: 'grid', gap: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700 }}>{t('终端隔离')}</div>
+                      <div style={{ color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.6 }}>{t('为每个终端创建独立的 AI 面板与运行期会话。修改后将在下次启动应用时生效。')}</div>
+                    </div>
+                    <ToggleSwitchControl checked={aiTerminalIsolation} onChange={onToggleAiTerminalIsolation} />
+                  </div>
+                  <div style={{ borderTop: '1px solid var(--border)' }} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700 }}>{t('删除前需要二次确认')}</div>
+                      <div style={{ color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.6 }}>{t('删除 AI 对话或消息前先弹出确认提示')}</div>
+                    </div>
+                    <ToggleSwitchControl checked={confirmDelete} onChange={onToggleConfirmDelete} />
+                  </div>
+                  <div style={{ borderTop: '1px solid var(--border)' }} />
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700 }}>{t('终端输出行数上限')}</div>
+                        <div style={{ color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.6 }}>{t('控制 MCP 终端输出保留的最大行数')}</div>
+                      </div>
+                      <span style={{ fontSize: 13, minWidth: 56, textAlign: 'right', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{terminalOutputLineLimit}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="10"
+                      max="5000"
+                      step="10"
+                      value={terminalOutputLineLimit}
+                      onChange={onTerminalOutputLineLimitChange}
+                      style={{ width: '100%', cursor: 'pointer' }}
+                    />
+                  </div>
+                  <div style={{ borderTop: '1px solid var(--border)' }} />
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700 }}>{t('终端输出字符上限')}</div>
+                        <div style={{ color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.6 }}>{t('控制 MCP 终端输出保留的最大字符数')}</div>
+                      </div>
+                      <span style={{ fontSize: 13, minWidth: 72, textAlign: 'right', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{terminalOutputCharacterLimit}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="1000"
+                      max="500000"
+                      step="1000"
+                      value={terminalOutputCharacterLimit}
+                      onChange={onTerminalOutputCharacterLimitChange}
+                      style={{ width: '100%', cursor: 'pointer' }}
+                    />
+                  </div>
+                </div>
+              </>
+            ) : null}
             {activeTab === 'slash-commands' ? (
               <AISlashCommandsSettings
                 slashCommands={globalAISettings?.slashCommands}
@@ -284,7 +453,28 @@ export default function AIPanelSettingsOverlay({ show, onClose, activeTab, onCha
                   })}
                   toggleLabel={t('交换位置')}
                 />
+                <div style={{ background: 'var(--surface-base)', padding: 14, borderRadius: 12, border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700 }}>{t('消息操作条置底')}</div>
+                    <div style={{ color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.6 }}>{t('启用后,用户消息与Ai消息的操作条显示在每轮消息主体底部;关闭后显示在顶部.')}</div>
+                  </div>
+                  <ToggleSwitchControl
+                    checked={messageActionBarAtBottom}
+                    onChange={() => onSaveGlobalAISettings?.({
+                      messageActionBarAtBottom: !messageActionBarAtBottom,
+                    })}
+                  />
+                </div>
               </>
+            ) : null}
+            {activeTab === 'backup' && activeConversationId ? (
+              <AIConversationBackupSettings
+                active={activeTab === 'backup'}
+                conversationId={activeConversationId}
+                conversationUpdatedAt={conversationUpdatedAt}
+                requestInFlight={backupRequestInFlight}
+                onRestoreSnapshot={onRestoreConversationBackup}
+              />
             ) : null}
           </div>
         </div>

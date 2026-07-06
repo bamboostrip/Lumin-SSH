@@ -129,7 +129,7 @@ function CommandChip({ text, onRemove }) {
   )
 }
 
-export default function AIAutoApproveDropdown({ settings, onPatchSettings, disabled = false }) {
+export default function AIAutoApproveDropdown({ settings, onPatchSettings, disabled = false, dismissSignal = 0 }) {
   const { t } = useTranslation()
   const containerRef = useRef(null)
   const [open, setOpen] = useState(false)
@@ -170,6 +170,12 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
       window.removeEventListener('resize', handleResize)
     }
   }, [open])
+
+  useEffect(() => {
+    setOpen(false)
+    setExpandLeft(false)
+    setTriggerRect(null)
+  }, [dismissSignal])
 
   const patchSettings = async (patch) => {
     if (typeof onPatchSettings !== 'function') {

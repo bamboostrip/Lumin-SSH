@@ -45,6 +45,17 @@ export async function rejectAIChatToolsForQueuedSubmission(requestId) {
   await bridge.RejectAIChatToolsForQueuedSubmission(requestId)
 }
 
+export async function resolveAIChatFollowup(requestId, answer, images = []) {
+  const bridge = getAppBridge()
+  if (!bridge?.ResolveAIChatFollowup) {
+    throw new Error(t('追问回复能力未就绪'))
+  }
+  const normalizedImages = Array.isArray(images)
+    ? images.filter((item) => typeof item === 'string' && item.trim())
+    : []
+  await bridge.ResolveAIChatFollowup(requestId, answer, JSON.stringify(normalizedImages))
+}
+
 export async function setAIChatSkipNextAutomaticRequest(requestId, enabled) {
   const bridge = getAppBridge()
   if (!bridge?.SetAIChatSkipNextAutomaticRequest) {

@@ -112,9 +112,6 @@ export function getMentionContext(text, position) {
   }
 }
 
-export function shouldShowMentionMenu(text, position) {
-  return Boolean(getMentionContext(text, position))
-}
 
 function normalizeRemoteDirEntries(entries) {
   return Array.isArray(entries)

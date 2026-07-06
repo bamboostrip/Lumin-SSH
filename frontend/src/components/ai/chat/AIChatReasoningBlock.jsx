@@ -107,7 +107,7 @@ export default function AIChatReasoningBlock({ text, duration = '', isStreaming 
         }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           <Lightbulb size={14} color="var(--text-secondary)" />
-          <span style={{ color: 'var(--text-primary)', fontWeight: 700, fontSize: 12 }}>{t('思考中')}</span>
+          <span style={{ color: 'var(--text-primary)', fontWeight: 700, fontSize: 12 }}>{t('思考链')}</span>
           {displayDurationLabel ? <span style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{displayDurationLabel}</span> : null}
         </span>
         <ChevronUp

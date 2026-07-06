@@ -6,26 +6,26 @@ import (
 )
 
 type ToolDefinition struct {
-	Name string `json:"name"`
-	Description string `json:"description"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
 	InputSchema map[string]any `json:"inputSchema"`
 }
 
 type Catalog struct {
-	service *Service
-	fileProvider FileProvider
-	commandProvider CommandProvider
+	service            *Service
+	fileProvider       FileProvider
+	commandProvider    CommandProvider
 	remoteEditExecutor RemoteEditExecutor
-	callCtx context.Context
+	callCtx            context.Context
 }
 
 func NewCatalog(service *Service, fileProvider FileProvider, commandProvider CommandProvider, remoteEditExecutor RemoteEditExecutor) *Catalog {
 	return &Catalog{
-		service: service,
-		fileProvider: fileProvider,
-		commandProvider: commandProvider,
+		service:            service,
+		fileProvider:       fileProvider,
+		commandProvider:    commandProvider,
 		remoteEditExecutor: remoteEditExecutor,
-		callCtx: context.Background(),
+		callCtx:            context.Background(),
 	}
 }
 
@@ -36,6 +36,8 @@ func (c *Catalog) List() []ToolDefinition {
 		readFileToolDefinition(),
 		writeToFileToolDefinition(),
 		executeCommandToolDefinition(),
+		askFollowupQuestionToolDefinition(),
+		attemptCompletionToolDefinition(),
 		searchReplaceToolDefinition(),
 		applyDiffToolDefinition(),
 		editFileToolDefinition(),
@@ -64,6 +66,10 @@ func (c *Catalog) CallWithContext(ctx context.Context, name string, arguments ma
 		return clone.callWriteToFile(arguments)
 	case "execute_command":
 		return clone.callExecuteCommand(arguments)
+	case "ask_followup_question":
+		return clone.callAskFollowupQuestion(arguments)
+	case "attempt_completion":
+		return clone.callAttemptCompletion(arguments)
 	case "search_replace":
 		return clone.callSearchReplace(arguments)
 	case "apply_diff":

@@ -8,6 +8,8 @@ export default function AppearanceTab({
   terminalLocalEcho, onTerminalLocalEchoChange,
   terminalColorTheme, onTerminalColorThemeChange,
   themeMode, onThemeChange,
+  probePanelPosition, onProbePanelPositionChange,
+  fileManagerLayoutMode, onFileManagerLayoutModeChange,
   themeAccent, onColorChange,
   useCustomAccent, onToggleAccent,
   termBgImage, onTermBgUpload, onTermBgReset,
@@ -89,6 +91,26 @@ export default function AppearanceTab({
               <button className={`btn btn-sm ${themeMode === 'light' ? 'btn-secondary' : 'btn-ghost'}`} onClick={() => onThemeChange('light')} style={{ borderRadius: 'var(--radius-xl)', background: themeMode === 'light' ? 'var(--surface-sunken)' : 'transparent', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Sun size={14} />{$t('浅色')}</button>
               <button className={`btn btn-sm ${themeMode === 'system' ? 'btn-secondary' : 'btn-ghost'}`} onClick={() => onThemeChange('system')} style={{ borderRadius: 'var(--radius-xl)', background: themeMode === 'system' ? 'var(--surface-sunken)' : 'transparent', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Monitor size={14} />{$t('系统')}</button>
               <button className={`btn btn-sm ${themeMode === 'dark' ? 'btn-secondary' : 'btn-ghost'}`} onClick={() => onThemeChange('dark')} style={{ borderRadius: 'var(--radius-xl)', background: themeMode === 'dark' ? 'var(--surface-sunken)' : 'transparent', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Moon size={14} />{$t('深色')}</button>
+            </div>
+          </div>
+          <div className="divider" style={{ margin: '12px 0', borderTop: '1px solid var(--border)' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ color: 'var(--text-primary)', fontSize: 13 }}>{$t('监控面板位置')}</div>
+            </div>
+            <div style={{ display: 'flex', background: 'var(--surface-raised)', borderRadius: 'var(--radius-xl)', padding: 4, border: '1px solid var(--border)' }}>
+              <button className={`btn btn-sm ${probePanelPosition === 'left' ? 'btn-secondary' : 'btn-ghost'}`} onClick={() => onProbePanelPositionChange('left')} style={{ borderRadius: 'var(--radius-xl)', background: probePanelPosition === 'left' ? 'var(--surface-sunken)' : 'transparent' }}>{$t('左侧')}</button>
+              <button className={`btn btn-sm ${probePanelPosition === 'right' ? 'btn-secondary' : 'btn-ghost'}`} onClick={() => onProbePanelPositionChange('right')} style={{ borderRadius: 'var(--radius-xl)', background: probePanelPosition === 'right' ? 'var(--surface-sunken)' : 'transparent' }}>{$t('右侧')}</button>
+            </div>
+          </div>
+          <div className="divider" style={{ margin: '12px 0', borderTop: '1px solid var(--border)' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ color: 'var(--text-primary)', fontSize: 13 }}>{$t('文件管理器布局')}</div>
+            </div>
+            <div style={{ display: 'flex', background: 'var(--surface-raised)', borderRadius: 'var(--radius-xl)', padding: 4, border: '1px solid var(--border)' }}>
+              <button className={`btn btn-sm ${fileManagerLayoutMode === 'tab' ? 'btn-secondary' : 'btn-ghost'}`} onClick={() => onFileManagerLayoutModeChange('tab')} style={{ borderRadius: 'var(--radius-xl)', background: fileManagerLayoutMode === 'tab' ? 'var(--surface-sunken)' : 'transparent' }}>{$t('标签页')}</button>
+              <button className={`btn btn-sm ${fileManagerLayoutMode === 'split' ? 'btn-secondary' : 'btn-ghost'}`} onClick={() => onFileManagerLayoutModeChange('split')} style={{ borderRadius: 'var(--radius-xl)', background: fileManagerLayoutMode === 'split' ? 'var(--surface-sunken)' : 'transparent' }}>{$t('分栏布局')}</button>
             </div>
           </div>
         </div>

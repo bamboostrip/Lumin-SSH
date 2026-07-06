@@ -32,6 +32,46 @@ function getTerminalBufferSnapshotText(term) {
   return lines.join('\n').trim()
 }
 
+function splitTrailingIncompleteEscapeSequence(input) {
+  if (!input) {
+    return { complete: '', carry: '' }
+  }
+
+  const lastEscapeIndex = input.lastIndexOf('\x1b')
+  if (lastEscapeIndex === -1) {
+    return { complete: input, carry: '' }
+  }
+
+  const suffix = input.slice(lastEscapeIndex)
+  if (suffix.length === 1) {
+    return { complete: input.slice(0, lastEscapeIndex), carry: suffix }
+  }
+
+  if (suffix[1] === '[') {
+    for (let index = 2; index < suffix.length; index += 1) {
+      const code = suffix.charCodeAt(index)
+      if (code >= 0x40 && code <= 0x7E) {
+        return { complete: input, carry: '' }
+      }
+    }
+    return { complete: input.slice(0, lastEscapeIndex), carry: suffix }
+  }
+
+  if (suffix[1] === ']') {
+    for (let index = 2; index < suffix.length; index += 1) {
+      if (suffix[index] === '\x07') {
+        return { complete: input, carry: '' }
+      }
+      if (suffix[index] === '\x1b' && index + 1 < suffix.length && suffix[index + 1] === '\\') {
+        return { complete: input, carry: '' }
+      }
+    }
+    return { complete: input.slice(0, lastEscapeIndex), carry: suffix }
+  }
+
+  return { complete: input, carry: '' }
+}
+
 // 命令栏按钮样式辅助函数
 const btnStyle = (color) => ({
   border: 'none',
@@ -311,6 +351,8 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
     let ws = null;
     let cancelled = false;
     const pendingEchoes = [];
+    let predictiveDecoder = new TextDecoder();
+    let predictiveTextCarry = '';
 
     // 并行获取端口与鉴权 token，后端要求连接时通过 ?token=xxx 携带，防止本机恶意进程注入命令
     Promise.all([AppGo.GetWsPort(), AppGo.GetWsToken()]).then(([port, token]) => {
@@ -335,14 +377,28 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
           }
         }
 
-        // 如果没有正在预测的字符，直接使用原生 Uint8Array 交给 xterm.js 渲染（最快且无损，避免 TextDecoder 吃字符）
-        if (!localEchoRef.current || pendingEchoes.length === 0) {
+        const shouldFilterIncomingText = (localEchoRef.current && pendingEchoes.length > 0) || predictiveTextCarry.length > 0
+
+        if (!shouldFilterIncomingText) {
+          predictiveDecoder = new TextDecoder()
+          predictiveTextCarry = ''
           smartWrite(typeof ev.data === 'string' ? ev.data : new Uint8Array(ev.data));
           return;
         }
 
-        // --- 预测匹配阶段 ---
-        let text = typeof ev.data === 'string' ? ev.data : textDecoder.decode(ev.data);
+        let text = typeof ev.data === 'string' ? ev.data : predictiveDecoder.decode(new Uint8Array(ev.data), { stream: true });
+        if (predictiveTextCarry) {
+          text = predictiveTextCarry + text;
+          predictiveTextCarry = '';
+        }
+
+        const splitText = splitTrailingIncompleteEscapeSequence(text);
+        predictiveTextCarry = splitText.carry;
+        text = splitText.complete;
+        if (!text) {
+          return;
+        }
+
         let i = 0;
         const parts = [];
         

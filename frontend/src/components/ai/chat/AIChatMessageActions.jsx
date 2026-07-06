@@ -1,8 +1,9 @@
-import { RefreshCw, SquarePen, Trash2 } from 'lucide-react'
+import { Clipboard, RefreshCw, SquarePen, Trash2 } from 'lucide-react'
 import { t } from '../../../i18n.js'
 
 const actionMap = {
   retry: { icon: RefreshCw, title: '重试' },
+  copy: { icon: Clipboard, title: '复制' },
   edit: { icon: SquarePen, title: '编辑' },
   delete: { icon: Trash2, title: '删除' },
 }

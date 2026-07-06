@@ -125,7 +125,9 @@ function renderCommandWithRiskHighlights(command, matches) {
   return segments
 }
 
-export default function AIChatCommandCard({ purpose, command, output, status = '运行中' }) {
+const runningStatusKey = '运行中'
+
+export default function AIChatCommandCard({ purpose, command, output, status = runningStatusKey }) {
   const { t } = useTranslation()
   const [isExpanded, setIsExpanded] = useState(false)
   const expanded = isExpanded || ((status === '等待处理' || status === '后台继续' || status === '已终止') && Boolean(output))

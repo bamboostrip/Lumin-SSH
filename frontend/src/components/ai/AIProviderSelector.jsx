@@ -21,6 +21,7 @@ export default function AIProviderSelector({
   currentProviderId,
   onCurrentProviderChange,
   persistSelectedProviderId = true,
+  dismissSignal = 0,
 }) {
   const { t } = useTranslation()
   const containerRef = useRef(null)
@@ -196,11 +197,24 @@ export default function AIProviderSelector({
     }
   }, [editingState.open, open])
 
+  useEffect(() => {
+    setOpen(false)
+    setTriggerRect(null)
+    setDropdownMetrics(null)
+    setPanelBounds(null)
+    setEditingState({ open: false, mode: 'edit', provider: null })
+  }, [dismissSignal])
+
   const notifySelectionChange = useCallback(async (providerId) => {
     if (typeof onCurrentProviderChange === 'function') {
       await onCurrentProviderChange(providerId)
     }
   }, [onCurrentProviderChange])
+
+  const handleOpenEditor = (mode, provider = null) => {
+    setOpen(false)
+    setEditingState({ open: true, mode, provider })
+  }
 
   const handleSelectProvider = async (providerId) => {
     setOpen(false)
@@ -247,8 +261,8 @@ export default function AIProviderSelector({
     const nextProviders = sortProviders(normalizedState.providers)
 
     await persistRegistryState(nextProviders, normalizedState.currentProviderId)
+    setOpen(false)
     setEditingState({ open: false, mode: 'edit', provider: null })
-    setOpen(true)
     await notifySelectionChange(savedProvider.id)
   }
 
@@ -269,8 +283,8 @@ export default function AIProviderSelector({
     const nextProviders = sortProviders(normalizedState.providers)
 
     await persistRegistryState(nextProviders, normalizedState.currentProviderId)
+    setOpen(false)
     setEditingState({ open: false, mode: 'edit', provider: null })
-    setOpen(true)
 
     if (effectiveSelectedId === provider.id) {
       await notifySelectionChange(fallbackSelectedId)
@@ -296,7 +310,7 @@ export default function AIProviderSelector({
           item={item}
           active={item.id === effectiveSelectedId}
           onSelect={() => handleSelectProvider(item.id)}
-          onEdit={() => setEditingState({ open: true, mode: 'edit', provider: item })}
+          onEdit={() => handleOpenEditor('edit', item)}
           onTogglePin={() => handleTogglePin(item)}
         />
       ))}
@@ -354,7 +368,7 @@ export default function AIProviderSelector({
                   type="button"
                   title={t('添加供应商')}
                   aria-label={t('添加供应商')}
-                  onClick={() => setEditingState({ open: true, mode: 'create', provider: null })}
+                  onClick={() => handleOpenEditor('create', null)}
                   style={{
                     width: 28,
                     height: 28,

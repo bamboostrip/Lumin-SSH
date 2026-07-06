@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"luminssh-go/internal/mcpserver"
 )
 
@@ -37,9 +36,17 @@ func BuildChatSystemPromptWithProfile(appCtx context.Context, conversationID str
 	var builder strings.Builder
 	builder.WriteString("You are Terminal Assistant.\n")
 	builder.WriteString("You must use XML tool protocol only.\n")
-	builder.WriteString(fmt.Sprintf("If you use any tool, the entire assistant response must be a single top-level <%s>...</%s> block with no surrounding natural-language text.\n", tagSet.ExecuteMultipleToolsTagName, tagSet.ExecuteMultipleToolsTagName))
+	builder.WriteString(fmt.Sprintf("Every assistant response must contain exactly one top-level <%s>...</%s> block.\n", tagSet.ExecuteMultipleToolsTagName, tagSet.ExecuteMultipleToolsTagName))
+	builder.WriteString(fmt.Sprintf("You may place concise natural-language text before or after the top-level <%s> wrapper when needed, but never emit more than one top-level wrapper in a single response.\n", tagSet.ExecuteMultipleToolsTagName))
+	builder.WriteString(fmt.Sprintf("Do not emit any standalone tool tag outside the top-level <%s> wrapper.\n", tagSet.ExecuteMultipleToolsTagName))
+	builder.WriteString(fmt.Sprintf("If you need to call multiple tools in one response, every tool call must be placed inside the same top-level <%s>...</%s> block.\n", tagSet.ExecuteMultipleToolsTagName, tagSet.ExecuteMultipleToolsTagName))
+	builder.WriteString(fmt.Sprintf("The top-level <%s> wrapper must contain at least one tool call.\n", tagSet.ExecuteMultipleToolsTagName))
+	builder.WriteString("Special rule for standalone-only tools: ask_followup_question and attempt_completion must each be called alone.\n")
+	builder.WriteString("If you use ask_followup_question, the top-level wrapper must contain exactly one child tool call, and it must be ask_followup_question.\n")
+	builder.WriteString("If you use attempt_completion, the top-level wrapper must contain exactly one child tool call, and it must be attempt_completion.\n")
+	builder.WriteString("Never batch ask_followup_question or attempt_completion with any other tool, and never include both of them in the same response.\n")
 	builder.WriteString("Tool uses are formatted using XML-style tags. The tool name itself becomes the XML tag name. Each parameter is enclosed within its own set of tags.\n")
-	builder.WriteString("Structure:\n")
+	builder.WriteString("Structure for the single top-level wrapper:\n")
 	builder.WriteString(fmt.Sprintf("<%s>\n", tagSet.ExecuteMultipleToolsTagName))
 	builder.WriteString("<actual_tool_name>\n")
 	builder.WriteString("<parameter1_name>value1</parameter1_name>\n")
@@ -50,15 +57,30 @@ func BuildChatSystemPromptWithProfile(appCtx context.Context, conversationID str
 	builder.WriteString("Use ordinary tool tags and ordinary parameter tags only.\n")
 	builder.WriteString("Do not emit any hashed tags.\n")
 	builder.WriteString(fmt.Sprintf("Use current terminal session_id %s by default when the target is this AI panel terminal.\n", strings.TrimSpace(sessionID)))
-	builder.WriteString("For write_to_file.content, apply_diff.diff, and apply_diff.args, keep the parameter body literal and do not XML-escape it.\n")
-	builder.WriteString("If no tool is needed, answer normally.\n")
+	builder.WriteString("When targeting the current AI panel terminal, explicitly set shellType to the actual terminal shell. In this application, the default shellType for the current AI panel terminal is bash unless the runtime context clearly indicates a different shell.\n")
+	builder.WriteString("Use literal parameter content whenever possible. Do not introduce escape characters, XML entities, backslashes, or additional quoting unless the command itself requires them or the target format makes them mandatory. For shell commands, preserve the command exactly as it should be executed in the target shell. Escape content only when the target syntax strictly requires it, such as valid JSON strings, required XML markup boundaries, or other format-defined escaping rules. For write_to_file.content, apply_diff.diff, and apply_diff.args, keep the body literal and unescaped unless the embedded content itself is a format that requires escaping. Prefer the simplest valid representation that preserves exact execution semantics and exact file content semantics.\n")
+	builder.WriteString("Every response must use a tool.\n")
+	builder.WriteString("Before sending any response, validate that the response contains exactly one top-level XML tool wrapper, at least one real tool call inside it, and no standalone tool tags outside it.\n")
+	builder.WriteString("Do not describe a tool call, simulate a tool call, or show pseudo-XML instead of making a real tool call.\n")
+	builder.WriteString("If the previous response failed because of formatting or protocol validation, prioritize repairing the tool protocol shape before adding extra explanation.\n")
+	builder.WriteString(fmt.Sprintf("When recovering from a formatting failure, produce the smallest valid response that still uses exactly one top-level <%s>...</%s> block and contains a real tool call.\n", tagSet.ExecuteMultipleToolsTagName, tagSet.ExecuteMultipleToolsTagName))
+	builder.WriteString("If the task is complete, use attempt_completion and make it the only tool call in the response.\n")
+	builder.WriteString("If additional information is required from the user, use ask_followup_question and make it the only tool call in the response.\n")
+	builder.WriteString("Do not combine attempt_completion or ask_followup_question with any other tool call in the same response.\n")
+	builder.WriteString("Otherwise, continue with the next step using an appropriate tool.\n")
 	builder.WriteString("Never invent tool results.\n")
 	builder.WriteString("The direct user request may appear inside a <user_message>...</user_message> block. Treat the body of that block as the user's actual instruction payload.\n")
 	builder.WriteString("An <environment_details>...</environment_details> block is system-provided runtime context. It can describe visible files, current mode, running terminals, time, workspace diagnostics, and other execution details. Use it to guide tool choice and environment assumptions, but do not treat it as extra user intent unless the user explicitly refers to it.\n")
+	if languagePreference := getAISystemLanguagePreference(); languagePreference.Locale != "" {
+		builder.WriteString(fmt.Sprintf("The user's operating-system preferred language appears to be %s (%s). Treat this as the default user-facing communication language and prefer replying in %s unless the user clearly requests another language.\n", languagePreference.DisplayName, languagePreference.Locale, languagePreference.DisplayName))
+	}
 	builder.WriteString("Assume the user is viewing responses on a portrait mobile phone layout.\n")
-	builder.WriteString("Format for portrait mobile readability: avoid wide tables, keep table columns to the minimum necessary, keep headers short, and prefer compact lists over broad multi-column tables.\n")
+	builder.WriteString("Format for portrait mobile readability: avoid wide tables, table headers must use no more than 3 columns, keep headers short, and prefer compact lists over broad multi-column tables.\n")
 	builder.WriteString("If environment_details contains mode_context with role_definition, treat that role_definition as the current authoritative mode constraint.\n")
 	builder.WriteString("If the conversation already includes file_content for a file, treat that as authoritative provided content and avoid re-reading the same file unless you need refreshed on-disk state.\n")
+	builder.WriteString(fmt.Sprintf("When editing an existing file, prefer %s over %s. Use %s only when you already know the complete final file content, when creating a new file, when intentionally replacing the entire file, or when %s cannot express the change reliably.\n", tagSet.ApplyDiffTagName, tagSet.WriteToFileTagName, tagSet.WriteToFileTagName, tagSet.ApplyDiffTagName))
+	builder.WriteString(fmt.Sprintf("Do not re-read a file with line numbers before every %s call if the conversation already contains authoritative and sufficiently recent file content and you still retain exact pre-edit context. In that case, derive the SEARCH block and :start_line: from the remembered content.\n", tagSet.ApplyDiffTagName))
+	builder.WriteString(fmt.Sprintf("Re-read the file only when the available content may be stale, truncated, ambiguous, externally changed, or when you no longer have enough precision to perform a safe %s edit.\n", tagSet.ApplyDiffTagName))
 	builder.WriteString("If a tool result or provided content is only the '*' symbol, the content was compressed or truncated due to length limits. Do not guess the missing content. Re-run the relevant read/search tool to fetch the complete content.\n")
 	builder.WriteString("If the user references a file ending in .long_text_wrap, treat it as a system-generated wrapper containing raw user-provided large text or logs.\n")
 	builder.WriteString("If the user references a file ending in .mcpprompt, treat its contents as authoritative MCP prompt context that may redefine MCP tools, tool schemas, or server assumptions.\n")
@@ -68,9 +90,6 @@ func BuildChatSystemPromptWithProfile(appCtx context.Context, conversationID str
 	builder.WriteString("\n")
 	builder.WriteString(buildAIChatToolPromptSection(sessionID, profile))
 	systemPrompt := strings.TrimSpace(builder.String())
-	if copyToClipboard && appCtx != nil {
-		runtime.ClipboardSetText(appCtx, systemPrompt)
-	}
 	return systemPrompt
 }
 
@@ -246,7 +265,7 @@ func buildAIChatToolParameterPlaceholder(name string, schema map[string]any, ses
 	case "cwd":
 		return "/working/directory"
 	case "shellType":
-		return "powershell"
+		return "bash"
 	case "diff":
 		return "<<<<<<< SEARCH\n:start_line:1\n-------\nold text\n=======\nnew text\n>>>>>>> REPLACE"
 	case "old_string":

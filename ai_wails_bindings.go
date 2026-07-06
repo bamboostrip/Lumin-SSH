@@ -63,6 +63,10 @@ func (b *AIBindings) RejectAIChatToolsForQueuedSubmission(requestID string) erro
 	return b.runtime().RejectAIChatToolsForQueuedSubmission(requestID)
 }
 
+func (b *AIBindings) ResolveAIChatFollowup(requestID string, answer string, imagesJSON string) error {
+	return b.runtime().ResolveAIChatFollowup(requestID, answer, imagesJSON)
+}
+
 func (b *AIBindings) SetAIChatSkipNextAutomaticRequest(requestID string, enabled bool) {
 	b.runtime().SetAIChatSkipNextAutomaticRequest(requestID, enabled)
 }
@@ -93,6 +97,22 @@ func (b *AIBindings) SaveAIConversation(jsonStr string) (ai.AIConversationSnapsh
 
 func (b *AIBindings) DeleteAIConversation(conversationID string) error {
 	return b.runtime().DeleteAIConversation(conversationID)
+}
+
+func (b *AIBindings) ListAIConversationBackups(conversationID string) []ai.AIConversationBackup {
+	return b.runtime().ListAIConversationBackups(conversationID)
+}
+
+func (b *AIBindings) GetAIConversationBackupHistory(conversationID string, backupID string) []ai.AIConversationAPIMessage {
+	return b.runtime().GetAIConversationBackupHistory(conversationID, backupID)
+}
+
+func (b *AIBindings) RestoreAIConversationBackup(conversationID string, backupID string) (ai.AIConversationSnapshot, error) {
+	return b.runtime().RestoreAIConversationBackup(conversationID, backupID)
+}
+
+func (b *AIBindings) DeleteAIConversationBackup(conversationID string, backupID string) error {
+	return b.runtime().DeleteAIConversationBackup(conversationID, backupID)
 }
 
 func (b *AIBindings) CountAIConversationContextTokens(sessionID string, snapshotJSON string) (ai.AIConversationContextMetrics, error) {

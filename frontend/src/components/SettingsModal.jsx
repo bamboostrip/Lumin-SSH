@@ -5,7 +5,7 @@ import { getModKey } from '../utils/platform.js';
 import logoImg from '../assets/logo.png';
 import { APP_VERSION } from '../config.js';
 import { useUpdateChecker } from '../hooks/useUpdateChecker.js';
-import { Sun, Monitor, Moon, Keyboard, Cloud, Info, Database, Folder, X, RefreshCw, Globe, Palette, Lock, Bot, SlidersHorizontal } from 'lucide-react';
+import { Sun, Monitor, Moon, Keyboard, Cloud, Info, Database, Folder, X, RefreshCw, Globe, Palette, Lock, SlidersHorizontal } from 'lucide-react';
 import { Z } from '../constants/zIndex';
 import { WindowSetSize, WindowUnmaximise } from '../../wailsjs/runtime/runtime.js';
 import { hexToRgb } from '../utils/theme.js';
@@ -13,20 +13,17 @@ import AppTab from './settings/AppTab';
 import GeneralTab from './settings/GeneralTab';
 import NetworkTab from './settings/NetworkTab';
 import AppearanceTab from './settings/AppearanceTab';
-import AITab from './settings/AITab';
 import ShortcutsTab from './settings/ShortcutsTab';
 import SyncTab from './settings/SyncTab';
-import { getAIGlobalSettings, saveAIGlobalSettings } from './ai/aiGlobalSettingsBridge.js';
 
-const TAB_ICON = { general: SlidersHorizontal, network: Globe, appearance: Palette, ai: Bot, shortcuts: Keyboard, sync: Cloud, app: Info };
+const TAB_ICON = { general: SlidersHorizontal, network: Globe, appearance: Palette, shortcuts: Keyboard, sync: Cloud, app: Info };
 
-const TAB_LABELS = { general: '通用', network: '网络', appearance: '外观', ai: 'AI 集成', shortcuts: '快捷键', sync: '同步与云', app: '关于' };
+const TAB_LABELS = { general: '通用', network: '网络', appearance: '外观', shortcuts: '快捷键', sync: '同步与云', app: '关于' };
 
 const TABS = [
   { id: 'general' },
   { id: 'network' },
   { id: 'appearance' },
-  { id: 'ai' },
   { id: 'shortcuts' },
   { id: 'sync' },
   { id: 'app' },
@@ -178,7 +175,15 @@ const PROVIDER_LIST = [
   { id: 'sftp', label: 'SFTP' },
 ];
 
-export default function SettingsModal({ onClose, addToast, onRestored }) {
+export default function SettingsModal({
+  onClose,
+  addToast,
+  onRestored,
+  probePanelPosition,
+  onProbePanelPositionChange,
+  fileManagerLayoutMode,
+  onFileManagerLayoutModeChange,
+}) {
   const CURRENT_VERSION = APP_VERSION;
   const [updateInfo, setUpdateInfo] = useState(null);
 
@@ -272,11 +277,6 @@ export default function SettingsModal({ onClose, addToast, onRestored }) {
   const [terminalColorTheme, setTerminalColorTheme] = useState(localStorage.getItem('terminalColorTheme') || 'lumin');
   const [terminalLocalEcho, setTerminalLocalEcho] = useState(localStorage.getItem('terminalLocalEcho') === 'true');
   const [rememberWindowSize, setRememberWindowSize] = useState(localStorage.getItem('rememberWindowSize') !== 'false');
-  const [showAIPanel, setShowAIPanel] = useState(localStorage.getItem('showAIPanel') !== 'false');
-  const [terminalOutputLineLimit, setTerminalOutputLineLimit] = useState(500);
-  const [terminalOutputCharacterLimit, setTerminalOutputCharacterLimit] = useState(35000);
-  const [aiTerminalIsolation, setAiTerminalIsolation] = useState(true);
-
   // Shortcuts state
   const defaultShortcuts = {
     copy: 'Ctrl+C',
@@ -486,51 +486,6 @@ export default function SettingsModal({ onClose, addToast, onRestored }) {
     else localStorage.removeItem('updateUseProxy');
   };
 
-  const handleToggleShowAIPanel = () => {
-    const next = !showAIPanel;
-    setShowAIPanel(next);
-    localStorage.setItem('showAIPanel', String(next));
-    window.dispatchEvent(new CustomEvent('ai-panel-visibility-changed', { detail: next }));
-  };
-
-  const handleToggleAiTerminalIsolation = async () => {
-    const next = !aiTerminalIsolation;
-    setAiTerminalIsolation(next);
-    try {
-      const currentSettings = await getAIGlobalSettings();
-      await saveAIGlobalSettings({
-        ...currentSettings,
-        terminalIsolation: next,
-      });
-      addToast($t('终端隔离设置已保存，修改将在下次启动应用后生效'), 'success');
-    } catch (error) {
-      setAiTerminalIsolation(!next);
-      addToast(`${$t('保存失败')}: ${String(error)}`, 'error');
-    }
-  };
-
-  const clampTerminalOutputLineLimit = (value) => Math.max(10, Math.min(5000, value || 0));
-  const clampTerminalOutputCharacterLimit = (value) => Math.max(1000, Math.min(500000, value || 0));
-
-  const saveMCPOutputCompressionSettings = async (lineLimit, characterLimit) => {
-    const nextLineLimit = clampTerminalOutputLineLimit(lineLimit);
-    const nextCharacterLimit = clampTerminalOutputCharacterLimit(characterLimit);
-    setTerminalOutputLineLimit(nextLineLimit);
-    setTerminalOutputCharacterLimit(nextCharacterLimit);
-    await AppGo.SaveMCPOutputCompressionSettings(nextLineLimit, nextCharacterLimit);
-  };
-
-  const handleTerminalOutputLineLimitChange = (e) => {
-    const value = parseInt(e.target.value, 10) || 0;
-    saveMCPOutputCompressionSettings(value, terminalOutputCharacterLimit).catch(() => {});
-  };
-
-  const handleTerminalOutputCharacterLimitChange = (e) => {
-    const value = parseInt(e.target.value, 10) || 0;
-    saveMCPOutputCompressionSettings(terminalOutputLineLimit, value).catch(() => {});
-  };
-
-  
   useEffect(() => {
     let cancelled = false;
     let hasWebdav = false;
@@ -595,15 +550,6 @@ export default function SettingsModal({ onClose, addToast, onRestored }) {
         if (cancelled || !c || !c.host) return;
         setSftpForm(prev => ({ ...prev, host: c.host, port: c.port, username: c.username, password: c.password, authMethod: c.authMethod || 'password', privateKey: c.privateKey || '', remoteDir: c.remoteDir, maxBackups: c.maxBackups || '' }));
         setSftpConfigured(true);
-      }).catch(() => {}),
-      AppGo.GetMCPOutputCompressionSettings().then(c => {
-        if (cancelled || !c) return;
-        setTerminalOutputLineLimit(clampTerminalOutputLineLimit(c.terminalOutputLineLimit || 0));
-        setTerminalOutputCharacterLimit(clampTerminalOutputCharacterLimit(c.terminalOutputCharacterLimit || 0));
-      }).catch(() => {}),
-      getAIGlobalSettings().then(settings => {
-        if (cancelled) return;
-        setAiTerminalIsolation(settings.terminalIsolation !== false);
       }).catch(() => {}),
     ]);
 
@@ -844,6 +790,10 @@ export default function SettingsModal({ onClose, addToast, onRestored }) {
                 onTerminalColorThemeChange={(key) => { setTerminalColorTheme(key); localStorage.setItem('terminalColorTheme', key); window.dispatchEvent(new CustomEvent('terminal-theme-changed', { detail: key })); }}
                 themeMode={themeMode}
                 onThemeChange={handleThemeChange}
+                probePanelPosition={probePanelPosition}
+                onProbePanelPositionChange={onProbePanelPositionChange}
+                fileManagerLayoutMode={fileManagerLayoutMode}
+                onFileManagerLayoutModeChange={onFileManagerLayoutModeChange}
                 themeAccent={themeAccent}
                 onColorChange={handleColorChange}
                 useCustomAccent={useCustomAccent}
@@ -856,19 +806,6 @@ export default function SettingsModal({ onClose, addToast, onRestored }) {
                 rememberWindowSize={rememberWindowSize}
                 onToggleRememberWindowSize={handleToggleRememberWindowSize}
                 onResetWindowSize={handleResetWindowSize}
-              />
-            )}
-
-            {activeTab === 'ai' && (
-              <AITab
-                showAIPanel={showAIPanel}
-                onToggleShowAIPanel={handleToggleShowAIPanel}
-                aiTerminalIsolation={aiTerminalIsolation}
-                onToggleAiTerminalIsolation={handleToggleAiTerminalIsolation}
-                terminalOutputLineLimit={terminalOutputLineLimit}
-                onTerminalOutputLineLimitChange={handleTerminalOutputLineLimitChange}
-                terminalOutputCharacterLimit={terminalOutputCharacterLimit}
-                onTerminalOutputCharacterLimitChange={handleTerminalOutputCharacterLimitChange}
               />
             )}
 

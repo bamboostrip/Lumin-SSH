@@ -22,11 +22,21 @@ import { useUpdateChecker } from './hooks/useUpdateChecker.js';
 import ConnectingCard from './components/ConnectingCard.jsx';
 import UpdateModal from './components/UpdateModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
-import { Bot, Settings, House, Minus, Square, X, Plus, Monitor, RefreshCw, Terminal as TerminalIcon, Folder, ScrollText, ClipboardList, ChevronLeft, ChevronRight, ChevronDown, Search } from 'lucide-react';
+import { Bot, Settings, House, Minus, Square, X, Plus, Monitor, RefreshCw, Folder, ScrollText, Cpu, ChevronLeft, ChevronRight, ChevronDown, Search } from 'lucide-react';
 import { Z } from './constants/zIndex';
 
 import logoImg from './assets/logo.png';
 
+function Tiptop({ text, children }) {
+  return (
+    <div className="tiptop">
+      <div className="tiptop-trigger">
+        {children}
+      </div>
+      <div className="tiptop-bubble">{text}</div>
+    </div>
+  );
+}
 
 export default function App() {
   const { t } = useTranslation();
@@ -68,7 +78,18 @@ export default function App() {
   const [monitoringEnabled, setMonitoringEnabled] = useState({}); // { [sessionId]: boolean }
   const [serverListViewMode, setServerListViewMode] = useState(localStorage.getItem('serverListViewMode') || 'grid'); // 'grid' | 'table'
   const [hideSensitive, setHideSensitive] = useState(localStorage.getItem('hideSensitive') === 'true');
-  const [fileManagerPosition, setFileManagerPosition] = useState(localStorage.getItem('fileManagerPosition') || 'tab'); // 'tab' | 'right' | 'bottom'
+  const [fileManagerPosition, setFileManagerPosition] = useState(() => {
+    const saved = localStorage.getItem('fileManagerPosition') || 'tab';
+    return saved === 'tab' || saved === 'left' || saved === 'bottom' ? saved : 'tab';
+  }); // 'tab' | 'left' | 'bottom'
+  const [fileManagerSplitPosition, setFileManagerSplitPosition] = useState(() => {
+    const savedPosition = localStorage.getItem('fileManagerPosition');
+    const savedSplitPosition = localStorage.getItem('fileManagerSplitPosition');
+    if (savedPosition === 'left' || savedPosition === 'bottom') return savedPosition;
+    return savedSplitPosition === 'left' || savedSplitPosition === 'bottom' ? savedSplitPosition : 'bottom';
+  });
+  const [creatingTerminalSessionId, setCreatingTerminalSessionId] = useState(null);
+  const creatingTerminalRef = useRef(null);
   
   // ponytail: 9 处 setSessions(prev => prev.map(s => s.id === id ? { ...s, status } : s)) 提取为帮助函数
   const updateSessionStatus = useCallback((id, status) => {
@@ -144,9 +165,9 @@ export default function App() {
     return () => ro.disconnect();
   }, [sessions]);
   const [aiPanelWidth, setAiPanelWidth] = useState(() => {
-    return clampPanelWidth(localStorage.getItem('aiPanelWidth') || '320');
+    return clampPanelWidth(localStorage.getItem('aiPanelWidth') || '450', 450);
   });
-  const [showAIPanel, setShowAIPanel] = useState(localStorage.getItem('showAIPanel') === 'true');
+  const [showAIPanel, setShowAIPanel] = useState(localStorage.getItem('showAIPanel') !== 'false');
 
   const leftSplitWidthRef = useRef(leftSplitWidth);
   const bottomSplitHeightRef = useRef(bottomSplitHeight);
@@ -167,10 +188,38 @@ export default function App() {
     probePanelWidthRef.current = next;
   }, []);
   const updateAiPanelWidth = useCallback((w) => {
-    const next = clampPanelWidth(w);
+    const next = clampPanelWidth(w, 450);
     setAiPanelWidth(next);
     aiPanelWidthRef.current = next;
   }, []);
+
+  useEffect(() => {
+    if (fileManagerPosition === 'left' || fileManagerPosition === 'bottom') {
+      setFileManagerSplitPosition(prev => prev === fileManagerPosition ? prev : fileManagerPosition);
+      localStorage.setItem('fileManagerSplitPosition', fileManagerPosition);
+    }
+  }, [fileManagerPosition]);
+
+  const handleFileManagerLayoutModeChange = useCallback((mode) => {
+    if (mode === 'tab') {
+      setFileManagerPosition('tab');
+      localStorage.setItem('fileManagerPosition', 'tab');
+      return;
+    }
+
+    const nextSplitPosition = (fileManagerPosition === 'left' || fileManagerPosition === 'bottom')
+      ? fileManagerPosition
+      : (fileManagerSplitPosition === 'left' || fileManagerSplitPosition === 'bottom' ? fileManagerSplitPosition : 'bottom');
+
+    setFileManagerSplitPosition(nextSplitPosition);
+    setFileManagerPosition(nextSplitPosition);
+    localStorage.setItem('fileManagerSplitPosition', nextSplitPosition);
+    localStorage.setItem('fileManagerPosition', nextSplitPosition);
+
+    if (contentTab === 'files') {
+      setContentTab('terminal');
+    }
+  }, [contentTab, fileManagerPosition, fileManagerSplitPosition]);
 
   // ── 清理旧 localStorage 残留数据 ──────────────────────
   useEffect(() => {
@@ -296,7 +345,7 @@ export default function App() {
         setShowAIPanel(e.detail);
         return;
       }
-      setShowAIPanel(localStorage.getItem('showAIPanel') === 'true');
+      setShowAIPanel(localStorage.getItem('showAIPanel') !== 'false');
     };
     window.addEventListener('ai-panel-visibility-changed', handler);
     return () => window.removeEventListener('ai-panel-visibility-changed', handler);
@@ -1110,12 +1159,17 @@ export default function App() {
 
   // ── 在当前服务器上新建终端标签 ──────────────────────────────
   const openNewTerminal = useCallback(async (sessionId) => {
+    if (creatingTerminalRef.current) return;
+
     const session = sessionsRef.current.find(s => s.id === sessionId);
     if (!session || session.status !== 'connected') return;
-    
+
+    creatingTerminalRef.current = sessionId;
+    setCreatingTerminalSessionId(sessionId);
+
     // 使用当前会话中任意一个现有终端的 ID，确保即使第一个终端已关闭也能找到共享连接
     const baseTermId = session.terminals?.[0]?.id || sessionId;
-    
+
     // 计算下一个终端编号（找最大编号 + 1）
     let maxNum = 0;
     (session.terminals || []).forEach(term => {
@@ -1123,7 +1177,7 @@ export default function App() {
       if (match) maxNum = Math.max(maxNum, parseInt(match[1]));
     });
     const termLabel = `${t('终端')}${maxNum + 1}`;
-    
+
     try {
       const newTermId = await AppGo.OpenTerminal(baseTermId);
       setSessions((prev) =>
@@ -1136,6 +1190,9 @@ export default function App() {
       setContentTab('terminal');
     } catch (err) {
       addToast(`${t('新建终端失败')}: ${err}`, 'error', 5000);
+    } finally {
+      creatingTerminalRef.current = null;
+      if (mountedRef.current) setCreatingTerminalSessionId(null);
     }
   }, [addToast, t]);
 
@@ -1174,6 +1231,7 @@ export default function App() {
   }, [activeTerminalId]);
 
   const activeSession = useMemo(() => sessions.find((s) => s.id === activeSessionId), [sessions, activeSessionId]);
+  const isCreatingTerminal = creatingTerminalSessionId !== null;
 
   const probePanelNode = activeSession && activeSession.status === 'connected' ? (
     <ProbePanel
@@ -1556,111 +1614,68 @@ export default function App() {
           )}
           {/* 左侧主区域：标签、终端子标签、会话内容 */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100%', overflow: 'hidden' }}>
-            {/* Content Type Tabs */}
-            {activeSession && (
-              <div className="content-tab-bar">
-                <div style={{ display: 'flex', gap: 2 }}>
-                  <button
-                    className={`content-tab ${contentTab === 'terminal' ? 'active' : ''}`}
-                    onClick={() => setContentTab('terminal')}
-                  >
-                    <TerminalIcon size={14} /> {t('终端')}
-                  </button>
-                  {fileManagerPosition === 'tab' && (
-                    <button
-                      className={`content-tab ${contentTab === 'files' ? 'active' : ''}`}
-                      onClick={() => setContentTab('files')}
-                      disabled={activeSession.status !== 'connected'}
+            {/* ── 终端子标签栏（多终端支持） ──────────────────── */}
+            {activeSession && (contentTab === 'terminal' || contentTab === 'process' || contentTab === 'history' || (fileManagerPosition === 'tab' && contentTab === 'files')) && activeSession.status === 'connected' && activeSession.terminals && activeSession.terminals.length >= 1 && (
+              <div className="terminal-sub-tab-bar">
+                <div className="terminal-sub-tab-scroll">
+                  {activeSession.terminals.map((term) => (
+                    <div
+                      key={term.id}
+                      className={`terminal-sub-tab ${activeTerminalId === term.id ? 'active' : ''}`}
+                      onClick={() => { setActiveTerminalId(term.id); setContentTab('terminal'); lastTerminalRef.current[activeSession.id] = term.id; }}
+                      title={term.label}
                     >
-                      <Folder size={14} /> {t('文件管理')}
-                    </button>
+                      <Monitor size={11} />
+                      <span>{term.label}</span>
+                      {activeSession.terminals.length > 1 && (
+                        <span
+                          className="terminal-sub-tab-close"
+                          onClick={(e) => closeTerminal(activeSession.id, term.id, e)}
+                        ><X size={10} /></span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="terminal-sub-tab-actions">
+                  {fileManagerPosition === 'tab' && (
+                    <Tiptop text={t('文件管理')}>
+                      <div
+                        className={`terminal-sub-tab terminal-sub-tab-icon-only ${contentTab === 'files' ? 'active' : ''}`}
+                        onClick={() => setContentTab('files')}
+                      >
+                        <Folder size={11} />
+                      </div>
+                    </Tiptop>
                   )}
+                  <Tiptop text={t('进程管理')}>
+                    <div
+                      className={`terminal-sub-tab terminal-sub-tab-icon-only ${contentTab === 'process' ? 'active' : ''}`}
+                      onClick={() => setContentTab('process')}
+                    >
+                      <Cpu size={11} />
+                    </div>
+                  </Tiptop>
+                  <Tiptop text={t('历史指令')}>
+                    <div
+                      className={`terminal-sub-tab terminal-sub-tab-icon-only ${contentTab === 'history' ? 'active' : ''}`}
+                      onClick={() => setContentTab('history')}
+                    >
+                      <ScrollText size={11} />
+                    </div>
+                  </Tiptop>
+                  {/* ── 新建终端按钮 ── */}
                   <button
-                    className={`content-tab ${contentTab === 'history' ? 'active' : ''}`}
-                    onClick={() => setContentTab('history')}
-                    disabled={activeSession.status !== 'connected'}
+                    className={`btn btn-ghost btn-sm terminal-create-btn ${isCreatingTerminal ? 'is-creating' : ''}`}
+                    onClick={() => openNewTerminal(activeSession.id)}
+                    title={isCreatingTerminal ? t('正在创建终端') : t('新建终端')}
+                    style={{ marginLeft: 2, flexShrink: 0 }}
+                    disabled={isCreatingTerminal}
+                    aria-busy={isCreatingTerminal}
                   >
-                    <ScrollText size={14} /> {t('历史指令')}
-                  </button>
-                  <button
-                    className={`content-tab ${contentTab === 'process' ? 'active' : ''}`}
-                    onClick={() => setContentTab('process')}
-                    disabled={activeSession.status !== 'connected'}
-                  >
-                    <ClipboardList size={14} /> {t('进程管理')}
+                    {isCreatingTerminal ? <RefreshCw size={14} className="spin" /> : <Plus size={14} />}
+                    {t('新建终端')}
                   </button>
                 </div>
-                
-                {activeSession.status === 'connected' && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, alignSelf: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 12, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{t('文件管理器布局')}:</span>
-                      <select
-                        className="select-compact"
-                        style={{ padding: '2px 8px', fontSize: 12 }}
-                        value={fileManagerPosition}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setFileManagerPosition(val);
-                          localStorage.setItem('fileManagerPosition', val);
-                          if (val !== 'tab' && contentTab === 'files') {
-                            setContentTab('terminal');
-                          }
-                        }}
-                      >
-                        <option value="tab">{t('标签页')}</option>
-                        <option value="left">{t('左侧分屏')}</option>
-                        <option value="bottom">{t('底部分屏')}</option>
-                      </select>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 12, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{t('监控面板位置')}:</span>
-                      <select
-                        className="select-compact"
-                        style={{ padding: '2px 8px', fontSize: 12 }}
-                        value={probePanelPosition}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setProbePanelPosition(val);
-                          localStorage.setItem('probePanelPosition', val);
-                        }}
-                      >
-                        <option value="left">{t('左侧')}</option>
-                        <option value="right">{t('右侧')}</option>
-                      </select>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ── 终端子标签栏（多终端支持） ──────────────────── */}
-            {activeSession && contentTab === 'terminal' && activeSession.status === 'connected' && activeSession.terminals && activeSession.terminals.length >= 1 && (
-              <div className="terminal-sub-tab-bar">
-                {activeSession.terminals.map((term) => (
-                  <div
-                    key={term.id}
-                    className={`terminal-sub-tab ${activeTerminalId === term.id ? 'active' : ''}`}
-                    onClick={() => { setActiveTerminalId(term.id); setContentTab('terminal'); lastTerminalRef.current[activeSession.id] = term.id; }}
-                    title={term.label}
-                  >
-                    <Monitor size={11} />
-                    <span>{term.label}</span>
-                    {activeSession.terminals.length > 1 && (
-                      <span
-                        className="terminal-sub-tab-close"
-                        onClick={(e) => closeTerminal(activeSession.id, term.id, e)}
-                      ><X size={10} /></span>
-                    )}
-                  </div>
-                ))}
-                {/* ── 新建终端按钮 ── */}
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => openNewTerminal(activeSession.id)}
-                  title={t('新建终端')}
-                  style={{ marginLeft: 2 }}
-                ><Plus size={14} /> {t('新建终端')}</button>
               </div>
             )}
 
@@ -1899,6 +1914,13 @@ export default function App() {
           onClose={() => { setShowSettings(false); loadServers(); }}
           addToast={addToast}
           onRestored={loadServers}
+          probePanelPosition={probePanelPosition}
+          onProbePanelPositionChange={(val) => {
+            setProbePanelPosition(val);
+            localStorage.setItem('probePanelPosition', val);
+          }}
+          fileManagerLayoutMode={fileManagerPosition === 'tab' ? 'tab' : 'split'}
+          onFileManagerLayoutModeChange={handleFileManagerLayoutModeChange}
         />
       )}
 

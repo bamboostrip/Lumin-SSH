@@ -1009,7 +1009,7 @@ export default function AIComposer({
           ) : null}
         </div>
       ) : null}
-      <div style={{ width: '100%', border: 'none', borderRadius: 0, background: 'var(--surface-raised)', boxShadow: 'none' }}>
+      <div data-ai-composer-root="true" style={{ width: '100%', border: 'none', borderRadius: 0, background: 'var(--surface-raised)', boxShadow: 'none' }}>
         <input
           ref={fileInputRef}
           type="file"

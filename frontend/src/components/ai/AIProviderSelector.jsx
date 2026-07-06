@@ -270,6 +270,10 @@ export default function AIProviderSelector({
     if (!provider) {
       return
     }
+    const confirmed = await window.luminDialog?.confirm(`${t('确定删除供应商')}「${provider.name || provider.provider || provider.id}」？${t('此操作不可撤销')}`)
+    if (!confirmed) {
+      return
+    }
 
     const nextBaseProviders = providerList.filter((item) => item.id !== provider.id)
     const fallbackSelectedId = nextBaseProviders[0]?.id || ''

@@ -136,16 +136,16 @@ export default function AIPanelSettingsOverlay({
     const updateOverlayBounds = () => {
       const root = overlayRef.current?.closest('[data-ai-panel-root="true"]')
       const chatStage = root?.querySelector('[data-ai-chat-stage="true"]')
-      const composerInputZone = root?.querySelector('[data-ai-composer-input-zone="true"]')
+      const composer = root?.querySelector('[data-ai-composer-root="true"]')
 
-      if (!root || (!chatStage && !composerInputZone)) {
+      if (!root || (!chatStage && !composer)) {
         setOverlayBounds(null)
         return
       }
 
       const rootRect = root.getBoundingClientRect()
       const chatRect = chatStage?.getBoundingClientRect()
-      const composerRect = composerInputZone?.getBoundingClientRect()
+      const composerRect = composer?.getBoundingClientRect()
 
       const top = Math.min(chatRect?.top ?? rootRect.top, composerRect?.top ?? rootRect.top)
       const left = Math.min(chatRect?.left ?? rootRect.left, composerRect?.left ?? rootRect.left)

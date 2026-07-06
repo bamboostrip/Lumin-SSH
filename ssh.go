@@ -589,7 +589,7 @@ func (m *SSHManager) pipeOutput(sessionId string, r io.Reader, historyStream *co
 			}
 		}
 		if err != nil {
-			m.closeSessionOutputTaps(sessionId)
+			m.Disconnect(sessionId)
 			return
 		}
 	}

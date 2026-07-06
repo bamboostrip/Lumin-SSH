@@ -13,8 +13,8 @@ const fmem = (mb) => {
 
 const sortFns = {
   pid: (a, b) => Number(a.pid) - Number(b.pid),
-  cpu: (a, b) => (b.cpu || 0) - (a.cpu || 0),
-  mem: (a, b) => (b.mem || 0) - (a.mem || 0),
+  cpu: (a, b) => (a.cpu || 0) - (b.cpu || 0),
+  mem: (a, b) => (a.mem || 0) - (b.mem || 0),
   user: (a, b) => (a.user || '').localeCompare(b.user || ''),
   name: (a, b) => (a.name || '').localeCompare(b.name || ''),
 };
@@ -78,6 +78,8 @@ export default function ProcessPage({ sessionId, addToast, active }) {
   // 上限约 300 行无虚拟化也无压力，超出靠此切片；O(n) 滚动计算在 60fps 内可接受
   const ROW_H = 33;
   const OVERSCAN = 5;
+  const TABLE_MIN_WIDTH = 760;
+  const tableColumns = `32px ${colWidths.pid}px ${colWidths.cpu}px ${colWidths.mem}px ${colWidths.user}px minmax(${colWidths.name}px, 1fr) minmax(180px, 28%)`;
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: 50 });
 
   useEffect(() => {
@@ -283,7 +285,7 @@ export default function ProcessPage({ sessionId, addToast, active }) {
   }, [sortKey, sortAsc, searchQuery]);
 
   return (
-    <div style={{ padding: '24px 32px', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--surface-raised)' }}>
+    <div style={{ padding: '24px 32px', height: '100%', width: '100%', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--surface-raised)', minWidth: 0 }}>
       {/* 标题行 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexShrink: 0 }}>
         <h3 style={{ margin: 0, fontSize: 16, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -353,11 +355,11 @@ export default function ProcessPage({ sessionId, addToast, active }) {
             </p>
           </div>
         ) : (
-          <div style={{ border: '1px solid var(--border)', borderRadius: 8 }}>
+          <div style={{ border: '1px solid var(--border)', borderRadius: 8, minWidth: TABLE_MIN_WIDTH }}>
             {/* 表头 */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: `32px ${colWidths.pid}px ${colWidths.cpu}px ${colWidths.mem}px ${colWidths.user}px ${colWidths.name}px 1fr`,
+              gridTemplateColumns: tableColumns,
               gap: 0,
               background: 'var(--surface-sunken)',
               borderBottom: '1px solid var(--border)',
@@ -405,7 +407,7 @@ export default function ProcessPage({ sessionId, addToast, active }) {
               {filtered.slice(visibleRange.start, visibleRange.end).map((p) => (
                 <div key={p.pid} style={{
                   display: 'grid',
-                  gridTemplateColumns: `32px ${colWidths.pid}px ${colWidths.cpu}px ${colWidths.mem}px ${colWidths.user}px ${colWidths.name}px 1fr`,
+                  gridTemplateColumns: tableColumns,
                   gap: 0,
                   borderBottom: '1px solid var(--border-light)',
                   fontSize: 12.5,

@@ -1658,7 +1658,7 @@ export default function App() {
                   <Tiptop text={t('进程管理')}>
                     <div
                       className={`terminal-sub-tab terminal-sub-tab-icon-only ${contentTab === 'process' ? 'active' : ''}`}
-                      onClick={() => setContentTab('process')}
+                      onClick={() => setContentTab(contentTab === 'process' ? 'terminal' : 'process')}
                     >
                       <Cpu size={11} />
                     </div>
@@ -1666,7 +1666,7 @@ export default function App() {
                   <Tiptop text={t('历史指令')}>
                     <div
                       className={`terminal-sub-tab terminal-sub-tab-icon-only ${contentTab === 'history' ? 'active' : ''}`}
-                      onClick={() => setContentTab('history')}
+                      onClick={() => setContentTab(contentTab === 'history' ? 'terminal' : 'history')}
                     >
                       <ScrollText size={11} />
                     </div>
@@ -1768,7 +1768,7 @@ export default function App() {
                         </div>
                       )}
                       {s.status === 'connected' && mountedSessions.has(s.id) && (
-                        <div style={{ display: contentTab === 'process' ? 'block' : 'none', height: '100%', flex: 1 }}>
+                        <div style={{ display: contentTab === 'process' ? 'flex' : 'none', height: '100%', flex: 1, minWidth: 0, minHeight: 0 }}>
                           <ProcessPage
                             sessionId={s.id}
                             addToast={addToast}

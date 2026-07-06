@@ -105,10 +105,23 @@ jobs:
           name: "Lumin SSH Client ${{ github.ref_name }}"
           body: |
             ## 功能增强
-            - AI 对话面板：完整的 AI 聊天界面，支持多轮对话、流式输出、MCP 命令执行、上下文管理
+            - 网络监控详情页：新增连接、流量等监控明细查看
+            - MCP 服务开关与浏览器调用控制：可按需启用 MCP 能力并控制外部浏览器调用
+            - 终端工具栏重构：布局设置集中管理，交互更紧凑
+            - AI 面板增强：优化对话、工具调用与面板交互体验
+            - 服务器标签溢出时显示列表下拉与搜索
+            - 连接进度卡片支持多个并发连接
+            - 统一极简紧凑界面风格
 
             ## Bug 修复
-            - 窗口最大化状态持久化：重启后恢复最大化窗口；托盘退出时正确清理后台进程
+            - 终端工具与 AI 面板交互异常
+            - 进程页布局与工具按钮交互问题
+            - 交互提示命令误进入命令历史
+            - SSH 与更新器稳定性问题
+            - 服务器时区检测不准确
+            - 内存泄漏、监控面板收起与 IP 隐藏持久化问题
+            - 自动同步合并后前端列表不刷新
+            - 代码审查发现的问题
 
             ## 产物下载
             - Linux 便携版 ([Lumin-V${{ steps.version.outputs.version }}-linux-amd64](https://github.com/wmwlwmwl/Lumin-SSH/releases/download/v${{ steps.version.outputs.version }}/Lumin-V${{ steps.version.outputs.version }}-linux-amd64))：即下即用

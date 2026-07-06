@@ -981,8 +981,8 @@ export default function AIComposer({
             alignItems: 'center',
             gap: 8,
             padding: '10px 12px',
-            borderBottom: '1px solid var(--accent-border)',
-            background: 'rgba(var(--accent-rgb), 0.05)',
+            borderBottom: '1px solid var(--border)',
+            background: 'var(--surface-overlay)',
           }}>
           {approvalRequired ? approvalButtons.map((button) => (
             <ApprovalButton
@@ -1009,7 +1009,7 @@ export default function AIComposer({
           ) : null}
         </div>
       ) : null}
-      <div style={{ width: '100%', border: 'none', borderRadius: 0, background: 'rgba(var(--accent-rgb), 0.04)', boxShadow: 'none' }}>
+      <div style={{ width: '100%', border: 'none', borderRadius: 0, background: 'var(--surface-raised)', boxShadow: 'none' }}>
         <input
           ref={fileInputRef}
           type="file"
@@ -1160,7 +1160,7 @@ export default function AIComposer({
                 alignItems: 'center',
                 justifyContent: 'center',
                 border: 'none',
-                background: 'linear-gradient(180deg, rgba(var(--accent-rgb), 0.04), rgba(var(--accent-rgb), 0.14))',
+                background: 'rgba(0, 0, 0, 0.18)',
                 padding: '0 24px',
                 textAlign: 'center',
                 color: 'var(--text-primary)',
@@ -1172,8 +1172,8 @@ export default function AIComposer({
                 gap: 8,
                 maxWidth: 360,
                 borderRadius: 999,
-                border: '1px solid var(--accent-border)',
-                background: 'linear-gradient(180deg, var(--surface-overlay), var(--surface-base))',
+                border: '1px solid var(--border)',
+                background: 'var(--surface-overlay)',
                 padding: '8px 12px',
                 fontSize: 12,
                 lineHeight: 1,
@@ -1283,7 +1283,7 @@ export default function AIComposer({
                       height: 72,
                       borderRadius: 10,
                       overflow: 'hidden',
-                      border: '1px solid var(--accent-border)',
+                      border: '1px solid var(--border)',
                       background: 'var(--surface-base)',
                     }}>
                     <img
@@ -1339,7 +1339,7 @@ export default function AIComposer({
               </div>
             ) : null}
           </div>
-          <div style={{ width: 50, borderLeft: '1px solid var(--accent-border)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px 8px', flexShrink: 0 }}>
+          <div style={{ width: 50, borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px 8px', flexShrink: 0 }}>
             <ActionButton
               title={t('添加图片')}
               disabled={isQueuedSubmissionBlocked}
@@ -1372,7 +1372,7 @@ export default function AIComposer({
             </ActionButton>
           </div>
         </div>
-        <div style={{ height: 40, borderTop: '1px solid var(--accent-border)', display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px 0 12px', position: 'relative', zIndex: 20, overflow: 'visible' }}>
+        <div style={{ height: 40, borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px 0 12px', position: 'relative', zIndex: 20, overflow: 'visible' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, overflow: 'visible' }}>
             <AIProviderSelector
               currentProviderId={currentProviderId}

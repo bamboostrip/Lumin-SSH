@@ -103,7 +103,7 @@ export default function AIChatToolCard({ actionLabel, title, summary, code, resu
           style={{
             padding: '10px 12px',
             borderBottom: expanded ? '1px solid var(--border-subtle)' : 'none',
-            background: 'rgba(var(--accent-rgb), 0.04)',
+            background: 'var(--surface-overlay)',
             display: 'grid',
             gap: 4,
           }}>

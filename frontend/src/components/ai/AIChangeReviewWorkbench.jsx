@@ -471,7 +471,7 @@ export default function AIChangeReviewWorkbench({ review, queueLength = 1 }) {
         alignItems: 'stretch',
         justifyContent: 'center',
         padding: 6,
-        background: 'rgba(var(--accent-rgb), 0.08)',
+        background: 'rgba(0, 0, 0, 0.18)',
         backdropFilter: 'blur(4px)',
       }}>
       <div
@@ -480,8 +480,8 @@ export default function AIChangeReviewWorkbench({ review, queueLength = 1 }) {
           width: '100%',
           height: '100%',
           borderRadius: 16,
-          border: '1px solid rgba(var(--accent-rgb), 0.18)',
-          background: 'linear-gradient(180deg, var(--surface-overlay), var(--surface-base))',
+          border: '1px solid var(--border)',
+          background: 'var(--surface-overlay)',
           boxShadow: 'var(--shadow-xl)',
           overflow: 'hidden',
         }}>
@@ -499,7 +499,7 @@ export default function AIChangeReviewWorkbench({ review, queueLength = 1 }) {
             pointerEvents: 'none',
           }}>
           {toolName ? (
-            <div style={{ padding: '3px 8px', borderRadius: 999, background: 'rgba(var(--accent-rgb), 0.08)', color: 'var(--text-secondary)', fontSize: 11, fontWeight: 700 }}>
+            <div style={{ padding: '3px 8px', borderRadius: 999, background: 'var(--surface-base)', color: 'var(--text-secondary)', fontSize: 11, fontWeight: 700 }}>
               {toolName}
             </div>
           ) : null}

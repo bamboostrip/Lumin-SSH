@@ -44,7 +44,7 @@ export default function AIChatUserMessage({ message, onRetry, onEdit, onDelete, 
             display: 'block',
             borderRadius: 12,
             overflow: 'hidden',
-            border: messageActionBarAtBottom ? '1px solid rgba(var(--accent-rgb), 0.18)' : '1px solid var(--accent-border)',
+            border: '1px solid var(--border)',
             background: 'var(--surface-base)',
           }}>
           <img
@@ -66,7 +66,7 @@ export default function AIChatUserMessage({ message, onRetry, onEdit, onDelete, 
     return (
       <div style={{ display: 'flex', width: '100%' }}>
         <div style={{ width: '100%', display: 'grid', gap: 0 }}>
-          <div style={{ width: '100%', display: 'grid', gap: 0, borderRadius: 12, background: 'linear-gradient(180deg, rgba(var(--accent-rgb), 0.16), rgba(var(--accent-rgb), 0.08))', border: '1px solid var(--accent-border)', boxShadow: 'inset 0 1px 0 rgba(var(--accent-rgb), 0.12)', overflow: 'hidden' }}>
+          <div style={{ width: '100%', display: 'grid', gap: 0, borderRadius: 12, background: 'var(--surface-overlay)', border: '1px solid var(--border)', boxShadow: 'inset 0 1px 0 var(--border-light)', overflow: 'hidden' }}>
             {hasContent ? (
               <div style={{ padding: '10px 12px', display: 'grid', gap: hasText && hasImages ? 8 : 0 }}>
                 {hasText ? (
@@ -77,7 +77,7 @@ export default function AIChatUserMessage({ message, onRetry, onEdit, onDelete, 
                 {hasImages ? renderImages() : null}
               </div>
             ) : null}
-            <div style={{ borderTop: hasContent ? '1px solid rgba(var(--accent-rgb), 0.18)' : 'none', padding: '0 12px' }}>
+            <div style={{ borderTop: hasContent ? '1px solid var(--border-subtle)' : 'none', padding: '0 12px' }}>
               {renderActionBar()}
             </div>
           </div>
@@ -93,7 +93,7 @@ export default function AIChatUserMessage({ message, onRetry, onEdit, onDelete, 
           {renderActionBar()}
         </div>
         {hasText ? (
-          <div style={{ padding: '10px 12px', borderRadius: 12, background: 'linear-gradient(180deg, rgba(var(--accent-rgb), 0.16), rgba(var(--accent-rgb), 0.08))', border: '1px solid var(--accent-border)', boxShadow: 'inset 0 1px 0 rgba(var(--accent-rgb), 0.12)', color: 'var(--text-primary)', fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+          <div style={{ padding: '10px 12px', borderRadius: 12, background: 'var(--surface-overlay)', border: '1px solid var(--border)', boxShadow: 'inset 0 1px 0 var(--border-light)', color: 'var(--text-primary)', fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
             {text}
           </div>
         ) : null}

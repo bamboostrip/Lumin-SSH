@@ -70,7 +70,7 @@ export default function AIChatMCPCard({ serverName, toolName, args, response, is
           </div>
         </div>
         {isRequestExpanded ? (
-          <div style={{ width: '100%', border: '1px solid rgba(var(--accent-rgb), 0.26)', borderRadius: 12, background: 'var(--surface-overlay)', overflow: 'hidden' }}>
+          <div style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 12, background: 'var(--surface-overlay)', overflow: 'hidden' }}>
             <div style={{ padding: '12px', display: 'grid', gap: 10 }}>
               <div style={{ display: 'grid', gap: 6 }}>
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{t('arguments')}</div>
@@ -80,7 +80,7 @@ export default function AIChatMCPCard({ serverName, toolName, args, response, is
           </div>
         ) : null}
         {response ? (
-          <div style={{ width: '100%', border: '1px solid rgba(var(--accent-rgb), 0.26)', borderRadius: 12, background: 'var(--surface-overlay)', overflow: 'hidden' }}>
+          <div style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 12, background: 'var(--surface-overlay)', overflow: 'hidden' }}>
             <button
               type="button"
               onClick={() => setIsResponseExpanded((previous) => !previous)}
@@ -92,7 +92,7 @@ export default function AIChatMCPCard({ serverName, toolName, args, response, is
                 gap: 10,
                 padding: '10px 12px',
                 border: 'none',
-                background: 'rgba(var(--accent-rgb), 0.05)',
+                background: 'var(--surface-raised)',
                 cursor: 'pointer',
                 textAlign: 'left',
               }}>

@@ -41,8 +41,8 @@ export default function AppTab({ CURRENT_VERSION, updateInfo, checkingUpdate, do
               <span
                 onClick={onApplyUpdate}
                 style={{
-                  background: downloadProgress >= 0 ? '#1e3a8a' : '#065f46',
-                  color: downloadProgress >= 0 ? '#93c5fd' : '#34d399',
+                  background: downloadProgress >= 0 ? 'var(--accent-dim)' : 'rgba(var(--success-rgb), 0.12)',
+                  color: downloadProgress >= 0 ? 'var(--accent)' : 'var(--success)',
                   borderRadius: 12,
                   padding: '2px 8px',
                   fontSize: 12,
@@ -51,7 +51,7 @@ export default function AppTab({ CURRENT_VERSION, updateInfo, checkingUpdate, do
                   display: 'flex',
                   alignItems: 'center',
                   gap: 4,
-                  boxShadow: downloadProgress >= 0 ? '0 2px 8px rgba(30,58,138,0.3)' : '0 2px 8px rgba(6,95,70,0.3)',
+                  boxShadow: 'none',
                   position: 'relative',
                   overflow: 'hidden',
                   minWidth: 80,
@@ -59,7 +59,7 @@ export default function AppTab({ CURRENT_VERSION, updateInfo, checkingUpdate, do
                 }}
               >
                 {downloadProgress >= 0 && (
-                  <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, background: 'rgba(59, 130, 246, 0.4)', width: `${downloadProgress}%`, transition: 'width 0.2s ease-out' }}></div>
+                  <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, background: 'rgba(var(--accent-rgb), 0.22)', width: `${downloadProgress}%`, transition: 'width 0.2s ease-out' }}></div>
                 )}
                 <span style={{ position: 'relative', zIndex: Z.CONTENT, display: 'flex', alignItems: 'center', gap: 4 }}>
                   {downloadProgress >= 0 ? (

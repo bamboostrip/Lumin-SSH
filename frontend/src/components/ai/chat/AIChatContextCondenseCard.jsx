@@ -51,8 +51,8 @@ export default function AIChatContextCondenseCard({ message }) {
         gap: 10,
         padding: '12px 14px',
         borderRadius: 12,
-        border: '1px solid rgba(var(--accent-rgb), 0.18)',
-        background: 'linear-gradient(180deg, rgba(var(--accent-rgb), 0.10), rgba(var(--accent-rgb), 0.04))',
+        border: '1px solid var(--border)',
+        background: 'var(--surface-overlay)',
         boxSizing: 'border-box',
       }}
     >

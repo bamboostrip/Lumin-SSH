@@ -185,6 +185,8 @@ export default function AIPanelSettingsOverlay({
   const approvalButtonOrder = globalAISettings?.approvalButtonOrder || 'reject-approve'
   const commandActionButtonOrder = globalAISettings?.commandActionButtonOrder || 'terminate-continue'
   const messageActionBarAtBottom = Boolean(globalAISettings?.messageActionBarAtBottom)
+  const mcpEnabled = globalAISettings?.mcpEnabled !== false
+  const mcpAllowBrowserCalls = Boolean(globalAISettings?.mcpAllowBrowserCalls)
 
   return (
     <div
@@ -344,7 +346,20 @@ export default function AIPanelSettingsOverlay({
             ) : null}
           </div>
           <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {activeTab === 'mcp' && <MCPAccessView mcpInfo={mcpInfo} configText={configText} configRows={configRows} title={t('接入方式')} titleSize={18} showTools={true} />}
+            {activeTab === 'mcp' && (
+              <MCPAccessView
+                mcpInfo={mcpInfo}
+                configText={configText}
+                configRows={configRows}
+                title={t('接入方式')}
+                titleSize={18}
+                showTools={true}
+                mcpEnabled={mcpEnabled}
+                mcpAllowBrowserCalls={mcpAllowBrowserCalls}
+                onToggleMcpEnabled={() => onSaveGlobalAISettings?.({ mcpEnabled: !mcpEnabled })}
+                onToggleMcpAllowBrowserCalls={() => onSaveGlobalAISettings?.({ mcpAllowBrowserCalls: !mcpAllowBrowserCalls })}
+              />
+            )}
             {activeTab === 'ai' ? (
               <>
                 <div style={{ display: 'grid', gap: 4 }}>

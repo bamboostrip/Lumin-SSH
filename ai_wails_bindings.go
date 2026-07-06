@@ -128,7 +128,15 @@ func (b *AIBindings) GetAIGlobalSettings() ai.AIGlobalSettings {
 }
 
 func (b *AIBindings) SaveAIGlobalSettings(jsonStr string) error {
-	return b.runtime().SaveAIGlobalSettings(jsonStr)
+	previous := b.runtime().GetAIGlobalSettings()
+	if err := b.runtime().SaveAIGlobalSettings(jsonStr); err != nil {
+		return err
+	}
+	current := b.runtime().GetAIGlobalSettings()
+	if previous.MCPEnabled != current.MCPEnabled || previous.MCPAllowBrowserCalls != current.MCPAllowBrowserCalls {
+		applyMCPServiceState(b.app)
+	}
+	return nil
 }
 
 func (b *AIBindings) GetAIProviderState() ai.AIProviderState {

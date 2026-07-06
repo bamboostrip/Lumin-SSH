@@ -6,19 +6,27 @@ import (
 	"strings"
 )
 
+const BrowserCallsDisabledOriginSentinel = "__lumin_browser_calls_disabled__"
+
 type HTTPHandler struct {
 	catalog *Catalog
 	serverInfo Implementation
 	instructions string
 	allowedOrigins map[string]struct{}
+	allowBrowserCalls bool
 	logger func(string)
 }
 
 func NewHTTPHandler(catalog *Catalog, serverInfo Implementation, instructions string, allowedOrigins []string, logger func(string)) *HTTPHandler {
 	originSet := make(map[string]struct{}, len(allowedOrigins))
+	allowBrowserCalls := true
 	for _, origin := range allowedOrigins {
 		trimmed := strings.TrimSpace(origin)
 		if trimmed == "" {
+			continue
+		}
+		if trimmed == BrowserCallsDisabledOriginSentinel {
+			allowBrowserCalls = false
 			continue
 		}
 		originSet[trimmed] = struct{}{}
@@ -28,6 +36,7 @@ func NewHTTPHandler(catalog *Catalog, serverInfo Implementation, instructions st
 		serverInfo: serverInfo,
 		instructions: instructions,
 		allowedOrigins: originSet,
+		allowBrowserCalls: allowBrowserCalls,
 		logger: logger,
 	}
 }
@@ -55,10 +64,39 @@ func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+/*
+isOriginAllowed classifies callers based on the presence of an Origin header and
+applies the browser-exposure policy for the loopback MCP endpoint.
+
+Security semantics:
+1. An empty Origin is treated as a non-browser local client. This covers
+   desktop integrations, CLI tooling, tests, and other callers that are not
+   participating in the browser same-origin model.
+2. When allowBrowserCalls=false, the intent is to reject browser-mediated
+   access paths that present an Origin header. This reduces exposure to web
+   pages, embedded browser contexts, cross-origin invocation paths, and similar
+   routes into the local loopback service.
+3. This check is intentionally not described as a defense against an already
+   compromised local host or same-user malware. An attacker with arbitrary code
+   execution in the current user session can bypass browser semantics entirely
+   and issue raw loopback HTTP requests without an Origin header.
+4. Accordingly, this function enforces a browser-entry policy, not a general
+   local-authentication boundary. It is valuable for attack-surface reduction,
+   but it must not be relied upon as post-compromise containment.
+5. The empty-Origin path remains allowed because the expected primary consumers
+   of this MCP service are local non-browser clients rather than browser pages.
+
+In short, this gate answers "may a browser-originated request reach the MCP
+endpoint?" rather than "can the local machine still be trusted after
+compromise?".
+*/
 func (h *HTTPHandler) isOriginAllowed(origin string) bool {
 	origin = strings.TrimSpace(origin)
 	if origin == "" {
 		return true
+	}
+	if !h.allowBrowserCalls {
+		return false
 	}
 	if len(h.allowedOrigins) == 0 {
 		return true
@@ -68,9 +106,7 @@ func (h *HTTPHandler) isOriginAllowed(origin string) bool {
 }
 
 func (h *HTTPHandler) applyCORSHeaders(w http.ResponseWriter, r *http.Request, origin string) {
-	if origin == "" {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-	} else {
+	if origin != "" {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Vary", "Origin")
 	}

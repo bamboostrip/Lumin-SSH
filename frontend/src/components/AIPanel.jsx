@@ -271,6 +271,28 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   const terminalPanelsRef = useRef({})
   const panelMountedRef = useRef(true)
   const panelInstanceKey = `${sessionId || 'session'}::${terminalId || 'terminal'}`
+  const applyMCPInfo = useCallback((info) => {
+    if (!panelMountedRef.current || !info) {
+      return
+    }
+    setMcpInfo({
+      url: info.url || '',
+      transport: info.transport || 'streamable-http',
+      endpoint: info.endpoint || '/mcp',
+      instructions: info.instructions || '',
+      logs: info.logs || '',
+      tools: Array.isArray(info.tools) ? info.tools : [],
+    })
+  }, [])
+  const refreshMCPServerInfo = useCallback(async () => {
+    try {
+      const info = await AppGo.GetMCPServerInfo()
+      applyMCPInfo(info)
+      return info
+    } catch {
+      return null
+    }
+  }, [applyMCPInfo])
 
   useEffect(() => {
     terminalPanelsRef.current = terminalPanels
@@ -445,27 +467,8 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   }, [panelInstanceKey])
 
   useEffect(() => {
-    let cancelled = false
-
-    AppGo.GetMCPServerInfo()
-      .then((info) => {
-        if (!cancelled && info) {
-          setMcpInfo({
-            url: info.url || '',
-            transport: info.transport || 'streamable-http',
-            endpoint: info.endpoint || '/mcp',
-            instructions: info.instructions || '',
-            logs: info.logs || '',
-            tools: Array.isArray(info.tools) ? info.tools : [],
-          })
-        }
-      })
-      .catch(() => {})
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
+    void refreshMCPServerInfo()
+  }, [refreshMCPServerInfo])
 
   useEffect(() => {
     let cancelled = false
@@ -1344,8 +1347,9 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       ...patch,
     })
     setGlobalAISettings(nextSettings)
+    await refreshMCPServerInfo()
     return nextSettings
-  }, [normalizedGlobalAISettings])
+  }, [normalizedGlobalAISettings, refreshMCPServerInfo])
 
   const saveMCPOutputCompressionSettings = useCallback(async (lineLimit, characterLimit) => {
     const nextLineLimit = Math.max(10, Math.min(5000, lineLimit || 0))

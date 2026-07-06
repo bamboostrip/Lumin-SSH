@@ -25,19 +25,23 @@ type AIGlobalSettings struct {
 	AllowedCommands                   []string         `json:"allowedCommands,omitempty"`
 	DeniedCommands                    []string         `json:"deniedCommands,omitempty"`
 	SlashCommands                     []AISlashCommand `json:"slashCommands,omitempty"`
-	AlwaysAllowMcp                    bool     `json:"alwaysAllowMcp"`
-	AlwaysAllowModeSwitch             bool     `json:"alwaysAllowModeSwitch"`
-	AlwaysAllowSubtasks               bool     `json:"alwaysAllowSubtasks"`
-	AlwaysAllowFollowupQuestions      bool     `json:"alwaysAllowFollowupQuestions"`
-	TerminalIsolation                 bool     `json:"terminalIsolation"`
-	ConfirmDelete                     bool     `json:"confirmDelete"`
-	MessageActionBarAtBottom          bool     `json:"messageActionBarAtBottom"`
-	ApprovalButtonOrder               string   `json:"approvalButtonOrder"`
-	CommandActionButtonOrder          string   `json:"commandActionButtonOrder"`
+	AlwaysAllowMcp                    bool             `json:"alwaysAllowMcp"`
+	AlwaysAllowModeSwitch             bool             `json:"alwaysAllowModeSwitch"`
+	AlwaysAllowSubtasks               bool             `json:"alwaysAllowSubtasks"`
+	AlwaysAllowFollowupQuestions      bool             `json:"alwaysAllowFollowupQuestions"`
+	MCPEnabled                        bool             `json:"mcpEnabled"`
+	MCPAllowBrowserCalls              bool             `json:"mcpAllowBrowserCalls"`
+	TerminalIsolation                 bool             `json:"terminalIsolation"`
+	ConfirmDelete                     bool             `json:"confirmDelete"`
+	MessageActionBarAtBottom          bool             `json:"messageActionBarAtBottom"`
+	ApprovalButtonOrder               string           `json:"approvalButtonOrder"`
+	CommandActionButtonOrder          string           `json:"commandActionButtonOrder"`
 }
 
 func defaultAIGlobalSettings() AIGlobalSettings {
 	return AIGlobalSettings{
+		MCPEnabled:               true,
+		MCPAllowBrowserCalls:     false,
 		TerminalIsolation:        true,
 		ConfirmDelete:            true,
 		MessageActionBarAtBottom: true,
@@ -150,6 +154,19 @@ func normalizeAIGlobalSettings(settings AIGlobalSettings) AIGlobalSettings {
 	settings.ApprovalButtonOrder = normalizeAIApprovalButtonOrder(settings.ApprovalButtonOrder)
 	settings.CommandActionButtonOrder = normalizeAICommandActionButtonOrder(settings.CommandActionButtonOrder)
 	return settings
+}
+
+func LoadAIGlobalSettings(configDir string) AIGlobalSettings {
+	settings := defaultAIGlobalSettings()
+	if strings.TrimSpace(configDir) == "" {
+		return settings
+	}
+	data, err := os.ReadFile(filepath.Join(configDir, "ai_global_settings.json"))
+	if err != nil {
+		return settings
+	}
+	_ = json.Unmarshal(data, &settings)
+	return normalizeAIGlobalSettings(settings)
 }
 
 func (c *ConfigManager) aiGlobalSettingsPath() string {

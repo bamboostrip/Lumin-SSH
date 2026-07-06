@@ -7,12 +7,34 @@ import (
 	"strings"
 	"time"
 
+	ai "luminssh-go/internal/ai"
 	mcp "luminssh-go/internal/mcp"
 	"luminssh-go/internal/mcpserver"
 )
 
+func loadMCPServiceSettings(app *App) mcp.ServiceSettings {
+	configDir := ""
+	if app != nil && app.configManager != nil {
+		configDir = app.configManager.configDir
+	}
+	settings := ai.LoadAIGlobalSettings(configDir)
+	return mcp.ServiceSettings{
+		Enabled:            settings.MCPEnabled,
+		AllowBrowserCalls:  settings.MCPAllowBrowserCalls,
+	}
+}
+
+func applyMCPServiceState(app *App) {
+	settings := loadMCPServiceSettings(app)
+	mcp.StopServer(newMCPHost(app))
+	if !settings.Enabled {
+		return
+	}
+	mcp.StartServer(newMCPHost(app), settings)
+}
+
 func startMCPServer(app *App) {
-	mcp.StartServer(newMCPHost(app))
+	applyMCPServiceState(app)
 }
 
 func stopMCPServer(app *App) {
@@ -20,7 +42,7 @@ func stopMCPServer(app *App) {
 }
 
 func (a *App) GetMCPServerInfo() map[string]interface{} {
-	return mcp.GetServerInfo(newMCPHost(a))
+	return mcp.GetServerInfo(newMCPHost(a), loadMCPServiceSettings(a))
 }
 
 func applyMCPOutputCompressionSettings(settings mcp.OutputCompressionSettings) {

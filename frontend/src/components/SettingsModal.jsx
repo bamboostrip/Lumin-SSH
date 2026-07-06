@@ -175,7 +175,15 @@ const PROVIDER_LIST = [
   { id: 'sftp', label: 'SFTP' },
 ];
 
-export default function SettingsModal({ onClose, addToast, onRestored }) {
+export default function SettingsModal({
+  onClose,
+  addToast,
+  onRestored,
+  probePanelPosition,
+  onProbePanelPositionChange,
+  fileManagerLayoutMode,
+  onFileManagerLayoutModeChange,
+}) {
   const CURRENT_VERSION = APP_VERSION;
   const [updateInfo, setUpdateInfo] = useState(null);
 
@@ -782,6 +790,10 @@ export default function SettingsModal({ onClose, addToast, onRestored }) {
                 onTerminalColorThemeChange={(key) => { setTerminalColorTheme(key); localStorage.setItem('terminalColorTheme', key); window.dispatchEvent(new CustomEvent('terminal-theme-changed', { detail: key })); }}
                 themeMode={themeMode}
                 onThemeChange={handleThemeChange}
+                probePanelPosition={probePanelPosition}
+                onProbePanelPositionChange={onProbePanelPositionChange}
+                fileManagerLayoutMode={fileManagerLayoutMode}
+                onFileManagerLayoutModeChange={onFileManagerLayoutModeChange}
                 themeAccent={themeAccent}
                 onColorChange={handleColorChange}
                 useCustomAccent={useCustomAccent}

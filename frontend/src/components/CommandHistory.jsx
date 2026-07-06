@@ -209,7 +209,7 @@ export default function CommandHistory({ sessionId, historyServerId, addToast })
             <div key={item.id} className="card history-item-card">
               <div className="history-command-row">
                 <span className="history-command-text">
-                  $ {item.command}
+                  {item.command}
                 </span>
                 <span className="history-time">
                   {new Date(item.time).toLocaleTimeString()}

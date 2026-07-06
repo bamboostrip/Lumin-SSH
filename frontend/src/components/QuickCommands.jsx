@@ -104,7 +104,12 @@ function TreeNode({ item, index, path, selectedPath, onSelect, contextMenu, onCo
 
   const commonDragProps = {
     draggable: true,
-    onDragStart: (e) => { e.stopPropagation(); onDragStart && onDragStart(path); },
+    onDragStart: (e) => {
+      e.stopPropagation();
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', path);
+      onDragStart && onDragStart(path);
+    },
     onDragEnd: (e) => { e.stopPropagation(); onDragEnd && onDragEnd(); },
   };
 
@@ -214,7 +219,7 @@ function TreeNode({ item, index, path, selectedPath, onSelect, contextMenu, onCo
         onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDropPos(calcDropPos(e, false)); }}
         onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDropPos(calcDropPos(e, false)); }}
         onDragLeave={(e) => { e.stopPropagation(); setDropPos(null); }}
-        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const pos = dropPos; setDropPos(null); onDropItem && onDropItem(path, pos || 'after'); }}
+        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const pos = calcDropPos(e, false); setDropPos(null); onDropItem && onDropItem(path, pos || 'after'); }}
         {...commonDragProps}
         style={{
           display: 'flex', alignItems: 'center', padding: '5px 8px', cursor: 'pointer',
@@ -299,28 +304,47 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
     setDragVersion(v => v + 1);
   };
 
+  const parsePath = (path) => path.split('/').map(Number);
+
+  const hasPathPrefix = (parts, prefix) => prefix.every((value, index) => parts[index] === value);
+
+  const adjustPathAfterRemoval = (targetParts, srcParts) => {
+    const srcParentParts = srcParts.slice(0, -1);
+    const srcIdx = srcParts[srcParts.length - 1];
+    if (!hasPathPrefix(targetParts, srcParentParts)) return targetParts;
+    const affectedIndex = srcParentParts.length;
+    if (targetParts[affectedIndex] > srcIdx) {
+      const adjusted = [...targetParts];
+      adjusted[affectedIndex] -= 1;
+      return adjusted;
+    }
+    return targetParts;
+  };
+
   // ── 统一处理所有拖放（before / inside / after / root）─
   const handleDropItem = (targetPath, pos) => {
     const srcPath = dragSourceRef.current;
     if (!srcPath || srcPath === targetPath) { clearDrag(); return; }
     if (targetPath.startsWith(srcPath + '/')) { clearDrag(); return; }
 
+    const srcParts = parsePath(srcPath);
+    const targetParts = parsePath(targetPath);
     const list = structuredClone(commands);
     const src = resolvePath(list, srcPath);
-    const tgt = resolvePath(list, targetPath);
-
     if (!src.item) { clearDrag(); return; }
 
-    // 移出源节点
     const [moved] = src.parent.splice(src.idx, 1);
+    moved.last_modified = Date.now();
 
-    if (pos === 'inside' && tgt.item?.type === 'group') {
-      // 放入分组内（作为最后一个子项）
+    const adjustedTargetPath = adjustPathAfterRemoval(targetParts, srcParts).join('/');
+    const tgt = resolvePath(list, adjustedTargetPath);
+    if (!tgt.item) { clearDrag(); return; }
+
+    if (pos === 'inside' && tgt.item.type === 'group') {
       if (!tgt.item.children) tgt.item.children = [];
       tgt.item.children.push(moved);
       tgt.item.expanded = true;
     } else {
-      // before / after：插入到目标位置前后
       const insertIdx = tgt.idx + (pos === 'after' ? 1 : 0);
       tgt.parent.splice(insertIdx, 0, moved);
     }

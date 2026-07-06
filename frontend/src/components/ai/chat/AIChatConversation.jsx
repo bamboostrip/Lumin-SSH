@@ -1,6 +1,7 @@
 import { ChevronDown } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso } from 'react-virtuoso'
+import { useTranslation } from '../../../i18n.js'
 import AIChatAssistantTurn from './AIChatAssistantTurn.jsx'
 import AIChatContextCondenseCard from './AIChatContextCondenseCard.jsx'
 import AIChatReasoningBlock from './AIChatReasoningBlock.jsx'
@@ -80,6 +81,7 @@ function hasSubsequentAssistantTurn(entries, currentIndex) {
 }
 
 export default function AIChatConversation({ messages = [], onSendUserMessage, onRetryUserMessage, onRetryAssistantMessage, onEditUserMessage, onDeleteMessage, messageActionBarAtBottom = false, scrollToBottomSignal = 0 }) {
+  const { t } = useTranslation()
   const containerRef = useRef(null)
   const virtuosoRef = useRef(null)
   const followIntentRef = useRef(true)
@@ -210,7 +212,7 @@ export default function AIChatConversation({ messages = [], onSendUserMessage, o
     return (
       <div style={{ flex: 1, minHeight: 0, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', padding: 20 }}>
         <div style={{ maxWidth: 260, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.8 }}>
-          选择供应商并发送消息后，Ai助手会在这里按真实流式顺序输出内容。
+          {t('选择供应商并发送消息后，Ai助手会在这里按真实流式顺序输出内容。')}
         </div>
       </div>
     )

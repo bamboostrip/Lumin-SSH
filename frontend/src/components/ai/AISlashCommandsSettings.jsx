@@ -98,8 +98,9 @@ function SlashCommandListItem({ command, onEdit, onDelete }) {
 }
 
 export default function AISlashCommandsSettings({ slashCommands, onSaveGlobalAISettings }) {
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   const normalizedIncomingCommands = useMemo(() => normalizeAISlashCommands(slashCommands), [slashCommands])
+  const sentenceEnd = lang === 'zh-CN' ? '。' : '.'
   const [draftCommands, setDraftCommands] = useState(() => buildDraftCommands(normalizedIncomingCommands))
   const [editingCommandId, setEditingCommandId] = useState('')
 
@@ -166,7 +167,7 @@ export default function AISlashCommandsSettings({ slashCommands, onSaveGlobalAIS
       <div style={{ display: 'grid', gap: 4 }}>
         <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3 }}>{t('斜杠命令')}</div>
         <div style={{ fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
-          {t('输入框与用户消息只显示')} <code>/命令名</code>。{t('真正发送给 AI 时,会在后台注入命令完整提示词内容.')}
+          {t('输入框与用户消息只显示')} <code>{t('斜杠命令占位符')}</code>{t('真正发送给 AI 时,会在后台注入命令完整提示词内容.')}
         </div>
       </div>
       <div style={{ display: 'grid', gap: 0 }}>
@@ -193,7 +194,7 @@ export default function AISlashCommandsSettings({ slashCommands, onSaveGlobalAIS
         <div style={{ borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface-base)', overflow: 'hidden' }}>
           {draftCommands.length === 0 ? (
             <div style={{ padding: 16, color: 'var(--text-tertiary)', fontSize: 13, lineHeight: 1.7 }}>
-              {t('当前还没有斜杠命令.新增后即可在输入框中通过')} <code>/命令名</code> {t('进行选择.')}
+              {t('当前还没有斜杠命令.新增后即可在输入框中通过')} <code>{t('斜杠命令占位符')}</code> {t('进行选择.')}
             </div>
           ) : (
             draftCommands.map((command) => (
@@ -233,7 +234,7 @@ export default function AISlashCommandsSettings({ slashCommands, onSaveGlobalAIS
               }}
             />
             <div style={{ color: 'var(--text-tertiary)', fontSize: 11, lineHeight: 1.5 }}>
-              {t('仅允许字母,数字,点,下划线和中横线.输入时显示为')} <code>/命令名</code>。
+              {t('仅允许字母,数字,点,下划线和中横线.输入时显示为')} <code>{t('斜杠命令占位符')}</code>{sentenceEnd}
             </div>
           </div>
           <div style={{ display: 'grid', gap: 6, minHeight: 0 }}>

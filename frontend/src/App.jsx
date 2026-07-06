@@ -230,6 +230,18 @@ export default function App() {
     }
   }, [contentTab, fileManagerPosition, fileManagerSplitPosition]);
 
+  const handleFileManagerSplitPositionChange = useCallback((position) => {
+    if (position !== 'left' && position !== 'bottom') return;
+    setFileManagerSplitPosition(position);
+    localStorage.setItem('fileManagerSplitPosition', position);
+
+    if (fileManagerPosition !== 'tab') {
+      setFileManagerPosition(position);
+      localStorage.setItem('fileManagerPosition', position);
+      if (contentTab === 'files') setContentTab('terminal');
+    }
+  }, [contentTab, fileManagerPosition]);
+
   // ── 清理旧 localStorage 残留数据 ──────────────────────
   useEffect(() => {
     const keysToRemove = [];
@@ -1596,9 +1608,19 @@ export default function App() {
                       minWidth: probePanelWidth,
                       borderLeft: 'none',
                       borderRight: '1px solid var(--border)',
+                      position: 'relative',
                     }}
                   >
                     {probePanelNode}
+                    <button
+                      className="probe-panel-toggle no-drag"
+                      style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)' }}
+                      onClick={toggleProbePanel}
+                      title={t('收起监控面板')}
+                      aria-label={t('收起监控面板')}
+                    >
+                      <ChevronLeft size={12} />
+                    </button>
                   </div>
                   <div
                     className="split-resizer-v probe-resizer"
@@ -1607,15 +1629,18 @@ export default function App() {
                   />
                 </>
               )}
-              <button
-                className="probe-panel-toggle no-drag"
-                style={{ position: 'absolute', left: probePanelCollapsed ? 0 : `calc(${probePanelWidth}px + 4px)`, top: '50%', transform: 'translateY(-50%)' }}
-                onClick={toggleProbePanel}
-                title={probePanelCollapsed ? t('展开监控面板') : t('收起监控面板')}
-                aria-label={probePanelCollapsed ? t('展开监控面板') : t('收起监控面板')}
-              >
-                {probePanelCollapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
-              </button>
+              {probePanelCollapsed ? (
+                <div className="probe-panel-collapsed-rail probe-panel-collapsed-rail-left">
+                  <button
+                    className="probe-panel-toggle no-drag"
+                    onClick={toggleProbePanel}
+                    title={t('展开监控面板')}
+                    aria-label={t('展开监控面板')}
+                  >
+                    <ChevronRight size={12} />
+                  </button>
+                </div>
+              ) : null}
             </>
           )}
           {/* 左侧主区域：标签、终端子标签、会话内容 */}
@@ -1644,36 +1669,32 @@ export default function App() {
                 </div>
                 <div className="terminal-sub-tab-actions">
                   {fileManagerPosition === 'tab' && (
-                    <Tiptop text={t('文件管理')}>
-                      <div
-                        className={`terminal-sub-tab terminal-sub-tab-icon-only ${contentTab === 'files' ? 'active' : ''}`}
-                        onClick={() => setContentTab('files')}
-                      >
-                        <Folder size={11} />
-                      </div>
-                    </Tiptop>
+                    <button
+                      className={`btn btn-ghost btn-sm terminal-create-btn terminal-tool-btn ${contentTab === 'files' ? 'active' : ''}`}
+                      onClick={() => setContentTab(contentTab === 'files' ? 'terminal' : 'files')}
+                    >
+                      <Folder size={14} />
+                      {t('文件管理')}
+                    </button>
                   )}
-                  <Tiptop text={t('进程管理')}>
-                    <div
-                      className={`terminal-sub-tab terminal-sub-tab-icon-only ${contentTab === 'process' ? 'active' : ''}`}
-                      onClick={() => setContentTab(contentTab === 'process' ? 'terminal' : 'process')}
-                    >
-                      <Cpu size={11} />
-                    </div>
-                  </Tiptop>
-                  <Tiptop text={t('历史指令')}>
-                    <div
-                      className={`terminal-sub-tab terminal-sub-tab-icon-only ${contentTab === 'history' ? 'active' : ''}`}
-                      onClick={() => setContentTab(contentTab === 'history' ? 'terminal' : 'history')}
-                    >
-                      <ScrollText size={11} />
-                    </div>
-                  </Tiptop>
+                  <button
+                    className={`btn btn-ghost btn-sm terminal-create-btn terminal-tool-btn ${contentTab === 'process' ? 'active' : ''}`}
+                    onClick={() => setContentTab(contentTab === 'process' ? 'terminal' : 'process')}
+                  >
+                    <Cpu size={14} />
+                    {t('进程管理')}
+                  </button>
+                  <button
+                    className={`btn btn-ghost btn-sm terminal-create-btn terminal-tool-btn ${contentTab === 'history' ? 'active' : ''}`}
+                    onClick={() => setContentTab(contentTab === 'history' ? 'terminal' : 'history')}
+                  >
+                    <ScrollText size={14} />
+                    {t('历史指令')}
+                  </button>
                   {/* ── 新建终端按钮 ── */}
                   <button
                     className={`btn btn-ghost btn-sm terminal-create-btn ${isCreatingTerminal ? 'is-creating' : ''}`}
                     onClick={() => openNewTerminal(activeSession.id)}
-                    title={isCreatingTerminal ? t('正在创建终端') : t('新建终端')}
                     style={{ marginLeft: 2, flexShrink: 0 }}
                     disabled={isCreatingTerminal}
                     aria-busy={isCreatingTerminal}
@@ -1849,15 +1870,18 @@ export default function App() {
           {/* 系统监控探针面板（独立分栏，右侧） */}
           {probePanelNode && probePanelPosition === 'right' && (
             <>
-              <button
-                className="probe-panel-toggle no-drag"
-                style={{ position: 'absolute', right: probePanelCollapsed ? 0 : `calc(${probePanelWidth}px + 4px)`, top: '50%', transform: 'translateY(-50%)' }}
-                onClick={toggleProbePanel}
-                title={probePanelCollapsed ? t('展开监控面板') : t('收起监控面板')}
-                aria-label={probePanelCollapsed ? t('展开监控面板') : t('收起监控面板')}
-              >
-                {probePanelCollapsed ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
-              </button>
+              {probePanelCollapsed ? (
+                <div className="probe-panel-collapsed-rail probe-panel-collapsed-rail-right">
+                  <button
+                    className="probe-panel-toggle no-drag"
+                    onClick={toggleProbePanel}
+                    title={t('展开监控面板')}
+                    aria-label={t('展开监控面板')}
+                  >
+                    <ChevronLeft size={12} />
+                  </button>
+                </div>
+              ) : null}
               {!probePanelCollapsed && (
                 <>
                   <div
@@ -1870,9 +1894,19 @@ export default function App() {
                     style={{
                       width: probePanelWidth,
                       minWidth: probePanelWidth,
+                      position: 'relative',
                     }}
                   >
                     {probePanelNode}
+                    <button
+                      className="probe-panel-toggle no-drag"
+                      style={{ position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)' }}
+                      onClick={toggleProbePanel}
+                      title={t('收起监控面板')}
+                      aria-label={t('收起监控面板')}
+                    >
+                      <ChevronRight size={12} />
+                    </button>
                   </div>
                 </>
               )}
@@ -1915,6 +1949,8 @@ export default function App() {
           }}
           fileManagerLayoutMode={fileManagerPosition === 'tab' ? 'tab' : 'split'}
           onFileManagerLayoutModeChange={handleFileManagerLayoutModeChange}
+          fileManagerSplitPosition={fileManagerSplitPosition}
+          onFileManagerSplitPositionChange={handleFileManagerSplitPositionChange}
         />
       )}
 

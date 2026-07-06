@@ -1,4 +1,4 @@
-import { House, PanelRightClose, Settings } from 'lucide-react'
+import { House, Settings } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from '../../i18n.js'
 import IconActionButton from './IconActionButton.jsx'
@@ -75,9 +75,6 @@ export default function AIPanelHeader({
       <div style={{ justifySelf: 'end', display: 'flex', alignItems: 'center', gap: 6 }}>
         <IconActionButton title={t('返回主页')} onClick={onGoHome}>
           <House size={16} />
-        </IconActionButton>
-        <IconActionButton title={t('收起 AI 助手面板')} onClick={() => window.dispatchEvent(new CustomEvent('ai-panel-visibility-changed', { detail: false }))}>
-          <PanelRightClose size={16} />
         </IconActionButton>
         <IconActionButton title={showSettingsPanel ? t('关闭设置面板') : t('打开设置面板')} active={showSettingsPanel} onClick={onToggleSettings}>
           <Settings size={16} />

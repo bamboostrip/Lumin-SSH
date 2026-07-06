@@ -19,9 +19,25 @@ function formatTokenValue(value) {
   return String(rounded)
 }
 
+function formatCondenseSummary(text, t) {
+  const match = text.match(/^已压缩 (\d+) 个 工具调用结果,移除 (\d+) 个空白 assistant 消息,替换 (\d+) 个图片,移除 (\d+) 个 environment_details,压缩 (\d+) 个 file_content,压缩 (\d+) 个 terminal_output,压缩 (\d+) 个系统提示消息$/)
+  if (!match) return text
+  const [, toolResults, emptyAssistantMessages, images, environmentDetails, fileContent, terminalOutput, systemNotices] = match
+  return t('上下文智能压缩摘要', {
+    toolResults,
+    emptyAssistantMessages,
+    images,
+    environmentDetails,
+    fileContent,
+    terminalOutput,
+    systemNotices,
+  })
+}
+
 export default function AIChatContextCondenseCard({ message }) {
   const { t } = useTranslation()
-  const summary = typeof message?.text === 'string' ? message.text.trim() : ''
+  const rawSummary = typeof message?.text === 'string' ? message.text.trim() : ''
+  const summary = rawSummary ? formatCondenseSummary(rawSummary, t) : ''
   const prevTokens = Number(message?.extra?.prevContextTokens)
   const newTokens = Number(message?.extra?.newContextTokens)
   const hasTokenMetrics = Number.isFinite(prevTokens) && prevTokens >= 0 && Number.isFinite(newTokens) && newTokens >= 0

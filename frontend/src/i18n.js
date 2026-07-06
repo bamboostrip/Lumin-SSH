@@ -346,6 +346,7 @@ const dict = {
     "关闭": "关闭",
     "新建终端": "新建终端",
     "文件管理器布局": "文件管理器布局",
+    "文件管理器分栏位置": "文件管理器分栏位置",
     "分栏布局": "分栏布局",
     "发现新版本": "发现新版本",
     "为了给您提供更极致的体验，建议您立即升级。": "为了给您提供更极致的体验，建议您立即升级。",
@@ -400,6 +401,7 @@ const dict = {
     "收起监控面板": "收起监控面板",
     "右侧": "右侧",
     "左侧": "左侧",
+    "底部": "底部",
     "调整监控边栏宽度": "调整监控边栏宽度",
     "主机密钥已变更": "主机密钥已变更",
     "正在建立 SSH 连接，请稍候...": "正在建立 SSH 连接，请稍候...",
@@ -780,12 +782,13 @@ const dict = {
     "搜索...": "搜索...",
     "斜杠命令": "斜杠命令",
     "输入框与用户消息只显示": "输入框与用户消息只显示",
-    "真正发送给 AI 时,会在后台注入命令完整提示词内容.": "真正发送给 AI 时，会在后台注入命令完整提示词内容。",
+    "真正发送给 AI 时,会在后台注入命令完整提示词内容.": "。真正发送给 AI 时，会在后台注入命令完整提示词内容。",
     "新增命令": "新增命令",
     "当前还没有斜杠命令.新增后即可在输入框中通过": "当前还没有斜杠命令。新增后即可在输入框中通过",
     "进行选择.": "进行选择。",
     "未命名命令": "未命名命令",
     "命令名": "命令名",
+    "斜杠命令占位符": "/命令名",
     "例如 summarize": "例如 summarize",
     "仅允许字母,数字,点,下划线和中横线.输入时显示为": "仅允许字母、数字、点、下划线和中横线。输入时显示为",
     "提示词内容": "提示词内容",
@@ -794,7 +797,9 @@ const dict = {
     "保存修改": "保存修改",
     "MCP集成": "MCP集成",
     "Ai助手": "Ai助手",
+    "选择供应商并发送消息后，Ai助手会在这里按真实流式顺序输出内容。": "选择供应商并发送消息后，Ai助手会在这里按真实流式顺序输出内容。",
     "上下文已智能压缩": "上下文已智能压缩",
+    "上下文智能压缩摘要": "已压缩 {toolResults} 个工具调用结果，移除 {emptyAssistantMessages} 个空白 assistant 消息，替换 {images} 个图片，移除 {environmentDetails} 个 environment_details，压缩 {fileContent} 个 file_content，压缩 {terminalOutput} 个 terminal_output，压缩 {systemNotices} 个系统提示消息",
     "环境上下文": "环境上下文",
     "追问建议": "追问建议",
     "思考链": "思考链",
@@ -1002,6 +1007,8 @@ const dict = {
     "核": " cores",
     "收起": "Collapse",
     "收起 AI 助手面板": "Collapse AI Assistant Panel",
+    "打开设置面板": "Open Settings Panel",
+    "关闭设置面板": "Close Settings Panel",
     "打开 AI 助手面板": "Open AI Assistant Panel",
     "展开全部": "Show all",
     "内存": "Memory",
@@ -1192,6 +1199,7 @@ const dict = {
     "关闭": "Close",
     "新建终端": "New Terminal",
     "文件管理器布局": "File Manager Layout",
+    "文件管理器分栏位置": "File Manager Split Position",
     "分栏布局": "Split Layout",
     "发现新版本": "New Version Available",
     "为了给您提供更极致的体验，建议您立即升级。": "A new version is available. Upgrade now for the best experience.",
@@ -1247,6 +1255,7 @@ const dict = {
     "收起监控面板": "Collapse Probe Panel",
     "右侧": "Right",
     "左侧": "Left",
+    "底部": "Bottom",
     "调整监控边栏宽度": "Adjust probe panel width",
     "主机密钥已变更": "Host key changed",
     "正在建立 SSH 连接，请稍候...": "Establishing SSH connection, please wait...",
@@ -1642,6 +1651,7 @@ const dict = {
     "进行选择.": "to choose it in the input box.",
     "未命名命令": "Unnamed Command",
     "命令名": "Command Name",
+    "斜杠命令占位符": "/command-name",
     "例如 summarize": "For example summarize",
     "仅允许字母,数字,点,下划线和中横线.输入时显示为": "Only letters, numbers, dots, underscores and hyphens are allowed. It is shown as",
     "提示词内容": "Prompt Content",
@@ -1649,7 +1659,9 @@ const dict = {
     "保存时会忽略名称非法,名称重复或提示词为空的条目.": "Entries with invalid names, duplicate names, or empty prompts will be ignored when saving.",
     "保存修改": "Save Changes",
     "Ai助手": "AI Assistant",
+    "选择供应商并发送消息后，Ai助手会在这里按真实流式顺序输出内容。": "Select a provider and send a message. The AI assistant will stream responses here in real time.",
     "上下文已智能压缩": "Context Smart-Compressed",
+    "上下文智能压缩摘要": "Compressed {toolResults} tool call results, removed {emptyAssistantMessages} empty assistant messages, replaced {images} images, removed {environmentDetails} environment_details, compressed {fileContent} file_content blocks, compressed {terminalOutput} terminal_output blocks, compressed {systemNotices} system notice messages",
     "环境上下文": "Environment Context",
     "追问建议": "Follow-up Suggestions",
     "思考链": "Reasoning Chain",
@@ -1705,9 +1717,11 @@ export function getLanguage() {
   return currentLang;
 }
 
-export function t(key) {
+export function t(key, params) {
   const table = dict[currentLang] || dict['zh-CN'];
-  return table[key] !== undefined ? table[key] : key;
+  const text = table[key] !== undefined ? table[key] : key;
+  if (!params || typeof text !== 'string') return text;
+  return text.replace(/\{(\w+)\}/g, (_, name) => params[name] ?? `{${name}}`);
 }
 
 export function useTranslation() {

@@ -183,6 +183,8 @@ export default function SettingsModal({
   onProbePanelPositionChange,
   fileManagerLayoutMode,
   onFileManagerLayoutModeChange,
+  fileManagerSplitPosition,
+  onFileManagerSplitPositionChange,
 }) {
   const CURRENT_VERSION = APP_VERSION;
   const [updateInfo, setUpdateInfo] = useState(null);
@@ -794,6 +796,8 @@ export default function SettingsModal({
                 onProbePanelPositionChange={onProbePanelPositionChange}
                 fileManagerLayoutMode={fileManagerLayoutMode}
                 onFileManagerLayoutModeChange={onFileManagerLayoutModeChange}
+                fileManagerSplitPosition={fileManagerSplitPosition}
+                onFileManagerSplitPositionChange={onFileManagerSplitPositionChange}
                 themeAccent={themeAccent}
                 onColorChange={handleColorChange}
                 useCustomAccent={useCustomAccent}

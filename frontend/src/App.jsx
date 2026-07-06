@@ -69,9 +69,9 @@ export default function App() {
     }, 0);
     return () => { clearTimeout(timer); document.removeEventListener('click', close); };
   }, [tabContextMenu]);
-  const [connectingServer, setConnectingServer] = useState(null); // { server, sessionId, startTime }
-  const connectingServerRef = useRef(connectingServer);
-  useEffect(() => { connectingServerRef.current = connectingServer; }, [connectingServer]);
+  const [connectingServers, setConnectingServers] = useState([]); // [{ server, sessionId, startTime }]
+  const connectingServersRef = useRef([]);
+  useEffect(() => { connectingServersRef.current = connectingServers; }, [connectingServers]);
   const [toasts, setToasts] = useState([]);
   const [changeReviewQueue, setChangeReviewQueue] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -498,7 +498,7 @@ export default function App() {
     setActiveTerminalId(sessionId);
     setContentTab('terminal');
     // 显示连接进度卡片
-    setConnectingServer({ server: tempServer, sessionId, startTime: Date.now() });
+    setConnectingServers((prev) => [...prev, { server: tempServer, sessionId, startTime: Date.now() }]);
 
     try {
       const savedServer = await AppGo.SaveConnection(tempServer, true);
@@ -508,7 +508,7 @@ export default function App() {
       setSessions((prev) =>
         prev.map((s) => (s.id === sessionId ? { ...s, serverId: savedServer.id, status: 'connected' } : s))
       );
-      setConnectingServer(null);
+      setConnectingServers((prev) => prev.filter((s) => s.sessionId !== sessionId));
 
       // 连接成功后自动查询 OS信息并更新 sessions
       await postConnectSetup(sessionId, savedServer.id);
@@ -593,7 +593,7 @@ export default function App() {
       prev.map((s) => (s.id === sessionId ? { ...s, status: (isHostKeyChange || isAuthFailed) ? 'connecting' : 'error' } : s))
     );
     if (!isHostKeyChange && !isAuthFailed) {
-      setConnectingServer(null);
+      setConnectingServers((prev) => prev.filter((s) => s.sessionId !== sessionId));
       addToast(`${t('连接失败')}: ${err}`, 'error', 5000);
     }
   }, [addToast, t]);
@@ -670,17 +670,16 @@ export default function App() {
   }, [pingAll, pingInterval, activeSessionId]);
 
   // ── 取消连接 ──────────────────────────────────────────────
-  const handleCancelConnection = useCallback(() => {
-    const cs = connectingServerRef.current;
-    if (!cs) return;
-    cancelledConnectionsRef.current.add(cs.sessionId);
+  const handleCancelConnection = useCallback((sessionId) => {
+    if (!sessionId) return;
+    cancelledConnectionsRef.current.add(sessionId);
     // 30 秒后自动清理，避免 Set 无限增长（错误若未到达则永久残留）
-    setTimeout(() => { cancelledConnectionsRef.current.delete(cs.sessionId); }, 30000);
-    AppGo.DisconnectSSH(cs.sessionId).catch(() => {});
-    setSessions(prev => prev.filter(s => s.id !== cs.sessionId));
+    setTimeout(() => { cancelledConnectionsRef.current.delete(sessionId); }, 30000);
+    AppGo.DisconnectSSH(sessionId).catch(() => {});
+    setSessions(prev => prev.filter(s => s.id !== sessionId));
     setActiveSessionId(null);
     setActiveTerminalId(null);
-    setConnectingServer(null);
+    setConnectingServers((prev) => prev.filter((s) => s.sessionId !== sessionId));
   }, []);
 
   // ── 切换到下一个可用 session ──────────────────────────────
@@ -715,7 +714,7 @@ export default function App() {
     // 如果是当前激活的会话，展示连接等待卡片
     const serverObj = serversRef.current.find((sv) => sv.id === session.serverId);
     if (serverObj) {
-      setConnectingServer({ server: serverObj, sessionId: session.id, startTime: Date.now() });
+      setConnectingServers((prev) => [...prev, { server: serverObj, sessionId: session.id, startTime: Date.now() }]);
     }
 
     try {
@@ -736,7 +735,7 @@ export default function App() {
       setSessions((prev) =>
         prev.map((s) => (s.id === session.id ? { ...s, status: 'connected', terminals: newTerminals } : s))
       );
-      setConnectingServer(null);
+      setConnectingServers((prev) => prev.filter((s) => s.sessionId !== session.id));
       addToast(t('重新连接成功'), 'success');
 
       // 切回重连前所在的终端
@@ -753,7 +752,7 @@ export default function App() {
         prev.map((s) => (s.id === session.id ? { ...s, status: isHostKeyChange ? 'connecting' : 'error' } : s))
       );
       if (!isHostKeyChange) {
-        setConnectingServer(null);
+        setConnectingServers((prev) => prev.filter((s) => s.sessionId !== session.id));
         addToast(`${t('重新连接失败')}: ${err}`, 'error', 5000);
       }
     }
@@ -836,7 +835,7 @@ export default function App() {
               s.id === sessionId ? { ...s, status: 'connected' } : s
             )
           );
-          setConnectingServer(null);
+          setConnectingServers((prev) => prev.filter((s) => s.sessionId !== sessionId));
           addToast(
             chosen === 2 ? t('主机密钥已保存，连接成功') : t('本次已接受，连接成功'),
             'success'
@@ -845,11 +844,11 @@ export default function App() {
           await postConnectSetup(sessionId);
         } else {
           updateSessionStatus(sessionId, 'error');
-          setConnectingServer(null);
+          setConnectingServers((prev) => prev.filter((s) => s.sessionId !== sessionId));
         }
       } catch (err) {
         updateSessionStatus(sessionId, 'error');
-        setConnectingServer(null);
+        setConnectingServers((prev) => prev.filter((s) => s.sessionId !== sessionId));
         addToast(`${t('连接失败')}: ${err}`, 'error', 5000);
       }
     });
@@ -881,7 +880,7 @@ export default function App() {
       if (password === null) {
         // 用户取消
         updateSessionStatus(sessionId, 'error');
-        setConnectingServer(null);
+        setConnectingServers((prev) => prev.filter((s) => s.sessionId !== sessionId));
         addToast(t('用户取消连接'), 'warning', 3000);
         return;
       }
@@ -891,7 +890,7 @@ export default function App() {
 
       if (!newPassword) {
         updateSessionStatus(sessionId, 'error');
-        setConnectingServer(null);
+        setConnectingServers((prev) => prev.filter((s) => s.sessionId !== sessionId));
         return;
       }
 
@@ -900,7 +899,7 @@ export default function App() {
         setSessions((prev) =>
           prev.map((s) => (s.id === sessionId ? { ...s, status: 'connected' } : s))
         );
-        setConnectingServer(null);
+        setConnectingServers((prev) => prev.filter((s) => s.sessionId !== sessionId));
         addToast(persist ? t('密码已保存，连接成功') : t('连接成功'), 'success', 3000);
 
         await postConnectSetup(sessionId, connId, { password: newPassword });
@@ -908,7 +907,7 @@ export default function App() {
         // 加入最近连接
       } catch (retryErr) {
         updateSessionStatus(sessionId, 'error');
-        setConnectingServer(null);
+        setConnectingServers((prev) => prev.filter((s) => s.sessionId !== sessionId));
         addToast(`${t('重新连接失败')}: ${String(retryErr)}`, 'error', 5000);
       }
     });
@@ -1080,14 +1079,14 @@ export default function App() {
     setActiveTerminalId(sessionId);
     setContentTab('terminal');
     // 显示连接进度卡片
-    setConnectingServer({ server, sessionId, startTime: Date.now() });
+    setConnectingServers((prev) => [...prev, { server, sessionId, startTime: Date.now() }]);
 
     try {
       await AppGo.ConnectSSH(sessionId, server.id);
       setSessions((prev) =>
         prev.map((s) => (s.id === sessionId ? { ...s, status: 'connected' } : s))
       );
-      setConnectingServer(null); // 连接成功，关闭进度卡片
+      setConnectingServers((prev) => prev.filter((s) => s.sessionId !== sessionId));
 
       // 连接成功后自动查询 OS 信息并更新 sessions
       await postConnectSetup(sessionId, server.id);
@@ -1114,8 +1113,8 @@ export default function App() {
     if (activeSessionIdRef.current === sessionId) {
       switchToNextSession(sessionId);
     }
-    if (connectingServerRef.current?.sessionId === sessionId) {
-      setConnectingServer(null);
+    if (connectingServersRef.current.some((s) => s.sessionId === sessionId)) {
+      setConnectingServers((prev) => prev.filter((s) => s.sessionId !== sessionId));
     }
   }, []);
 
@@ -1154,7 +1153,7 @@ export default function App() {
     setSessions([]);
     setActiveSessionId(null);
     setActiveTerminalId(null);
-    setConnectingServer(null);
+    setConnectingServers([]);
   }, [t]);
 
   // ── 在当前服务器上新建终端标签 ──────────────────────────────
@@ -1936,13 +1935,16 @@ export default function App() {
       <Toast toasts={toasts} />
       <GlobalDialog />
 
-      {/* ── 连接进度卡片（仅当连接中的会话是当前激活会话时才显示） ── */}
-      {connectingServer && connectingServer.sessionId === activeSessionId && (
-        <ConnectingCard
-          connectingServer={connectingServer}
-          t={t}
-          onCancel={handleCancelConnection}
-        />
+      {/* ── 连接进度卡片（只跟随当前激活会话） ── */}
+      {connectingServers.map(cs =>
+        cs.sessionId === activeSessionId && (
+          <ConnectingCard
+            key={cs.sessionId}
+            connectingServer={cs}
+            t={t}
+            onCancel={() => handleCancelConnection(cs.sessionId)}
+          />
+        )
       )}
 
       {/* ── 自动更新弹窗 ──────────────────────────────── */}

@@ -753,6 +753,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
       const applyLight = savedTheme === 'light' || (savedTheme === 'system' && isSystemLight);
       if (applyLight) document.body.classList.add('theme-light');
       else document.body.classList.remove('theme-light');
+      window.dispatchEvent(new CustomEvent('theme-mode-changed'));
     };
     applyTheme();
 

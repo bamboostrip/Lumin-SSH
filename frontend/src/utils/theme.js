@@ -84,14 +84,14 @@ const TERMINAL_THEMES = {
     },
     light: {
       xterm: {
-        background: '#00000000', foreground: '#343b58', cursor: '#2e7de9',
-        cursorAccent: '#e1e2e7', selectionBackground: 'rgba(46,125,233,0.30)',
+        background: '#00000000', foreground: '#1f2335', cursor: '#1f6feb',
+        cursorAccent: '#e1e2e7', selectionBackground: 'rgba(31,111,235,0.30)',
         selectionForeground: '#e1e2e7',
-        black: '#343b58', red: '#8c4351', green: '#485e30', yellow: '#8f5e15',
-        blue: '#2e7de9', magenta: '#7847bd', cyan: '#007197', white: '#848cb5',
-        brightBlack: '#565a6e', brightRed: '#c64343', brightGreen: '#587539',
-        brightYellow: '#c07c00', brightBlue: '#5a9bf6', brightMagenta: '#9854f1',
-        brightCyan: '#2483a6', brightWhite: '#acb0d0',
+        black: '#1f2335', red: '#7f1d1d', green: '#365314', yellow: '#854d0e',
+        blue: '#1d4ed8', magenta: '#6d28d9', cyan: '#155e75', white: '#5b6388',
+        brightBlack: '#3b405c', brightRed: '#991b1b', brightGreen: '#3f6212',
+        brightYellow: '#a16207', brightBlue: '#2563eb', brightMagenta: '#7c3aed',
+        brightCyan: '#0e7490', brightWhite: '#848cb5',
       },
       container: {
         containerBg: '#e1e2e7', statusBarBg: 'rgba(225,226,231,0.92)', statusBarBorder: '1px solid rgba(0,0,0,0.08)',
@@ -188,14 +188,14 @@ const TERMINAL_THEMES = {
     },
     light: {
       xterm: {
-        background: '#00000000', foreground: '#282a36', cursor: '#282a36',
-        cursorAccent: '#f8f8f2', selectionBackground: 'rgba(189,147,249,0.30)',
+        background: '#00000000', foreground: '#1f2937', cursor: '#1f2937',
+        cursorAccent: '#f8f8f2', selectionBackground: 'rgba(124,58,237,0.30)',
         selectionForeground: '#f8f8f2',
-        black: '#282a36', red: '#ff5555', green: '#50fa7b', yellow: '#f1fa8c',
-        blue: '#bd93f9', magenta: '#ff79c6', cyan: '#8be9fd', white: '#6272a4',
-        brightBlack: '#44475a', brightRed: '#ff6e6e', brightGreen: '#69ff94',
-        brightYellow: '#ffffa5', brightBlue: '#d6acff', brightMagenta: '#ff92df',
-        brightCyan: '#a4ffff', brightWhite: '#bfbfbf',
+        black: '#1f2937', red: '#dc2626', green: '#15803d', yellow: '#a16207',
+        blue: '#6d28d9', magenta: '#be185d', cyan: '#0e7490', white: '#4b5563',
+        brightBlack: '#374151', brightRed: '#ef4444', brightGreen: '#16a34a',
+        brightYellow: '#ca8a04', brightBlue: '#7c3aed', brightMagenta: '#db2777',
+        brightCyan: '#0891b2', brightWhite: '#6b7280',
       },
       container: {
         containerBg: '#f8f8f2', statusBarBg: 'rgba(248,248,242,0.92)', statusBarBorder: '1px solid rgba(0,0,0,0.08)',
@@ -215,7 +215,11 @@ const TERMINAL_THEMES = {
 
 // 检测 App 浅色/深色模式
 function getAppThemeMode() {
-  return localStorage.getItem('themeMode') || 'dark';
+  const mode = localStorage.getItem('themeMode') || 'dark';
+  if (mode === 'system') {
+    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  }
+  return mode;
 }
 
 export function getTerminalTheme() {

@@ -35,17 +35,31 @@ func detectRemoteShell(client *ssh.Client) string {
 	return ""
 }
 
-func buildShellLaunchCommand(shellPath string) (string, bool) {
-	if !isBashShell(shellPath) {
-		return "", false
+func buildShellLaunchCommand(shellPath string, initialPath string) (string, bool) {
+	trimmedShellPath := strings.TrimSpace(shellPath)
+	trimmedInitialPath := strings.TrimSpace(initialPath)
+	prefix := ""
+	if trimmedInitialPath != "" {
+		prefix = fmt.Sprintf("cd %s 2>/dev/null || true; ", shellQuote(trimmedInitialPath))
 	}
 
-	hook := `if [ -n "${LUMIN_PROMPT_SEEN:-}" ]; then LUMIN_LAST="$(fc -ln -1 2>/dev/null)"; LUMIN_LAST="${LUMIN_LAST#"${LUMIN_LAST%%[![:space:]]*}"}"; if [ -n "$LUMIN_LAST" ]; then LUMIN_ENCODED="$(printf '%s' "$LUMIN_LAST" | base64 | tr -d '\r\n')"; printf '\037LUMIN_CMD\037%s\036' "$LUMIN_ENCODED"; fi; fi; LUMIN_PROMPT_SEEN=1; if [ -n "${LUMIN_OLD_PROMPT_COMMAND:-}" ]; then eval "$LUMIN_OLD_PROMPT_COMMAND"; fi`
+	if !isBashShell(trimmedShellPath) {
+		if prefix == "" {
+			return "", false
+		}
+		if trimmedShellPath == "" {
+			return prefix + `exec "${SHELL:-/bin/sh}" -il`, false
+		}
+		return prefix + "exec " + shellQuote(trimmedShellPath) + " -il", false
+	}
+
+	hook := `if [ -n "${LUMIN_PROMPT_SEEN:-}" ]; then LUMIN_LAST="$(fc -ln -1 2>/dev/null)"; LUMIN_LAST="${LUMIN_LAST#"${LUMIN_LAST%%[![:space:]]*}"}"; if [ -n "$LUMIN_LAST" ]; then LUMIN_ENCODED="$(printf '%s' "$LUMIN_LAST" | base64 | tr -d '\r\n')"; printf '\037LUMIN_CMD\037%s\036' "$LUMIN_ENCODED"; fi; fi; LUMIN_PROMPT_SEEN=1; LUMIN_CWD="$(pwd 2>/dev/null | base64 | tr -d '\r\n')"; if [ -n "$LUMIN_CWD" ]; then printf '\037LUMIN_CWD\037%s\036' "$LUMIN_CWD"; fi; if [ -n "${LUMIN_OLD_PROMPT_COMMAND:-}" ]; then eval "$LUMIN_OLD_PROMPT_COMMAND"; fi`
 
 	command := fmt.Sprintf(
-		"export HISTCONTROL=; export HISTIGNORE=; export LUMIN_OLD_PROMPT_COMMAND=\"$PROMPT_COMMAND\"; export PROMPT_COMMAND=%s; exec %s -il",
+		"%sexport HISTCONTROL=; export HISTIGNORE=; export LUMIN_OLD_PROMPT_COMMAND=\"$PROMPT_COMMAND\"; export PROMPT_COMMAND=%s; exec %s -il",
+		prefix,
 		shellQuote(hook),
-		shellQuote(shellPath),
+		shellQuote(trimmedShellPath),
 	)
 
 	return command, true

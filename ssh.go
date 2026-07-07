@@ -51,6 +51,9 @@ type SessionData struct {
 	HistoryStream       *commandHistoryStream
 	RemoteHistoryActive bool
 	GroupSessionId      string // 对子终端有效：父会话 sessionId（用于历史事件归组）
+	ShellPath           string
+	TerminalInitPath    string
+	CurrentCwd          string
 }
 
 type SSHManager struct {
@@ -446,9 +449,9 @@ func (m *SSHManager) Connect(sessionId string, conn Connection) error {
 	}
 
 	shellPath := detectRemoteShell(client)
-	launchCmd, remoteHistoryActive := buildShellLaunchCommand(shellPath)
+	launchCmd, remoteHistoryActive := buildShellLaunchCommand(shellPath, conn.TerminalInitPath)
 
-	err := m.setupSession(client, connKey, sessionId, "", launchCmd, remoteHistoryActive)
+	err := m.setupSession(client, connKey, sessionId, "", launchCmd, remoteHistoryActive, shellPath, conn.TerminalInitPath)
 	if err != nil {
 		// setupSession 失败（如 PTY 请求失败）：仅清理本路径新建的 client/sftp，
 		// 复用的共享 client 不能关，否则会级联断开同连接的其他终端
@@ -469,7 +472,7 @@ func (m *SSHManager) Connect(sessionId string, conn Connection) error {
 }
 
 // setupSession 创建 shell session 的共享逻辑
-func (m *SSHManager) setupSession(client *ssh.Client, connKey, sessionId, groupSessionId, launchCmd string, remoteHistoryActive bool) error {
+func (m *SSHManager) setupSession(client *ssh.Client, connKey, sessionId, groupSessionId, launchCmd string, remoteHistoryActive bool, shellPath string, terminalInitPath string) error {
 	session, err := client.NewSession()
 	if err != nil {
 		return err
@@ -524,6 +527,8 @@ func (m *SSHManager) setupSession(client *ssh.Client, connKey, sessionId, groupS
 		Stdin:               stdin,
 		HistoryStream:       historyStream,
 		RemoteHistoryActive: remoteHistoryActive,
+		ShellPath:           strings.TrimSpace(shellPath),
+		TerminalInitPath:    strings.TrimSpace(terminalInitPath),
 	}
 	if groupSessionId != "" {
 		sd.GroupSessionId = groupSessionId
@@ -558,9 +563,20 @@ func (m *SSHManager) pipeOutput(sessionId string, r io.Reader, historyStream *co
 		if n > 0 {
 			var data []byte
 			if historyStream != nil {
-				// historyStream.Process 内部会拷贝输入，无需在此处再 make+copy
-				visible, commands := historyStream.Process(buf[:n])
+				visible, commands, cwd := historyStream.Process(buf[:n])
 				data = visible
+				if cwd != "" {
+					shouldEmitCwd := false
+					m.mu.Lock()
+					if s, ok := m.sessions[sessionId]; ok && s.CurrentCwd != cwd {
+						s.CurrentCwd = cwd
+						shouldEmitCwd = true
+					}
+					m.mu.Unlock()
+					if shouldEmitCwd && m.ctx != nil {
+						runtime.EventsEmit(m.ctx, "ssh-terminal-cwd-"+sessionId, cwd)
+					}
+				}
 				for _, command := range commands {
 					if command == "" || m.ctx == nil {
 						continue
@@ -753,14 +769,9 @@ func (m *SSHManager) OpenTerminal(sessionId string) (string, error) {
 	}
 	newId := fmt.Sprintf("term_%x", randomId)
 
-	// 检测 shell 并构建启动命令
-	launchCmd := ""
-	if remoteHistoryActive {
-		shellPath := detectRemoteShell(entry.Client)
-		launchCmd, _ = buildShellLaunchCommand(shellPath)
-	}
+	launchCmd, remoteHistoryActive := buildShellLaunchCommand(existing.ShellPath, existing.TerminalInitPath)
 
-	err := m.setupSession(entry.Client, connKey, newId, sessionId, launchCmd, remoteHistoryActive)
+	err := m.setupSession(entry.Client, connKey, newId, sessionId, launchCmd, remoteHistoryActive, existing.ShellPath, existing.TerminalInitPath)
 	if err != nil {
 		return "", err
 	}
@@ -896,6 +907,19 @@ func (m *SSHManager) AcceptHostKeyChange(sessionId string, action int) error {
 }
 
 func (m *SSHManager) GetTerminalCwd(sessionId string) (string, error) {
+	m.mu.RLock()
+	sessionData, ok := m.sessions[sessionId]
+	if !ok {
+		m.mu.RUnlock()
+		return "", fmt.Errorf("session not found")
+	}
+	if strings.TrimSpace(sessionData.CurrentCwd) != "" {
+		cwd := strings.TrimSpace(sessionData.CurrentCwd)
+		m.mu.RUnlock()
+		return cwd, nil
+	}
+	m.mu.RUnlock()
+
 	client, _, err := m.getClientEntry(sessionId)
 	if err != nil {
 		return "", err
@@ -906,7 +930,6 @@ func (m *SSHManager) GetTerminalCwd(sessionId string) (string, error) {
 	if err != nil || portStr == "" {
 		return "", fmt.Errorf("invalid local address format")
 	}
-	// 校验端口为纯数字，防止命令注入
 	if _, err := strconv.Atoi(portStr); err != nil {
 		return "", fmt.Errorf("invalid local port: %s", portStr)
 	}
@@ -919,7 +942,6 @@ func (m *SSHManager) GetTerminalCwd(sessionId string) (string, error) {
 	}
 	cwd := strings.TrimSpace(out)
 	if cwd == "" || cwd == "/" {
-		// 复杂探测失败，用 $HOME 作为回退
 		homeOut, homeErr := m.executeCmdWithClient(client, "echo $HOME")
 		if homeErr == nil {
 			homeDir := strings.TrimSpace(homeOut)

@@ -461,7 +461,7 @@ func ResolveModelCapability(provider string, modelID string) AIProviderModelCapa
 
 func providerSupportsAIQuickEditPromptCache(provider string) bool {
 	switch normalizeProviderProtocol(provider) {
-	case "Compatible", "Messages":
+	case "Compatible", "Responses", "Messages":
 		return true
 	default:
 		return false

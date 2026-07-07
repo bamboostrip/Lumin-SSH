@@ -139,7 +139,7 @@ function isInternalIP(ip) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-export default function ProbePanel({ sessionId, host, addToast, enabled, onEnable, onShowAllProcesses, onShowNetworkDetails }) {
+export default function ProbePanel({ sessionId, host, addToast, enabled, active, onEnable, onShowAllProcesses, onShowNetworkDetails }) {
   const { t } = useTranslation();
   const [info, setInfo] = useState(null);
   // ponytail: 合并 3 个历史数组为 1 个状态更新，减少 3 次渲染为 1 次
@@ -151,6 +151,8 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, onEnabl
   const [probeError, setProbeError] = useState(null);
   const probeErrorCountRef = useRef(0);
   const staticInfoRef = useRef(null);
+  const activeRef = useRef(active);
+  useEffect(() => { activeRef.current = active; }, [active]);
   // ponytail: 跟踪当前 sessionId，用于丢弃切换服务器前在飞的异步响应（key remount 下冗余但安全）
   const activeSessionIdRef = useRef(sessionId);
   useEffect(() => { activeSessionIdRef.current = sessionId; }, [sessionId]);
@@ -168,13 +170,13 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, onEnabl
   // 启用监控时获取一次静态信息（OS/时区/主机名/CPU 型号）
   // ponytail: 已缓存则跳过，避免重复 IPC
   useEffect(() => {
-    if (!enabled || !sessionId) return;
+    if (!enabled || !active || !sessionId) return;
     if (staticInfoRef.current) return;
-    let active = true;
+    let mounted = true;
     (async () => {
       try {
         const data = await AppGo.GetServerStaticInfo(sessionId);
-        if (!active) return;
+        if (!mounted || !activeRef.current || activeSessionIdRef.current !== sessionId) return;
         staticInfoRef.current = {
           os: data.os || 'Linux',
           timezone: data.timezone || 'UTC',
@@ -182,12 +184,12 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, onEnabl
           ip: data.ip || '',
         };
       } catch (_) {
-        if (!active) return;
+        if (!mounted || !activeRef.current || activeSessionIdRef.current !== sessionId) return;
         staticInfoRef.current = { os: 'Linux', timezone: 'UTC', cpuModel: '', ip: '' };
       }
     })();
-    return () => { active = false; };
-  }, [enabled, sessionId]);
+    return () => { mounted = false; };
+  }, [enabled, active, sessionId]);
 
   const handleShowAllProcesses = useCallback(() => {
     if (!sessionId || !onShowAllProcesses) return;
@@ -200,10 +202,10 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, onEnabl
   }, [sessionId, onShowNetworkDetails]);
 
   const fetchInfo = useCallback(async () => {
-    if (!sessionId || !enabled) return;
+    if (!sessionId || !enabled || !activeRef.current) return;
     try {
       const data = await AppGo.SystemInfo(sessionId);
-      if (activeSessionIdRef.current !== sessionId) return; // 切换服务器后丢弃旧响应
+      if (!activeRef.current || activeSessionIdRef.current !== sessionId) return; // 切换服务器后丢弃旧响应
       const si = staticInfoRef.current || { os: 'Linux', timezone: 'UTC', cpuModel: '' };
       const uptimeData = data.uptime || {};
       let uptimeStr = t('0 小时');
@@ -264,20 +266,20 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, onEnabl
   };
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !active) return;
     fetchInfo();
     // ponytail: 递归 setTimeout 替代 setInterval，确保上一次 fetchInfo 完成后才排下一次，
     // 避免慢网络下多个 SystemInfo 并发在飞（请求堆叠 + 加剧竞态）
     const scheduleNext = () => {
       probeTimerRef.current = setTimeout(async () => {
         await fetchInfo();
-        if (probeTimerRef.current !== null) scheduleNext();
+        if (probeTimerRef.current !== null && activeRef.current) scheduleNext();
       }, getProbeInterval() * 1000);
     };
     scheduleNext();
     const onIntervalChange = () => {
       if (probeTimerRef.current) clearTimeout(probeTimerRef.current);
-      scheduleNext();
+      if (activeRef.current) scheduleNext();
     };
     window.addEventListener('probeIntervalChanged', onIntervalChange);
     return () => {
@@ -287,7 +289,7 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, onEnabl
       }
       window.removeEventListener('probeIntervalChanged', onIntervalChange);
     };
-  }, [fetchInfo, enabled]);
+  }, [fetchInfo, enabled, active]);
 
   const handleConfirm = async () => {
     setShowConfirm(false);

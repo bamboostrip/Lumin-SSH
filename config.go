@@ -33,19 +33,21 @@ func parseIntOrDefault(s string, def int) int {
 
 // Connection struct
 type Connection struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Host         string `json:"host"`
-	Port         int    `json:"port"`
-	Username     string `json:"username"`
-	Password     string `json:"password,omitempty"`
-	AuthMethod   string `json:"authMethod"`
-	PrivateKey   string `json:"privateKey,omitempty"`
-	Passphrase   string `json:"passphrase,omitempty"`
-	Group        string `json:"group,omitempty"` // 服务器分组，空=未分组
-	Os           string `json:"os,omitempty"`
-	CredentialID string `json:"credentialId,omitempty"`  // ponytail: 非空时用 Credential 认证，忽略内联字段
-	LastModified int64  `json:"last_modified,omitempty"` // Unix 毫秒时间戳，合并时判断新旧
+	ID                  string `json:"id"`
+	Name                string `json:"name"`
+	Host                string `json:"host"`
+	Port                int    `json:"port"`
+	Username            string `json:"username"`
+	Password            string `json:"password,omitempty"`
+	AuthMethod          string `json:"authMethod"`
+	PrivateKey          string `json:"privateKey,omitempty"`
+	Passphrase          string `json:"passphrase,omitempty"`
+	Group               string `json:"group,omitempty"` // 服务器分组，空=未分组
+	Os                  string `json:"os,omitempty"`
+	CredentialID        string `json:"credentialId,omitempty"`      // ponytail: 非空时用 Credential 认证，忽略内联字段
+	TerminalInitPath    string `json:"terminalInitPath,omitempty"`
+	FileManagerInitPath string `json:"fileManagerInitPath,omitempty"`
+	LastModified        int64  `json:"last_modified,omitempty"` // Unix 毫秒时间戳，合并时判断新旧
 }
 
 // Credential 可复用的认证凭据，多个 Connection 可引用同一 Credential

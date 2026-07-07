@@ -6,6 +6,27 @@ import AIProviderQuickEditOverlay from './AIProviderQuickEditOverlay.jsx'
 import { getAIProviderState, normalizeAIProviderState, saveAIProviderState } from './aiProviderBridge.js'
 
 const defaultProviders = []
+const summaryTooltipDelay = 300
+
+const cacheStrategyLabelKeys = {
+  model: '基于模型能力',
+  off: '强制关闭',
+  '5m': '5分钟',
+  '1h': '1小时',
+}
+
+function getCacheStrategyLabel(t, value) {
+  const nextValue = typeof value === 'string' ? value.trim() : ''
+  return t(cacheStrategyLabelKeys[nextValue] || cacheStrategyLabelKeys.model)
+}
+
+function getApiKeyPreview(value) {
+  const nextValue = typeof value === 'string' ? value.trim() : ''
+  if (!nextValue) {
+    return ''
+  }
+  return nextValue.length <= 12 ? nextValue : nextValue.slice(-12)
+}
 
 function sortProviders(items) {
   return [...items].sort((left, right) => {
@@ -25,6 +46,7 @@ export default function AIProviderSelector({
 }) {
   const { t } = useTranslation()
   const containerRef = useRef(null)
+  const tooltipTimerRef = useRef(null)
   const [open, setOpen] = useState(false)
   const [searchValue, setSearchValue] = useState('')
   const [providerList, setProviderList] = useState(sortProviders(providers))
@@ -32,7 +54,10 @@ export default function AIProviderSelector({
   const [panelBounds, setPanelBounds] = useState(null)
   const [dropdownMetrics, setDropdownMetrics] = useState(null)
   const [triggerRect, setTriggerRect] = useState(null)
+  const [tooltipVisible, setTooltipVisible] = useState(false)
+  const [tooltipTriggerRect, setTooltipTriggerRect] = useState(null)
   const expandLeft = triggerRect ? triggerRect.left + 400 > window.innerWidth - 16 : false
+  const tooltipExpandLeft = tooltipTriggerRect ? tooltipTriggerRect.left + 280 > window.innerWidth - 16 : false
   const [editingState, setEditingState] = useState({ open: false, mode: 'edit', provider: null })
   const isControlled = typeof currentProviderId === 'string'
   const effectiveSelectedId = isControlled ? currentProviderId : persistedCurrentProviderId
@@ -41,6 +66,39 @@ export default function AIProviderSelector({
     () => providerList.find((item) => item.id === effectiveSelectedId) || null,
     [providerList, effectiveSelectedId],
   )
+
+  const providerSummaryRows = useMemo(() => ([
+    { label: t('供应商'), value: selectedProvider?.name || t('选择供应商') },
+    { label: t('模型'), value: selectedProvider?.model || t('未选择模型') },
+    { label: t('API兼容方式'), value: selectedProvider?.provider || 'Compatible' },
+    { label: t('缓存策略'), value: getCacheStrategyLabel(t, selectedProvider?.cacheStrategy) },
+    { label: 'Key', value: getApiKeyPreview(selectedProvider?.apiKey) || '-' },
+  ]), [selectedProvider, t])
+
+  const closeTooltip = useCallback(() => {
+    if (tooltipTimerRef.current) {
+      window.clearTimeout(tooltipTimerRef.current)
+      tooltipTimerRef.current = null
+    }
+    setTooltipVisible(false)
+  }, [])
+
+  const handleTriggerMouseEnter = useCallback(() => {
+    if (open || editingState.open) {
+      return
+    }
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (rect) {
+      setTooltipTriggerRect({ top: rect.top, left: rect.left, right: rect.right, bottom: rect.bottom })
+    }
+    if (tooltipTimerRef.current) {
+      window.clearTimeout(tooltipTimerRef.current)
+    }
+    tooltipTimerRef.current = window.setTimeout(() => {
+      setTooltipVisible(true)
+      tooltipTimerRef.current = null
+    }, summaryTooltipDelay)
+  }, [editingState.open, open])
 
   const filteredProviders = useMemo(() => {
     const keyword = searchValue.trim().toLowerCase()
@@ -128,6 +186,38 @@ export default function AIProviderSelector({
     }
   }, [persistRegistryState, providers])
 
+  useEffect(() => () => closeTooltip(), [closeTooltip])
+
+  useEffect(() => {
+    if (!tooltipVisible) {
+      return undefined
+    }
+
+    const updateTooltipRect = () => {
+      const rect = containerRef.current?.getBoundingClientRect()
+      if (!rect) {
+        setTooltipVisible(false)
+        return
+      }
+      setTooltipTriggerRect({ top: rect.top, left: rect.left, right: rect.right, bottom: rect.bottom })
+    }
+
+    updateTooltipRect()
+    window.addEventListener('resize', updateTooltipRect)
+    window.addEventListener('scroll', updateTooltipRect, true)
+
+    return () => {
+      window.removeEventListener('resize', updateTooltipRect)
+      window.removeEventListener('scroll', updateTooltipRect, true)
+    }
+  }, [tooltipVisible])
+
+  useEffect(() => {
+    if (open || editingState.open) {
+      closeTooltip()
+    }
+  }, [closeTooltip, editingState.open, open])
+
   useEffect(() => {
     if (!open || editingState.open) {
       return undefined
@@ -198,12 +288,14 @@ export default function AIProviderSelector({
   }, [editingState.open, open])
 
   useEffect(() => {
+    closeTooltip()
     setOpen(false)
     setTriggerRect(null)
+    setTooltipTriggerRect(null)
     setDropdownMetrics(null)
     setPanelBounds(null)
     setEditingState({ open: false, mode: 'edit', provider: null })
-  }, [dismissSignal])
+  }, [closeTooltip, dismissSignal])
 
   const notifySelectionChange = useCallback(async (providerId) => {
     if (typeof onCurrentProviderChange === 'function') {
@@ -326,7 +418,14 @@ export default function AIProviderSelector({
       <div ref={containerRef} style={{ position: 'relative', flexShrink: 0, overflow: 'visible', zIndex: open ? 40 : 'auto' }}>
         <button
           type="button"
-          onClick={() => setOpen((prev) => !prev)}
+          onClick={() => {
+            closeTooltip()
+            setOpen((prev) => !prev)
+          }}
+          onMouseEnter={handleTriggerMouseEnter}
+          onMouseLeave={closeTooltip}
+          onFocus={handleTriggerMouseEnter}
+          onBlur={closeTooltip}
           style={{
             height: 28,
             display: 'inline-flex',
@@ -345,6 +444,77 @@ export default function AIProviderSelector({
         >
           <span>{selectedProvider?.name || t('选择供应商')}</span>
         </button>
+
+        {tooltipVisible && tooltipTriggerRect && !open && !editingState.open ? (
+          <div
+            style={{
+              position: 'fixed',
+              ...(tooltipExpandLeft
+                ? { right: Math.max(16, window.innerWidth - tooltipTriggerRect.right) }
+                : { left: Math.max(16, tooltipTriggerRect.left) }),
+              bottom: window.innerHeight - tooltipTriggerRect.top + 8,
+              width: 'max-content',
+              maxWidth: Math.max(180, (tooltipExpandLeft ? tooltipTriggerRect.right : window.innerWidth - tooltipTriggerRect.left) - 16),
+              padding: '10px 12px',
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              background: 'var(--surface-overlay)',
+              boxShadow: 'var(--shadow-xl)',
+              display: 'grid',
+              gap: 6,
+              zIndex: 10001,
+              pointerEvents: 'none',
+            }}
+          >
+            {providerSummaryRows.map((row) => (
+              <div
+                key={row.label}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 8,
+                  minWidth: 0,
+                }}
+              >
+                <span
+                  style={{
+                    flexShrink: 0,
+                    fontSize: 11,
+                    color: 'var(--text-tertiary)',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {row.label}
+                </span>
+                <span
+                  style={{
+                    minWidth: 0,
+                    maxWidth: '100%',
+                    fontSize: 11.5,
+                    color: 'var(--text-primary)',
+                    lineHeight: 1.45,
+                    overflowWrap: 'anywhere',
+                  }}
+                >
+                  {row.value}
+                </span>
+              </div>
+            ))}
+            <div
+              style={{
+                position: 'absolute',
+                bottom: -6,
+                ...(tooltipExpandLeft ? { right: 20 } : { left: 20 }),
+                width: 10,
+                height: 10,
+                borderRight: '1px solid var(--border)',
+                borderBottom: '1px solid var(--border)',
+                background: 'var(--surface-overlay)',
+                transform: 'rotate(45deg)',
+              }}
+            />
+          </div>
+        ) : null}
 
         {open && triggerRect && (
           <div

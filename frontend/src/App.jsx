@@ -1,7 +1,6 @@
-import { useState, useEffect, useCallback, useRef, useMemo, useReducer } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { EventsOn, WindowMinimise, WindowToggleMaximise, WindowHide, WindowShow, WindowSetSize, WindowGetSize, WindowIsMaximised, WindowMaximise } from '../wailsjs/runtime/runtime.js';
 import * as AppGo from '../wailsjs/go/main/App.js';
-import AddServerModal from './components/AddServerModal.jsx';
 import Terminal from './components/Terminal.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import ProbePanel from './components/ProbePanel.jsx';
@@ -18,7 +17,7 @@ import GlobalDialog from './components/GlobalDialog.jsx';
 import GlobalContextMenu from './components/GlobalContextMenu.jsx';
 import { clampPanelWidth } from './components/probeFormatting.js';
 import { useTranslation } from './i18n.js';
-import { hexToRgb } from './utils/theme.js';
+import { getTerminalTheme, hexToRgb } from './utils/theme.js';
 import { useUpdateChecker } from './hooks/useUpdateChecker.js';
 import ConnectingCard from './components/ConnectingCard.jsx';
 import UpdateModal from './components/UpdateModal.jsx';
@@ -27,6 +26,17 @@ import { Bot, Settings, House, Minus, Square, X, Plus, Monitor, RefreshCw, Folde
 import { Z } from './constants/zIndex';
 
 import logoImg from './assets/logo.png';
+
+function withAlpha(color, alpha, fallback) {
+  if (typeof color !== 'string') {
+    return fallback;
+  }
+  const trimmed = color.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) {
+    return `rgba(${hexToRgb(trimmed)}, ${alpha})`;
+  }
+  return trimmed || fallback;
+}
 
 function Tiptop({ text, children }) {
   return (
@@ -38,6 +48,13 @@ function Tiptop({ text, children }) {
     </div>
   );
 }
+
+const FILE_MANAGER_LEFT_MIN = 180;
+const FILE_MANAGER_BOTTOM_MIN = 100;
+const PROBE_PANEL_MIN = 280;
+const AI_PANEL_MIN = 450;
+const COLLAPSE_ARMED_SIZE = 32;
+const FILE_MANAGER_DOCK_HOTZONE = 88;
 
 export default function App() {
   const { t } = useTranslation();
@@ -57,7 +74,12 @@ export default function App() {
   const lastTerminalRef = useRef({}); // 记录每个 session 最后选中的终端
   const [mountedSessions, setMountedSessions] = useState(new Set());
   const [contentTab, setContentTab] = useState('terminal'); // 'terminal' | 'files'
-  const [addServerModal, setAddServerModal] = useState({ open: false, server: null });
+  const [serverEditor, setServerEditor] = useState(null);
+  const [editFlyAnimation, setEditFlyAnimation] = useState(null);
+  const [editFlyShiningFields, setEditFlyShiningFields] = useState({});
+  const editFlyTimerRef = useRef(null);
+  const editFlyFieldTimerRefs = useRef([]);
+  const editFlyShineTimerRefs = useRef([]);
   const [showSettings, setShowSettings] = useState(false);
   const [showCredentials, setShowCredentials] = useState(false);
   const [tabContextMenu, setTabContextMenu] = useState(null);
@@ -89,6 +111,7 @@ export default function App() {
     if (savedPosition === 'left' || savedPosition === 'bottom') return savedPosition;
     return savedSplitPosition === 'left' || savedSplitPosition === 'bottom' ? savedSplitPosition : 'bottom';
   });
+  const [fileManagerCollapsed, setFileManagerCollapsed] = useState(() => localStorage.getItem('fileManagerCollapsed') === 'true');
   const [creatingTerminalSessionId, setCreatingTerminalSessionId] = useState(null);
   const creatingTerminalRef = useRef(null);
   
@@ -102,9 +125,15 @@ export default function App() {
 
   const renderSessionFileManagers = (s) => getEffectiveTerminals(s).map(t => {
     const isActive = activeSessionId === s.id && activeTerminalId === t.id;
+    const serverConfig = serversRef.current.find((server) => server.id === s.serverId);
     return (
       <div key={t.id} style={isActive ? { display: 'contents' } : { display: 'none' }}>
-        <FileManager sessionId={t.id} addToast={addToast} isActive={isActive} />
+        <FileManager
+          sessionId={t.id}
+          addToast={addToast}
+          isActive={isActive}
+          initialPath={serverConfig?.fileManagerInitPath || ''}
+        />
       </div>
     );
   });
@@ -122,11 +151,12 @@ export default function App() {
     return parseInt(localStorage.getItem('bottomSplitHeight') || '250', 10);
   });
   const [probePanelWidth, setProbePanelWidth] = useState(() => {
-    return clampPanelWidth(localStorage.getItem('probePanelWidth') || '320');
+    return clampPanelWidth(localStorage.getItem('probePanelWidth') || '320', PROBE_PANEL_MIN);
   });
   const [probePanelPosition, setProbePanelPosition] = useState(() => localStorage.getItem('probePanelPosition') || 'left');
   const [probePanelCollapsed, setProbePanelCollapsed] = useState(() => localStorage.getItem('probePanelCollapsed') === 'true');
   const [showSessionList, setShowSessionList] = useState(false);
+  const [terminalThemeToggle, setTerminalThemeToggle] = useState(0);
   const [sessionListPos, setSessionListPos] = useState({ x: 0, y: 0 });
   const [sessionListQuery, setSessionListQuery] = useState('');
   const sessionListBtnRef = useRef(null);
@@ -135,12 +165,49 @@ export default function App() {
   const tabScrollRef = useRef(null);
   const tabListRef = useRef(null);
   const tabActionsRef = useRef(null);
-  const toggleProbePanel = useCallback(() => {
-    setProbePanelCollapsed(v => {
-      const next = !v;
-      localStorage.setItem('probePanelCollapsed', next);
-      return next;
-    });
+  const terminalSubTabScrollRef = useRef(null);
+  const terminalSubTabActionsRef = useRef(null);
+  const terminalSubTabDragSuppressUntilRef = useRef(0);
+  const terminalSubTabScrollTargetRef = useRef(0);
+  const terminalSubTabScrollFrameRef = useRef(0);
+  const terminalSubTabDraggingRef = useRef(false);
+  const fileManagerDockTabAnchorRef = useRef(null);
+  const resizerClickSuppressUntilRef = useRef(0);
+  const [collapseDragIntent, setCollapseDragIntent] = useState(null);
+  const collapseDragIntentRef = useRef(null);
+  const updateCollapseDragIntent = useCallback((next) => {
+    if (collapseDragIntentRef.current === next) {
+      return;
+    }
+    collapseDragIntentRef.current = next;
+    setCollapseDragIntent(next);
+  }, []);
+  const [fileManagerDockPreview, setFileManagerDockPreview] = useState(null);
+  const fileManagerDockPreviewRef = useRef(null);
+  const updateFileManagerDockPreview = useCallback((next) => {
+    if (fileManagerDockPreviewRef.current === next) {
+      return;
+    }
+    fileManagerDockPreviewRef.current = next;
+    setFileManagerDockPreview(next);
+  }, []);
+  const [fileManagerDockConfirmTarget, setFileManagerDockConfirmTarget] = useState(null);
+  const fileManagerDockConfirmTargetRef = useRef(null);
+  const updateFileManagerDockConfirmTarget = useCallback((next) => {
+    if (fileManagerDockConfirmTargetRef.current === next) {
+      return;
+    }
+    fileManagerDockConfirmTargetRef.current = next;
+    setFileManagerDockConfirmTarget(next);
+  }, []);
+  const shouldIgnoreResizerClick = useCallback(() => Date.now() < resizerClickSuppressUntilRef.current, []);
+  const setFileManagerCollapsedPersistent = useCallback((next) => {
+    setFileManagerCollapsed(next);
+    localStorage.setItem('fileManagerCollapsed', String(next));
+  }, []);
+  const setProbePanelCollapsedPersistent = useCallback((next) => {
+    setProbePanelCollapsed(next);
+    localStorage.setItem('probePanelCollapsed', String(next));
   }, []);
   useEffect(() => {
     if (!showSessionList) return;
@@ -174,8 +241,18 @@ export default function App() {
     ro.observe(scroll);
     return () => ro.disconnect();
   }, [sessions]);
+  useEffect(() => {
+    const refreshTerminalTheme = () => setTerminalThemeToggle((prev) => prev + 1);
+    window.addEventListener('terminal-theme-changed', refreshTerminalTheme);
+    window.addEventListener('theme-mode-changed', refreshTerminalTheme);
+    return () => {
+      window.removeEventListener('terminal-theme-changed', refreshTerminalTheme);
+      window.removeEventListener('theme-mode-changed', refreshTerminalTheme);
+    };
+  }, []);
+  const terminalSubTabTheme = useMemo(() => getTerminalTheme(), [terminalThemeToggle]);
   const [aiPanelWidth, setAiPanelWidth] = useState(() => {
-    return clampPanelWidth(localStorage.getItem('aiPanelWidth') || '450', 450);
+    return clampPanelWidth(localStorage.getItem('aiPanelWidth') || '450', AI_PANEL_MIN);
   });
   const [showAIPanel, setShowAIPanel] = useState(localStorage.getItem('showAIPanel') !== 'false');
 
@@ -193,15 +270,159 @@ export default function App() {
     bottomSplitHeightRef.current = h;
   }, []);
   const updateProbePanelWidth = useCallback((w) => {
-    const next = clampPanelWidth(w);
+    const next = clampPanelWidth(w, PROBE_PANEL_MIN);
     setProbePanelWidth(next);
     probePanelWidthRef.current = next;
   }, []);
   const updateAiPanelWidth = useCallback((w) => {
-    const next = clampPanelWidth(w, 450);
+    const next = clampPanelWidth(w, AI_PANEL_MIN);
     setAiPanelWidth(next);
     aiPanelWidthRef.current = next;
   }, []);
+  const setAIPanelVisibility = useCallback((next) => {
+    setShowAIPanel(next);
+    localStorage.setItem('showAIPanel', String(next));
+  }, []);
+  const getFileManagerDockPreviewRect = useCallback((target) => {
+    if (target !== 'left' && target !== 'bottom') {
+      return null;
+    }
+    const container = document.getElementById('session-editor-container');
+    if (!container) {
+      return null;
+    }
+    const rect = container.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return null;
+    }
+
+    const previewInset = 10;
+    const resizerThickness = 4;
+
+    if (target === 'left') {
+      const bottomInset = fileManagerPosition === 'bottom' && !fileManagerCollapsed
+        ? bottomSplitHeightRef.current + resizerThickness + previewInset
+        : previewInset;
+      const width = Math.max(FILE_MANAGER_LEFT_MIN, Math.min(800, leftSplitWidthRef.current));
+      const left = rect.left + previewInset;
+      const top = rect.top + previewInset;
+      const right = left + width;
+      const bottom = rect.bottom - bottomInset;
+      if (right <= left || bottom <= top) {
+        return null;
+      }
+      return {
+        left,
+        top,
+        right,
+        bottom,
+        style: {
+          left: previewInset,
+          top: previewInset,
+          bottom: bottomInset,
+          width: `${width}px`,
+        },
+      };
+    }
+
+    const leftInset = fileManagerPosition === 'left' && !fileManagerCollapsed
+      ? leftSplitWidthRef.current + resizerThickness + previewInset
+      : previewInset;
+    const height = Math.max(FILE_MANAGER_BOTTOM_MIN, Math.min(600, bottomSplitHeightRef.current));
+    const left = rect.left + leftInset;
+    const right = rect.right - previewInset;
+    const bottom = rect.bottom - previewInset;
+    const top = bottom - height;
+    if (right <= left || bottom <= top) {
+      return null;
+    }
+    return {
+      left,
+      top,
+      right,
+      bottom,
+      style: {
+        left: leftInset,
+        right: previewInset,
+        bottom: previewInset,
+        height: `${height}px`,
+      },
+    };
+  }, [fileManagerCollapsed, fileManagerPosition]);
+const getFileManagerDockConfirmRect = useCallback((target) => {
+  if (target === 'tab') {
+    const rect = fileManagerDockTabAnchorRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) {
+      return null;
+    }
+    return {
+      left: rect.left,
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom,
+    };
+  }
+
+  const previewRect = getFileManagerDockPreviewRect(target);
+    if (!previewRect) {
+      return null;
+    }
+
+    const container = document.getElementById('session-editor-container');
+    const containerRect = container?.getBoundingClientRect();
+    const edgeInset = 12;
+    if (target === 'left') {
+      const previewWidth = previewRect.right - previewRect.left;
+      const left = previewRect.left + edgeInset;
+      const top = previewRect.top + edgeInset;
+      const right = Math.min(previewRect.right - edgeInset, left + Math.min(80, Math.max(46, previewWidth * 0.34)));
+      const bottom = fileManagerPosition === 'bottom' && !fileManagerCollapsed && containerRect
+        ? containerRect.bottom - edgeInset
+        : previewRect.bottom - edgeInset;
+      if (right <= left || bottom <= top) {
+        return null;
+      }
+      return { left, top, right, bottom };
+    }
+
+    const previewHeight = previewRect.bottom - previewRect.top;
+    const left = fileManagerPosition === 'left' && !fileManagerCollapsed && containerRect
+      ? containerRect.left + edgeInset
+      : previewRect.left + edgeInset;
+    const right = previewRect.right - edgeInset;
+    const bottom = previewRect.bottom - edgeInset;
+    const top = Math.max(previewRect.top + edgeInset, bottom - Math.min(80, Math.max(46, previewHeight * 0.38)));
+    if (right <= left || bottom <= top) {
+      return null;
+    }
+    return { left, top, right, bottom };
+  }, [fileManagerCollapsed, fileManagerPosition, getFileManagerDockPreviewRect]);
+
+  const getFileManagerDockPreviewTarget = useCallback((clientX, clientY, target) => {
+    const previewRect = getFileManagerDockPreviewRect(target);
+    if (!previewRect) {
+      return null;
+    }
+    return clientX >= previewRect.left
+      && clientX <= previewRect.right
+      && clientY >= previewRect.top
+      && clientY <= previewRect.bottom
+      ? target
+      : null;
+  }, [getFileManagerDockPreviewRect]);
+
+  const getFileManagerDockConfirmTarget = useCallback((clientX, clientY, target) => {
+    const confirmRect = getFileManagerDockConfirmRect(target);
+    if (!confirmRect) {
+      return null;
+    }
+    return clientX >= confirmRect.left
+      && clientX <= confirmRect.right
+      && clientY >= confirmRect.top
+      && clientY <= confirmRect.bottom
+      ? target
+      : null;
+  }, [getFileManagerDockConfirmRect]);
 
   useEffect(() => {
     if (fileManagerPosition === 'left' || fileManagerPosition === 'bottom') {
@@ -235,13 +456,16 @@ export default function App() {
     if (position !== 'left' && position !== 'bottom') return;
     setFileManagerSplitPosition(position);
     localStorage.setItem('fileManagerSplitPosition', position);
+    setFileManagerPosition(position);
+    localStorage.setItem('fileManagerPosition', position);
+    if (contentTab === 'files') setContentTab('terminal');
+  }, [contentTab]);
 
-    if (fileManagerPosition !== 'tab') {
-      setFileManagerPosition(position);
-      localStorage.setItem('fileManagerPosition', position);
-      if (contentTab === 'files') setContentTab('terminal');
-    }
-  }, [contentTab, fileManagerPosition]);
+  const handleFileManagerTabDock = useCallback(() => {
+    setFileManagerPosition('tab');
+    localStorage.setItem('fileManagerPosition', 'tab');
+    setContentTab('files');
+  }, []);
 
   // ── 清理旧 localStorage 残留数据 ──────────────────────
   useEffect(() => {
@@ -301,50 +525,162 @@ export default function App() {
     const startHeight = bottomSplitHeightRef.current;
     const startProbeWidth = probePanelWidthRef.current;
     const startAiWidth = aiPanelWidthRef.current;
+    const dockTargets = direction === 'tab'
+      ? ['left', 'bottom']
+      : direction === 'left'
+        ? ['bottom', 'tab']
+        : direction === 'bottom'
+          ? ['left', 'tab']
+          : [];
+    const isFileManagerResizer = direction === 'left' || direction === 'bottom';
+    const isFileManagerDockDrag = dockTargets.length > 0;
+    let moved = false;
 
-    const resizer = e.target;
-    resizer.classList.add('dragging');
+    const resizer = e.currentTarget ?? e.target;
+    resizer.classList?.add('dragging');
+    updateCollapseDragIntent(null);
+    updateFileManagerDockPreview(isFileManagerDockDrag ? direction : null);
+    updateFileManagerDockConfirmTarget(null);
 
-    document.body.style.cursor = direction === 'bottom' ? 'row-resize' : 'col-resize';
+    document.body.style.cursor = direction === 'bottom' ? 'row-resize' : direction === 'tab' ? 'grabbing' : 'col-resize';
     document.body.style.userSelect = 'none';
 
-    const handleMouseMove = (moveEvent) => {
+    const getSnapshot = (clientX, clientY) => {
       if (direction === 'left') {
-        const deltaX = moveEvent.clientX - startX;
-        const newWidth = Math.max(180, Math.min(800, startWidth + deltaX));
-        updateLeftSplitWidth(newWidth);
-      } else if (direction === 'probe') {
-        const deltaX = probePanelPosition === 'left'
-          ? moveEvent.clientX - startX
-          : startX - moveEvent.clientX;
-        updateProbePanelWidth(startProbeWidth + deltaX);
-      } else if (direction === 'ai') {
-        const deltaX = probePanelPosition === 'left'
-          ? startX - moveEvent.clientX
-          : moveEvent.clientX - startX;
-        updateAiPanelWidth(startAiWidth + deltaX);
+        const rawSize = startWidth + (clientX - startX);
+        return {
+          clampedSize: Math.max(FILE_MANAGER_LEFT_MIN, Math.min(800, rawSize)),
+          armed: rawSize <= FILE_MANAGER_LEFT_MIN - COLLAPSE_ARMED_SIZE,
+        };
+      }
+      if (direction === 'probe') {
+        const rawSize = startProbeWidth + (probePanelPosition === 'left' ? clientX - startX : startX - clientX);
+        return {
+          clampedSize: clampPanelWidth(rawSize, PROBE_PANEL_MIN),
+          armed: rawSize <= PROBE_PANEL_MIN - COLLAPSE_ARMED_SIZE,
+        };
+      }
+      if (direction === 'ai') {
+        const rawSize = startAiWidth + (probePanelPosition === 'left' ? startX - clientX : clientX - startX);
+        return {
+          clampedSize: clampPanelWidth(rawSize, AI_PANEL_MIN),
+          armed: rawSize <= AI_PANEL_MIN - COLLAPSE_ARMED_SIZE,
+        };
+      }
+      if (direction === 'bottom') {
+        const rawSize = startHeight + (startY - clientY);
+        return {
+          clampedSize: Math.max(FILE_MANAGER_BOTTOM_MIN, Math.min(600, rawSize)),
+          armed: rawSize <= FILE_MANAGER_BOTTOM_MIN - COLLAPSE_ARMED_SIZE,
+        };
+      }
+      return {
+        clampedSize: 0,
+        armed: false,
+      };
+    };
+
+    const getActiveDockTarget = (clientX, clientY) => {
+      if (!isFileManagerDockDrag) {
+        return null;
+      }
+      return dockTargets.find((target) => getFileManagerDockConfirmTarget(clientX, clientY, target)) || null;
+    };
+
+    const handleMouseMove = (moveEvent) => {
+      const activeDockTarget = getActiveDockTarget(moveEvent.clientX, moveEvent.clientY);
+      const snapshot = getSnapshot(moveEvent.clientX, moveEvent.clientY);
+      if (!moved) {
+        moved = Math.abs(moveEvent.clientX - startX) > 3 || Math.abs(moveEvent.clientY - startY) > 3;
+      }
+
+      if (isFileManagerDockDrag) {
+        updateFileManagerDockPreview(direction);
+        updateFileManagerDockConfirmTarget(activeDockTarget);
       } else {
-        const deltaY = startY - moveEvent.clientY; // 往上拖高度变大
-        const newHeight = Math.max(100, Math.min(600, startHeight + deltaY));
-        updateBottomSplitHeight(newHeight);
+        updateFileManagerDockPreview(null);
+        updateFileManagerDockConfirmTarget(null);
+      }
+
+      if (activeDockTarget) {
+        updateCollapseDragIntent(null);
+        return;
+      }
+
+      if (direction === 'left') {
+        updateLeftSplitWidth(snapshot.clampedSize);
+      } else if (direction === 'probe') {
+        updateProbePanelWidth(snapshot.clampedSize);
+      } else if (direction === 'ai') {
+        updateAiPanelWidth(snapshot.clampedSize);
+      } else if (direction === 'bottom') {
+        updateBottomSplitHeight(snapshot.clampedSize);
+      }
+
+      if (direction === 'left' || direction === 'bottom' || direction === 'probe' || direction === 'ai') {
+        updateCollapseDragIntent(snapshot.armed ? direction : null);
+      } else {
+        updateCollapseDragIntent(null);
       }
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (upEvent) => {
       try {
-        resizer.classList.remove('dragging');
+        const activeDockTarget = getActiveDockTarget(upEvent.clientX, upEvent.clientY);
+        const snapshot = getSnapshot(upEvent.clientX, upEvent.clientY);
+        const shouldCollapse = snapshot.armed;
+        if (moved) {
+          resizerClickSuppressUntilRef.current = Date.now() + 160;
+        }
+        resizer.classList?.remove('dragging');
+        updateCollapseDragIntent(null);
+        updateFileManagerDockPreview(null);
+        updateFileManagerDockConfirmTarget(null);
 
-        if (direction === 'left') {
-          localStorage.setItem('leftSplitWidth', leftSplitWidthRef.current.toString());
+        if (activeDockTarget) {
+          if (direction === 'left') {
+            updateLeftSplitWidth(startWidth);
+            localStorage.setItem('leftSplitWidth', startWidth.toString());
+          } else if (direction === 'bottom') {
+            updateBottomSplitHeight(startHeight);
+            localStorage.setItem('bottomSplitHeight', startHeight.toString());
+          }
+          setFileManagerCollapsedPersistent(false);
+          if (activeDockTarget === 'tab') {
+            handleFileManagerTabDock();
+          } else {
+            handleFileManagerSplitPositionChange(activeDockTarget);
+          }
+        } else if (direction === 'left') {
+          if (shouldCollapse) {
+            updateLeftSplitWidth(startWidth);
+            setFileManagerCollapsedPersistent(true);
+          } else {
+            localStorage.setItem('leftSplitWidth', leftSplitWidthRef.current.toString());
+          }
         } else if (direction === 'probe') {
-          localStorage.setItem('probePanelWidth', probePanelWidthRef.current.toString());
+          if (shouldCollapse) {
+            updateProbePanelWidth(startProbeWidth);
+            setProbePanelCollapsedPersistent(true);
+          } else {
+            localStorage.setItem('probePanelWidth', probePanelWidthRef.current.toString());
+          }
         } else if (direction === 'ai') {
-          localStorage.setItem('aiPanelWidth', aiPanelWidthRef.current.toString());
-        } else {
-          localStorage.setItem('bottomSplitHeight', bottomSplitHeightRef.current.toString());
+          if (shouldCollapse) {
+            updateAiPanelWidth(startAiWidth);
+            setAIPanelVisibility(false);
+          } else {
+            localStorage.setItem('aiPanelWidth', aiPanelWidthRef.current.toString());
+          }
+        } else if (direction === 'bottom') {
+          if (shouldCollapse) {
+            updateBottomSplitHeight(startHeight);
+            setFileManagerCollapsedPersistent(true);
+          } else {
+            localStorage.setItem('bottomSplitHeight', bottomSplitHeightRef.current.toString());
+          }
         }
 
-        // 通知所有终端自适应重绘
         setTimeout(() => {
           window.dispatchEvent(new Event('resize'));
         }, 50);
@@ -358,7 +694,22 @@ export default function App() {
 
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-  }, [probePanelPosition]);
+  }, [
+    getFileManagerDockConfirmTarget,
+    handleFileManagerSplitPositionChange,
+    handleFileManagerTabDock,
+    probePanelPosition,
+    setAIPanelVisibility,
+    setFileManagerCollapsedPersistent,
+    setProbePanelCollapsedPersistent,
+    updateAiPanelWidth,
+    updateBottomSplitHeight,
+    updateCollapseDragIntent,
+    updateFileManagerDockConfirmTarget,
+    updateFileManagerDockPreview,
+    updateLeftSplitWidth,
+    updateProbePanelWidth,
+  ]);
   // ────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -393,13 +744,6 @@ export default function App() {
     window.addEventListener('pingIntervalChanged', handler);
     return () => window.removeEventListener('pingIntervalChanged', handler);
   }, []);
-
-  // 闪电直连的表单状态
-  const quickFormInit = { name: '', host: '', port: '', user: 'root', auth: 'password', pass: '', key: '', passphrase: '', credId: '', showPass: false, showPassphrase: false };
-  const [quickForm, dispatchQuick] = useReducer((s, a) => {
-    if (a.type === 'reset') return quickFormInit;
-    return { ...s, [a.type]: a.value };
-  }, quickFormInit);
 
   // ── 初始化全局主题 ──────────────────────────────────────
   useEffect(() => {
@@ -454,92 +798,12 @@ export default function App() {
     }
   };
 
-  // ── 浏览选择快捷连接的私钥 ──────────────────────────────
-  const handleQuickPrivateKeyFile = async () => {
-    try {
-      const content = await AppGo.ReadPrivateKeyFile();
-      if (content) {
-        dispatchQuick({ type: 'key', value: content });
-      }
-    } catch (e) {
-      if (e) window.luminDialog?.alert(`${t('读取私钥文件失败')}: ${e}`, t('错误'));
-    }
-  };
-
   // ── 刷新延迟 ────────────────────────────────────────────
   const handleRefreshPing = async () => {
     if (isRefreshingPing) return; // 防止重复点击导致并发竞态
     setIsRefreshingPing(true);
     await pingAll();
     setTimeout(() => { if (mountedRef.current) setIsRefreshingPing(false); }, 800);
-  };
-
-  // ── 闪电直连逻辑 ────────────────────────────────────────
-  const handleQuickConnectDirect = async (e) => {
-    if (e) e.preventDefault();
-    if (!quickForm.host.trim()) return window.luminDialog?.alert(t('请填写主机地址'));
-    if (quickForm.auth === 'credential' && !quickForm.credId) return window.luminDialog?.alert(t('请选择凭据'));
-
-    const tempId = `temp_${Date.now()}`;
-    const tempServer = {
-      id: '',
-      name: quickForm.name.trim() || quickForm.host.trim(),
-      host: quickForm.host.trim(),
-      port: Math.max(1, Math.min(65535, parseInt(quickForm.port, 10) || 22)),
-      username: quickForm.auth === 'credential' ? '' : quickForm.user.trim(),
-      authMethod: quickForm.auth === 'key' ? 'privateKey' : 'password',
-      password: quickForm.auth === 'password' ? quickForm.pass : '',
-      privateKey: quickForm.auth === 'key' ? quickForm.key : '',
-      passphrase: quickForm.auth === 'key' ? quickForm.passphrase : '',
-      credentialId: quickForm.auth === 'credential' ? quickForm.credId : '',
-    };
-
-    // 检查同 host+port+username 的重复服务器
-    const dup = serversRef.current.some(s =>
-      s.host === tempServer.host &&
-      (s.port || 22) === tempServer.port &&
-      s.username === tempServer.username
-    );
-    if (dup) {
-      addToast(t('已存在相同主机、端口和用户名的服务器'), 'error');
-      return;
-    }
-
-    const sessionId = `session_${Date.now()}`;
-    const newSession = {
-      id: sessionId,
-      serverId: tempId,
-      serverName: tempServer.name,
-      host: tempServer.host,
-      status: 'connecting',
-      terminals: [{ id: sessionId, label: `${t('终端')}1` }],
-    };
-
-    setSessions((prev) => [...prev, newSession]);
-    setActiveSessionId(sessionId);
-    setActiveTerminalId(sessionId);
-    setContentTab('terminal');
-    // 显示连接进度卡片
-    setConnectingServers((prev) => [...prev, { server: tempServer, sessionId, startTime: Date.now() }]);
-
-    try {
-      const savedServer = await AppGo.SaveConnection(tempServer, true);
-      await loadServers();
-
-      await AppGo.ConnectSSH(sessionId, savedServer.id);
-      setSessions((prev) =>
-        prev.map((s) => (s.id === sessionId ? { ...s, serverId: savedServer.id, status: 'connected' } : s))
-      );
-      setConnectingServers((prev) => prev.filter((s) => s.sessionId !== sessionId));
-
-      // 连接成功后自动查询 OS信息并更新 sessions
-      await postConnectSetup(sessionId, savedServer.id);
-
-      // 清空表单
-      dispatchQuick({ type: 'reset' });
-    } catch (err) {
-      handleConnectError(sessionId, err);
-    }
   };
 
   // ── Toast helpers ──────────────────────────────────────────
@@ -1252,19 +1516,193 @@ export default function App() {
   }, [activeTerminalId]);
 
   const activeSession = useMemo(() => sessions.find((s) => s.id === activeSessionId), [sessions, activeSessionId]);
+  const terminalSubTabScrollStyle = useMemo(() => ({
+    '--terminal-list-scrollbar-thumb': withAlpha(terminalSubTabTheme?.xterm?.cursor, 0.32, 'rgba(var(--accent-rgb), 0.32)'),
+    '--terminal-list-scrollbar-thumb-hover': withAlpha(terminalSubTabTheme?.xterm?.blue || terminalSubTabTheme?.xterm?.cursor, 0.58, 'rgba(var(--accent-rgb), 0.58)'),
+  }), [terminalSubTabTheme]);
+  const stopTerminalSubTabScrollAnimation = useCallback(() => {
+    if (!terminalSubTabScrollFrameRef.current) {
+      return;
+    }
+    cancelAnimationFrame(terminalSubTabScrollFrameRef.current);
+    terminalSubTabScrollFrameRef.current = 0;
+  }, []);
+  const stepTerminalSubTabScroll = useCallback(() => {
+    const el = terminalSubTabScrollRef.current;
+    if (!el) {
+      terminalSubTabScrollFrameRef.current = 0;
+      return;
+    }
+    const currentLeft = el.scrollLeft;
+    const targetLeft = terminalSubTabScrollTargetRef.current;
+    const deltaLeft = targetLeft - currentLeft;
+    if (Math.abs(deltaLeft) < 0.5) {
+      el.scrollLeft = targetLeft;
+      terminalSubTabScrollFrameRef.current = 0;
+      return;
+    }
+    const easing = terminalSubTabDraggingRef.current ? 0.3 : 0.16;
+    const nextStep = Math.abs(deltaLeft) < 12
+      ? Math.sign(deltaLeft) * Math.max(0.8, Math.abs(deltaLeft) * 0.45)
+      : deltaLeft * easing;
+    el.scrollLeft = currentLeft + nextStep;
+    terminalSubTabScrollFrameRef.current = requestAnimationFrame(stepTerminalSubTabScroll);
+  }, []);
+  const setTerminalSubTabScrollTarget = useCallback((nextLeft, immediate = false) => {
+    const el = terminalSubTabScrollRef.current;
+    if (!el) {
+      return;
+    }
+    const maxLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+    const clampedLeft = Math.max(0, Math.min(maxLeft, nextLeft));
+    terminalSubTabScrollTargetRef.current = clampedLeft;
+    if (immediate) {
+      stopTerminalSubTabScrollAnimation();
+      el.scrollLeft = clampedLeft;
+      return;
+    }
+    if (!terminalSubTabScrollFrameRef.current) {
+      terminalSubTabScrollFrameRef.current = requestAnimationFrame(stepTerminalSubTabScroll);
+    }
+  }, [stepTerminalSubTabScroll, stopTerminalSubTabScrollAnimation]);
+  useEffect(() => () => stopTerminalSubTabScrollAnimation(), [stopTerminalSubTabScrollAnimation]);
+  const handleTerminalSubTabScroll = useCallback((e) => {
+    if (!terminalSubTabScrollFrameRef.current) {
+      terminalSubTabScrollTargetRef.current = e.currentTarget.scrollLeft;
+    }
+  }, []);
+  const handleTerminalSubTabWheel = useCallback((e) => {
+    const el = terminalSubTabScrollRef.current;
+    if (!el || el.scrollWidth <= el.clientWidth) {
+      return;
+    }
+    const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    if (!delta) {
+      return;
+    }
+    const baseLeft = terminalSubTabScrollFrameRef.current ? terminalSubTabScrollTargetRef.current : el.scrollLeft;
+    setTerminalSubTabScrollTarget(baseLeft + delta);
+    e.preventDefault();
+  }, [setTerminalSubTabScrollTarget]);
+  const handleTerminalSubTabMouseDown = useCallback((e) => {
+    if (e.button !== 0) {
+      return;
+    }
+    const target = e.target instanceof Element ? e.target : null;
+    if (target?.closest('.terminal-sub-tab-close')) {
+      return;
+    }
+    const el = terminalSubTabScrollRef.current;
+    if (!el || el.scrollWidth <= el.clientWidth) {
+      return;
+    }
+    stopTerminalSubTabScrollAnimation();
+    terminalSubTabScrollTargetRef.current = el.scrollLeft;
+    terminalSubTabDraggingRef.current = false;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startScrollLeft = el.scrollLeft;
+    let dragging = false;
+    const cleanup = () => {
+      terminalSubTabDraggingRef.current = false;
+      el.classList.remove('is-dragging');
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+    const handleMouseMove = (moveEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const deltaY = moveEvent.clientY - startY;
+      if (!dragging && Math.abs(deltaX) < 4 && Math.abs(deltaY) < 4) {
+        return;
+      }
+      if (!dragging) {
+        dragging = true;
+        terminalSubTabDraggingRef.current = true;
+        el.classList.add('is-dragging');
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = 'grabbing';
+      }
+      setTerminalSubTabScrollTarget(startScrollLeft - deltaX);
+    };
+    const handleMouseUp = () => {
+      if (dragging) {
+        terminalSubTabDragSuppressUntilRef.current = Date.now() + 160;
+      }
+      cleanup();
+    };
+    e.preventDefault();
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }, [setTerminalSubTabScrollTarget, stopTerminalSubTabScrollAnimation]);
+  const handleTerminalSubTabClickCapture = useCallback((e) => {
+    if (Date.now() < terminalSubTabDragSuppressUntilRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, []);
+  const fileManagerDockDropzones = useMemo(() => {
+    const dockTargets = fileManagerDockPreview === 'tab'
+      ? ['left', 'bottom']
+      : fileManagerDockPreview === 'left'
+        ? ['bottom', 'tab']
+        : fileManagerDockPreview === 'bottom'
+          ? ['left', 'tab']
+          : [];
+    return dockTargets.map((target) => {
+      const rect = getFileManagerDockConfirmRect(target);
+      if (!rect) {
+        return null;
+      }
+      return {
+        target,
+        style: {
+          left: `${rect.left}px`,
+          top: `${rect.top}px`,
+          width: `${rect.right - rect.left}px`,
+          height: `${rect.bottom - rect.top}px`,
+        },
+      };
+    }).filter(Boolean);
+  }, [fileManagerDockPreview, getFileManagerDockConfirmRect]);
   const isCreatingTerminal = creatingTerminalSessionId !== null;
+  const connectedProbeSessions = useMemo(() => sessions.filter((s) => s.status === 'connected'), [sessions]);
 
-  const probePanelNode = activeSession && activeSession.status === 'connected' ? (
-    <ProbePanel
-      key={activeSession.id}
-      sessionId={activeSession.id}
-      host={activeSession.host}
-      addToast={addToast}
-      enabled={!!monitoringEnabled[activeSession.id]}
-      onEnable={() => setMonitoringEnabled(prev => ({ ...prev, [activeSession.id]: true }))}
-      onShowAllProcesses={() => setContentTab('process')}
-      onShowNetworkDetails={() => setContentTab('network')}
-    />
+  const probePanelNode = connectedProbeSessions.length > 0 ? (
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      {connectedProbeSessions.map((s) => {
+        const isPanelActive = !probePanelCollapsed && activeSessionId === s.id;
+        return (
+          <div
+            key={`probe-panel-${s.id}`}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: isPanelActive ? 'block' : 'none',
+            }}
+          >
+            <ProbePanel
+              sessionId={s.id}
+              host={s.host}
+              addToast={addToast}
+              enabled={!!monitoringEnabled[s.id]}
+              active={isPanelActive}
+              onEnable={() => setMonitoringEnabled(prev => ({ ...prev, [s.id]: true }))}
+              onShowAllProcesses={() => setContentTab('process')}
+              onShowNetworkDetails={() => setContentTab('network')}
+            />
+          </div>
+        );
+      })}
+    </div>
   ) : null;
   const aiPanelNode = sessions.length > 0 ? (
     <div
@@ -1278,6 +1716,13 @@ export default function App() {
         overflow: 'hidden',
       }}
     >
+      {collapseDragIntent === 'ai' && (
+        <div
+          className={`panel-collapse-armed-zone panel-collapse-armed-zone-vertical ${probePanelPosition === 'left' ? 'panel-collapse-armed-zone-left' : 'panel-collapse-armed-zone-right'}`}
+        >
+          {probePanelPosition === 'left' ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+        </div>
+      )}
       {sessions.map((s) => (
         getEffectiveTerminals(s).map((t) => {
           const isPanelActive =
@@ -1360,24 +1805,19 @@ export default function App() {
       port = parseInt(parts[1], 10) || 22;
     }
 
-    // Open Add Server Modal pre-filled
-    setAddServerModal({
-      open: true,
-      server: {
-        name: host,
-        host,
-        port,
-        username: user,
-        authMode: 'password'
-      }
+    setServerEditor({
+      name: host,
+      host,
+      port,
+      username: user,
+      authMode: 'password'
     });
     setSearchQuery('');
 
   }, [searchQuery, servers, connectServer]);
 
   // ── Server CRUD ────────────────────────────────────────────
-  const handleSaveServer = useCallback(async (data) => {
-    // 检查同 host+port+username 的重复服务器
+  const saveServerConfig = useCallback(async (data) => {
     const dup = serversRef.current.some(s =>
       s.id !== data.id &&
       s.host === data.host &&
@@ -1386,17 +1826,63 @@ export default function App() {
     );
     if (dup) {
       addToast(t('已存在相同主机、端口和用户名的服务器'), 'error');
-      return;
+      return null;
     }
+
+    const savedServer = await AppGo.SaveConnection(data, false);
+    await loadServers();
+    return savedServer;
+  }, [loadServers, addToast, t]);
+
+  const handleSaveServer = useCallback(async (data) => {
     try {
-      await AppGo.SaveConnection(data, false);
-      await loadServers();
+      const savedServer = await saveServerConfig(data);
+      if (!savedServer) return;
       addToast(data.id ? t('服务器配置已更新') : t('服务器添加成功'), 'success');
+      setServerEditor(null);
     } catch (err) {
       addToast(err, 'error');
     }
-    setAddServerModal({ open: false, server: null });
-  }, [loadServers, addToast, t]);
+  }, [saveServerConfig, addToast, t]);
+
+  const handleSaveAndConnectServer = useCallback(async (data) => {
+    try {
+      const savedServer = await saveServerConfig(data);
+      if (!savedServer) return;
+
+      addToast(t('服务器添加成功'), 'success');
+      setServerEditor(null);
+
+      const sessionId = `session_${Date.now()}`;
+      const newSession = {
+        id: sessionId,
+        serverId: savedServer.id,
+        serverName: savedServer.name || savedServer.host,
+        host: savedServer.host,
+        status: 'connecting',
+        terminals: [{ id: sessionId, label: `${t('终端')}1` }],
+      };
+
+      setSessions((prev) => [...prev, newSession]);
+      setActiveSessionId(sessionId);
+      setActiveTerminalId(sessionId);
+      setContentTab('terminal');
+      setConnectingServers((prev) => [...prev, { server: savedServer, sessionId, startTime: Date.now() }]);
+
+      try {
+        await AppGo.ConnectSSH(sessionId, savedServer.id);
+        setSessions((prev) =>
+          prev.map((s) => (s.id === sessionId ? { ...s, status: 'connected' } : s))
+        );
+        setConnectingServers((prev) => prev.filter((s) => s.sessionId !== sessionId));
+        await postConnectSetup(sessionId, savedServer.id);
+      } catch (err) {
+        handleConnectError(sessionId, err);
+      }
+    } catch (err) {
+      addToast(err, 'error');
+    }
+  }, [saveServerConfig, addToast, t, postConnectSetup, handleConnectError]);
 
   const handleDeleteServer = useCallback(async (id) => {
     try {
@@ -1450,6 +1936,263 @@ export default function App() {
     const vals = Object.values(pings);
     return { online: vals.filter(p => p.online).length, offline: vals.filter(p => !p.online).length };
   }, [pings]);
+
+  const getAnimationViewport = useCallback(() => {
+    const rootRect = document.querySelector('.app-layout')?.getBoundingClientRect();
+    return {
+      left: rootRect?.left || 0,
+      top: rootRect?.top || 0,
+      width: rootRect?.width || window.innerWidth,
+      height: rootRect?.height || window.innerHeight,
+    };
+  }, []);
+
+  const clampLayerPoint = useCallback((point, viewport, padding = 34) => ({
+    x: Math.max(padding, Math.min(viewport.width - padding, point.x)),
+    y: Math.max(padding, Math.min(viewport.height - padding, point.y)),
+  }), []);
+
+  const rectToLayerPoint = useCallback((rect, viewport) => clampLayerPoint({
+    x: rect.left - viewport.left + rect.width / 2,
+    y: rect.top - viewport.top + rect.height / 2,
+  }, viewport), [clampLayerPoint]);
+
+  const buildFlightMidPoint = useCallback((from, to, viewport, index) => {
+    const distance = Math.hypot(to.x - from.x, to.y - from.y);
+    const sway = Math.min(132, Math.max(38, distance * 0.18)) * (index % 2 === 0 ? -1 : 1);
+    const lift = Math.min(148, Math.max(60, distance * 0.22)) + index * 8;
+    return clampLayerPoint({
+      x: (from.x + to.x) / 2 + sway,
+      y: Math.min(from.y, to.y) - lift,
+    }, viewport, 42);
+  }, [clampLayerPoint]);
+
+  const startEditFlyAnimation = useCallback((server, payload) => {
+    if (!payload?.sourceRects) {
+      setServerEditor(server);
+      return;
+    }
+
+    if (editFlyTimerRef.current) {
+      clearTimeout(editFlyTimerRef.current);
+      editFlyTimerRef.current = null;
+    }
+    editFlyFieldTimerRefs.current.forEach(clearTimeout);
+    editFlyFieldTimerRefs.current = [];
+    editFlyShineTimerRefs.current.forEach(clearTimeout);
+    editFlyShineTimerRefs.current = [];
+    setEditFlyShiningFields({});
+
+    setServerEditor({
+      ...server,
+      name: '',
+      host: '',
+      port: '',
+      username: '',
+      terminalInitPath: '',
+      fileManagerInitPath: '',
+    });
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const viewport = getAnimationViewport();
+        const fields = ['name', 'host', 'port', 'username', 'terminalInitPath', 'fileManagerInitPath'];
+        const fieldLabels = {
+          name: t('服务器别名（选填）'),
+          host: t('主机地址 *'),
+          port: t('端口'),
+          username: t('用户名'),
+          terminalInitPath: t('终端默认 cd 目录'),
+          fileManagerInitPath: t('文件管理器初始目录'),
+        };
+
+        const items = fields.flatMap((field, index) => {
+          const sourceRect = payload.sourceRects[field];
+          const targetEl = document.querySelector(`[data-editor-field="${field}"]`);
+          const targetRect = targetEl?.getBoundingClientRect?.();
+          if (!sourceRect || !targetRect) {
+            return [];
+          }
+          const from = rectToLayerPoint(sourceRect, viewport);
+          const to = rectToLayerPoint(targetRect, viewport);
+          return [{
+            id: `${field}-${Date.now()}-${index}`,
+            field,
+            label: fieldLabels[field],
+            value: payload.labels?.[field] || '',
+            from,
+            to,
+            mid: buildFlightMidPoint(from, to, viewport, index),
+            delay: index * 52,
+          }];
+        });
+
+        if (items.length === 0) {
+          return;
+        }
+
+        setEditFlyAnimation({ id: Date.now(), items });
+        items.forEach((item) => {
+          const timer = setTimeout(() => {
+            setServerEditor((current) => {
+              if (!current || current.id !== server.id) {
+                return current;
+              }
+              const nextValue = item.field === 'port'
+                ? (server.port || 22)
+                : (server[item.field] || '');
+              return { ...current, [item.field]: nextValue };
+            });
+            setEditFlyShiningFields((prev) => ({ ...prev, [item.field]: true }));
+            const shineTimer = setTimeout(() => {
+              setEditFlyShiningFields((prev) => {
+                const next = { ...prev };
+                delete next[item.field];
+                return next;
+              });
+            }, 1150);
+            editFlyShineTimerRefs.current.push(shineTimer);
+          }, item.delay + 560);
+          editFlyFieldTimerRefs.current.push(timer);
+        });
+        editFlyTimerRef.current = setTimeout(() => {
+          setEditFlyAnimation(null);
+          editFlyTimerRef.current = null;
+        }, 980);
+      });
+    });
+  }, [buildFlightMidPoint, getAnimationViewport, rectToLayerPoint, t]);
+
+  const startAddGuideAnimation = useCallback((sourceButton) => {
+    if (!sourceButton?.getBoundingClientRect) {
+      setServerEditor(null);
+      return;
+    }
+
+    if (editFlyTimerRef.current) {
+      clearTimeout(editFlyTimerRef.current);
+      editFlyTimerRef.current = null;
+    }
+    editFlyFieldTimerRefs.current.forEach(clearTimeout);
+    editFlyFieldTimerRefs.current = [];
+    editFlyShineTimerRefs.current.forEach(clearTimeout);
+    editFlyShineTimerRefs.current = [];
+    setEditFlyShiningFields({});
+    setServerEditor(null);
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const viewport = getAnimationViewport();
+        const sourceRect = sourceButton.getBoundingClientRect();
+        const titleTargetEl = document.querySelector('[data-editor-add-target="true"]');
+        const titleTargetRect = titleTargetEl?.getBoundingClientRect?.();
+        const fields = ['host', 'port', 'username'];
+
+        if (!titleTargetRect) {
+          return;
+        }
+
+        const titleCenter = rectToLayerPoint(titleTargetRect, viewport);
+        const addSource = rectToLayerPoint(sourceRect, viewport);
+        const now = Date.now();
+        const randomBetween = (min, max) => min + Math.random() * (max - min);
+        const makeControlPoint = (from, to, index, padding = 28) => {
+          const dx = to.x - from.x;
+          const dy = to.y - from.y;
+          const distance = Math.max(1, Math.hypot(dx, dy));
+          const normalX = -dy / distance;
+          const normalY = dx / distance;
+          const preferDown = normalY >= 0 ? 1 : -1;
+          const bow = Math.min(120, Math.max(34, distance * randomBetween(0.08, 0.18))) * preferDown;
+          const progress = randomBetween(0.36, 0.68);
+          return clampLayerPoint({
+            x: from.x + dx * progress + normalX * bow + randomBetween(-14, 14),
+            y: from.y + dy * progress + normalY * bow + randomBetween(8, 34),
+          }, viewport, padding);
+        };
+        const makePath = (from, control, to) =>
+          `path("M ${from.x.toFixed(1)},${from.y.toFixed(1)} Q ${control.x.toFixed(1)},${control.y.toFixed(1)} ${to.x.toFixed(1)},${to.y.toFixed(1)}")`;
+
+        const coreMid = makeControlPoint(addSource, titleCenter, 0, 56);
+        const particles = Array.from({ length: 14 }, (_, index) => {
+          const angle = Math.random() * Math.PI * 2;
+          const startRadius = randomBetween(7, 22);
+          const endRadius = randomBetween(16, 42);
+          const from = clampLayerPoint({
+            x: addSource.x + Math.cos(angle) * startRadius,
+            y: addSource.y + Math.sin(angle) * startRadius,
+          }, viewport, 12);
+          const to = clampLayerPoint({
+            x: titleCenter.x + Math.cos(angle + randomBetween(0.45, 1.45)) * endRadius,
+            y: titleCenter.y + Math.sin(angle + randomBetween(0.45, 1.45)) * endRadius,
+          }, viewport, 12);
+          const mid = makeControlPoint(from, to, index, 38);
+          return {
+            id: `add-particle-${now}-${index}`,
+            type: 'add-particle',
+            from,
+            to,
+            mid,
+            path: makePath(from, mid, to),
+            size: randomBetween(2.5, 5.5),
+            delay: randomBetween(0, 150),
+          };
+        });
+
+        setEditFlyAnimation({
+          id: now,
+          items: [
+            {
+              id: `add-core-${now}`,
+              type: 'add-core',
+              from: addSource,
+              to: titleCenter,
+              mid: coreMid,
+              path: makePath(addSource, coreMid, titleCenter),
+              delay: 0,
+            },
+            ...particles,
+            {
+              id: `add-ring-${now}`,
+              type: 'add-ring',
+              at: titleCenter,
+              delay: 820,
+            },
+          ],
+        });
+
+        fields.forEach((field, index) => {
+          const timer = setTimeout(() => {
+            setEditFlyShiningFields((prev) => ({ ...prev, [field]: true }));
+            const shineTimer = setTimeout(() => {
+              setEditFlyShiningFields((prev) => {
+                const next = { ...prev };
+                delete next[field];
+                return next;
+              });
+            }, 980);
+            editFlyShineTimerRefs.current.push(shineTimer);
+          }, 1040 + index * 105);
+          editFlyFieldTimerRefs.current.push(timer);
+        });
+
+        editFlyTimerRef.current = setTimeout(() => {
+          setEditFlyAnimation(null);
+          editFlyTimerRef.current = null;
+        }, 2050);
+      });
+    });
+  }, [buildFlightMidPoint, getAnimationViewport, rectToLayerPoint, t]);
+
+  useEffect(() => () => {
+    if (editFlyTimerRef.current) {
+      clearTimeout(editFlyTimerRef.current);
+    }
+    editFlyFieldTimerRefs.current.forEach(clearTimeout);
+    editFlyFieldTimerRefs.current = [];
+    editFlyShineTimerRefs.current.forEach(clearTimeout);
+    editFlyShineTimerRefs.current = [];
+  }, []);
 
 
   return (
@@ -1538,7 +2281,7 @@ export default function App() {
           {sessions.length === 0 && <div style={{ flex: 1 }}></div>}
 
           <div className="window-controls">
-            {activeSessionId !== null && sessions.length > 0 && <button className="btn btn-ghost btn-icon no-drag" onClick={() => setShowAIPanel(v => !v)} title={showAIPanel ? t('收起 AI 助手面板') : t('打开 AI 助手面板')} aria-label={showAIPanel ? t('收起 AI 助手面板') : t('打开 AI 助手面板')} style={{ color: showAIPanel ? 'var(--accent)' : undefined }}><Bot size={16} /></button>}
+            {activeSessionId !== null && sessions.length > 0 && <button className="btn btn-ghost btn-icon no-drag" onClick={() => setAIPanelVisibility(!showAIPanel)} title={showAIPanel ? t('收起 AI 助手面板') : t('打开 AI 助手面板')} aria-label={showAIPanel ? t('收起 AI 助手面板') : t('打开 AI 助手面板')} style={{ color: showAIPanel ? 'var(--accent)' : undefined }}><Bot size={16} /></button>}
             <button className="btn btn-ghost btn-icon no-drag" onClick={() => setShowSettings(true)} title={t('设置')} aria-label={t('设置')}><Settings size={16} /></button>
             <div className="window-divider" />
             <button className="btn btn-ghost btn-icon no-drag" onClick={WindowMinimise} title={t('最小化')} aria-label={t('最小化')}><Minus size={14} /></button>
@@ -1552,10 +2295,13 @@ export default function App() {
       <main className="main-area">
         <div style={{ display: activeSessionId === null ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%' }}>
           <Dashboard
-            quickForm={quickForm}
-            dispatchQuick={dispatchQuick}
-            onQuickConnect={handleQuickConnectDirect}
-            onQuickPrivateKeyFile={handleQuickPrivateKeyFile}
+            editorServer={serverEditor}
+            editorShiningFields={editFlyShiningFields}
+            isEditFlying={!!editFlyAnimation}
+            onSaveServer={handleSaveServer}
+            onSaveAndConnectServer={handleSaveAndConnectServer}
+            onCancelEditor={() => setServerEditor(null)}
+            allGroups={allGroups}
             credentials={credentials}
             searchQuery={searchQuery}
             onSearchChange={e => setSearchQuery(e.target.value)}
@@ -1572,14 +2318,15 @@ export default function App() {
             sessions={sessions}
             activeSessionId={activeSessionId}
             onConnect={connectServer}
-            onEdit={(s) => setAddServerModal({ open: true, server: s })}
+            onStartAdd={startAddGuideAnimation}
+            onEdit={startEditFlyAnimation}
             onClone={async (s) => {
               try {
                 const real = await AppGo.GetConnectionByID(s.id);
-                setAddServerModal({ open: true, server: { ...real, id: null } });
+                setServerEditor({ ...real, id: null });
               } catch {
                 // fallback: 用现有数据克隆
-                setAddServerModal({ open: true, server: { ...s, id: null, name: s.name || s.host } });
+                setServerEditor({ ...s, id: null, name: s.name || s.host });
               }
             }}
             onDelete={handleDeleteServer}
@@ -1590,67 +2337,96 @@ export default function App() {
         </div>
 
         <div style={{ display: activeSessionId !== null ? 'flex' : 'none', flexDirection: 'row', height: '100%', flex: 1, overflow: 'hidden', position: 'relative' }}>
-          {showAIPanel && aiPanelNode && probePanelPosition === 'right' && aiPanelNode}
-          {showAIPanel && aiPanelNode && probePanelPosition === 'right' && (
-            <div
-              className="split-resizer-v"
-              onMouseDown={(e) => startDrag(e, 'ai')}
-              title={t('调整大小')}
-            />
+          {aiPanelNode && probePanelPosition === 'right' && (
+            showAIPanel ? (
+              <>
+                {aiPanelNode}
+                <div
+                  className={`split-resizer-v${collapseDragIntent === 'ai' ? ' armed' : ''}`}
+                  onMouseDown={(e) => startDrag(e, 'ai')}
+                  onClick={() => {
+                    if (shouldIgnoreResizerClick()) return;
+                    setAIPanelVisibility(false);
+                  }}
+                  title={t('收起 AI 助手面板')}
+                  aria-label={t('收起 AI 助手面板')}
+                />
+              </>
+            ) : (
+              <button
+                type="button"
+                className="panel-collapse-strip panel-collapse-strip-vertical panel-collapse-strip-left no-drag"
+                onClick={() => setAIPanelVisibility(true)}
+                title={t('打开 AI 助手面板')}
+                aria-label={t('打开 AI 助手面板')}
+              >
+                <ChevronRight size={14} />
+              </button>
+            )
           )}
           {/* 系统监控探针面板（独立分栏，左侧） */}
           {probePanelNode && probePanelPosition === 'left' && (
-            <>
-              {!probePanelCollapsed && (
-                <>
-                  <div
-                    className="probe-panel-wrapper probe-panel-wrapper-left"
-                    style={{
-                      width: probePanelWidth,
-                      minWidth: probePanelWidth,
-                      borderLeft: 'none',
-                      borderRight: '1px solid var(--border)',
-                      position: 'relative',
-                    }}
-                  >
-                    {probePanelNode}
-                    <button
-                      className="probe-panel-toggle no-drag"
-                      style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)' }}
-                      onClick={toggleProbePanel}
-                      title={t('收起监控面板')}
-                      aria-label={t('收起监控面板')}
-                    >
-                      <ChevronLeft size={12} />
-                    </button>
-                  </div>
-                  <div
-                    className="split-resizer-v probe-resizer"
-                    onMouseDown={(e) => startDrag(e, 'probe')}
-                    title={t('调整监控边栏宽度')}
-                  />
-                </>
-              )}
-              {probePanelCollapsed ? (
-                <div className="probe-panel-collapsed-rail probe-panel-collapsed-rail-left">
-                  <button
-                    className="probe-panel-toggle no-drag"
-                    onClick={toggleProbePanel}
-                    title={t('展开监控面板')}
-                    aria-label={t('展开监控面板')}
-                  >
-                    <ChevronRight size={12} />
-                  </button>
+            probePanelCollapsed ? (
+              <button
+                type="button"
+                className="panel-collapse-strip panel-collapse-strip-vertical panel-collapse-strip-left no-drag"
+                onClick={() => setProbePanelCollapsedPersistent(false)}
+                title={t('展开监控面板')}
+                aria-label={t('展开监控面板')}
+              >
+                <ChevronRight size={14} />
+              </button>
+            ) : (
+              <>
+                <div
+                  className="probe-panel-wrapper probe-panel-wrapper-left"
+                  style={{
+                    width: probePanelWidth,
+                    minWidth: probePanelWidth,
+                    height: '100%',
+                    display: 'flex',
+                    flexShrink: 0,
+                    borderLeft: 'none',
+                    borderRight: '1px solid var(--border)',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    background: 'var(--surface-base)',
+                  }}
+                >
+                  {collapseDragIntent === 'probe' && (
+                    <div className="panel-collapse-armed-zone panel-collapse-armed-zone-vertical panel-collapse-armed-zone-right">
+                      <ChevronLeft size={14} />
+                    </div>
+                  )}
+                  {probePanelNode}
                 </div>
-              ) : null}
-            </>
+                <div
+                  className={`split-resizer-v probe-resizer${collapseDragIntent === 'probe' ? ' armed' : ''}`}
+                  onMouseDown={(e) => startDrag(e, 'probe')}
+                  onClick={() => {
+                    if (shouldIgnoreResizerClick()) return;
+                    setProbePanelCollapsedPersistent(true);
+                  }}
+                  title={t('收起监控面板')}
+                  aria-label={t('收起监控面板')}
+                />
+              </>
+            )
           )}
           {/* 左侧主区域：标签、终端子标签、会话内容 */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100%', overflow: 'hidden' }}>
             {/* ── 终端子标签栏（多终端支持） ──────────────────── */}
             {activeSession && (contentTab === 'terminal' || contentTab === 'process' || contentTab === 'network' || contentTab === 'history' || (fileManagerPosition === 'tab' && contentTab === 'files')) && activeSession.status === 'connected' && activeSession.terminals && activeSession.terminals.length >= 1 && (
               <div className="terminal-sub-tab-bar">
-                <div className="terminal-sub-tab-scroll">
+                <div
+                  ref={terminalSubTabScrollRef}
+                  className="terminal-sub-tab-scroll"
+                  style={terminalSubTabScrollStyle}
+                  onWheel={handleTerminalSubTabWheel}
+                  onMouseDown={handleTerminalSubTabMouseDown}
+                  onScroll={handleTerminalSubTabScroll}
+                  onClickCapture={handleTerminalSubTabClickCapture}
+                >
                   {activeSession.terminals.map((term) => (
                     <div
                       key={term.id}
@@ -1669,11 +2445,20 @@ export default function App() {
                     </div>
                   ))}
                 </div>
-                <div className="terminal-sub-tab-actions">
+                <div className="terminal-sub-tab-actions" ref={terminalSubTabActionsRef}>
+                  {fileManagerPosition !== 'tab' && (fileManagerDockPreview === 'left' || fileManagerDockPreview === 'bottom') && (
+                    <div ref={fileManagerDockTabAnchorRef} className="file-manager-tab-dock-placeholder" aria-hidden="true">
+                      <div className={`file-manager-dock-preview-dropzone file-manager-dock-preview-dropzone-inline${fileManagerDockConfirmTarget === 'tab' ? ' active' : ''}`} />
+                    </div>
+                  )}
                   {fileManagerPosition === 'tab' && (
                     <button
                       className={`btn btn-ghost btn-sm terminal-create-btn terminal-tool-btn ${contentTab === 'files' ? 'active' : ''}`}
-                      onClick={() => setContentTab(contentTab === 'files' ? 'terminal' : 'files')}
+                      onMouseDown={(e) => startDrag(e, 'tab')}
+                      onClick={() => {
+                        if (shouldIgnoreResizerClick()) return;
+                        setContentTab(contentTab === 'files' ? 'terminal' : 'files');
+                      }}
                     >
                       <Folder size={14} />
                       {t('文件管理')}
@@ -1733,23 +2518,48 @@ export default function App() {
                     >
                     {/* 辅助视口 (分屏模式下的文件管理器，如果是左侧则排在前面) */}
                     {s.status === 'connected' && fileManagerPosition === 'left' && contentTab !== 'process' && contentTab !== 'network' && mountedSessions.has(s.id) && (
-                      <>
-                        <div style={{
-                          width: leftSplitWidth + 'px',
-                          borderRight: '1px solid var(--border)',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          minWidth: 180,
-                          flexShrink: 0,
-                        }}>
-                          {renderSessionFileManagers(s)}
-                        </div>
-                        <div
-                          className="split-resizer-v"
-                          onMouseDown={(e) => startDrag(e, 'left')}
-                          style={{ zIndex: Z.PANEL_BUTTON, marginLeft: '-2px', marginRight: '-2px' }}
-                        />
-                      </>
+                      fileManagerCollapsed ? (
+                        <button
+                          type="button"
+                          className="panel-collapse-strip panel-collapse-strip-vertical panel-collapse-strip-left no-drag"
+                          onClick={() => setFileManagerCollapsedPersistent(false)}
+                          title={t('展开文件管理面板')}
+                          aria-label={t('展开文件管理面板')}
+                        >
+                          <ChevronRight size={14} />
+                        </button>
+                      ) : (
+                        <>
+                          <div style={{
+                            width: leftSplitWidth + 'px',
+                            borderRight: '1px solid var(--border)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            minWidth: FILE_MANAGER_LEFT_MIN,
+                            flexShrink: 0,
+                            position: 'relative',
+                            overflow: 'hidden',
+                          }}>
+                            {collapseDragIntent === 'left' && (
+                              <div className="panel-collapse-armed-zone panel-collapse-armed-zone-vertical panel-collapse-armed-zone-right">
+                                <ChevronLeft size={14} />
+                              </div>
+                            )}
+                            {renderSessionFileManagers(s)}
+                          </div>
+                          <div
+                            className={`split-resizer-v${collapseDragIntent === 'left' ? ' armed' : ''}`}
+                            onMouseDown={(e) => startDrag(e, 'left')}
+                            onClick={() => {
+                              if (shouldIgnoreResizerClick()) return;
+                              setFileManagerCollapsedPersistent(true);
+                            }}
+                            title={t('收起文件管理面板')}
+                            aria-label={t('收起文件管理面板')}
+                            style={{ zIndex: Z.PANEL_BUTTON, marginLeft: '-2px', marginRight: '-2px' }}
+                          />
+                        </>
+                      )
                     )}
 
                     {/* 主要视口 (终端/标签页模式下的文件) */}
@@ -1816,27 +2626,59 @@ export default function App() {
 
                     {/* 辅助视口 (分屏模式下的文件管理器，如果是底部则排在后面) */}
                     {s.status === 'connected' && fileManagerPosition === 'bottom' && contentTab !== 'process' && contentTab !== 'network' && mountedSessions.has(s.id) && (
-                      <>
-                        <div
-                          className="split-resizer-h"
-                          onMouseDown={(e) => startDrag(e, 'bottom')}
-                          style={{ zIndex: Z.PANEL_BUTTON, marginTop: '-2px', marginBottom: '-2px' }}
-                        />
-                        <div style={{
-                          height: bottomSplitHeight + 'px',
-                          borderTop: '1px solid var(--border)',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          minHeight: 100,
-                          flexShrink: 0,
-                        }}>
-                          {renderSessionFileManagers(s)}
-                        </div>
-                      </>
+                      fileManagerCollapsed ? (
+                        <button
+                          type="button"
+                          className="panel-collapse-strip panel-collapse-strip-horizontal panel-collapse-strip-bottom no-drag"
+                          onClick={() => setFileManagerCollapsedPersistent(false)}
+                          title={t('展开文件管理面板')}
+                          aria-label={t('展开文件管理面板')}
+                        >
+                          <ChevronDown size={14} />
+                        </button>
+                      ) : (
+                        <>
+                          <div
+                            className={`split-resizer-h${collapseDragIntent === 'bottom' ? ' armed' : ''}`}
+                            onMouseDown={(e) => startDrag(e, 'bottom')}
+                            onClick={() => {
+                              if (shouldIgnoreResizerClick()) return;
+                              setFileManagerCollapsedPersistent(true);
+                            }}
+                            title={t('收起文件管理面板')}
+                            aria-label={t('收起文件管理面板')}
+                            style={{ zIndex: Z.PANEL_BUTTON, marginTop: '-2px', marginBottom: '-2px' }}
+                          />
+                          <div style={{
+                            height: bottomSplitHeight + 'px',
+                            borderTop: '1px solid var(--border)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            minHeight: FILE_MANAGER_BOTTOM_MIN,
+                            flexShrink: 0,
+                            position: 'relative',
+                            overflow: 'hidden',
+                          }}>
+                            {collapseDragIntent === 'bottom' && (
+                              <div className="panel-collapse-armed-zone panel-collapse-armed-zone-horizontal panel-collapse-armed-zone-top">
+                                <ChevronDown size={14} />
+                              </div>
+                            )}
+                            {renderSessionFileManagers(s)}
+                          </div>
+                        </>
+                      )
                     )}
                   </div>
                 ))}
               </div>
+              {fileManagerDockDropzones.filter(({ target }) => target !== 'tab').map(({ target, style }) => (
+                <div
+                  key={target}
+                  className={`file-manager-dock-preview-dropzone${fileManagerDockConfirmTarget === target ? ' active' : ''}`}
+                  style={{ ...style, zIndex: Z.PANEL_BUTTON + 6 }}
+                />
+              ))}
               {/* 文件编辑器分栏 host（由 FileEditor 通过 Portal 渲染） */}
               <div
                 className="split-resizer-v"
@@ -1886,74 +2728,83 @@ export default function App() {
 
           {/* 系统监控探针面板（独立分栏，右侧） */}
           {probePanelNode && probePanelPosition === 'right' && (
-            <>
-              {probePanelCollapsed ? (
-                <div className="probe-panel-collapsed-rail probe-panel-collapsed-rail-right">
-                  <button
-                    className="probe-panel-toggle no-drag"
-                    onClick={toggleProbePanel}
-                    title={t('展开监控面板')}
-                    aria-label={t('展开监控面板')}
-                  >
-                    <ChevronLeft size={12} />
-                  </button>
+            probePanelCollapsed ? (
+              <button
+                type="button"
+                className="panel-collapse-strip panel-collapse-strip-vertical panel-collapse-strip-right no-drag"
+                onClick={() => setProbePanelCollapsedPersistent(false)}
+                title={t('展开监控面板')}
+                aria-label={t('展开监控面板')}
+              >
+                <ChevronLeft size={14} />
+              </button>
+            ) : (
+              <>
+                <div
+                  className={`split-resizer-v probe-resizer${collapseDragIntent === 'probe' ? ' armed' : ''}`}
+                  onMouseDown={(e) => startDrag(e, 'probe')}
+                  onClick={() => {
+                    if (shouldIgnoreResizerClick()) return;
+                    setProbePanelCollapsedPersistent(true);
+                  }}
+                  title={t('收起监控面板')}
+                  aria-label={t('收起监控面板')}
+                />
+                <div
+                  className="probe-panel-wrapper"
+                  style={{
+                    width: probePanelWidth,
+                    minWidth: probePanelWidth,
+                    height: '100%',
+                    display: 'flex',
+                    flexShrink: 0,
+                    position: 'relative',
+                    overflow: 'hidden',
+                    borderLeft: '1px solid var(--border)',
+                    background: 'var(--surface-base)',
+                  }}
+                >
+                  {collapseDragIntent === 'probe' && (
+                    <div className="panel-collapse-armed-zone panel-collapse-armed-zone-vertical panel-collapse-armed-zone-left">
+                      <ChevronRight size={14} />
+                    </div>
+                  )}
+                  {probePanelNode}
                 </div>
-              ) : null}
-              {!probePanelCollapsed && (
-                <>
-                  <div
-                    className="split-resizer-v probe-resizer"
-                    onMouseDown={(e) => startDrag(e, 'probe')}
-                    title={t('调整监控边栏宽度')}
-                  />
-                  <div
-                    className="probe-panel-wrapper"
-                    style={{
-                      width: probePanelWidth,
-                      minWidth: probePanelWidth,
-                      position: 'relative',
-                    }}
-                  >
-                    {probePanelNode}
-                    <button
-                      className="probe-panel-toggle no-drag"
-                      style={{ position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)' }}
-                      onClick={toggleProbePanel}
-                      title={t('收起监控面板')}
-                      aria-label={t('收起监控面板')}
-                    >
-                      <ChevronRight size={12} />
-                    </button>
-                  </div>
-                </>
-              )}
-            </>
+              </>
+            )
           )}
-          {showAIPanel && aiPanelNode && probePanelPosition === 'left' && (
-            <>
-              <div
-                className="split-resizer-v"
-                onMouseDown={(e) => startDrag(e, 'ai')}
-                title={t('调整大小')}
-              />
-              {aiPanelNode}
-            </>
+          {aiPanelNode && probePanelPosition === 'left' && (
+            showAIPanel ? (
+              <>
+                <div
+                  className={`split-resizer-v${collapseDragIntent === 'ai' ? ' armed' : ''}`}
+                  onMouseDown={(e) => startDrag(e, 'ai')}
+                  onClick={() => {
+                    if (shouldIgnoreResizerClick()) return;
+                    setAIPanelVisibility(false);
+                  }}
+                  title={t('收起 AI 助手面板')}
+                  aria-label={t('收起 AI 助手面板')}
+                />
+                {aiPanelNode}
+              </>
+            ) : (
+              <button
+                type="button"
+                className="panel-collapse-strip panel-collapse-strip-vertical panel-collapse-strip-right no-drag"
+                onClick={() => setAIPanelVisibility(true)}
+                title={t('打开 AI 助手面板')}
+                aria-label={t('打开 AI 助手面板')}
+              >
+                <ChevronLeft size={14} />
+              </button>
+            )
           )}
         </div>
       </main>
 
       {/* ── Modals ────────────────────────────────────────── */}
-      {addServerModal.open && (
-        <AddServerModal
-          server={addServerModal.server}
-          onSave={handleSaveServer}
-          onClose={() => setAddServerModal({ open: false, server: null })}
-          allGroups={allGroups}
-          credentials={credentials}
-          onOpenCredentials={() => setShowCredentials(true)}
-        />
-      )}
-
       {showSettings && (
         <SettingsModal
           onClose={() => { setShowSettings(false); loadServers(); }}
@@ -1964,10 +2815,6 @@ export default function App() {
             setProbePanelPosition(val);
             localStorage.setItem('probePanelPosition', val);
           }}
-          fileManagerLayoutMode={fileManagerPosition === 'tab' ? 'tab' : 'split'}
-          onFileManagerLayoutModeChange={handleFileManagerLayoutModeChange}
-          fileManagerSplitPosition={fileManagerSplitPosition}
-          onFileManagerSplitPositionChange={handleFileManagerSplitPositionChange}
         />
       )}
 
@@ -1977,6 +2824,72 @@ export default function App() {
           onChange={loadServers}
           addToast={addToast}
         />
+      )}
+
+      {editFlyAnimation && (
+        <div className="edit-fly-layer" aria-hidden="true">
+          {editFlyAnimation.items.map((item) => (
+            item.type === 'beam' ? (
+              <div
+                key={item.id}
+                className={`edit-fly-beam edit-fly-beam-${item.field}`}
+                style={{
+                  '--beam-from-x': `${item.from.x}px`,
+                  '--beam-from-y': `${item.from.y}px`,
+                  '--beam-length': item.length,
+                  '--beam-angle': item.angle,
+                  '--beam-delay': `${item.delay}ms`,
+                }}
+              />
+            ) : item.type === 'add-core' ? (
+              <div
+                key={item.id}
+                className="add-supernova-core"
+                style={{
+                  '--add-path': item.path,
+                  '--add-delay': `${item.delay}ms`,
+                }}
+              />
+            ) : item.type === 'add-particle' ? (
+              <div
+                key={item.id}
+                className="add-supernova-particle"
+                style={{
+                  '--particle-path': item.path,
+                  '--particle-size': `${item.size}px`,
+                  '--particle-delay': `${item.delay}ms`,
+                }}
+              />
+            ) : item.type === 'add-ring' ? (
+              <div
+                key={item.id}
+                className="add-supernova-ring"
+                style={{
+                  '--ring-x': `${item.at.x}px`,
+                  '--ring-y': `${item.at.y}px`,
+                  '--ring-delay': `${item.delay}ms`,
+                }}
+              />
+            ) : (
+              <div
+                key={item.id}
+                className={`edit-fly-capsule edit-fly-capsule-${item.field}`}
+                style={{
+                  '--fly-from-x': `${item.from.x}px`,
+                  '--fly-from-y': `${item.from.y}px`,
+                  '--fly-mid-x': `${item.mid.x}px`,
+                  '--fly-mid-y': `${item.mid.y}px`,
+                  '--fly-to-x': `${item.to.x}px`,
+                  '--fly-to-y': `${item.to.y}px`,
+                  '--fly-delay': `${item.delay}ms`,
+                }}
+              >
+                <span className="edit-fly-label">{item.label}</span>
+                {item.value ? <span className="edit-fly-value">{item.value}</span> : null}
+              </div>
+            )
+          ))}
+        </div>
       )}
 
       {/* ── Toasts ────────────────────────────────────────── */}

@@ -113,6 +113,7 @@ export default function ServerList({
     try { return JSON.parse(localStorage.getItem('serverGroupOrder') || '[]'); } catch { return []; }
   });
   const menuRef = useRef(null);
+  const menuSourceRef = useRef(null);
 
   // 预计算已连接会话的 Map，将 O(n×m) 查找优化为 O(1)
   const connectedSessionMap = useMemo(() => {
@@ -147,9 +148,59 @@ export default function ServerList({
     });
   }, [menuServer]);
 
+  const getEditAnimationPayload = (server, sourceRoot) => {
+    const root = sourceRoot || null;
+    const sourceRect = root?.getBoundingClientRect?.();
+    const getRect = (field) => {
+      const el = root?.querySelector?.(`[data-edit-source-field="${field}"]`);
+      const rect = el?.getBoundingClientRect?.() || sourceRect;
+      if (!rect) return null;
+      return {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+      };
+    };
+    const port = String(server.port || 22);
+    return {
+      sourceRects: {
+        name: getRect('name'),
+        host: getRect('host') || getRect('hostPort'),
+        port: getRect('port') || getRect('hostPort'),
+        username: getRect('username') || getRect('hostPort'),
+        terminalInitPath: sourceRect ? {
+          left: sourceRect.left,
+          top: sourceRect.top,
+          width: sourceRect.width,
+          height: sourceRect.height,
+        } : null,
+        fileManagerInitPath: sourceRect ? {
+          left: sourceRect.left,
+          top: sourceRect.top,
+          width: sourceRect.width,
+          height: sourceRect.height,
+        } : null,
+      },
+      labels: {
+        name: server.name || server.host || '',
+        host: hideSensitive ? mask(server.host) : server.host,
+        port: hideSensitive ? mask(port) : port,
+        username: hideSensitive ? mask(server.username) : server.username,
+        terminalInitPath: server.terminalInitPath || '',
+        fileManagerInitPath: server.fileManagerInitPath || '',
+      },
+    };
+  };
+
+  const triggerEdit = (server, sourceRoot) => {
+    onEdit(server, getEditAnimationPayload(server, sourceRoot));
+  };
+
   const handleContextMenu = (e, server) => {
     e.preventDefault();
     e.stopPropagation();
+    menuSourceRef.current = e.currentTarget;
     setMenuServer(server);
     setMenuPos(clampMenuPosition(e.clientX, e.clientY, MENU_ESTIMATED_WIDTH, MENU_ESTIMATED_HEIGHT));
   };
@@ -266,7 +317,7 @@ export default function ServerList({
         </div>
         <div className="server-info" style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1, minWidth: 0 }}>
           <div className="server-name" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: 'var(--text-primary)', fontWeight: 500 }}>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span data-edit-source-field="name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {server.name || server.host}
             </span>
             {connected && (
@@ -275,7 +326,7 @@ export default function ServerList({
               </span>
             )}
           </div>
-          <div className="server-host" style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div className="server-host" data-edit-source-field="hostPort" style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {hideSensitive ? mask(`${server.username}@${server.host}`) : `${server.username}@${server.host}:${server.port || 22}`}
           </div>
         </div>
@@ -299,7 +350,7 @@ export default function ServerList({
             ) : null
           )}
           <button
-            onClick={(e) => { e.stopPropagation(); onEdit(server); }}
+            onClick={(e) => { e.stopPropagation(); triggerEdit(server, e.currentTarget.closest('.server-card')); }}
             title={t('编辑服务器')}
             style={{
               background: 'none', border: 'none', cursor: 'pointer',
@@ -417,14 +468,14 @@ export default function ServerList({
                       <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{osInfo.label}</span>
                     </div>
                   </td>
-                  <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+                  <td data-edit-source-field="name" style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
                     {server.name || server.host}
                     {connected && <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--success)', padding: '2px 4px', background: 'var(--success-dim)', borderRadius: 4 }}>{t('已连接')}</span>}
                   </td>
-                  <td style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--text-secondary)' }}>
+                  <td data-edit-source-field="hostPort" style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--text-secondary)' }}>
                     {hideSensitive ? mask(server.host) : `${server.host}:${server.port || 22}`}
                   </td>
-                  <td style={{ color: 'var(--text-secondary)' }}>{hideSensitive ? mask(server.username) : server.username}</td>
+                  <td data-edit-source-field="username" style={{ color: 'var(--text-secondary)' }}>{hideSensitive ? mask(server.username) : server.username}</td>
                   <td>
                     {ping?.online && ping?.latency !== undefined && ping?.latency !== null ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -447,7 +498,7 @@ export default function ServerList({
                   </td>
                   <td>
                     <button
-                      onClick={(e) => { e.stopPropagation(); onEdit(server); }}
+                      onClick={(e) => { e.stopPropagation(); triggerEdit(server, e.currentTarget.closest('.server-table-row')); }}
                       className="btn btn-ghost btn-sm"
                       style={{ padding: '4px 8px', fontSize: 12 }}
                     >
@@ -477,7 +528,7 @@ export default function ServerList({
           </div>
           <div
             className="context-menu-item"
-            onClick={() => { onEdit(menuServer); setMenuServer(null); }}
+            onClick={() => { triggerEdit(menuServer, menuSourceRef.current); setMenuServer(null); }}
           >
             <SquarePen size={14} style={{ marginRight: 8 }} /> {t('编辑配置')}
           </div>

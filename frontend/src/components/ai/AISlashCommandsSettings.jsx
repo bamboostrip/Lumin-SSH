@@ -132,9 +132,19 @@ export default function AISlashCommandsSettings({ slashCommands, onSaveGlobalAIS
     setEditingCommandId(nextCommand.id)
   }
 
-  const handleRemoveCommand = (commandId) => {
-    setDraftCommands((previous) => previous.filter((command) => command.id !== commandId))
+  const handleRemoveCommand = async (commandId) => {
+    let nextDraftCommands = []
+    setDraftCommands((previous) => {
+      nextDraftCommands = previous.filter((command) => command.id !== commandId)
+      return nextDraftCommands
+    })
     setEditingCommandId((currentId) => (currentId === commandId ? '' : currentId))
+    if (typeof onSaveGlobalAISettings !== 'function') {
+      return
+    }
+    await onSaveGlobalAISettings({
+      slashCommands: normalizeDraftCommands(nextDraftCommands),
+    })
   }
 
   const handlePatchEditingCommand = (patch) => {

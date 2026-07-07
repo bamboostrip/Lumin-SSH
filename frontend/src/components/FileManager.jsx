@@ -361,12 +361,18 @@ function ContextMenu({ pos, item, onClose, onDownload, onEdit, onRename, onDelet
   );
 }
 
-export default function FileManager({ sessionId, addToast, isActive = true }) {
+export default function FileManager({ sessionId, addToast, isActive = true, initialPath = '' }) {
   const { t } = useTranslation();
   const joinPath = (base, name) => base === '/' ? `/${name}` : `${base}/${name}`;
   const [currentPath, setCurrentPath] = useState('/');
   const currentPathRef = useRef(currentPath);
   useEffect(() => { currentPathRef.current = currentPath; }, [currentPath]);
+  const [followTerminalCwd, setFollowTerminalCwd] = useState(() => localStorage.getItem('fileManagerFollowTerminalCwd') !== 'false');
+  useEffect(() => {
+    const handleChange = (e) => setFollowTerminalCwd(e.detail !== false);
+    window.addEventListener('file-manager-follow-terminal-cwd-changed', handleChange);
+    return () => window.removeEventListener('file-manager-follow-terminal-cwd-changed', handleChange);
+  }, []);
   useEffect(() => {
     if (!sessionId) return;
     window.__luminFileManagerPaths = window.__luminFileManagerPaths || {};
@@ -489,49 +495,53 @@ export default function FileManager({ sessionId, addToast, isActive = true }) {
     }
   }, [sessionId, addToast, t]);
 
-  // ── 初始化：依次尝试 CWD → /root → /，用第一个可访问的 ──
   useEffect(() => {
     (async () => {
+      window.__luminFileManagerInitConsumed = window.__luminFileManagerInitConsumed || {};
       const paths = [];
-      try {
-        const cwd = await AppGo.GetTerminalCwd(sessionId);
-        if (cwd && cwd !== '/') {
-          // 跳过 Docker/系统深层路径
-          const depth = cwd.split('/').filter(Boolean).length;
-          if (depth <= 3 || cwd === '/root' || cwd.startsWith('/home/')) {
-            paths.push(cwd);
-          }
+      const pushPath = (value) => {
+        const trimmed = String(value || '').trim();
+        if (!trimmed) return;
+        const normalized = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+        if (!paths.includes(normalized)) {
+          paths.push(normalized);
         }
-      } catch (_) {}
-      paths.push('/root', '/');
+      };
+
+      if (!window.__luminFileManagerInitConsumed[sessionId] && initialPath) {
+        pushPath(initialPath);
+        window.__luminFileManagerInitConsumed[sessionId] = true;
+      }
+
+      if (followTerminalCwd) {
+        try {
+          const cwd = await AppGo.GetTerminalCwd(sessionId);
+          if (cwd) {
+            pushPath(cwd);
+          }
+        } catch (_) {}
+      }
+
+      pushPath('/root');
+      pushPath('/');
+
       for (const p of paths) {
         if (await loadDir(p, true)) return;
       }
     })();
-  }, [sessionId, loadDir]);
+  }, [sessionId, loadDir, initialPath, followTerminalCwd]);
 
-  // ── 监听终端内的目录切换事件 ─────────────────────────────
   useEffect(() => {
-    // 向全局标志位注册订阅，告知 Terminal 组件"文件管理器已挂载，需要 CWD 探测"
-    if (!window.__cwdListeners) window.__cwdListeners = {};
-    window.__cwdListeners[sessionId] = true;
-
-    const handleTerminalCwd = async (e) => {
-      if (e.detail && e.detail.sessionId === sessionId) {
-        const newPath = e.detail.cwd;
-        if (newPath && newPath !== currentPathRef.current) {
-          const ok = await loadDir(newPath, true);
-          if (!ok) loadDir('/');
-        }
+    if (!followTerminalCwd) return undefined;
+    const off = EventsOn(`ssh-terminal-cwd-${sessionId}`, async (cwd) => {
+      const newPath = String(cwd || '').trim();
+      if (newPath && newPath !== currentPathRef.current) {
+        const ok = await loadDir(newPath, true);
+        if (!ok) loadDir('/');
       }
-    };
-    window.addEventListener('ssh-terminal-cwd-changed', handleTerminalCwd);
-    return () => {
-      // 注销订阅，文件管理器不可见时不再触发 CWD 探测
-      if (window.__cwdListeners) delete window.__cwdListeners[sessionId];
-      window.removeEventListener('ssh-terminal-cwd-changed', handleTerminalCwd);
-    };
-  }, [sessionId, loadDir]);
+    });
+    return off;
+  }, [sessionId, loadDir, followTerminalCwd]);
 
   useEffect(() => {
     const off = EventsOn(`transfer-progress-${sessionId}`, (progress) => {

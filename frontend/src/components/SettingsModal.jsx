@@ -181,10 +181,6 @@ export default function SettingsModal({
   onRestored,
   probePanelPosition,
   onProbePanelPositionChange,
-  fileManagerLayoutMode,
-  onFileManagerLayoutModeChange,
-  fileManagerSplitPosition,
-  onFileManagerSplitPositionChange,
 }) {
   const CURRENT_VERSION = APP_VERSION;
   const [updateInfo, setUpdateInfo] = useState(null);
@@ -463,6 +459,7 @@ export default function SettingsModal({
   const [confirmCloseAll, setConfirmCloseAll] = useState(localStorage.getItem('skipCloseAllConfirm') !== 'true');
   const [windowCloseAction, setWindowCloseAction] = useState(localStorage.getItem('windowCloseAction') || 'ask');
   const [updateUseProxy, setUpdateUseProxy] = useState(localStorage.getItem('updateUseProxy') === 'true');
+  const [fileManagerFollowTerminalCwd, setFileManagerFollowTerminalCwd] = useState(localStorage.getItem('fileManagerFollowTerminalCwd') !== 'false');
 
   const handleToggleConfirmCloseSession = () => {
     const next = !confirmCloseSession;
@@ -486,6 +483,13 @@ export default function SettingsModal({
     setUpdateUseProxy(next);
     if (next) localStorage.setItem('updateUseProxy', 'true');
     else localStorage.removeItem('updateUseProxy');
+  };
+  const handleToggleFileManagerFollowTerminalCwd = () => {
+    const next = !fileManagerFollowTerminalCwd;
+    setFileManagerFollowTerminalCwd(next);
+    if (next) localStorage.removeItem('fileManagerFollowTerminalCwd');
+    else localStorage.setItem('fileManagerFollowTerminalCwd', 'false');
+    window.dispatchEvent(new CustomEvent('file-manager-follow-terminal-cwd-changed', { detail: next }));
   };
 
   useEffect(() => {
@@ -769,6 +773,8 @@ export default function SettingsModal({
                 onWindowCloseActionChange={handleWindowCloseActionChange}
                 updateUseProxy={updateUseProxy}
                 onToggleUpdateUseProxy={handleToggleUpdateUseProxy}
+                fileManagerFollowTerminalCwd={fileManagerFollowTerminalCwd}
+                onToggleFileManagerFollowTerminalCwd={handleToggleFileManagerFollowTerminalCwd}
               />
             )}
 
@@ -794,10 +800,6 @@ export default function SettingsModal({
                 onThemeChange={handleThemeChange}
                 probePanelPosition={probePanelPosition}
                 onProbePanelPositionChange={onProbePanelPositionChange}
-                fileManagerLayoutMode={fileManagerLayoutMode}
-                onFileManagerLayoutModeChange={onFileManagerLayoutModeChange}
-                fileManagerSplitPosition={fileManagerSplitPosition}
-                onFileManagerSplitPositionChange={onFileManagerSplitPositionChange}
                 themeAccent={themeAccent}
                 onColorChange={handleColorChange}
                 useCustomAccent={useCustomAccent}

@@ -7,28 +7,36 @@ import (
 )
 
 var historyMarkerStart = []byte("\x1fLUMIN_CMD\x1f")
+var cwdMarkerStart = []byte("\x1fLUMIN_CWD\x1f")
 
 const historyMarkerEnd byte = 0x1e
+
+const (
+	markerKindNone byte = iota
+	markerKindCommand
+	markerKindCwd
+)
 
 type commandHistoryStream struct {
 	visibleCarry []byte
 	payloadCarry []byte
 	inMarker     bool
-	lastCommand  string // 去重：记录上次解析出的命令
+	markerKind   byte
+	lastCommand  string
+	lastCwd      string
 }
 
 func newCommandHistoryStream() *commandHistoryStream {
 	return &commandHistoryStream{}
 }
 
-func (s *commandHistoryStream) Process(chunk []byte) ([]byte, []string) {
+func (s *commandHistoryStream) Process(chunk []byte) ([]byte, []string, string) {
 	if len(chunk) == 0 {
-		return nil, nil
+		return nil, nil, ""
 	}
 
-	// Fast path: no carry-over and no marker in chunk — pass through directly
-	if len(s.visibleCarry) == 0 && !s.inMarker && !bytes.Contains(chunk, historyMarkerStart) {
-		return chunk, nil
+	if len(s.visibleCarry) == 0 && !s.inMarker && !bytes.Contains(chunk, historyMarkerStart) && !bytes.Contains(chunk, cwdMarkerStart) {
+		return chunk, nil, ""
 	}
 
 	data := append(append([]byte{}, s.visibleCarry...), chunk...)
@@ -36,33 +44,56 @@ func (s *commandHistoryStream) Process(chunk []byte) ([]byte, []string) {
 
 	out := make([]byte, 0, len(data))
 	commands := make([]string, 0, 1)
+	cwd := ""
 
 	for i := 0; i < len(data); {
 		if s.inMarker {
 			relEnd := bytes.IndexByte(data[i:], historyMarkerEnd)
 			if relEnd == -1 {
 				s.payloadCarry = append(s.payloadCarry, data[i:]...)
-				return out, commands
+				return out, commands, cwd
 			}
 
 			end := i + relEnd
 			s.payloadCarry = append(s.payloadCarry, data[i:end]...)
-			if command := decodeHistoryMarkerPayload(s.payloadCarry); command != "" {
-				if command != s.lastCommand {
+			if s.markerKind == markerKindCommand {
+				if command := decodeHistoryMarkerPayload(s.payloadCarry); command != "" && command != s.lastCommand {
 					commands = append(commands, command)
 					s.lastCommand = command
+				}
+			} else if s.markerKind == markerKindCwd {
+				if nextCwd := decodeCwdMarkerPayload(s.payloadCarry); nextCwd != "" && nextCwd != s.lastCwd {
+					cwd = nextCwd
+					s.lastCwd = nextCwd
 				}
 			}
 			s.payloadCarry = s.payloadCarry[:0]
 			s.inMarker = false
+			s.markerKind = markerKindNone
 			i = end + 1
 			continue
 		}
 
-		relStart := bytes.Index(data[i:], historyMarkerStart)
+		relCmdStart := bytes.Index(data[i:], historyMarkerStart)
+		relCwdStart := bytes.Index(data[i:], cwdMarkerStart)
+		relStart := -1
+		marker := []byte(nil)
+		markerKind := markerKindNone
+
+		if relCmdStart != -1 {
+			relStart = relCmdStart
+			marker = historyMarkerStart
+			markerKind = markerKindCommand
+		}
+		if relCwdStart != -1 && (relStart == -1 || relCwdStart < relStart) {
+			relStart = relCwdStart
+			marker = cwdMarkerStart
+			markerKind = markerKindCwd
+		}
+
 		if relStart == -1 {
 			remaining := data[i:]
-			overlap := trailingMarkerPrefixLen(remaining)
+			overlap := trailingMarkerPrefixLen(remaining, historyMarkerStart, cwdMarkerStart)
 			visibleEnd := len(remaining) - overlap
 			if visibleEnd > 0 {
 				out = append(out, remaining[:visibleEnd]...)
@@ -70,18 +101,19 @@ func (s *commandHistoryStream) Process(chunk []byte) ([]byte, []string) {
 			if overlap > 0 {
 				s.visibleCarry = append(s.visibleCarry, remaining[visibleEnd:]...)
 			}
-			return out, commands
+			return out, commands, cwd
 		}
 
 		start := i + relStart
 		if start > i {
 			out = append(out, data[i:start]...)
 		}
-		i = start + len(historyMarkerStart)
+		i = start + len(marker)
 		s.inMarker = true
+		s.markerKind = markerKind
 	}
 
-	return out, commands
+	return out, commands, cwd
 }
 
 func isInteractiveHistoryPrompt(command string) bool {
@@ -123,17 +155,37 @@ func decodeHistoryMarkerPayload(payload []byte) string {
 	return command
 }
 
-func trailingMarkerPrefixLen(data []byte) int {
-	limit := len(historyMarkerStart)
-	if len(data) < limit {
-		limit = len(data)
+func decodeCwdMarkerPayload(payload []byte) string {
+	if len(payload) == 0 {
+		return ""
 	}
 
-	for size := limit; size > 0; size-- {
-		if bytes.Equal(data[len(data)-size:], historyMarkerStart[:size]) {
-			return size
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(payload)))
+	if err != nil {
+		return ""
+	}
+
+	cwd := strings.TrimSpace(string(decoded))
+	if cwd == "" || !strings.HasPrefix(cwd, "/") {
+		return ""
+	}
+	return cwd
+}
+
+func trailingMarkerPrefixLen(data []byte, markers ...[]byte) int {
+	best := 0
+	for _, marker := range markers {
+		limit := len(marker)
+		if len(data) < limit {
+			limit = len(data)
+		}
+
+		for size := limit; size > best; size-- {
+			if bytes.Equal(data[len(data)-size:], marker[:size]) {
+				best = size
+				break
+			}
 		}
 	}
-
-	return 0
+	return best
 }

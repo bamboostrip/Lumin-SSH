@@ -1,6 +1,10 @@
 package provider
 
-import "strings"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
+)
 
 type Profile struct {
 	Provider                string
@@ -90,6 +94,17 @@ func ResolvePromptCacheStrategy(profile Profile, capability AIProviderModelCapab
 		}
 		return "off"
 	}
+}
+
+func BuildResponsesPromptCacheKey(conversationID string, sessionID string) string {
+	trimmedConversationID := strings.TrimSpace(conversationID)
+	trimmedSessionID := strings.TrimSpace(sessionID)
+	if trimmedConversationID == "" && trimmedSessionID == "" {
+		return ""
+	}
+	keySource := "conversation:" + trimmedConversationID + "\nsession:" + trimmedSessionID
+	checksum := sha256.Sum256([]byte(keySource))
+	return "LuminSSH:resp:v1:" + hex.EncodeToString(checksum[:])[:32]
 }
 
 func getAIProviderOpenAIPromptCacheControl(strategy string) map[string]any {

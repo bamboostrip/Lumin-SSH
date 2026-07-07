@@ -40,6 +40,7 @@ func (a *App) requestResponsesAIChatRound(ctx context.Context, requestID string,
 	systemPrompt := BuildChatSystemPromptWithProfile(a.ctx, payload.ConversationID, payload.SessionID, true, profile)
 	modelCapability := aiprovider.ResolveModelCapability(profile.Provider, profile.Model)
 	runtimeProfile := toAIProviderRuntimeProfile(profile)
+	promptCacheStrategy := aiprovider.ResolvePromptCacheStrategy(runtimeProfile, modelCapability)
 
 	requestBody := map[string]any{
 		"model":        profile.Model,
@@ -47,6 +48,11 @@ func (a *App) requestResponsesAIChatRound(ctx context.Context, requestID string,
 		"instructions": systemPrompt,
 		"stream":       true,
 		"store":        false,
+	}
+	if promptCacheStrategy != "off" {
+		if promptCacheKey := aiprovider.BuildResponsesPromptCacheKey(payload.ConversationID, payload.SessionID); promptCacheKey != "" {
+			requestBody["prompt_cache_key"] = promptCacheKey
+		}
 	}
 
 	if reasoningEffort := aiprovider.GetEffectiveReasoningEffort(runtimeProfile, modelCapability); reasoningEffort != "" {

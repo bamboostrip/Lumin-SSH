@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Eye, EyeOff, Pencil, Plus, X, Monitor, Key, FolderOpen, SquarePen, KeyRound } from 'lucide-react';
+import { Eye, EyeOff, Plus, X, Monitor, Key, FolderOpen, SquarePen, KeyRound } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/main/App.js';
 import { useTranslation } from '../i18n.js';
 
@@ -12,9 +12,11 @@ const defaultForm = {
   password: '',
   privateKey: '',
   passphrase: '',
+  terminalInitPath: '',
+  fileManagerInitPath: '',
 };
 
-export default function AddServerModal({ server, onSave, onClose, allGroups = [], credentials = [], onOpenCredentials }) {
+export default function AddServerModal({ server, onSave, onSaveAndConnect, onClose, allGroups = [], credentials = [], onOpenCredentials, inline = false, shiningFields = {} }) {
   const { t } = useTranslation();
   const [form, setForm] = useState(defaultForm);
   const [saving, setSaving] = useState(false);
@@ -24,6 +26,16 @@ export default function AddServerModal({ server, onSave, onClose, allGroups = []
 
   const [authMode, setAuthMode] = useState('custom'); // 'custom' | 'credential'
   const [selectedCredId, setSelectedCredId] = useState('');
+
+  const isEditing = !!server?.id;
+
+  const resetInlineForm = () => {
+    setAuthMode('custom');
+    setSelectedCredId('');
+    setForm(defaultForm);
+    setShowPassword(false);
+    setShowPassphrase(false);
+  };
 
   useEffect(() => {
     if (server) {
@@ -38,9 +50,7 @@ export default function AddServerModal({ server, onSave, onClose, allGroups = []
         passphrase: server.passphrase || '',
       });
     } else {
-      setAuthMode('custom');
-      setSelectedCredId('');
-      setForm(defaultForm);
+      resetInlineForm();
     }
   }, [server]);
 
@@ -57,6 +67,8 @@ export default function AddServerModal({ server, onSave, onClose, allGroups = []
   }, [onClose]);
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+  const inputClass = (key) => `input${shiningFields?.[key] ? ' editor-field-shine' : ''}`;
+  const inputShellClass = (key) => `editor-field-shell${shiningFields?.[key] ? ' editor-field-shell-shine' : ''}`;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -64,10 +76,14 @@ export default function AddServerModal({ server, onSave, onClose, allGroups = []
     if (authMode === 'custom' && !form.username.trim()) return window.luminDialog?.alert(t('请填写用户名'));
     if (authMode === 'credential' && !selectedCredId) return window.luminDialog?.alert(t('请选择凭据'));
 
+    const submitAction = e?.nativeEvent?.submitter?.dataset?.submitAction || 'save';
+
     setSaving(true);
     try {
       const data = { ...form };
       data.port = parseInt(data.port, 10) || 22;
+      data.terminalInitPath = String(data.terminalInitPath || '').trim();
+      data.fileManagerInitPath = String(data.fileManagerInitPath || '').trim();
 
       if (authMode === 'credential') {
         data.credentialId = selectedCredId;
@@ -92,7 +108,12 @@ export default function AddServerModal({ server, onSave, onClose, allGroups = []
       }
 
       if (server?.id) data.id = server.id;
-      await onSave(data);
+
+      if (submitAction === 'connect' && !server?.id && onSaveAndConnect) {
+        await onSaveAndConnect(data);
+      } else {
+        await onSave(data);
+      }
     } finally {
       setSaving(false);
     }
@@ -109,46 +130,61 @@ export default function AddServerModal({ server, onSave, onClose, allGroups = []
     }
   };
 
-  return (
-    <div className="modal-overlay">
-      <div className="modal modal-md">
-        <div className="modal-header">
-          <div className="modal-title">
-            <span style={{ display: 'inline-flex', alignItems: 'center' }}>{server ? <SquarePen size={16} /> : <Plus size={16} />}</span>
-            {server ? t('编辑配置') : t('添加')}
-          </div>
-          <button className="btn btn-ghost btn-icon" onClick={onClose}><X size={16} /></button>
-        </div>
+  const handleCancel = () => {
+    if (inline && !server) {
+      resetInlineForm();
+      return;
+    }
+    onClose();
+  };
 
-        <form onSubmit={handleSubmit}>
-          <div className="modal-body">
-            <div className="webdav-section">
-              <div className="webdav-section-title"><span style={{ display: 'inline-flex', alignItems: 'center', marginRight: 4 }}><Monitor size={16} /></span> {t('基本信息')}</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div className="form-group">
-                  <label className="form-label">{t('服务器别名（选填）')}</label>
+  const panel = (
+    <>
+      <div className={inline ? 'dashboard-server-editor-header' : 'modal-header'} style={{ flexShrink: 0 }}>
+        <div className={inline ? 'dashboard-server-editor-title' : 'modal-title'}>
+          <span className={inline ? 'dashboard-server-editor-title-icon' : undefined} data-editor-add-target={!isEditing ? 'true' : undefined} style={{ display: 'inline-flex', alignItems: 'center' }}>{isEditing ? <SquarePen size={16} /> : <Plus size={16} />}</span>
+          {isEditing ? t('编辑配置') : t('添加')}
+        </div>
+        {!inline && <button className="btn btn-ghost btn-icon" onClick={onClose}><X size={16} /></button>}
+      </div>
+
+      <form onSubmit={handleSubmit} className={inline ? 'dashboard-server-editor-form' : undefined} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+        <div className={inline ? 'dashboard-server-editor-body' : 'modal-body'} style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          <div className="webdav-section server-editor-section">
+            <div className="webdav-section-title server-editor-section-title"><span className="server-editor-section-icon"><Monitor size={15} /></span> {t('基本信息')}</div>
+            <div className="server-editor-fields">
+              <div className="form-group">
+                <label className="form-label">{t('服务器别名（选填）')}</label>
+                <div className={inputShellClass('name')}>
                   <input
-                    className="input"
+                    className={inputClass('name')}
+                    data-editor-field="name"
                     placeholder={t('例如：我的测试服')}
                     value={form.name}
                     onChange={set('name')}
                   />
                 </div>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label className="form-label">{t('主机地址 *')}</label>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">{t('主机地址 *')}</label>
+                  <div className={inputShellClass('host')}>
                     <input
-                      className="input"
+                      className={inputClass('host')}
+                      data-editor-field="host"
                       placeholder={t('192.168.1.1 或 example.com')}
                       value={form.host}
                       onChange={set('host')}
                       required
                     />
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">{t('端口')}</label>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">{t('端口')}</label>
+                  <div className={inputShellClass('port')}>
                     <input
-                      className="input"
+                      className={inputClass('port')}
+                      data-editor-field="port"
                       placeholder="22"
                       type="number"
                       min={1}
@@ -158,161 +194,224 @@ export default function AddServerModal({ server, onSave, onClose, allGroups = []
                     />
                   </div>
                 </div>
-                <div className="form-group">
-                  <label className="form-label">{t('用户名')} *</label>
+              </div>
+              <div className="form-group">
+                <label className="form-label">{t('用户名')} *</label>
+                <div className={inputShellClass('username')}>
                   <input
-                    className="input"
+                    className={inputClass('username')}
+                    data-editor-field="username"
                     placeholder="root"
                     value={form.username}
                     onChange={set('username')}
                     required
                   />
                 </div>
-                <div className="form-group">
-                  <label className="form-label">{t('分组')}</label>
-                  <input
-                    className="input"
-                    list="group-options"
-                    placeholder={t('默认（不填则不分组）')}
-                    value={form.group || ''}
-                    onChange={set('group')}
-                  />
-                  <datalist id="group-options">
-                    {allGroups.map(g => <option key={g} value={g} />)}
-                  </datalist>
-                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">{t('分组')}</label>
+                <input
+                  className="input"
+                  list="group-options"
+                  placeholder={t('默认（不填则不分组）')}
+                  value={form.group || ''}
+                  onChange={set('group')}
+                />
+                <datalist id="group-options">
+                  {allGroups.map(g => <option key={g} value={g} />)}
+                </datalist>
               </div>
             </div>
+          </div>
 
-            <div className="webdav-section">
-              <div className="webdav-section-title"><span style={{ display: 'inline-flex', alignItems: 'center', marginRight: 4 }}><Key size={16} /></span> {t('认证方式')}</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {/* 自定义/使用凭据 切换 */}
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <button type="button" className={`btn ${authMode === 'custom' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setAuthMode('custom')} style={{ fontSize: 12, padding: '4px 12px', ...(authMode !== 'custom' ? { border: '1px solid var(--border)', color: 'var(--text-secondary)' } : {}) }}>
+          <div className="webdav-section server-editor-section">
+            <div className="webdav-section-title server-editor-section-title"><span className="server-editor-section-icon"><Key size={15} /></span> {t('认证方式')}</div>
+            <div className="server-editor-fields">
+              <div className="server-editor-auth-row">
+                <div className="server-editor-segment">
+                  <button type="button" className={authMode === 'custom' ? 'active' : ''} onClick={() => setAuthMode('custom')}>
                     {t('自定义')}
                   </button>
-                  <button type="button" className={`btn ${authMode === 'credential' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setAuthMode('credential')} style={{ fontSize: 12, padding: '4px 12px', ...(authMode !== 'credential' ? { border: '1px solid var(--border)', color: 'var(--text-secondary)' } : {}) }}>
+                  <button type="button" className={authMode === 'credential' ? 'active' : ''} onClick={() => setAuthMode('credential')}>
                     {t('使用凭据')}
                   </button>
-                  <button type="button" className="btn btn-ghost" onClick={onOpenCredentials} style={{ marginLeft: 'auto', fontSize: 12, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4, border: '1px solid var(--accent)', color: 'var(--accent)' }}>
-                    <KeyRound size={13} /> {t('凭据管理')}
-                  </button>
                 </div>
+                <button type="button" className="server-editor-credential-button" onClick={onOpenCredentials}>
+                  <KeyRound size={13} /> {t('凭据管理')}
+                </button>
+              </div>
 
-                {authMode === 'credential' ? (
-                  credentials.length === 0 ? (
-                    <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13 }}>
-                      {t('暂无凭据，请先创建')}
-                    </div>
-                  ) : (
-                  <>
-                    <div className="form-group">
-                      <label className="form-label">{t('选择凭据')} *</label>
-                      <select className="select" value={selectedCredId} onChange={(e) => setSelectedCredId(e.target.value)}>
-                        <option value="">{t('请选择凭据')}</option>
-                        {credentials.map((c) => (
-                          <option key={c.id} value={c.id}>{c.name} ({c.username})</option>
-                        ))}
-                      </select>
-                    </div>
-                    {selectedCredId && (() => {
-                      const sel = credentials.find((c) => c.id === selectedCredId);
-                      if (!sel) return null;
-                      return (
-                        <div style={{ padding: '8px 12px', borderRadius: 'var(--radius-md)', background: 'var(--surface-secondary)', border: '1px solid var(--border)', fontSize: 13, color: 'var(--text-secondary)' }}>
-                          {sel.authMethod === 'privateKey' ? t('私钥认证') : t('密码认证')} · {sel.username}
-                        </div>
-                      );
-                    })()}
-                  </>
-                  )
+              {authMode === 'credential' ? (
+                credentials.length === 0 ? (
+                  <div className="server-editor-empty">
+                    {t('暂无凭据，请先创建')}
+                  </div>
                 ) : (
-                  <>
-                <div className="form-group">
-                  <label className="form-label">{t('认证方式')}</label>
-                  <select className="select" value={form.authType} onChange={set('authType')}>
-                    <option value="password">{t('密码认证')}</option>
-                    <option value="key">{t('私钥认证')}</option>
-                  </select>
-                </div>
-
-                {form.authType === 'password' ? (
+                <>
                   <div className="form-group">
-                    <label className="form-label">
-                      {server ? t('新密码（留空则不修改）') : t('密码')} *
-                    </label>
+                    <label className="form-label">{t('选择凭据')} *</label>
+                    <select className="select" value={selectedCredId} onChange={(e) => setSelectedCredId(e.target.value)}>
+                      <option value="">{t('请选择凭据')}</option>
+                      {credentials.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name} ({c.username})</option>
+                      ))}
+                    </select>
+                  </div>
+                  {selectedCredId && (() => {
+                    const sel = credentials.find((c) => c.id === selectedCredId);
+                    if (!sel) return null;
+                    return (
+                      <div className="server-editor-credential-summary">
+                        {sel.authMethod === 'privateKey' ? t('私钥认证') : t('密码认证')} · {sel.username}
+                      </div>
+                    );
+                  })()}
+                </>
+                )
+              ) : (
+                <>
+              <div className="form-group">
+                <label className="form-label">{t('认证方式')}</label>
+                <select className="select" value={form.authType} onChange={set('authType')}>
+                  <option value="password">{t('密码认证')}</option>
+                  <option value="key">{t('私钥认证')}</option>
+                </select>
+              </div>
+
+              {form.authType === 'password' ? (
+                <div className="form-group">
+                  <label className="form-label">
+                    {isEditing ? t('新密码（留空则不修改）') : t('密码')} *
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      className="input"
+                      type={showPassword ? "text" : "password"}
+                      placeholder={t('请输入密码')}
+                      value={form.password}
+                      onChange={set('password')}
+                      style={{ paddingRight: 36 }}
+                    />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}>
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="form-group">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <label className="form-label" style={{ marginBottom: 0 }}>{t('私钥内容')}</label>
+                      <button type="button" className="btn btn-secondary btn-sm server-editor-browse" onClick={handleSelectPrivateKeyFile}>
+                        <FolderOpen size={12} style={{ verticalAlign: 'middle', marginRight: 2 }} /> {t('浏览')}
+                      </button>
+                    </div>
+                    <textarea
+                      className="input"
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 12,
+                        resize: 'vertical',
+                        minHeight: 100,
+                      }}
+                      placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----"
+                      value={form.privateKey}
+                      onChange={set('privateKey')}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">{t('私钥密码短语 (可选)')}</label>
                     <div style={{ position: 'relative' }}>
                       <input
                         className="input"
-                        type={showPassword ? "text" : "password"}
-                        placeholder={t('请输入密码')}
-                        value={form.password}
-                        onChange={set('password')}
+                        type={showPassphrase ? "text" : "password"}
+                        placeholder={t('私钥密码短语')}
+                        value={form.passphrase}
+                        onChange={set('passphrase')}
                         style={{ paddingRight: 36 }}
                       />
-                      <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}>
-                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      <button type="button" onClick={() => setShowPassphrase(!showPassphrase)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}>
+                        {showPassphrase ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
                     </div>
                   </div>
-                ) : (
-                  <>
-                    <div className="form-group">
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                        <label className="form-label" style={{ marginBottom: 0 }}>{t('私钥内容')}</label>
-                        <button type="button" className="btn-secondary btn-sm" onClick={handleSelectPrivateKeyFile} style={{ padding: '2px 8px', fontSize: 11 }}>
-                          <FolderOpen size={12} style={{ verticalAlign: 'middle', marginRight: 2 }} /> {t('浏览')}
-                        </button>
-                      </div>
-                      <textarea
-                        className="input"
-                        style={{
-                          fontFamily: 'var(--font-mono)',
-                          fontSize: 12,
-                          resize: 'vertical',
-                          minHeight: 100,
-                        }}
-                        placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----"
-                        value={form.privateKey}
-                        onChange={set('privateKey')}
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">{t('私钥密码短语 (可选)')}</label>
-                      <div style={{ position: 'relative' }}>
-                        <input
-                          className="input"
-                          type={showPassphrase ? "text" : "password"}
-                          placeholder={t('私钥密码短语')}
-                          value={form.passphrase}
-                          onChange={set('passphrase')}
-                          style={{ paddingRight: 36 }}
-                        />
-                        <button type="button" onClick={() => setShowPassphrase(!showPassphrase)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}>
-                          {showPassphrase ? <EyeOff size={16} /> : <Eye size={16} />}
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )}
                 </>
-                )}
-
-
-              </div>
+              )}
+              </>
+              )}
             </div>
           </div>
 
-          <div className="modal-footer">
-            <button type="button" className="btn btn-secondary" onClick={onClose}>
-              {t('取消')}
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? t('保存中...') : server ? t('保存配置') : t('添加')}
-            </button>
+          <div className="webdav-section server-editor-section">
+            <div className="webdav-section-title server-editor-section-title"><span className="server-editor-section-icon"><FolderOpen size={15} /></span> {t('高级选项')}</div>
+            <div className="server-editor-fields">
+              <div className="form-group">
+                <label className="form-label">{t('终端默认 cd 目录')}</label>
+                <div className={inputShellClass('terminalInitPath')}>
+                  <input
+                    className={inputClass('terminalInitPath')}
+                    data-editor-field="terminalInitPath"
+                    placeholder="/root"
+                    value={form.terminalInitPath || ''}
+                    onChange={set('terminalInitPath')}
+                  />
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">{t('文件管理器初始目录')}</label>
+                <div className={inputShellClass('fileManagerInitPath')}>
+                  <input
+                    className={inputClass('fileManagerInitPath')}
+                    data-editor-field="fileManagerInitPath"
+                    placeholder="/var/www"
+                    value={form.fileManagerInitPath || ''}
+                    onChange={set('fileManagerInitPath')}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
-        </form>
+        </div>
+
+        <div className={inline ? 'dashboard-server-editor-footer' : 'modal-footer'} style={{ flexShrink: 0 }}>
+          {isEditing ? (
+            <>
+              <button type="button" className="btn btn-secondary" onClick={handleCancel}>
+                {t('取消')}
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? t('保存中...') : t('保存配置')}
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="submit" data-submit-action="save" className="btn btn-primary" disabled={saving}>
+                {saving ? t('保存中...') : t('添加')}
+              </button>
+              <button type="submit" data-submit-action="connect" className="btn btn-success" disabled={saving}>
+                {saving ? t('保存中...') : t('添加并链接')}
+              </button>
+            </>
+          )}
+        </div>
+      </form>
+    </>
+  );
+
+  if (inline) {
+    return (
+      <div className="glass-card dashboard-server-editor">
+        <div className="dashboard-server-editor-shell">
+          {panel}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="modal-overlay" style={{ alignItems: 'flex-start', paddingTop: 56 }}>
+      <div className="modal modal-md" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', height: 'calc(100vh - 72px)', maxHeight: 'calc(100vh - 72px)' }}>
+        {panel}
       </div>
     </div>
   );

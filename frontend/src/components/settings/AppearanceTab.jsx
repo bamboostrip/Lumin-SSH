@@ -9,8 +9,6 @@ export default function AppearanceTab({
   terminalColorTheme, onTerminalColorThemeChange,
   themeMode, onThemeChange,
   probePanelPosition, onProbePanelPositionChange,
-  fileManagerLayoutMode, onFileManagerLayoutModeChange,
-  fileManagerSplitPosition, onFileManagerSplitPositionChange,
   themeAccent, onColorChange,
   useCustomAccent, onToggleAccent,
   termBgImage, onTermBgUpload, onTermBgReset,
@@ -104,30 +102,6 @@ export default function AppearanceTab({
               <button className={`btn btn-sm ${probePanelPosition === 'right' ? 'btn-secondary' : 'btn-ghost'}`} onClick={() => onProbePanelPositionChange('right')} style={{ borderRadius: 'var(--radius-xl)', background: probePanelPosition === 'right' ? 'var(--surface-sunken)' : 'transparent' }}>{$t('右侧')}</button>
             </div>
           </div>
-          <div className="divider" style={{ margin: '12px 0', borderTop: '1px solid var(--border)' }} />
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ color: 'var(--text-primary)', fontSize: 13 }}>{$t('文件管理器布局')}</div>
-            </div>
-            <div style={{ display: 'flex', background: 'var(--surface-raised)', borderRadius: 'var(--radius-xl)', padding: 4, border: '1px solid var(--border)' }}>
-              <button className={`btn btn-sm ${fileManagerLayoutMode === 'tab' ? 'btn-secondary' : 'btn-ghost'}`} onClick={() => onFileManagerLayoutModeChange('tab')} style={{ borderRadius: 'var(--radius-xl)', background: fileManagerLayoutMode === 'tab' ? 'var(--surface-sunken)' : 'transparent' }}>{$t('标签页')}</button>
-              <button className={`btn btn-sm ${fileManagerLayoutMode === 'split' ? 'btn-secondary' : 'btn-ghost'}`} onClick={() => onFileManagerLayoutModeChange('split')} style={{ borderRadius: 'var(--radius-xl)', background: fileManagerLayoutMode === 'split' ? 'var(--surface-sunken)' : 'transparent' }}>{$t('分栏布局')}</button>
-            </div>
-          </div>
-          {fileManagerLayoutMode === 'split' && (
-            <>
-              <div className="divider" style={{ margin: '12px 0', borderTop: '1px solid var(--border)' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ color: 'var(--text-primary)', fontSize: 13 }}>{$t('文件管理器分栏位置')}</div>
-                </div>
-                <div style={{ display: 'flex', background: 'var(--surface-raised)', borderRadius: 'var(--radius-xl)', padding: 4, border: '1px solid var(--border)' }}>
-                  <button className={`btn btn-sm ${fileManagerSplitPosition === 'left' ? 'btn-secondary' : 'btn-ghost'}`} onClick={() => onFileManagerSplitPositionChange('left')} style={{ borderRadius: 'var(--radius-xl)', background: fileManagerSplitPosition === 'left' ? 'var(--surface-sunken)' : 'transparent' }}>{$t('左侧')}</button>
-                  <button className={`btn btn-sm ${fileManagerSplitPosition === 'bottom' ? 'btn-secondary' : 'btn-ghost'}`} onClick={() => onFileManagerSplitPositionChange('bottom')} style={{ borderRadius: 'var(--radius-xl)', background: fileManagerSplitPosition === 'bottom' ? 'var(--surface-sunken)' : 'transparent' }}>{$t('底部')}</button>
-                </div>
-              </div>
-            </>
-          )}
         </div>
       </div>
 

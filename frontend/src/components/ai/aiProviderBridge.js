@@ -45,6 +45,8 @@ function normalizeProvider(provider, index) {
     webSearchEnabled: provider?.webSearchEnabled !== false,
     dedicatedWebSearchEnabled: Boolean(provider?.dedicatedWebSearchEnabled),
     dedicatedWebSearchProviderId: typeof provider?.dedicatedWebSearchProviderId === 'string' ? provider.dedicatedWebSearchProviderId.trim() : '',
+    dedicatedProxyEnabled: Boolean(provider?.dedicatedProxyEnabled),
+    dedicatedProxyId: typeof provider?.dedicatedProxyId === 'string' ? provider.dedicatedProxyId.trim() : '',
     reasoningEffort: normalizeReasoningEffort(provider?.reasoningEffort),
     enableReasoningEffort: Boolean(provider?.enableReasoningEffort)
       || normalizeReasoningEffort(provider?.reasoningEffort) !== 'disable'

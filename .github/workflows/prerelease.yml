@@ -1,0 +1,252 @@
+name: Build and Publish Prerelease
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prepare-release:
+    if: github.repository == 'XiaoYingYo/Lumin-SSH'
+    runs-on: ubuntu-latest
+    outputs:
+      title: ${{ steps.meta.outputs.title }}
+      stamp: ${{ steps.meta.outputs.stamp }}
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+      pkg_version: ${{ steps.meta.outputs.pkg_version }}
+    steps:
+      - name: Generate prerelease metadata
+        id: meta
+        shell: bash
+        run: |
+          export TZ=Asia/Shanghai
+          TITLE=$(date '+%Y-%m-%d %H:%M:%S')
+          STAMP=$(date '+%Y%m%d-%H%M%S')
+          SHORT_SHA="${GITHUB_SHA::7}"
+          TAG="test-${STAMP}-${SHORT_SHA}"
+          VERSION="TEST-${STAMP}"
+          PKG_VERSION=$(date '+%Y.%m.%d.%H%M%S')
+          {
+            echo "title=${TITLE}"
+            echo "stamp=${STAMP}"
+            echo "tag=${TAG}"
+            echo "version=${VERSION}"
+            echo "pkg_version=${PKG_VERSION}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.title }}
+          prerelease: true
+          body: |
+            Automated test release for `${{ github.repository }}`.
+            Branch: `${{ github.ref_name }}`
+            Commit: `${{ github.sha }}`
+            Time: `${{ steps.meta.outputs.title }}`
+
+  build-linux:
+    needs: prepare-release
+    if: needs.prepare-release.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libglib2.0-dev \
+            libc6-dev libayatana-appindicator3-dev \
+            rpm alien fakeroot
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install frontend dependencies
+        run: npm install
+        working-directory: frontend
+
+      - name: Build Wails
+        run: |
+          export PATH=$HOME/go/bin:$PATH
+          VERSION=${{ needs.prepare-release.outputs.version }}
+          wails build -clean -tags webkit2_41 -o Lumin
+          cp build/bin/Lumin "build/Lumin-${VERSION}-linux-amd64"
+          sha256sum "build/Lumin-${VERSION}-linux-amd64" | sed 's|build/||' > "build/Lumin-${VERSION}-linux-amd64.sha256"
+          echo "binary=${{ github.workspace }}/build/Lumin-${VERSION}-linux-amd64" >> $GITHUB_ENV
+          echo "binary_sha=${{ github.workspace }}/build/Lumin-${VERSION}-linux-amd64.sha256" >> $GITHUB_ENV
+
+      - name: Package .deb & .rpm
+        run: |
+          VERSION=${{ needs.prepare-release.outputs.version }}
+          PKG_VERSION=${{ needs.prepare-release.outputs.pkg_version }}
+          mkdir -p build/deb/DEBIAN
+          mkdir -p build/deb/usr/bin
+          mkdir -p build/deb/usr/share/applications
+          mkdir -p build/deb/usr/share/icons/hicolor/256x256/apps
+          {
+            echo "Package: lumin"
+            echo "Version: ${PKG_VERSION}"
+            echo "Section: net"
+            echo "Priority: optional"
+            echo "Architecture: amd64"
+            echo "Depends: libgtk-3-0, libwebkit2gtk-4.1-0, libglib2.0-0, libc6, libayatana-appindicator3-1"
+            echo "Maintainer: Lumin <admin@662662.xyz>"
+            echo "Description: Lightweight SSH Client"
+            echo " A modern, lightweight SSH client built with Wails."
+            echo " Quickly manage and connect to your SSH servers."
+          } > build/deb/DEBIAN/control
+          cp build/bin/Lumin build/deb/usr/bin/lumin
+          sudo chown root:root build/deb/usr/bin/lumin
+          cp build/appicon.png build/deb/usr/share/icons/hicolor/256x256/apps/lumin.png
+          cp build/linux/lumin.desktop build/deb/usr/share/applications/lumin.desktop
+          sudo dpkg-deb --root-owner-group --build build/deb "build/Lumin-${VERSION}-amd64.deb"
+          sha256sum "build/Lumin-${VERSION}-amd64.deb" | sed 's|build/||' > "build/Lumin-${VERSION}-amd64.deb.sha256"
+          echo "deb=${{ github.workspace }}/build/Lumin-${VERSION}-amd64.deb" >> $GITHUB_ENV
+          echo "deb_sha=${{ github.workspace }}/build/Lumin-${VERSION}-amd64.deb.sha256" >> $GITHUB_ENV
+          sudo alien -r "build/Lumin-${VERSION}-amd64.deb" --scripts || echo "alien_rpm_failed=true" >> $GITHUB_ENV
+          RPM_FILE=$(find . -name "*.rpm" 2>/dev/null | head -1)
+          if [ -n "$RPM_FILE" ]; then
+            TARGET_RPM="build/Lumin-${VERSION}-amd64.rpm"
+            mv "$RPM_FILE" "$TARGET_RPM"
+            sha256sum "$TARGET_RPM" | sed 's|build/||' > "${TARGET_RPM}.sha256"
+            echo "rpm=${{ github.workspace }}/${TARGET_RPM}" >> $GITHUB_ENV
+            echo "rpm_sha=${{ github.workspace }}/${TARGET_RPM}.sha256" >> $GITHUB_ENV
+          fi
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.tag }}
+          files: |
+            ${{ env.binary }}
+            ${{ env.binary_sha }}
+            ${{ env.deb }}
+            ${{ env.deb_sha }}
+            ${{ env.rpm }}
+            ${{ env.rpm_sha }}
+
+  build-macos:
+    needs: prepare-release
+    if: needs.prepare-release.result == 'success'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install frontend dependencies
+        run: npm install
+        working-directory: frontend
+
+      - name: Build Wails
+        run: |
+          export PATH=$HOME/go/bin:$PATH
+          wails build -clean -o Lumin
+
+      - name: Package .app to .dmg
+        run: |
+          VERSION=${{ needs.prepare-release.outputs.version }}
+          cp -r build/bin/Lumin.app build/Lumin.app
+          hdiutil create -volname "Lumin" -srcfolder build/Lumin.app -ov -format UDZO "build/Lumin-${VERSION}.dmg"
+          shasum -a 256 "build/Lumin-${VERSION}.dmg" | sed 's|build/||' > "build/Lumin-${VERSION}.dmg.sha256"
+          echo "app_dmg=${{ github.workspace }}/build/Lumin-${VERSION}.dmg" >> $GITHUB_ENV
+          echo "app_sha=${{ github.workspace }}/build/Lumin-${VERSION}.dmg.sha256" >> $GITHUB_ENV
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.tag }}
+          files: |
+            ${{ env.app_dmg }}
+            ${{ env.app_sha }}
+
+  build-windows:
+    needs: prepare-release
+    if: needs.prepare-release.result == 'success'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install NSIS
+        run: choco install nsis -y
+
+      - name: Install frontend dependencies
+        run: npm install
+        working-directory: frontend
+
+      - name: Build Wails (binary + NSIS installer)
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:USERPROFILE\go\bin;C:\Program Files (x86)\NSIS;" + $env:PATH
+          wails build -clean -o Lumin.exe --nsis
+
+      - name: Package portable
+        shell: pwsh
+        run: |
+          $VERSION = "${{ needs.prepare-release.outputs.version }}"
+          Copy-Item build/bin/Lumin.exe "build/Lumin-$VERSION-portable.exe"
+          $hash = (CertUtil -hashfile "build/Lumin-$VERSION-portable.exe" SHA256)[1] -replace " ",""
+          Set-Content -Path "build/Lumin-$VERSION-portable.exe.sha256" -Value "$hash  Lumin-$VERSION-portable.exe"
+          echo "portable=${{ github.workspace }}\build\Lumin-$VERSION-portable.exe" >> $env:GITHUB_ENV
+          echo "portable_sha=${{ github.workspace }}\build\Lumin-$VERSION-portable.exe.sha256" >> $env:GITHUB_ENV
+
+      - name: Copy NSIS installer
+        shell: pwsh
+        run: |
+          $VERSION = "${{ needs.prepare-release.outputs.version }}"
+          $installer = Get-Item "build/bin/*-installer.exe"
+          Copy-Item $installer.FullName "build/Lumin-$VERSION-amd64-installer.exe"
+          $hash = (CertUtil -hashfile "build/Lumin-$VERSION-amd64-installer.exe" SHA256)[1] -replace " ",""
+          Set-Content -Path "build/Lumin-$VERSION-amd64-installer.exe.sha256" -Value "$hash  Lumin-$VERSION-amd64-installer.exe"
+          echo "installer=${{ github.workspace }}\build\Lumin-$VERSION-amd64-installer.exe" >> $env:GITHUB_ENV
+          echo "installer_sha=${{ github.workspace }}\build\Lumin-$VERSION-amd64-installer.exe.sha256" >> $env:GITHUB_ENV
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.tag }}
+          files: |
+            ${{ env.portable }}
+            ${{ env.portable_sha }}
+            ${{ env.installer }}
+            ${{ env.installer_sha }}

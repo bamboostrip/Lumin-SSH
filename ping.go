@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net"
 	"time"
 )
@@ -30,11 +31,14 @@ func isLocalOrPrivateIP(host string) bool {
 //	bannerMs (connectedAt→bannerAt) ≈ real RTT (proxy→server→back).
 //
 // In both cases we pick whichever sub-interval best represents the true RTT.
-func measureLatency(host string, port int) (int64, bool) {
-	target := dialAddr(host, port)
+func measureLatency(connConfig Connection) (int64, bool) {
+	target := dialAddr(connConfig.Host, connConfig.Port)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
 
 	start := time.Now()
-	conn, err := net.DialTimeout("tcp", target, 4*time.Second)
+	conn, err := dialConnectionTargetContext(ctx, connConfig, target, 4*time.Second)
 	if err != nil {
 		return 0, false
 	}
@@ -42,42 +46,35 @@ func measureLatency(host string, port int) (int64, bool) {
 	dialMs := connectedAt.Sub(start).Milliseconds()
 	defer conn.Close()
 
-	// Try to read the SSH banner — the server sends it immediately after TCP connect.
 	conn.SetDeadline(time.Now().Add(3 * time.Second))
 	buf := make([]byte, 64)
 	n, err := conn.Read(buf)
 	bannerMs := time.Since(connectedAt).Milliseconds()
 
-	// If dial was instant (< 5 ms) and we're talking to a non-private host,
-	// a TUN/proxy intercepted the dial locally.
-	// In that case bannerMs = proxy→server round-trip ≈ real network RTT.
-	isTUN := dialMs < 5 && !isLocalOrPrivateIP(host)
+	usesProxy := connectionUsesProxy(connConfig)
+	isTUN := !usesProxy && dialMs < 5 && !isLocalOrPrivateIP(connConfig.Host)
 
 	if err != nil || n == 0 {
-		// Could not read banner (firewall drops it, non-SSH port, etc.)
-		if isTUN {
-			// TUN mode but no banner — fall back to banner wait time as proxy RTT estimate
+		if usesProxy || isTUN {
 			return bannerMs, true
 		}
 		return dialMs, true
 	}
 
-	if isTUN {
-		// TUN mode: use the time from connection to banner arrival (1 real RTT)
+	if usesProxy || isTUN {
 		return bannerMs, true
 	}
-	// Direct mode: dial already took 1 RTT; total = dial + a few ms for banner
 	return dialMs, true
 }
 
 // PingServer returns the latency to the SSH port.
-func PingServer(host string, port int) map[string]interface{} {
+func PingServer(connConfig Connection) map[string]interface{} {
 	const samples = 2
 	var best int64 = -1
 	var anyOnline bool
 
 	for i := 0; i < samples; i++ {
-		rtt, online := measureLatency(host, port)
+		rtt, online := measureLatency(connConfig)
 		if !online {
 			continue
 		}

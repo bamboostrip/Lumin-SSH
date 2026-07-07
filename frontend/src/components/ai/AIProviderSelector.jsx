@@ -3,10 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from '../../i18n.js'
 import AIProviderListRow from './AIProviderListRow.jsx'
 import AIProviderQuickEditOverlay from './AIProviderQuickEditOverlay.jsx'
+import Tiptop from '../Tiptop.jsx'
 import { getAIProviderState, normalizeAIProviderState, saveAIProviderState } from './aiProviderBridge.js'
 
 const defaultProviders = []
 const summaryTooltipDelay = 300
+const tokenStoreUrl = 'https://aichatp.callmy.vip/app'
 
 const cacheStrategyLabelKeys = {
   model: '基于模型能力',
@@ -52,10 +54,13 @@ export default function AIProviderSelector({
   const [providerList, setProviderList] = useState(sortProviders(providers))
   const [persistedCurrentProviderId, setPersistedCurrentProviderId] = useState(providers[0]?.id || '')
   const [panelBounds, setPanelBounds] = useState(null)
+  const [workspaceBounds, setWorkspaceBounds] = useState(null)
   const [dropdownMetrics, setDropdownMetrics] = useState(null)
   const [triggerRect, setTriggerRect] = useState(null)
   const [tooltipVisible, setTooltipVisible] = useState(false)
   const [tooltipTriggerRect, setTooltipTriggerRect] = useState(null)
+  const [tokenStoreOpen, setTokenStoreOpen] = useState(false)
+  const [tokenStoreLoading, setTokenStoreLoading] = useState(false)
   const expandLeft = triggerRect ? triggerRect.left + 400 > window.innerWidth - 16 : false
   const tooltipExpandLeft = tooltipTriggerRect ? tooltipTriggerRect.left + 280 > window.innerWidth - 16 : false
   const [editingState, setEditingState] = useState({ open: false, mode: 'edit', provider: null })
@@ -234,19 +239,22 @@ export default function AIProviderSelector({
   }, [open, editingState.open])
 
   useEffect(() => {
-    if (!editingState.open && !open) {
+    if (!editingState.open && !open && !tokenStoreOpen) {
       setTriggerRect(null)
+      setWorkspaceBounds(null)
       return undefined
     }
 
     const updatePanelBounds = () => {
       const root = containerRef.current?.closest('[data-ai-panel-root="true"]')
+      const workspaceRoot = containerRef.current?.closest('[data-ai-workspace-root="true"]')
       const chatStage = root?.querySelector('[data-ai-chat-stage="true"]')
       const composerInputZone = root?.querySelector('[data-ai-composer-input-zone="true"]')
       const fallbackPanel = root || chatStage || composerInputZone
 
       if (!fallbackPanel) {
         setPanelBounds(null)
+        setWorkspaceBounds(null)
         setDropdownMetrics(null)
         return
       }
@@ -267,10 +275,32 @@ export default function AIProviderSelector({
         height: bottom - top,
       })
 
+      const aiPanelRect = root?.getBoundingClientRect()
+      const workspaceRect = workspaceRoot?.getBoundingClientRect()
+      if (aiPanelRect && workspaceRect) {
+        const aiPanelOnRight = aiPanelRect.left >= workspaceRect.left + workspaceRect.width / 2
+        const nextLeft = aiPanelOnRight ? workspaceRect.left : aiPanelRect.right
+        const nextRight = aiPanelOnRight ? aiPanelRect.left : workspaceRect.right
+        const nextWidth = Math.max(0, nextRight - nextLeft)
+        if (nextWidth > 0 && workspaceRect.height > 0) {
+          setWorkspaceBounds({
+            top: workspaceRect.top,
+            left: nextLeft,
+            width: nextWidth,
+            height: workspaceRect.height,
+          })
+        } else {
+          setWorkspaceBounds(null)
+        }
+      } else {
+        setWorkspaceBounds(null)
+      }
+
       const triggerRectData = containerRef.current?.getBoundingClientRect()
       if (triggerRectData) {
+        const panelWidth = Math.max(triggerRectData.width, Math.min(right - left, window.innerWidth - 32))
         setDropdownMetrics({
-          width: Math.min(400, window.innerWidth - triggerRectData.left - 16),
+          width: panelWidth,
           maxHeight: Math.max(120, triggerRectData.top - top - 8),
         })
         setTriggerRect({ top: triggerRectData.top, left: triggerRectData.left, right: triggerRectData.right, bottom: triggerRectData.bottom })
@@ -285,17 +315,35 @@ export default function AIProviderSelector({
       window.removeEventListener('resize', updatePanelBounds)
       window.removeEventListener('scroll', updatePanelBounds, true)
     }
-  }, [editingState.open, open])
+  }, [editingState.open, open, tokenStoreOpen])
 
   useEffect(() => {
     closeTooltip()
     setOpen(false)
+    setTokenStoreOpen(false)
+    setTokenStoreLoading(false)
     setTriggerRect(null)
     setTooltipTriggerRect(null)
     setDropdownMetrics(null)
     setPanelBounds(null)
+    setWorkspaceBounds(null)
     setEditingState({ open: false, mode: 'edit', provider: null })
   }, [closeTooltip, dismissSignal])
+
+  useEffect(() => {
+    if (!tokenStoreOpen) {
+      return undefined
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setTokenStoreOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [tokenStoreOpen])
 
   const notifySelectionChange = useCallback(async (providerId) => {
     if (typeof onCurrentProviderChange === 'function') {
@@ -305,6 +353,8 @@ export default function AIProviderSelector({
 
   const handleOpenEditor = (mode, provider = null) => {
     setOpen(false)
+    setTokenStoreOpen(false)
+    setTokenStoreLoading(false)
     setEditingState({ open: true, mode, provider })
   }
 
@@ -330,6 +380,8 @@ export default function AIProviderSelector({
       webSearchEnabled: Boolean(draft.webSearchEnabled),
       dedicatedWebSearchEnabled: Boolean(draft.dedicatedWebSearchEnabled),
       dedicatedWebSearchProviderId: draft.dedicatedWebSearchProviderId || '',
+      dedicatedProxyEnabled: Boolean(draft.dedicatedProxyEnabled),
+      dedicatedProxyId: draft.dedicatedProxyId || '',
       reasoningEffort: draft.reasoningEffort || 'disable',
       enableReasoningEffort: Boolean(draft.enableReasoningEffort),
       modelMaxTokens: Number.isFinite(Number(draft.modelMaxTokens)) && Number(draft.modelMaxTokens) > 0
@@ -412,6 +464,8 @@ export default function AIProviderSelector({
       ))}
     </div>
   )
+
+  const tokenStoreViewportBounds = workspaceBounds || panelBounds
 
   return (
     <>
@@ -520,10 +574,10 @@ export default function AIProviderSelector({
           <div
             style={{
               position: 'fixed',
-              ...(expandLeft ? { right: window.innerWidth - triggerRect.right } : { left: triggerRect.left }),
+              ...(panelBounds ? { left: panelBounds.left } : (expandLeft ? { right: window.innerWidth - triggerRect.right } : { left: triggerRect.left })),
               bottom: window.innerHeight - triggerRect.top + 8,
-              width: 400,
-              maxWidth: 'min(400px, calc(100vw - 32px))',
+              width: dropdownMetrics?.width ?? 400,
+              maxWidth: dropdownMetrics?.width ? `${dropdownMetrics.width}px` : 'min(400px, calc(100vw - 32px))',
               maxHeight: dropdownMetrics?.maxHeight ?? 320,
               borderRadius: 10,
               border: '1px solid var(--border)',
@@ -532,32 +586,64 @@ export default function AIProviderSelector({
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden',
+              overflowX: 'hidden',
+              boxSizing: 'border-box',
               zIndex: 10000,
             }}
           >
             <div style={{ padding: 10, display: 'grid', gap: 8, borderBottom: '1px solid var(--border-subtle)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>{t('供应商列表')}</div>
-                <button
-                  type="button"
-                  title={t('添加供应商')}
-                  aria-label={t('添加供应商')}
-                  onClick={() => handleOpenEditor('create', null)}
-                  style={{
-                    width: 28,
-                    height: 28,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: 0,
-                    border: '1px solid var(--border)',
-                    background: 'transparent',
-                    color: 'var(--text-secondary)',
-                    transition: 'var(--transition)',
-                  }}
-                >
-                  <Plus size={14} />
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button
+                    type="button"
+                    aria-label={t('打开 Token 中心')}
+                    onClick={() => {
+                      closeTooltip()
+                      setOpen(false)
+                      setTokenStoreLoading(true)
+                      setTokenStoreOpen(true)
+                    }}
+                    style={{
+                      height: 28,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '0 10px',
+                      borderRadius: 8,
+                      border: `1px solid ${tokenStoreOpen ? 'var(--accent-border)' : 'var(--border)'}`,
+                      background: tokenStoreOpen ? 'rgba(var(--accent-rgb), 0.12)' : 'transparent',
+                      color: tokenStoreOpen ? 'var(--accent)' : 'var(--text-secondary)',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      transition: 'var(--transition)',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {t('Token 中心')}
+                  </button>
+                  <Tiptop text={t('添加供应商')}>
+                    <button
+                      type="button"
+                      aria-label={t('添加供应商')}
+                      onClick={() => handleOpenEditor('create', null)}
+                      style={{
+                        width: 28,
+                        height: 28,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: 0,
+                        border: '1px solid var(--border)',
+                        background: 'transparent',
+                        color: 'var(--text-secondary)',
+                        transition: 'var(--transition)',
+                      }}
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </Tiptop>
+                </div>
               </div>
 
               <div style={{ position: 'relative' }}>
@@ -581,7 +667,7 @@ export default function AIProviderSelector({
               </div>
             </div>
 
-            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', overflowX: 'hidden' }}>
               {filteredProviders.length === 0 ? (
                 <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center', fontSize: 12, color: 'var(--text-tertiary)' }}>
                   {t('没有匹配的供应商')}
@@ -589,11 +675,11 @@ export default function AIProviderSelector({
               ) : (
                 <>
                   {pinnedProviders.length > 0 ? (
-                    <div style={{ flexShrink: 0, borderBottom: normalProviders.length > 0 ? '1px solid var(--border-subtle)' : 'none', background: 'var(--surface-overlay)' }}>
+                    <div style={{ flexShrink: 0, borderBottom: normalProviders.length > 0 ? '1px solid var(--border-subtle)' : 'none', background: 'var(--surface-overlay)', overflowX: 'hidden' }}>
                       {renderRows(pinnedProviders)}
                     </div>
                   ) : null}
-                  <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+                  <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}>
                     {normalProviders.length > 0 ? renderRows(normalProviders) : null}
                   </div>
                 </>
@@ -602,6 +688,124 @@ export default function AIProviderSelector({
           </div>
         )}
       </div>
+
+      {tokenStoreOpen && tokenStoreViewportBounds ? (
+        <div
+          onClick={() => setTokenStoreOpen(false)}
+          style={{
+            position: 'fixed',
+            top: tokenStoreViewportBounds.top,
+            left: tokenStoreViewportBounds.left,
+            width: tokenStoreViewportBounds.width,
+            height: tokenStoreViewportBounds.height,
+            maxWidth: '100vw',
+            maxHeight: '100vh',
+            background: 'rgba(5, 10, 18, 0.62)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'stretch',
+            justifyContent: 'center',
+            zIndex: 10020,
+          }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: '100%',
+              height: '100%',
+              background: 'var(--surface-base)',
+              border: '1px solid var(--border)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            <div style={{ height: 46, padding: '0 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{t('Token 中心')}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTokenStoreOpen(false)
+                    setTokenStoreLoading(false)
+                  }}
+                  aria-label={t('关闭')}
+                  style={{
+                    width: 30,
+                    height: 30,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: 8,
+                    border: '1px solid transparent',
+                    background: 'transparent',
+                    color: 'var(--text-secondary)',
+                    fontSize: 18,
+                    lineHeight: 1,
+                    transition: 'var(--transition)',
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            <div style={{ position: 'relative', flex: 1, minHeight: 0, background: 'var(--surface-base)', overflow: 'hidden' }}>
+              {tokenStoreLoading ? (
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 24,
+                    background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(10, 15, 26, 0.98))',
+                    zIndex: 1,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 'min(560px, 100%)',
+                      padding: '28px 30px',
+                      borderRadius: 18,
+                      border: '1px solid var(--border)',
+                      background: 'rgba(17, 24, 39, 0.92)',
+                      boxShadow: 'var(--shadow-xl)',
+                      display: 'grid',
+                      gap: 14,
+                      textAlign: 'center',
+                    }}
+                  >
+                    <div style={{ fontSize: 24, lineHeight: 1 }}>🌐</div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>{t('Token 中心正在加载')}</div>
+                    <div style={{ fontSize: 13, lineHeight: 1.8, color: 'var(--text-secondary)' }}>
+                      {t('如果页面长时间没有显示内容,可能需要科学上网后才能正常访问。')}
+                    </div>
+                    <div style={{ fontSize: 12, lineHeight: 1.7, color: 'var(--text-tertiary)' }}>
+                      {t('请稍候片刻,系统会在页面加载完成后自动进入 Token 中心。')}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              <iframe
+                src={tokenStoreUrl}
+                title={t('Token 中心')}
+                referrerPolicy="no-referrer"
+                onLoad={() => setTokenStoreLoading(false)}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  border: 'none',
+                  background: '#ffffff',
+                  display: 'block',
+                  opacity: tokenStoreLoading ? 0 : 1,
+                  transition: 'opacity 0.2s ease',
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <AIProviderQuickEditOverlay
         open={editingState.open}

@@ -2,6 +2,7 @@ package ai
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,16 @@ import (
 type AISlashCommand struct {
 	Name   string `json:"name"`
 	Prompt string `json:"prompt"`
+}
+
+type AIProxyNode struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
 }
 
 type AIGlobalSettings struct {
@@ -36,6 +47,8 @@ type AIGlobalSettings struct {
 	MessageActionBarAtBottom          bool             `json:"messageActionBarAtBottom"`
 	ApprovalButtonOrder               string           `json:"approvalButtonOrder"`
 	CommandActionButtonOrder          string           `json:"commandActionButtonOrder"`
+	AIRequestProxyID                  string           `json:"aiRequestProxyId,omitempty"`
+	ProxyNodes                        []AIProxyNode    `json:"proxyNodes,omitempty"`
 }
 
 func defaultAIGlobalSettings() AIGlobalSettings {
@@ -144,6 +157,74 @@ func normalizeAICommandActionButtonOrder(value string) string {
 	}
 }
 
+func normalizeAIProxyType(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "http":
+		return "http"
+	default:
+		return "socks5"
+	}
+}
+
+func buildDefaultAIProxyNodeID(proxyType string, host string, port int, index int) string {
+	sanitizedHost := strings.ToLower(strings.TrimSpace(host))
+	sanitizedHost = strings.NewReplacer(":", "-", ".", "-", "[", "", "]", "", "/", "-", "\\", "-").Replace(sanitizedHost)
+	if sanitizedHost == "" {
+		sanitizedHost = fmt.Sprintf("node-%d", index+1)
+	}
+	return fmt.Sprintf("proxy-%s-%s-%d-%d", proxyType, sanitizedHost, port, index+1)
+}
+
+func normalizeAIProxyNodes(nodes []AIProxyNode) []AIProxyNode {
+	if nodes == nil {
+		return []AIProxyNode{}
+	}
+	normalized := make([]AIProxyNode, 0, len(nodes))
+	seen := make(map[string]struct{}, len(nodes))
+	for index, node := range nodes {
+		host := strings.TrimSpace(node.Host)
+		if host == "" {
+			continue
+		}
+		proxyType := normalizeAIProxyType(node.Type)
+		port := node.Port
+		if port <= 0 || port > 65535 {
+			port = 1080
+		}
+		id := strings.TrimSpace(node.ID)
+		if id == "" {
+			id = buildDefaultAIProxyNodeID(proxyType, host, port, index)
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		normalized = append(normalized, AIProxyNode{
+			ID:       id,
+			Name:     strings.TrimSpace(node.Name),
+			Type:     proxyType,
+			Host:     host,
+			Port:     port,
+			Username: strings.TrimSpace(node.Username),
+			Password: node.Password,
+		})
+	}
+	return normalized
+}
+
+func normalizeAIRequestProxyID(selectedID string, nodes []AIProxyNode) string {
+	trimmedID := strings.TrimSpace(selectedID)
+	if trimmedID == "" {
+		return ""
+	}
+	for _, node := range nodes {
+		if node.ID == trimmedID {
+			return trimmedID
+		}
+	}
+	return ""
+}
+
 func normalizeAIGlobalSettings(settings AIGlobalSettings) AIGlobalSettings {
 	settings.CurrentProviderID = strings.TrimSpace(settings.CurrentProviderID)
 	settings.SlashCommands = normalizeAISlashCommands(settings.SlashCommands)
@@ -153,6 +234,8 @@ func normalizeAIGlobalSettings(settings AIGlobalSettings) AIGlobalSettings {
 	settings.AutoApprovalEnabled = settings.AlwaysAllowReadOnly || settings.AlwaysAllowWrite || settings.AlwaysAllowExecute
 	settings.ApprovalButtonOrder = normalizeAIApprovalButtonOrder(settings.ApprovalButtonOrder)
 	settings.CommandActionButtonOrder = normalizeAICommandActionButtonOrder(settings.CommandActionButtonOrder)
+	settings.ProxyNodes = normalizeAIProxyNodes(settings.ProxyNodes)
+	settings.AIRequestProxyID = normalizeAIRequestProxyID(settings.AIRequestProxyID, settings.ProxyNodes)
 	return settings
 }
 

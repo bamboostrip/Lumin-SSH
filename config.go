@@ -47,6 +47,13 @@ type Connection struct {
 	CredentialID        string `json:"credentialId,omitempty"`      // ponytail: 非空时用 Credential 认证，忽略内联字段
 	TerminalInitPath    string `json:"terminalInitPath,omitempty"`
 	FileManagerInitPath string `json:"fileManagerInitPath,omitempty"`
+	ProxyMode           string `json:"proxyMode,omitempty"`
+	ProxyNodeID         string `json:"proxyNodeId,omitempty"`
+	ProxyType           string `json:"proxyType,omitempty"`
+	ProxyHost           string `json:"proxyHost,omitempty"`
+	ProxyPort           int    `json:"proxyPort,omitempty"`
+	ProxyUsername       string `json:"proxyUsername,omitempty"`
+	ProxyPassword       string `json:"proxyPassword,omitempty"`
 	LastModified        int64  `json:"last_modified,omitempty"` // Unix 毫秒时间戳，合并时判断新旧
 }
 
@@ -62,27 +69,40 @@ type Credential struct {
 	LastModified int64  `json:"last_modified,omitempty"` // Unix 毫秒时间戳
 }
 
+type ChmodDialogSettings struct {
+	Mode                  string `json:"mode,omitempty"`
+	IncludeSubdirectories bool   `json:"includeSubdirectories,omitempty"`
+	LastModified          int64  `json:"last_modified,omitempty"`
+}
+
+type FileManagerSettings struct {
+	ChmodDialog ChmodDialogSettings `json:"chmodDialog,omitempty"`
+}
+
 type ConfigManager struct {
-	configDir      string
-	connFile       string
-	credFile       string
-	davFile        string
-	key            []byte
-	gcm            cipher.AEAD // ponytail: 缓存 GCM cipher，避免每次 encrypt/decrypt 重建
-	syncModeFile   string
-	syncTimeFile   string // 本地快照时间戳文件
-	lastSyncFile   string // 上次同步时间戳文件（仅在同步完成时更新）
-	quickCmdFile   string
-	paramHistFile  string
-	historyDir     string
-	globalHistFile string
-	mu             sync.RWMutex
-	connCache      []Connection    // 缓存连接列表
-	connCacheDirty bool            // 缓存是否需要刷新
-	credCache      []Credential    // 缓存凭据列表
-	credCacheDirty bool            // 凭据缓存是否需要刷新
-	syncRunning    atomic.Bool     // AutoSync 并发去重
-	wailsCtx       context.Context // 用于向 Wails 前端发送事件
+	configDir               string
+	connFile                string
+	credFile                string
+	davFile                 string
+	key                     []byte
+	gcm                     cipher.AEAD // ponytail: 缓存 GCM cipher，避免每次 encrypt/decrypt 重建
+	syncModeFile            string
+	syncTimeFile            string // 本地快照时间戳文件
+	lastSyncFile            string // 上次同步时间戳文件（仅在同步完成时更新）
+	quickCmdFile            string
+	paramHistFile           string
+	fileManagerSettingsFile string
+	workspaceStateFile      string
+	workspacePrefsFile      string
+	historyDir              string
+	globalHistFile          string
+	mu                      sync.RWMutex
+	connCache               []Connection // 缓存连接列表
+	connCacheDirty          bool         // 缓存是否需要刷新
+	credCache               []Credential // 缓存凭据列表
+	credCacheDirty          bool         // 凭据缓存是否需要刷新
+	syncRunning             atomic.Bool  // AutoSync 并发去重
+	wailsCtx                context.Context
 }
 
 func NewConfigManager() *ConfigManager {
@@ -108,6 +128,9 @@ func NewConfigManager() *ConfigManager {
 	davFile := filepath.Join(dir, "webdav.json")
 	quickCmdFile := filepath.Join(dir, "quick_commands.json")
 	paramHistFile := filepath.Join(dir, "param_history.json")
+	fileManagerSettingsFile := filepath.Join(dir, "file_manager_settings.json")
+	workspaceStateFile := filepath.Join(dir, "workspace_state.json")
+	workspacePrefsFile := filepath.Join(dir, "workspace_prefs.json")
 	historyDir := filepath.Join(dir, "history")
 	if err := os.MkdirAll(historyDir, 0755); err != nil {
 		log.Printf("[NewConfigManager] 无法创建历史目录 %s: %v", historyDir, err)
@@ -137,19 +160,22 @@ func NewConfigManager() *ConfigManager {
 	}
 
 	return &ConfigManager{
-		configDir:      dir,
-		connFile:       connFile,
-		credFile:       credFile,
-		davFile:        davFile,
-		key:            key,
-		gcm:            gcm,
-		syncModeFile:   filepath.Join(dir, "sync_mode.json"),
-		syncTimeFile:   filepath.Join(dir, "snapshot_time"),
-		lastSyncFile:   filepath.Join(dir, "last_sync_time"),
-		quickCmdFile:   quickCmdFile,
-		paramHistFile:  paramHistFile,
-		historyDir:     historyDir,
-		globalHistFile: filepath.Join(historyDir, "global.json"),
+		configDir:               dir,
+		connFile:                connFile,
+		credFile:                credFile,
+		davFile:                 davFile,
+		key:                     key,
+		gcm:                     gcm,
+		syncModeFile:            filepath.Join(dir, "sync_mode.json"),
+		syncTimeFile:            filepath.Join(dir, "snapshot_time"),
+		lastSyncFile:            filepath.Join(dir, "last_sync_time"),
+		quickCmdFile:            quickCmdFile,
+		paramHistFile:           paramHistFile,
+		fileManagerSettingsFile: fileManagerSettingsFile,
+		workspaceStateFile:      workspaceStateFile,
+		workspacePrefsFile:      workspacePrefsFile,
+		historyDir:              historyDir,
+		globalHistFile:          filepath.Join(historyDir, "global.json"),
 	}
 }
 
@@ -278,6 +304,8 @@ func (c *ConfigManager) getConnectionsLocked() []Connection {
 		conns[i].Password = c.decrypt(conns[i].Password)
 		conns[i].Passphrase = c.decrypt(conns[i].Passphrase)
 		conns[i].PrivateKey = c.decryptOrPassthrough(conns[i].PrivateKey)
+		conns[i].ProxyPassword = c.decrypt(conns[i].ProxyPassword)
+		sanitizeConnectionProxyConfig(&conns[i])
 	}
 	return conns
 }
@@ -320,11 +348,15 @@ func (c *ConfigManager) GetConnectionsMasked() []Connection {
 		if conns[i].Passphrase != "" {
 			conns[i].Passphrase = "****"
 		}
+		if conns[i].ProxyPassword != "" {
+			conns[i].ProxyPassword = "****"
+		}
 	}
 	return conns
 }
 
 func (c *ConfigManager) SaveConnection(conn Connection, noSync bool) Connection {
+	sanitizeConnectionProxyConfig(&conn)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	conns := c.getConnectionsLocked()
@@ -352,6 +384,9 @@ func (c *ConfigManager) SaveConnection(conn Connection, noSync bool) Connection 
 				// If no new passphrase provided, keep old
 				if conn.Passphrase == "" && existing.Passphrase != "" {
 					conn.Passphrase = existing.Passphrase
+				}
+				if conn.ProxyMode == "custom" && conn.ProxyPassword == "" && existing.ProxyPassword != "" {
+					conn.ProxyPassword = existing.ProxyPassword
 				}
 				conns[i] = conn
 				found = true
@@ -402,9 +437,14 @@ func (c *ConfigManager) saveConnectionsFile(conns []Connection) error {
 		if err != nil {
 			return fmt.Errorf("encrypt privateKey: %w", err)
 		}
+		encProxyPass, err := c.encrypt(toSave[i].ProxyPassword)
+		if err != nil {
+			return fmt.Errorf("encrypt proxyPassword: %w", err)
+		}
 		toSave[i].Password = encPass
 		toSave[i].Passphrase = encPhrase
 		toSave[i].PrivateKey = encKey
+		toSave[i].ProxyPassword = encProxyPass
 	}
 	data, err := json.MarshalIndent(toSave, "", "  ")
 	if err != nil {
@@ -934,6 +974,73 @@ func (c *ConfigManager) SetSyncMode(mode string) error {
 	return atomicWriteFile(c.syncModeFile, data, 0600)
 }
 
+func sanitizeChmodDialogMode(mode string) string {
+	filtered := strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '7' {
+			return r
+		}
+		return -1
+	}, strings.TrimSpace(mode))
+	if len(filtered) == 4 && filtered[0] == '0' {
+		filtered = filtered[1:]
+	}
+	if len(filtered) != 3 {
+		return ""
+	}
+	return filtered
+}
+
+func (c *ConfigManager) getFileManagerSettingsLocked() FileManagerSettings {
+	data, err := os.ReadFile(c.fileManagerSettingsFile)
+	if err != nil {
+		return FileManagerSettings{}
+	}
+	var settings FileManagerSettings
+	if err := json.Unmarshal(data, &settings); err != nil {
+		log.Printf("[getFileManagerSettingsLocked] json.Unmarshal failed: %v", err)
+		return FileManagerSettings{}
+	}
+	settings.ChmodDialog.Mode = sanitizeChmodDialogMode(settings.ChmodDialog.Mode)
+	return settings
+}
+
+func (c *ConfigManager) saveFileManagerSettingsLocked(settings FileManagerSettings) error {
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal file manager settings: %w", err)
+	}
+	return atomicWriteFile(c.fileManagerSettingsFile, data, 0600)
+}
+
+func (c *ConfigManager) GetChmodDialogSettings() map[string]interface{} {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	settings := c.getFileManagerSettingsLocked()
+	return map[string]interface{}{
+		"mode":                  settings.ChmodDialog.Mode,
+		"includeSubdirectories": settings.ChmodDialog.IncludeSubdirectories,
+	}
+}
+
+func (c *ConfigManager) SaveChmodDialogSettings(mode string, includeSubdirectories bool) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	sanitizedMode := sanitizeChmodDialogMode(mode)
+	if sanitizedMode == "" {
+		sanitizedMode = "644"
+	}
+	settings := c.getFileManagerSettingsLocked()
+	settings.ChmodDialog.Mode = sanitizedMode
+	settings.ChmodDialog.IncludeSubdirectories = includeSubdirectories
+	settings.ChmodDialog.LastModified = time.Now().UnixMilli()
+	err := c.saveFileManagerSettingsLocked(settings)
+	if err == nil {
+		c.bumpSnapshotTime()
+		go c.AutoSync()
+	}
+	return err
+}
+
 // ─── 快捷命令 ──────────────────────────────────────
 
 // GetQuickCommands 读取快捷命令列表
@@ -982,6 +1089,77 @@ func (c *ConfigManager) SaveParamHistory(jsonStr string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return atomicWriteFile(c.paramHistFile, []byte(jsonStr), 0600)
+}
+
+func (c *ConfigManager) GetRememberWorkspace() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	data, err := os.ReadFile(c.workspacePrefsFile)
+	if err != nil {
+		return false
+	}
+	var enabled bool
+	if err := json.Unmarshal(data, &enabled); err == nil {
+		return enabled
+	}
+	var payload map[string]bool
+	if err := json.Unmarshal(data, &payload); err == nil {
+		return payload["rememberWorkspace"]
+	}
+	return false
+}
+
+func (c *ConfigManager) SetRememberWorkspace(enabled bool) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	data, err := json.Marshal(enabled)
+	if err != nil {
+		return err
+	}
+	if err := atomicWriteFile(c.workspacePrefsFile, data, 0600); err != nil {
+		return err
+	}
+	if !enabled {
+		if err := os.Remove(c.workspaceStateFile); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *ConfigManager) GetWorkspaceState() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	data, err := os.ReadFile(c.workspaceStateFile)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func (c *ConfigManager) SaveWorkspaceState(jsonStr string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	trimmed := strings.TrimSpace(jsonStr)
+	if trimmed == "" {
+		if err := os.Remove(c.workspaceStateFile); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	if !json.Valid([]byte(trimmed)) {
+		return fmt.Errorf("invalid workspace state")
+	}
+	return atomicWriteFile(c.workspaceStateFile, []byte(trimmed), 0600)
+}
+
+func (c *ConfigManager) ClearWorkspaceState() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := os.Remove(c.workspaceStateFile); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 // ─── 命令历史 ──────────────────────────────────────

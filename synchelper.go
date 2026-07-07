@@ -49,10 +49,11 @@ type storageCloser interface {
 
 // SyncSnapshot 同步快照，包含连接和快捷命令等所有可同步数据
 type SyncSnapshot struct {
-	Connections   []Connection `json:"connections"`
-	Credentials   []Credential `json:"credentials,omitempty"`
-	QuickCommands string       `json:"quick_commands,omitempty"`
-	SnapshotTime  int64        `json:"snapshot_time,omitempty"` // 快照总时间戳（Unix 毫秒），用于判断同步方向
+	Connections         []Connection `json:"connections"`
+	Credentials         []Credential `json:"credentials,omitempty"`
+	QuickCommands       string       `json:"quick_commands,omitempty"`
+	FileManagerSettings string       `json:"file_manager_settings,omitempty"`
+	SnapshotTime        int64        `json:"snapshot_time,omitempty"` // 快照总时间戳（Unix 毫秒），用于判断同步方向
 }
 
 // ─── 共享解密/解析 ─────────────────────────────────────────
@@ -114,6 +115,9 @@ func snapshotEqual(s1, s2 *SyncSnapshot) bool {
 		return false
 	}
 	if s1.QuickCommands != s2.QuickCommands {
+		return false
+	}
+	if !fileManagerSettingsEqual(s1.FileManagerSettings, s2.FileManagerSettings) {
 		return false
 	}
 	return true
@@ -201,10 +205,11 @@ func (c *ConfigManager) fetchLatestBackup(s RemoteStorage) (*SyncSnapshot, error
 // backupConnections 加密本地所有可同步数据并上传到远端，同时清理超出 maxBackups 的旧备份
 func (c *ConfigManager) backupConnections(s RemoteStorage, maxBackups int) (map[string]interface{}, error) {
 	snap := SyncSnapshot{
-		Connections:   c.GetConnections(),
-		Credentials:   c.GetCredentials(),
-		QuickCommands: c.loadRawFile(c.quickCmdFile),
-		SnapshotTime:  c.loadSnapshotTime(),
+		Connections:         c.GetConnections(),
+		Credentials:         c.GetCredentials(),
+		QuickCommands:       c.loadRawFile(c.quickCmdFile),
+		FileManagerSettings: c.loadRawFile(c.fileManagerSettingsFile),
+		SnapshotTime:        c.loadSnapshotTime(),
 	}
 	data, err := json.MarshalIndent(snap, "", "  ")
 	if err != nil {
@@ -306,6 +311,7 @@ func (c *ConfigManager) syncFromProvider(s RemoteStorage) (map[string]interface{
 
 	// 合并连接（重叠按 LastModified 取最新，单侧独有按 lastSyncTime 判断删除）
 	localConns := c.GetConnections()
+	localSnapTime := c.loadSnapshotTime()
 	lastSyncTime := c.loadLastSyncTime()
 	deduped := c.mergeWithDeletionPropagation(localConns, remoteSnap.Connections, lastSyncTime)
 	// 加锁保存并失效缓存（saveConnectionsFile 要求调用方持有 c.mu）
@@ -335,9 +341,16 @@ func (c *ConfigManager) syncFromProvider(s RemoteStorage) (map[string]interface{
 		log.Printf("[syncFromProvider] failed to write quick commands: %v", err)
 	}
 
+	localFileManagerSettings := c.loadRawFile(c.fileManagerSettingsFile)
+	mergedFileManagerSettings := mergeFileManagerSettings(localFileManagerSettings, remoteSnap.FileManagerSettings, localSnapTime, remoteSnap.SnapshotTime)
+	if err := atomicWriteFile(c.fileManagerSettingsFile, []byte(mergedFileManagerSettings), 0600); err != nil {
+		log.Printf("[syncFromProvider] failed to write file manager settings: %v", err)
+	}
+
 	var backupResult interface{}
 	changed := !connsEqual(deduped, remoteSnap.Connections) ||
 		!quickCmdsEqual(mergedQuickCmds, remoteSnap.QuickCommands) ||
+		!fileManagerSettingsEqual(mergedFileManagerSettings, remoteSnap.FileManagerSettings) ||
 		(mergedCreds != nil && !credsEqual(mergedCreds, remoteSnap.Credentials))
 	if changed {
 		c.bumpSnapshotTime() // 手动同步后更新总时间戳，确保下次自动同步方向正确
@@ -409,13 +422,18 @@ func (c *ConfigManager) autoSyncProvider(s RemoteStorage, maxBackups int) error 
 	localQuickCmds := c.loadRawFile(c.quickCmdFile)
 	mergedQuickCmds := c.mergeQuickCommands(localQuickCmds, remoteSnap.QuickCommands, lastSyncTime)
 
+	localFileManagerSettings := c.loadRawFile(c.fileManagerSettingsFile)
+	mergedFileManagerSettings := mergeFileManagerSettings(localFileManagerSettings, remoteSnap.FileManagerSettings, localSnapTime, remoteSnapTime)
+
 	// 本地有变化 → 保存
 	credsChanged := remoteSnap.Credentials != nil && !credsEqual(mergedCreds, localCreds)
-	localChanged := !connsEqual(merged, localConns) || !quickCmdsEqual(mergedQuickCmds, localQuickCmds) || credsChanged
+	fileManagerSettingsChanged := !fileManagerSettingsEqual(mergedFileManagerSettings, localFileManagerSettings)
+	localChanged := !connsEqual(merged, localConns) || !quickCmdsEqual(mergedQuickCmds, localQuickCmds) || fileManagerSettingsChanged || credsChanged
 
 	// 云端有变化 → 需要上传
 	cloudCredsChanged := !credsEqual(mergedCreds, remoteSnap.Credentials)
-	cloudChanged := !connsEqual(merged, remoteSnap.Connections) || !quickCmdsEqual(mergedQuickCmds, remoteSnap.QuickCommands) || cloudCredsChanged
+	cloudFileManagerSettingsChanged := !fileManagerSettingsEqual(mergedFileManagerSettings, remoteSnap.FileManagerSettings)
+	cloudChanged := !connsEqual(merged, remoteSnap.Connections) || !quickCmdsEqual(mergedQuickCmds, remoteSnap.QuickCommands) || cloudFileManagerSettingsChanged || cloudCredsChanged
 
 	// 无变化 → 静默跳过
 	if !localChanged && !cloudChanged {
@@ -450,6 +468,12 @@ func (c *ConfigManager) autoSyncProvider(s RemoteStorage, maxBackups int) error 
 			data, _ := os.ReadFile(c.quickCmdFile)
 			if quickCmdsEqual(string(data), localQuickCmds) {
 				atomicWriteFile(c.quickCmdFile, []byte(mergedQuickCmds), 0600)
+			}
+		}
+		if fileManagerSettingsChanged {
+			data, _ := os.ReadFile(c.fileManagerSettingsFile)
+			if fileManagerSettingsEqual(string(data), localFileManagerSettings) {
+				atomicWriteFile(c.fileManagerSettingsFile, []byte(mergedFileManagerSettings), 0600)
 			}
 		}
 		c.mu.Unlock()
@@ -735,10 +759,53 @@ func quickCmdsEqual(a, b string) bool {
 	if err := json.Unmarshal([]byte(b), &vb); err != nil {
 		return false
 	}
-	// 重新 marshal 为规范形式比较
 	da, _ := json.Marshal(va)
 	db, _ := json.Marshal(vb)
 	return string(da) == string(db)
+}
+
+func normalizeFileManagerSettingsJSON(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "{}"
+	}
+	return trimmed
+}
+
+func fileManagerSettingsEqual(a, b string) bool {
+	normalizedA := normalizeFileManagerSettingsJSON(a)
+	normalizedB := normalizeFileManagerSettingsJSON(b)
+	if normalizedA == normalizedB {
+		return true
+	}
+	var va, vb interface{}
+	if err := json.Unmarshal([]byte(normalizedA), &va); err != nil {
+		return false
+	}
+	if err := json.Unmarshal([]byte(normalizedB), &vb); err != nil {
+		return false
+	}
+	da, _ := json.Marshal(va)
+	db, _ := json.Marshal(vb)
+	return string(da) == string(db)
+}
+
+func mergeFileManagerSettings(local, remote string, localSnapTime, remoteSnapTime int64) string {
+	normalizedLocal := normalizeFileManagerSettingsJSON(local)
+	normalizedRemote := normalizeFileManagerSettingsJSON(remote)
+	if fileManagerSettingsEqual(normalizedLocal, normalizedRemote) {
+		return normalizedLocal
+	}
+	if strings.TrimSpace(local) == "" {
+		return normalizedRemote
+	}
+	if strings.TrimSpace(remote) == "" {
+		return normalizedLocal
+	}
+	if localSnapTime >= remoteSnapTime {
+		return normalizedLocal
+	}
+	return normalizedRemote
 }
 
 // mergeQuickCommands 合并本地和远端的快捷命令列表：
@@ -912,6 +979,11 @@ func (c *ConfigManager) restoreSnapshotToLocal(snap *SyncSnapshot) {
 	if snap.QuickCommands != "" {
 		if err := atomicWriteFile(c.quickCmdFile, []byte(snap.QuickCommands), 0600); err != nil {
 			log.Printf("[restoreSnapshotToLocal] failed to write quick commands: %v", err)
+		}
+	}
+	if snap.FileManagerSettings != "" {
+		if err := atomicWriteFile(c.fileManagerSettingsFile, []byte(snap.FileManagerSettings), 0600); err != nil {
+			log.Printf("[restoreSnapshotToLocal] failed to write file manager settings: %v", err)
 		}
 	}
 }

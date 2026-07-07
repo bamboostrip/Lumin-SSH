@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Eye, EyeOff, Clipboard } from 'lucide-react';
 import { useTranslation, t } from '../i18n.js';
+import Tiptop from './Tiptop.jsx';
 import { Z } from '../constants/zIndex';
 
 export default function GlobalDialog() {
@@ -138,42 +139,46 @@ function DialogContent({ current, onClose, onConfirm, onChoice }) {
                 if (e.key === 'Escape') onClose();
               }}
             />
-            <button
-              type="button"
-              title={showPassword ? t('隐藏密码') : t('显示密码')}
-              onClick={() => setShowPassword(!showPassword)}
-              style={{
-                position: 'absolute', right: 42, top: '50%', transform: 'translateY(-50%)',
-                background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer',
-                padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 16, lineHeight: 1, borderRadius: 4, transition: 'background 0.15s',
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--accent-rgb), 0.12)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'none'}
-            >{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button>
-            <button
-              onClick={async () => {
-                try {
-                  const text = await navigator.clipboard.readText();
-                  if (text) setInputValue(text);
-                } catch {
+            <Tiptop text={showPassword ? t('隐藏密码') : t('显示密码')}>
+              <button
+                type="button"
+                aria-label={showPassword ? t('隐藏密码') : t('显示密码')}
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute', right: 42, top: '50%', transform: 'translateY(-50%)',
+                  background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer',
+                  padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 16, lineHeight: 1, borderRadius: 4, transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--accent-rgb), 0.12)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'none'}
+              >{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button>
+            </Tiptop>
+            <Tiptop text={t('粘贴')}>
+              <button
+                onClick={async () => {
                   try {
-                    const { ClipboardGetText } = await import('../../wailsjs/runtime/runtime.js');
-                    const text = await ClipboardGetText();
+                    const text = await navigator.clipboard.readText();
                     if (text) setInputValue(text);
-                  } catch {}
-                }
-              }}
-              title={t('粘贴')}
-              style={{
-                position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
-                background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer',
-                padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 16, lineHeight: 1, borderRadius: 4, transition: 'background 0.15s',
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--accent-rgb), 0.12)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'none'}
-            ><Clipboard size={16} /></button>
+                  } catch {
+                    try {
+                      const { ClipboardGetText } = await import('../../wailsjs/runtime/runtime.js');
+                      const text = await ClipboardGetText();
+                      if (text) setInputValue(text);
+                    } catch {}
+                  }
+                }}
+                aria-label={t('粘贴')}
+                style={{
+                  position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                  background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer',
+                  padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 16, lineHeight: 1, borderRadius: 4, transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--accent-rgb), 0.12)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'none'}
+              ><Clipboard size={16} /></button>
+            </Tiptop>
           </div>
           {current.checkboxLabel && (
             <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 28, fontSize: 13, color: 'var(--text-tertiary)', cursor: 'pointer' }}>

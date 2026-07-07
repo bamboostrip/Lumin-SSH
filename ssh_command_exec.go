@@ -16,6 +16,7 @@ import (
 var luminExitCodePattern = regexp.MustCompile(`\[Lumin_EXIT_CODE_(\d+)\]`)
 
 const maxInteractiveCapturedOutputBytes = 1 << 20
+const interactiveIdlePollInterval = 200 * time.Millisecond
 
 func (m *SSHManager) ExecuteCommandInTerminal(sessionID string, command string, purpose string, isMutating bool, cwd string, shellType string, timeout time.Duration) (mcpserver.CommandExecutionResult, error) {
 	result := mcpserver.CommandExecutionResult{
@@ -43,6 +44,10 @@ func (m *SSHManager) ExecuteCommandInTerminal(sessionID string, command string, 
 	}
 	_, outputChannel, cancel := m.registerSessionOutputTap(sessionID)
 	defer cancel()
+	if _, err := m.waitForInteractiveSessionIdle(sessionID, nil, outputChannel); err != nil {
+		return result, err
+	}
+	drainInteractiveOutputChannel(outputChannel)
 	if !strings.HasSuffix(wrappedCommand, "\n") {
 		wrappedCommand += "\n"
 	}
@@ -79,6 +84,48 @@ func (m *SSHManager) ExecuteCommandInTerminal(sessionID string, command string, 
 	}
 }
 
+func (m *SSHManager) waitForInteractiveSessionIdle(sessionID string, control <-chan ai.ToolExecutionAction, outputChannel <-chan []byte) (ai.ToolExecutionAction, error) {
+	for {
+		m.mu.RLock()
+		sessionData, ok := m.sessions[sessionID]
+		shouldWait := ok && sessionData != nil && sessionData.RemoteHistoryActive && !sessionData.PromptReady
+		m.mu.RUnlock()
+		if !ok || sessionData == nil {
+			return ai.ToolExecutionActionNone, fmt.Errorf("session not found")
+		}
+		if !shouldWait {
+			return ai.ToolExecutionActionNone, nil
+		}
+		select {
+		case action, ok := <-control:
+			if !ok {
+				continue
+			}
+			if action == ai.ToolExecutionActionTerminate {
+				return ai.ToolExecutionActionTerminate, nil
+			}
+		case _, ok := <-outputChannel:
+			if !ok {
+				return ai.ToolExecutionActionNone, fmt.Errorf("session output unavailable")
+			}
+		case <-time.After(interactiveIdlePollInterval):
+		}
+	}
+}
+
+func drainInteractiveOutputChannel(outputChannel <-chan []byte) {
+	for {
+		select {
+		case _, ok := <-outputChannel:
+			if !ok {
+				return
+			}
+		default:
+			return
+		}
+	}
+}
+
 func (m *SSHManager) ExecuteCommandInTerminalControlled(sessionID string, command string, purpose string, isMutating bool, cwd string, shellType string, timeout time.Duration, control <-chan ai.ToolExecutionAction, onCommandOutput func(string)) (mcpserver.CommandExecutionResult, ai.ToolExecutionAction, error) {
 	result := mcpserver.CommandExecutionResult{
 		SessionID:  sessionID,
@@ -105,6 +152,14 @@ func (m *SSHManager) ExecuteCommandInTerminalControlled(sessionID string, comman
 	}
 	_, outputChannel, cancel := m.registerSessionOutputTap(sessionID)
 	defer cancel()
+	waitOutcome, err := m.waitForInteractiveSessionIdle(sessionID, control, outputChannel)
+	if err != nil {
+		return result, ai.ToolExecutionActionNone, err
+	}
+	if waitOutcome == ai.ToolExecutionActionTerminate {
+		return result, ai.ToolExecutionActionTerminate, nil
+	}
+	drainInteractiveOutputChannel(outputChannel)
 	if !strings.HasSuffix(wrappedCommand, "\n") {
 		wrappedCommand += "\n"
 	}

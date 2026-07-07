@@ -57,7 +57,7 @@ func BuildChatSystemPromptWithProfile(appCtx context.Context, conversationID str
 	builder.WriteString("Use ordinary tool tags and ordinary parameter tags only.\n")
 	builder.WriteString("Do not emit any hashed tags.\n")
 	builder.WriteString(fmt.Sprintf("Use current terminal session_id %s by default when the target is this AI panel terminal.\n", strings.TrimSpace(sessionID)))
-	builder.WriteString("When targeting the current AI panel terminal, explicitly set shellType to the actual terminal shell. In this application, the default shellType for the current AI panel terminal is bash unless the runtime context clearly indicates a different shell.\n")
+	builder.WriteString("When targeting the current AI panel terminal, explicitly set shellType to the actual terminal shell. Use only supported shellType values: zsh, powershell, or cmd. Prefer powershell or cmd on Windows terminals, and zsh on Unix-like terminals, unless the runtime context clearly indicates a different shell.\n")
 	builder.WriteString("Use literal parameter content whenever possible. Do not introduce escape characters, XML entities, backslashes, or additional quoting unless the command itself requires them or the target format makes them mandatory. For shell commands, preserve the command exactly as it should be executed in the target shell. Escape content only when the target syntax strictly requires it, such as valid JSON strings, required XML markup boundaries, or other format-defined escaping rules. For write_to_file.content, apply_diff.diff, and apply_diff.args, keep the body literal and unescaped unless the embedded content itself is a format that requires escaping. Prefer the simplest valid representation that preserves exact execution semantics and exact file content semantics.\n")
 	builder.WriteString("Every response must use a tool.\n")
 	builder.WriteString("Before sending any response, validate that the response contains exactly one top-level XML tool wrapper, at least one real tool call inside it, and no standalone tool tags outside it.\n")
@@ -265,7 +265,7 @@ func buildAIChatToolParameterPlaceholder(name string, schema map[string]any, ses
 	case "cwd":
 		return "/working/directory"
 	case "shellType":
-		return "bash"
+		return "zsh"
 	case "diff":
 		return "<<<<<<< SEARCH\n:start_line:1\n-------\nold text\n=======\nnew text\n>>>>>>> REPLACE"
 	case "old_string":

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { useTranslation } from '../i18n.js';
 import { Monitor, Pencil, Link, Trash2, X, SquarePen, Folder, FolderOpen, ChevronUp, ChevronDown, Copy } from 'lucide-react';
 import { clampMenuPosition } from '../utils/menuPosition.js';
+import Tiptop from './Tiptop.jsx';
 
 const MENU_ESTIMATED_WIDTH = 196;
 const MENU_ESTIMATED_HEIGHT = 160;
@@ -310,84 +311,89 @@ export default function ServerList({
     const { rowToken, nameToken, hostToken } = getSaveFlowTokens(server);
 
     return (
-      <div
-        key={`${server.id}-${rowToken || 'stable'}`}
-        data-server-update-id={server.id}
-        className={`server-card ${active ? 'active' : ''}${rowToken ? ' save-flow-hit' : ''}`}
-        onClick={() => onConnect(server)}
-        onContextMenu={(e) => handleContextMenu(e, server)}
-        onMouseEnter={() => setHoveredId(server.id)}
-        onMouseLeave={() => setHoveredId(null)}
-        title={`${server.username}@${server.host}:${server.port || 22}`}
-        style={{ margin: 0 }}
-      >
-        <div style={{
-          width: 34, height: 34, borderRadius: 8,
-          background: osInfo.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 18, flexShrink: 0,
-          border: '1px solid var(--border-subtle)',
-        }}>
-          {osInfo.icon}
-        </div>
-        <div className="server-info" style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1, minWidth: 0 }}>
-          <div className="server-name" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: 'var(--text-primary)', fontWeight: 500 }}>
-            <span
-              key={`name-${nameToken || 'stable'}`}
-              data-edit-source-field="name"
-              className={`save-flow-target${nameToken ? ' save-flow-target-active' : ''}`}
-              style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-            >
-              {server.name || server.host}
-            </span>
-            {connected && (
-              <span style={{ fontSize: 8, color: 'var(--success)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
-                ● {t('已连接')}
+      <Tiptop text={`${server.username}@${server.host}:${server.port || 22}`}>
+        <div
+          key={`${server.id}-${rowToken || 'stable'}`}
+          data-server-update-id={server.id}
+          className={`server-card ${active ? 'active' : ''}${rowToken ? ' save-flow-hit' : ''}`}
+          onClick={() => onConnect(server)}
+          onContextMenu={(e) => handleContextMenu(e, server)}
+          onMouseEnter={() => setHoveredId(server.id)}
+          onMouseLeave={() => setHoveredId(null)}
+          style={{ margin: 0 }}
+        >
+          <div style={{
+            width: 34, height: 34, borderRadius: 8,
+            background: osInfo.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 18, flexShrink: 0,
+            border: '1px solid var(--border-subtle)',
+          }}>
+            {osInfo.icon}
+          </div>
+          <div className="server-info" style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1, minWidth: 0 }}>
+            <div className="server-name" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: 'var(--text-primary)', fontWeight: 500 }}>
+              <span
+                key={`name-${nameToken || 'stable'}`}
+                data-edit-source-field="name"
+                className={`save-flow-target${nameToken ? ' save-flow-target-active' : ''}`}
+                style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              >
+                {server.name || server.host}
               </span>
+              {connected && (
+                <span style={{ fontSize: 8, color: 'var(--success)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
+                  ● {t('已连接')}
+                </span>
+              )}
+            </div>
+            <div className="server-host" data-edit-source-field="hostPort" style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span
+                key={`host-${hostToken || 'stable'}`}
+                className={`save-flow-target${hostToken ? ' save-flow-target-active' : ''}`}
+              >
+                {hideSensitive ? mask(`${server.username}@${server.host}`) : `${server.username}@${server.host}:${server.port || 22}`}
+              </span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            {ping?.online && ping?.latency !== undefined && ping?.latency !== null ? (
+              <>
+                <span style={{
+                  fontSize: 11, fontFamily: 'var(--font-mono)',
+                  color: latClass === 'good' ? 'var(--success)' : latClass === 'warn' ? 'var(--warning)' : 'var(--danger)',
+                }}>
+                  {ping.latency === -1 ? t('<1毫秒') : `${ping.latency}${t('毫秒')}`}
+                </span>
+                <div style={{
+                  width: 8, height: 8, borderRadius: '50%',
+                  background: latClass === 'good' ? 'var(--success)' : latClass === 'warn' ? 'var(--warning)' : 'var(--danger)',
+                }} />
+              </>
+            ) : (
+              ping !== undefined && !ping?.online ? (
+                <Tiptop text={t('服务器离线或不可达')}>
+                  <span style={{ fontSize: 14, color: 'var(--danger)', fontWeight: 'bold', lineHeight: 1 }} aria-label={t('服务器离线或不可达')}><X size={14} /></span>
+                </Tiptop>
+              ) : null
             )}
-          </div>
-          <div className="server-host" data-edit-source-field="hostPort" style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            <span
-              key={`host-${hostToken || 'stable'}`}
-              className={`save-flow-target${hostToken ? ' save-flow-target-active' : ''}`}
-            >
-              {hideSensitive ? mask(`${server.username}@${server.host}`) : `${server.username}@${server.host}:${server.port || 22}`}
-            </span>
+            <Tiptop text={t('编辑服务器')}>
+              <button
+                onClick={(e) => { e.stopPropagation(); triggerEdit(server, e.currentTarget.closest('.server-card')); }}
+                aria-label={t('编辑服务器')}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  padding: '4px 6px', borderRadius: 6,
+                  color: isHovered ? 'var(--text-primary)' : 'var(--text-muted)',
+                  fontSize: 14, opacity: isHovered ? 1 : 0,
+                  transition: 'all 0.15s', display: 'flex', alignItems: 'center',
+                }}
+              >
+                <SquarePen size={14} />
+              </button>
+            </Tiptop>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-          {ping?.online && ping?.latency !== undefined && ping?.latency !== null ? (
-            <>
-              <span style={{
-                fontSize: 11, fontFamily: 'var(--font-mono)',
-                color: latClass === 'good' ? 'var(--success)' : latClass === 'warn' ? 'var(--warning)' : 'var(--danger)',
-              }}>
-                {ping.latency === -1 ? t('<1毫秒') : `${ping.latency}${t('毫秒')}`}
-              </span>
-              <div style={{
-                width: 8, height: 8, borderRadius: '50%',
-                background: latClass === 'good' ? 'var(--success)' : latClass === 'warn' ? 'var(--warning)' : 'var(--danger)',
-              }} />
-            </>
-          ) : (
-            ping !== undefined && !ping?.online ? (
-              <span style={{ fontSize: 14, color: 'var(--danger)', fontWeight: 'bold', lineHeight: 1 }} title={t('服务器离线或不可达')}><X size={14} /></span>
-            ) : null
-          )}
-          <button
-            onClick={(e) => { e.stopPropagation(); triggerEdit(server, e.currentTarget.closest('.server-card')); }}
-            title={t('编辑服务器')}
-            style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              padding: '4px 6px', borderRadius: 6,
-              color: isHovered ? 'var(--text-primary)' : 'var(--text-muted)',
-              fontSize: 14, opacity: isHovered ? 1 : 0,
-              transition: 'all 0.15s', display: 'flex', alignItems: 'center',
-            }}
-          >
-            <SquarePen size={14} />
-          </button>
-        </div>
-      </div>
+      </Tiptop>
     );
   };
 
@@ -417,8 +423,12 @@ export default function ServerList({
               </span>
               {item.groupName && (
                 <span style={{ display: 'flex', gap: 2 }}>
-                  <button onClick={(e) => { e.stopPropagation(); moveGroup(item.groupName, -1); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-tertiary)', display: 'flex' }} title={t('上移')}><ChevronUp size={13} /></button>
-                  <button onClick={(e) => { e.stopPropagation(); moveGroup(item.groupName, 1); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-tertiary)', display: 'flex' }} title={t('下移')}><ChevronDown size={13} /></button>
+                  <Tiptop text={t('上移')}>
+                    <button onClick={(e) => { e.stopPropagation(); moveGroup(item.groupName, -1); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-tertiary)', display: 'flex' }} aria-label={t('上移')}><ChevronUp size={13} /></button>
+                  </Tiptop>
+                  <Tiptop text={t('下移')}>
+                    <button onClick={(e) => { e.stopPropagation(); moveGroup(item.groupName, 1); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-tertiary)', display: 'flex' }} aria-label={t('下移')}><ChevronDown size={13} /></button>
+                  </Tiptop>
                 </span>
               )}
             </div>
@@ -459,8 +469,12 @@ export default function ServerList({
                         </span>
                         {item.groupName && (
                           <span style={{ display: 'flex', gap: 2 }}>
-                            <button onClick={(e) => { e.stopPropagation(); moveGroup(item.groupName, -1); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-tertiary)', display: 'flex' }} title={t('上移')}><ChevronUp size={12} /></button>
-                            <button onClick={(e) => { e.stopPropagation(); moveGroup(item.groupName, 1); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-tertiary)', display: 'flex' }} title={t('下移')}><ChevronDown size={12} /></button>
+                            <Tiptop text={t('上移')}>
+                              <button onClick={(e) => { e.stopPropagation(); moveGroup(item.groupName, -1); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-tertiary)', display: 'flex' }} aria-label={t('上移')}><ChevronUp size={12} /></button>
+                            </Tiptop>
+                            <Tiptop text={t('下移')}>
+                              <button onClick={(e) => { e.stopPropagation(); moveGroup(item.groupName, 1); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-tertiary)', display: 'flex' }} aria-label={t('下移')}><ChevronDown size={12} /></button>
+                            </Tiptop>
                           </span>
                         )}
                       </span>

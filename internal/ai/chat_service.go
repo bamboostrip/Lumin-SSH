@@ -858,6 +858,9 @@ func getAIExecuteCommandDecision(settings AIConversationTaskSettings, command st
 }
 
 func getAIParsedToolUseDecision(settings AIConversationTaskSettings, tool aiParsedToolUse) aiApprovalDecision {
+	if strings.TrimSpace(tool.Name) == "list_connected_sessions" {
+		return aiApprovalDecisionAutoApprove
+	}
 	if !isAIAutoApprovalEffectivelyEnabled(settings) {
 		return aiApprovalDecisionAskUser
 	}

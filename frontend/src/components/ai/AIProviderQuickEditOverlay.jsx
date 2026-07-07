@@ -1,6 +1,7 @@
 import { ArrowLeft, Check, CircleHelp, Globe, Save, Search, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation, t as translate } from '../../i18n.js'
+import { getAIGlobalSettings } from './aiGlobalSettingsBridge.js'
 import {
   availableAIProviderOptions,
   canUseDedicatedWebSearchCandidate,
@@ -112,6 +113,8 @@ function buildDraft(provider) {
     webSearchEnabled: provider?.webSearchEnabled !== false,
     dedicatedWebSearchEnabled: Boolean(provider?.dedicatedWebSearchEnabled),
     dedicatedWebSearchProviderId: typeof provider?.dedicatedWebSearchProviderId === 'string' ? provider.dedicatedWebSearchProviderId.trim() : '',
+    dedicatedProxyEnabled: Boolean(provider?.dedicatedProxyEnabled),
+    dedicatedProxyId: typeof provider?.dedicatedProxyId === 'string' ? provider.dedicatedProxyId.trim() : '',
     reasoningEffort: typeof provider?.reasoningEffort === 'string' && provider.reasoningEffort.trim()
       ? provider.reasoningEffort.trim().toLowerCase()
       : (capability.reasoningEffort || 'disable'),
@@ -217,8 +220,11 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
   const [validatingWebSearch, setValidatingWebSearch] = useState(false)
   const [webSearchValidationMessage, setWebSearchValidationMessage] = useState('')
   const [webSearchValidationPassed, setWebSearchValidationPassed] = useState(false)
+  const [proxyNodes, setProxyNodes] = useState([])
+  const [proxyMenuOpen, setProxyMenuOpen] = useState(false)
   const providerFieldRef = useRef(null)
   const dedicatedProviderFieldRef = useRef(null)
+  const dedicatedProxyFieldRef = useRef(null)
   const autoRefreshTimerRef = useRef(null)
   const lastAutoRefreshKeyRef = useRef('')
 
@@ -286,6 +292,23 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
     [dedicatedProviderOptions, draft.dedicatedWebSearchProviderId],
   )
 
+  const dedicatedProxyOptions = useMemo(() => ([
+    { value: '', label: t('不使用') },
+    ...proxyNodes.map((node) => ({
+      value: node.id,
+      label: [
+        node.name || t('未命名节点'),
+        node.type === 'http' ? t('HTTP 代理') : t('SOCKS5 代理'),
+        `${node.host}:${node.port}`,
+      ].join(' · '),
+    })),
+  ]), [proxyNodes, t])
+
+  const currentDedicatedProxyOption = useMemo(
+    () => dedicatedProxyOptions.find((item) => item.value === draft.dedicatedProxyId) || dedicatedProxyOptions[0] || null,
+    [dedicatedProxyOptions, draft.dedicatedProxyId],
+  )
+
   const canEnableDedicatedMode = dedicatedProviderOptions.length > 0
   const canValidateWebSearch = draft.dedicatedWebSearchEnabled
     ? Boolean(draft.dedicatedWebSearchProviderId)
@@ -317,7 +340,18 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
     }
 
     try {
-      const models = await bridge.RequestAIProviderModels(trimmedBaseUrl, trimmedApiKey)
+      const requestProfile = {
+        ...draft,
+        provider: trimmedProvider || draft.provider,
+        baseUrl: trimmedBaseUrl,
+        apiKey: trimmedApiKey,
+        model: selectedModel || draft.model,
+        dedicatedProxyEnabled: Boolean(draft.dedicatedProxyEnabled),
+        dedicatedProxyId: draft.dedicatedProxyId || '',
+      }
+      const models = bridge?.RequestAIProviderModelsWithProfile
+        ? await bridge.RequestAIProviderModelsWithProfile(JSON.stringify(requestProfile))
+        : await bridge.RequestAIProviderModels(trimmedBaseUrl, trimmedApiKey)
       const normalizedModels = Array.isArray(models)
         ? models.filter((item) => typeof item === 'string' && item.trim()).map((item) => item.trim())
         : []
@@ -362,9 +396,18 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
     setProviderMenuOpen(false)
     setDedicatedProviderMenuOpen(false)
     setDedicatedProviderSearch('')
+    setProxyMenuOpen(false)
     setValidatingWebSearch(false)
     setWebSearchValidationMessage('')
     setWebSearchValidationPassed(false)
+    getAIGlobalSettings()
+      .then((settings) => {
+        const nextProxyNodes = Array.isArray(settings?.proxyNodes) ? settings.proxyNodes : []
+        setProxyNodes(nextProxyNodes)
+      })
+      .catch(() => {
+        setProxyNodes([])
+      })
     if (initialDraft.baseUrl.trim() && initialDraft.apiKey.trim()) {
       void refreshModelsWithCredentials(initialDraft.provider, initialDraft.baseUrl, initialDraft.apiKey, initialDraft.model)
     } else {
@@ -373,7 +416,7 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
   }, [open, provider])
 
   useEffect(() => {
-    if (!providerMenuOpen && !dedicatedProviderMenuOpen) {
+    if (!providerMenuOpen && !dedicatedProviderMenuOpen && !proxyMenuOpen) {
       return undefined
     }
 
@@ -384,11 +427,14 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
       if (dedicatedProviderFieldRef.current && !dedicatedProviderFieldRef.current.contains(event.target)) {
         setDedicatedProviderMenuOpen(false)
       }
+      if (dedicatedProxyFieldRef.current && !dedicatedProxyFieldRef.current.contains(event.target)) {
+        setProxyMenuOpen(false)
+      }
     }
 
     window.addEventListener('pointerdown', handlePointerDown)
     return () => window.removeEventListener('pointerdown', handlePointerDown)
-  }, [providerMenuOpen, dedicatedProviderMenuOpen])
+  }, [providerMenuOpen, dedicatedProviderMenuOpen, proxyMenuOpen])
 
   useEffect(() => {
     setWebSearchValidationMessage('')
@@ -598,6 +644,8 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
       cacheStrategy: supportsPromptCacheSettings ? (draft.cacheStrategy || 'model') : 'off',
       dedicatedWebSearchEnabled: draft.dedicatedWebSearchEnabled,
       dedicatedWebSearchProviderId: draft.dedicatedWebSearchEnabled ? draft.dedicatedWebSearchProviderId : '',
+      dedicatedProxyEnabled: draft.dedicatedProxyEnabled,
+      dedicatedProxyId: draft.dedicatedProxyEnabled ? draft.dedicatedProxyId : '',
       webSearchEnabled: draft.dedicatedWebSearchEnabled ? false : draft.webSearchEnabled,
       reasoningEffort,
       enableReasoningEffort,
@@ -1278,6 +1326,135 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
               </div>
             </div>
           ) : null}
+
+          <div style={{ display: 'grid', gap: 6 }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: draft.dedicatedProxyEnabled ? '1fr auto auto' : '1fr auto',
+                alignItems: 'center',
+                gap: 10,
+                padding: '10px 12px',
+                border: '1px solid var(--border)',
+                borderRadius: 12,
+                background: 'var(--surface-overlay)',
+              }}>
+              <span style={{ fontSize: 12, color: 'var(--text-primary)' }}>{t('专属代理服务器')}</span>
+
+              {draft.dedicatedProxyEnabled ? (
+                <div ref={dedicatedProxyFieldRef} style={{ position: 'relative', minWidth: 0, maxWidth: 320 }}>
+                  <button
+                    type="button"
+                    onClick={() => setProxyMenuOpen((prev) => !prev)}
+                    style={{
+                      height: 30,
+                      minWidth: 220,
+                      maxWidth: 320,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                      padding: '0 10px',
+                      borderRadius: 999,
+                      border: `1px solid ${proxyMenuOpen ? 'var(--accent-border)' : 'var(--border)'}`,
+                      background: proxyMenuOpen ? 'rgba(var(--accent-rgb), 0.10)' : 'var(--surface-base)',
+                      color: 'var(--text-secondary)',
+                      fontSize: 12,
+                      boxSizing: 'border-box',
+                      transition: 'var(--transition)',
+                    }}>
+                    <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {currentDedicatedProxyOption?.label || t('不使用')}
+                    </span>
+                    <span style={{ color: 'var(--text-tertiary)', fontSize: 10, transform: proxyMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'var(--transition)' }}>▾</span>
+                  </button>
+                  {proxyMenuOpen ? (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        right: 0,
+                        top: 'calc(100% + 8px)',
+                        width: 320,
+                        maxWidth: 320,
+                        maxHeight: 320,
+                        borderRadius: 0,
+                        border: '1px solid var(--accent-border)',
+                        background: 'var(--surface-overlay)',
+                        boxShadow: 'var(--shadow-xl)',
+                        overflow: 'hidden',
+                        zIndex: 40,
+                      }}>
+                      <div style={{ maxHeight: 285, overflowY: 'auto' }}>
+                        {dedicatedProxyOptions.map((option) => {
+                          const active = option.value === draft.dedicatedProxyId
+                          return (
+                            <button
+                              key={option.value || '__none__'}
+                              type="button"
+                              onClick={() => {
+                                setDraft((prev) => ({
+                                  ...prev,
+                                  dedicatedProxyId: option.value,
+                                  dedicatedProxyEnabled: true,
+                                }))
+                                setProxyMenuOpen(false)
+                              }}
+                              style={{
+                                width: '100%',
+                                minHeight: 34,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: 12,
+                                padding: '0 10px',
+                                border: 'none',
+                                borderBottom: '1px solid var(--border-subtle)',
+                                background: active ? 'rgba(var(--accent-rgb), 0.16)' : 'transparent',
+                                color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                fontSize: 12,
+                                textAlign: 'left',
+                              }}>
+                              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{option.label}</span>
+                              {active ? <Check size={12} color="var(--text-primary)" /> : null}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={() => setDraft((prev) => ({ ...prev, dedicatedProxyEnabled: !prev.dedicatedProxyEnabled }))}
+                style={{
+                  width: 34,
+                  height: 20,
+                  borderRadius: 999,
+                  border: '1px solid var(--border)',
+                  background: draft.dedicatedProxyEnabled ? 'rgba(var(--accent-rgb), 0.52)' : 'var(--surface-hover)',
+                  padding: 2,
+                  position: 'relative',
+                  transition: 'var(--transition)',
+                }}>
+                <span
+                  style={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: 999,
+                    background: 'var(--surface-raised)',
+                    display: 'block',
+                    transform: draft.dedicatedProxyEnabled ? 'translateX(14px)' : 'translateX(0)',
+                    transition: 'var(--transition)',
+                  }}
+                />
+              </button>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+              {t('开启后为当前供应商单独指定代理；关闭后跟随全局 AI 请求代理。')}
+            </div>
+          </div>
 
           {renderReasoningSection()}
 

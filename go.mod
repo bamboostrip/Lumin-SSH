@@ -12,6 +12,7 @@ require (
 	github.com/studio-b12/gowebdav v0.12.0
 	github.com/wailsapp/wails/v2 v2.12.0
 	golang.org/x/crypto v0.52.0
+	golang.org/x/net v0.54.0
 )
 
 require (
@@ -52,7 +53,6 @@ require (
 	github.com/wailsapp/mimetype v1.4.1 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/net v0.54.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	gopkg.in/ini.v1 v1.67.2 // indirect

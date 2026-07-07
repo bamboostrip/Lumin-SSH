@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Pencil, Trash2, Key, Lock, Eye, EyeOff, X } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/main/App.js';
 import { useTranslation } from '../i18n.js';
+import Tiptop from './Tiptop.jsx';
 
 const defaultCredForm = {
   name: '',
@@ -139,12 +140,16 @@ export default function CredentialsModal({ onClose, onChange, addToast }) {
                   {cred.username} · {cred.authMethod === 'privateKey' ? t('私钥认证') : t('密码认证')}
                 </div>
               </div>
-              <button className="btn btn-ghost btn-icon" onClick={() => startEdit(cred)} title={t('编辑凭据')}>
-                <Pencil size={14} />
-              </button>
-              <button className="btn btn-ghost btn-icon" onClick={() => handleDelete(cred)} title={t('删除凭据')} style={{ color: 'var(--danger)' }}>
-                <Trash2 size={14} />
-              </button>
+              <Tiptop text={t('编辑凭据')}>
+                <button className="btn btn-ghost btn-icon" onClick={() => startEdit(cred)} aria-label={t('编辑凭据')}>
+                  <Pencil size={14} />
+                </button>
+              </Tiptop>
+              <Tiptop text={t('删除凭据')}>
+                <button className="btn btn-ghost btn-icon" onClick={() => handleDelete(cred)} aria-label={t('删除凭据')} style={{ color: 'var(--danger)' }}>
+                  <Trash2 size={14} />
+                </button>
+              </Tiptop>
             </div>
           ))}
 

@@ -2,6 +2,7 @@ import { BarChart3, Monitor, Search, LayoutGrid, List, Eye, EyeOff, RefreshCw } 
 import { useTranslation } from '../i18n.js';
 import AddServerModal from './AddServerModal.jsx';
 import ServerList from './ServerList.jsx';
+import Tiptop from './Tiptop.jsx';
 
 export default function Dashboard({
   editorServer, editorShiningFields, saveFlowHighlights, isEditFlying = false, onSaveServer, onSaveAndConnectServer, onCancelEditor, allGroups,
@@ -34,7 +35,9 @@ export default function Dashboard({
           <div className="card-header-icon-title">
             <span className="card-header-icon"><BarChart3 size={18} /></span>
             <span className="card-header-title">{t('系统状态')}</span>
-            <button className={`btn-icon-spin ${isRefreshingPing ? 'spinning' : ''}`} onClick={onRefreshPing} title={t('刷新延迟')} aria-label={t('刷新延迟')} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, display: "flex", alignItems: "center" }}><RefreshCw size={14} /></button>
+            <Tiptop text={t('刷新延迟')} placement="bottom">
+              <button className={`btn-icon-spin ${isRefreshingPing ? 'spinning' : ''}`} onClick={onRefreshPing} aria-label={t('刷新延迟')} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, display: "flex", alignItems: "center" }}><RefreshCw size={14} /></button>
+            </Tiptop>
           </div>
           <div className="stats-grid">
             <div className="stat-item">
@@ -77,31 +80,37 @@ export default function Dashboard({
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 12 }}>
               {/* 视图切换 - 分段控件 */}
               <div className="segment-control">
-                <button
-                  onClick={() => onViewModeChange('grid')}
-                  title={t('卡片视图')}
-                  className={serverListViewMode === 'grid' ? 'active' : ''}
-                >
-                  <LayoutGrid size={14} />
-                </button>
+                <Tiptop text={t('卡片视图')} placement="bottom">
+                  <button
+                    onClick={() => onViewModeChange('grid')}
+                    aria-label={t('卡片视图')}
+                    className={serverListViewMode === 'grid' ? 'active' : ''}
+                  >
+                    <LayoutGrid size={14} />
+                  </button>
+                </Tiptop>
                 <div className="segment-control-divider" />
-                <button
-                  onClick={() => onViewModeChange('table')}
-                  title={t('列表视图')}
-                  className={serverListViewMode === 'table' ? 'active' : ''}
-                >
-                  <List size={14} />
-                </button>
+                <Tiptop text={t('列表视图')} placement="bottom">
+                  <button
+                    onClick={() => onViewModeChange('table')}
+                    aria-label={t('列表视图')}
+                    className={serverListViewMode === 'table' ? 'active' : ''}
+                  >
+                    <List size={14} />
+                  </button>
+                </Tiptop>
               </div>
               {/* 隐藏敏感信息 */}
-              <button
-                className="btn btn-ghost btn-icon"
-                onClick={onHideSensitiveToggle}
-                title={hideSensitive ? t('显示敏感信息') : t('隐藏敏感信息')}
-                style={hideSensitive ? { background: 'var(--warning-dim)', color: 'var(--warning)', border: '1px solid var(--warning)' } : {}}
-              >
-                {hideSensitive ? <EyeOff size={14} /> : <Eye size={14} />}
-              </button>
+              <Tiptop text={hideSensitive ? t('显示敏感信息') : t('隐藏敏感信息')} placement="bottom">
+                <button
+                  className="btn btn-ghost btn-icon"
+                  onClick={onHideSensitiveToggle}
+                  aria-label={hideSensitive ? t('显示敏感信息') : t('隐藏敏感信息')}
+                  style={hideSensitive ? { background: 'var(--warning-dim)', color: 'var(--warning)', border: '1px solid var(--warning)' } : {}}
+                >
+                  {hideSensitive ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </Tiptop>
             </div>
           </div>
 

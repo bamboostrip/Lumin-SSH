@@ -24,6 +24,8 @@ const DEFAULT_AI_GLOBAL_SETTINGS = {
   messageActionBarAtBottom: true,
   approvalButtonOrder: 'reject-approve',
   commandActionButtonOrder: 'terminate-continue',
+  aiRequestProxyId: '',
+  proxyNodes: [],
 }
 
 const VALID_APPROVAL_BUTTON_ORDERS = new Set(['reject-approve', 'approve-reject'])
@@ -63,6 +65,48 @@ function normalizeCommandActionButtonOrder(value) {
   return VALID_COMMAND_ACTION_BUTTON_ORDERS.has(nextValue) ? nextValue : 'terminate-continue'
 }
 
+function normalizeProxyType(value) {
+  return String(value || '').trim().toLowerCase() === 'http' ? 'http' : 'socks5'
+}
+
+function normalizeProxyNode(node, index = 0) {
+  const host = typeof node?.host === 'string' ? node.host.trim() : ''
+  if (!host) {
+    return null
+  }
+  const parsedPort = parseInt(String(node?.port ?? '').trim(), 10)
+  const port = Number.isFinite(parsedPort) && parsedPort > 0 && parsedPort <= 65535 ? parsedPort : 1080
+  const type = normalizeProxyType(node?.type)
+  const generatedId = `proxy-${type}-${host.toLowerCase()}-${port}-${index + 1}`
+  const id = typeof node?.id === 'string' && node.id.trim() ? node.id.trim() : generatedId
+  return {
+    id,
+    name: typeof node?.name === 'string' ? node.name.trim() : '',
+    type,
+    host,
+    port,
+    username: typeof node?.username === 'string' ? node.username.trim() : '',
+    password: typeof node?.password === 'string' ? node.password : '',
+  }
+}
+
+function normalizeProxyNodes(values) {
+  if (!Array.isArray(values)) {
+    return []
+  }
+  const seen = new Set()
+  const normalized = []
+  values.forEach((value, index) => {
+    const nextNode = normalizeProxyNode(value, index)
+    if (!nextNode || seen.has(nextNode.id)) {
+      return
+    }
+    seen.add(nextNode.id)
+    normalized.push(nextNode)
+  })
+  return normalized
+}
+
 export function normalizeAIGlobalSettings(settings) {
   const alwaysAllowReadOnly = Boolean(settings?.alwaysAllowReadOnly)
   const alwaysAllowWrite = Boolean(settings?.alwaysAllowWrite)
@@ -70,6 +114,9 @@ export function normalizeAIGlobalSettings(settings) {
   const allowedCommands = normalizeStringList(settings?.allowedCommands)
   const deniedCommands = normalizeStringList(settings?.deniedCommands)
   const slashCommands = normalizeAISlashCommands(settings?.slashCommands)
+  const proxyNodes = normalizeProxyNodes(settings?.proxyNodes)
+  const rawAIRequestProxyId = typeof settings?.aiRequestProxyId === 'string' ? settings.aiRequestProxyId.trim() : ''
+  const aiRequestProxyId = proxyNodes.some((node) => node.id === rawAIRequestProxyId) ? rawAIRequestProxyId : ''
 
   return {
     ...DEFAULT_AI_GLOBAL_SETTINGS,
@@ -97,6 +144,8 @@ export function normalizeAIGlobalSettings(settings) {
     messageActionBarAtBottom: Boolean(settings?.messageActionBarAtBottom),
     approvalButtonOrder: normalizeApprovalButtonOrder(settings?.approvalButtonOrder),
     commandActionButtonOrder: normalizeCommandActionButtonOrder(settings?.commandActionButtonOrder),
+    aiRequestProxyId,
+    proxyNodes,
   }
 }
 

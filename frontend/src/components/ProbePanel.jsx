@@ -7,6 +7,7 @@ import {
   formatTransferTotal,
 } from './probeFormatting.js';
 import { BarChart3, Cpu, HardDrive, Globe, ClipboardList, Clipboard, Search, Check, Monitor, EyeOff, Eye, RefreshCw, MemoryStick, ArrowLeftRight } from 'lucide-react';
+import Tiptop from './Tiptop.jsx';
 import { Z } from '../constants/zIndex';
 import { useTranslation } from '../i18n.js';
 
@@ -403,10 +404,16 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, active,
               <span title={hideIP ? '' : displayIP} style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontWeight: 700, background: 'var(--accent-dim)', border: '1px solid var(--accent-border)', padding: '2px 8px', borderRadius: 4, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1 }}>
                 {hideIP ? '***.***.***.***' : displayIP}
               </span>
-              <button onClick={() => { navigator.clipboard.writeText(displayIP); addToast?.(t('已复制') + ' ' + displayIP, 'success'); }} title={t('复制 IP')}
-                className="probe-icon-btn"><Clipboard size={13} /></button>
-              <button onClick={() => setHideIP(p => { const next = !p; localStorage.setItem('probeHideIP', next); return next; })} title={hideIP ? t('显示 IP') : t('隐藏 IP')}
-                className="probe-icon-btn">{hideIP ? <Eye size={13} /> : <EyeOff size={13} />}</button>
+              <Tiptop text={t('复制 IP')} placement="bottom">
+                <button onClick={() => { navigator.clipboard.writeText(displayIP); addToast?.(t('已复制') + ' ' + displayIP, 'success'); }}
+                  aria-label={t('复制 IP')}
+                  className="probe-icon-btn"><Clipboard size={13} /></button>
+              </Tiptop>
+              <Tiptop text={hideIP ? t('显示 IP') : t('隐藏 IP')} placement="bottom">
+                <button onClick={() => setHideIP(p => { const next = !p; localStorage.setItem('probeHideIP', next); return next; })}
+                  aria-label={hideIP ? t('显示 IP') : t('隐藏 IP')}
+                  className="probe-icon-btn">{hideIP ? <Eye size={13} /> : <EyeOff size={13} />}</button>
+              </Tiptop>
             </div>
           )}
         </div>

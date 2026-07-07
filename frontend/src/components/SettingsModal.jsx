@@ -13,16 +13,18 @@ import AppTab from './settings/AppTab';
 import GeneralTab from './settings/GeneralTab';
 import NetworkTab from './settings/NetworkTab';
 import AppearanceTab from './settings/AppearanceTab';
+import FileManagerTab from './settings/FileManagerTab';
 import ShortcutsTab from './settings/ShortcutsTab';
 import SyncTab from './settings/SyncTab';
 
-const TAB_ICON = { general: SlidersHorizontal, network: Globe, appearance: Palette, shortcuts: Keyboard, sync: Cloud, app: Info };
+const TAB_ICON = { general: SlidersHorizontal, network: Globe, fileManager: Folder, appearance: Palette, shortcuts: Keyboard, sync: Cloud, app: Info };
 
-const TAB_LABELS = { general: '通用', network: '网络', appearance: '外观', shortcuts: '快捷键', sync: '同步与云', app: '关于' };
+const TAB_LABELS = { general: '通用', network: '网络', fileManager: '文件管理器', appearance: '外观', shortcuts: '快捷键', sync: '同步与云', app: '关于' };
 
 const TABS = [
   { id: 'general' },
   { id: 'network' },
+  { id: 'fileManager' },
   { id: 'appearance' },
   { id: 'shortcuts' },
   { id: 'sync' },
@@ -174,6 +176,25 @@ const PROVIDER_LIST = [
   { id: 'ftp', label: 'FTP' },
   { id: 'sftp', label: 'SFTP' },
 ];
+
+const DEFAULT_FILE_MANAGER_DOWNLOAD_DIR = '${APP_DIR}\\download';
+
+function resolveFileManagerDownloadDirPreview(template, programDirectory) {
+  const baseDir = String(programDirectory || '').trim();
+  const rawTemplate = String(template || '').trim() || DEFAULT_FILE_MANAGER_DOWNLOAD_DIR;
+  const separator = baseDir.includes('\\') ? '\\' : '/';
+  const replaced = rawTemplate
+    .replaceAll('${APP_DIR}', baseDir)
+    .replaceAll('%APP_DIR%', baseDir)
+    .replace(/[\\/]+/g, separator);
+  if (!replaced) {
+    return '';
+  }
+  if (/^(?:[A-Za-z]:[\\/]|\\\\|\/)/.test(replaced) || !baseDir) {
+    return replaced;
+  }
+  return `${baseDir}${baseDir.endsWith('\\') || baseDir.endsWith('/') ? '' : separator}${replaced}`;
+}
 
 export default function SettingsModal({
   onClose,
@@ -457,9 +478,23 @@ export default function SettingsModal({
   // 操作确认开关
   const [confirmCloseSession, setConfirmCloseSession] = useState(localStorage.getItem('skipCloseSessionConfirm') !== 'true');
   const [confirmCloseAll, setConfirmCloseAll] = useState(localStorage.getItem('skipCloseAllConfirm') !== 'true');
+  const [confirmFileDelete, setConfirmFileDelete] = useState(localStorage.getItem('skipFileDeleteConfirm') !== 'true');
   const [windowCloseAction, setWindowCloseAction] = useState(localStorage.getItem('windowCloseAction') || 'ask');
   const [updateUseProxy, setUpdateUseProxy] = useState(localStorage.getItem('updateUseProxy') === 'true');
+  const [rememberWorkspace, setRememberWorkspace] = useState(false);
+  const [programDirectory, setProgramDirectory] = useState('');
   const [fileManagerFollowTerminalCwd, setFileManagerFollowTerminalCwd] = useState(localStorage.getItem('fileManagerFollowTerminalCwd') !== 'false');
+  const [fileManagerCompressedTransfer, setFileManagerCompressedTransfer] = useState(localStorage.getItem('fileManagerCompressedTransfer') !== 'false');
+  const [fileManagerAskDownloadEveryTime, setFileManagerAskDownloadEveryTime] = useState(localStorage.getItem('fileManagerAskDownloadEveryTime') === 'true');
+  const [fileManagerDownloadConflictStrategy, setFileManagerDownloadConflictStrategy] = useState(localStorage.getItem('fileManagerDownloadConflictStrategy') || 'auto_rename');
+  const [fileManagerDownloadConflictDiffBySize, setFileManagerDownloadConflictDiffBySize] = useState(localStorage.getItem('fileManagerDownloadConflictDiffBySize') !== 'false');
+  const [fileManagerDownloadConflictDiffByMtime, setFileManagerDownloadConflictDiffByMtime] = useState(localStorage.getItem('fileManagerDownloadConflictDiffByMtime') !== 'false');
+  const [fileManagerDownloadRenameSuffixMode, setFileManagerDownloadRenameSuffixMode] = useState(localStorage.getItem('fileManagerDownloadRenameSuffixMode') || 'sequence');
+  const [fileManagerDownloadDefaultDir, setFileManagerDownloadDefaultDir] = useState(localStorage.getItem('fileManagerDownloadDefaultDir') || DEFAULT_FILE_MANAGER_DOWNLOAD_DIR);
+  const [fileManagerUploadChunkSizeKiB, setFileManagerUploadChunkSizeKiB] = useState(localStorage.getItem('fileManagerUploadChunkSizeKiB') || '256');
+  const [fileManagerUploadMaxFiles, setFileManagerUploadMaxFiles] = useState(localStorage.getItem('fileManagerUploadMaxFiles') || '6');
+  const [fileManagerUploadMaxChunksPerFile, setFileManagerUploadMaxChunksPerFile] = useState(localStorage.getItem('fileManagerUploadMaxChunksPerFile') || '8');
+  const [fileManagerUploadGlobalInflightLimit, setFileManagerUploadGlobalInflightLimit] = useState(localStorage.getItem('fileManagerUploadGlobalInflightLimit') || '24');
 
   const handleToggleConfirmCloseSession = () => {
     const next = !confirmCloseSession;
@@ -473,6 +508,12 @@ export default function SettingsModal({
     if (next) localStorage.removeItem('skipCloseAllConfirm');
     else localStorage.setItem('skipCloseAllConfirm', 'true');
   };
+  const handleToggleConfirmFileDelete = () => {
+    const next = !confirmFileDelete;
+    setConfirmFileDelete(next);
+    if (next) localStorage.removeItem('skipFileDeleteConfirm');
+    else localStorage.setItem('skipFileDeleteConfirm', 'true');
+  };
   const handleWindowCloseActionChange = (value) => {
     setWindowCloseAction(value);
     if (value === 'ask') localStorage.removeItem('windowCloseAction');
@@ -484,12 +525,63 @@ export default function SettingsModal({
     if (next) localStorage.setItem('updateUseProxy', 'true');
     else localStorage.removeItem('updateUseProxy');
   };
+  const handleToggleRememberWorkspace = async () => {
+    const next = !rememberWorkspace;
+    setRememberWorkspace(next);
+    try {
+      await window?.go?.main?.App?.SetRememberWorkspace?.(next);
+      window.dispatchEvent(new CustomEvent('workspace-remember-changed', { detail: next }));
+    } catch (err) {
+      setRememberWorkspace(!next);
+      addToast($t('记忆工作区设置保存失败') + `: ${err}`, 'error');
+    }
+  };
   const handleToggleFileManagerFollowTerminalCwd = () => {
     const next = !fileManagerFollowTerminalCwd;
     setFileManagerFollowTerminalCwd(next);
     if (next) localStorage.removeItem('fileManagerFollowTerminalCwd');
     else localStorage.setItem('fileManagerFollowTerminalCwd', 'false');
     window.dispatchEvent(new CustomEvent('file-manager-follow-terminal-cwd-changed', { detail: next }));
+  };
+  const handleToggleFileManagerCompressedTransfer = () => {
+    const next = !fileManagerCompressedTransfer;
+    setFileManagerCompressedTransfer(next);
+    if (next) localStorage.removeItem('fileManagerCompressedTransfer');
+    else localStorage.setItem('fileManagerCompressedTransfer', 'false');
+  };
+  const handleToggleFileManagerAskDownloadEveryTime = () => {
+    const next = !fileManagerAskDownloadEveryTime;
+    setFileManagerAskDownloadEveryTime(next);
+    if (next) localStorage.setItem('fileManagerAskDownloadEveryTime', 'true');
+    else localStorage.removeItem('fileManagerAskDownloadEveryTime');
+  };
+  const handleFileManagerDownloadConflictStrategyChange = (value) => {
+    setFileManagerDownloadConflictStrategy(value);
+    localStorage.setItem('fileManagerDownloadConflictStrategy', value);
+  };
+  const handleToggleFileManagerDownloadConflictDiffBySize = () => {
+    const next = !fileManagerDownloadConflictDiffBySize;
+    if (!next && !fileManagerDownloadConflictDiffByMtime) return;
+    setFileManagerDownloadConflictDiffBySize(next);
+    if (next) localStorage.removeItem('fileManagerDownloadConflictDiffBySize');
+    else localStorage.setItem('fileManagerDownloadConflictDiffBySize', 'false');
+  };
+  const handleToggleFileManagerDownloadConflictDiffByMtime = () => {
+    const next = !fileManagerDownloadConflictDiffByMtime;
+    if (!next && !fileManagerDownloadConflictDiffBySize) return;
+    setFileManagerDownloadConflictDiffByMtime(next);
+    if (next) localStorage.removeItem('fileManagerDownloadConflictDiffByMtime');
+    else localStorage.setItem('fileManagerDownloadConflictDiffByMtime', 'false');
+  };
+  const handleFileManagerDownloadRenameSuffixModeChange = (value) => {
+    setFileManagerDownloadRenameSuffixMode(value);
+    localStorage.setItem('fileManagerDownloadRenameSuffixMode', value);
+  };
+  const handleFileManagerUploadSettingChange = (key, setter) => (e) => {
+    const next = e.target.value;
+    setter(next);
+    if (next === '') localStorage.removeItem(key);
+    else localStorage.setItem(key, next);
   };
 
   useEffect(() => {
@@ -542,6 +634,18 @@ export default function SettingsModal({
     AppGo.GetSyncMode()
       .then((mode) => {
         if (!cancelled && mode) setSyncMode(mode);
+      })
+      .catch(() => {});
+
+    Promise.resolve(window?.go?.main?.App?.GetProgramDirectory?.())
+      .then((dir) => {
+        if (!cancelled && dir) setProgramDirectory(dir);
+      })
+      .catch(() => {});
+
+    Promise.resolve(window?.go?.main?.App?.GetRememberWorkspace?.())
+      .then((enabled) => {
+        if (!cancelled && typeof enabled === 'boolean') setRememberWorkspace(enabled);
       })
       .catch(() => {});
 
@@ -769,12 +873,14 @@ export default function SettingsModal({
                 onToggleConfirmCloseSession={handleToggleConfirmCloseSession}
                 confirmCloseAll={confirmCloseAll}
                 onToggleConfirmCloseAll={handleToggleConfirmCloseAll}
+                confirmFileDelete={confirmFileDelete}
+                onToggleConfirmFileDelete={handleToggleConfirmFileDelete}
                 windowCloseAction={windowCloseAction}
                 onWindowCloseActionChange={handleWindowCloseActionChange}
                 updateUseProxy={updateUseProxy}
                 onToggleUpdateUseProxy={handleToggleUpdateUseProxy}
-                fileManagerFollowTerminalCwd={fileManagerFollowTerminalCwd}
-                onToggleFileManagerFollowTerminalCwd={handleToggleFileManagerFollowTerminalCwd}
+                rememberWorkspace={rememberWorkspace}
+                onToggleRememberWorkspace={handleToggleRememberWorkspace}
               />
             )}
 
@@ -786,6 +892,36 @@ export default function SettingsModal({
                 onProbeIntervalChange={handleProbeIntervalChange}
                 pingInterval={pingInterval}
                 onPingIntervalChange={handlePingIntervalChange}
+              />
+            )}
+
+            {activeTab === 'fileManager' && (
+              <FileManagerTab
+                fileManagerFollowTerminalCwd={fileManagerFollowTerminalCwd}
+                onToggleFileManagerFollowTerminalCwd={handleToggleFileManagerFollowTerminalCwd}
+                fileManagerCompressedTransfer={fileManagerCompressedTransfer}
+                onToggleFileManagerCompressedTransfer={handleToggleFileManagerCompressedTransfer}
+                fileManagerAskDownloadEveryTime={fileManagerAskDownloadEveryTime}
+                onToggleFileManagerAskDownloadEveryTime={handleToggleFileManagerAskDownloadEveryTime}
+                fileManagerDownloadConflictStrategy={fileManagerDownloadConflictStrategy}
+                onFileManagerDownloadConflictStrategyChange={handleFileManagerDownloadConflictStrategyChange}
+                fileManagerDownloadConflictDiffBySize={fileManagerDownloadConflictDiffBySize}
+                onToggleFileManagerDownloadConflictDiffBySize={handleToggleFileManagerDownloadConflictDiffBySize}
+                fileManagerDownloadConflictDiffByMtime={fileManagerDownloadConflictDiffByMtime}
+                onToggleFileManagerDownloadConflictDiffByMtime={handleToggleFileManagerDownloadConflictDiffByMtime}
+                fileManagerDownloadRenameSuffixMode={fileManagerDownloadRenameSuffixMode}
+                onFileManagerDownloadRenameSuffixModeChange={handleFileManagerDownloadRenameSuffixModeChange}
+                fileManagerDownloadDefaultDir={fileManagerDownloadDefaultDir}
+                onFileManagerDownloadDefaultDirChange={handleFileManagerUploadSettingChange('fileManagerDownloadDefaultDir', setFileManagerDownloadDefaultDir)}
+                fileManagerDownloadDefaultDirPreview={resolveFileManagerDownloadDirPreview(fileManagerDownloadDefaultDir, programDirectory)}
+                fileManagerUploadChunkSizeKiB={fileManagerUploadChunkSizeKiB}
+                onFileManagerUploadChunkSizeKiBChange={handleFileManagerUploadSettingChange('fileManagerUploadChunkSizeKiB', setFileManagerUploadChunkSizeKiB)}
+                fileManagerUploadMaxFiles={fileManagerUploadMaxFiles}
+                onFileManagerUploadMaxFilesChange={handleFileManagerUploadSettingChange('fileManagerUploadMaxFiles', setFileManagerUploadMaxFiles)}
+                fileManagerUploadMaxChunksPerFile={fileManagerUploadMaxChunksPerFile}
+                onFileManagerUploadMaxChunksPerFileChange={handleFileManagerUploadSettingChange('fileManagerUploadMaxChunksPerFile', setFileManagerUploadMaxChunksPerFile)}
+                fileManagerUploadGlobalInflightLimit={fileManagerUploadGlobalInflightLimit}
+                onFileManagerUploadGlobalInflightLimitChange={handleFileManagerUploadSettingChange('fileManagerUploadGlobalInflightLimit', setFileManagerUploadGlobalInflightLimit)}
               />
             )}
             {activeTab === 'appearance' && (

@@ -4,6 +4,7 @@ import { useTranslation } from '../../i18n.js'
 import MCPAccessView from './MCPAccessView.jsx'
 import AISlashCommandsSettings from './AISlashCommandsSettings.jsx'
 import AIConversationBackupSettings from './AIConversationBackupSettings.jsx'
+import Tiptop from '../Tiptop.jsx'
 
 function PreviewPill({ label, primary = false }) {
   return (
@@ -35,27 +36,28 @@ function PositionSelectorCard({ title, description, items, onToggle, toggleLabel
       <div style={{ display: 'grid', gap: 4 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <div style={{ minWidth: 0, flex: 1, fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{title}</div>
-          <button
-            type="button"
-            onClick={onToggle}
-            title={toggleLabel}
-            aria-label={toggleLabel}
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: 8,
-              border: '1px solid var(--border)',
-              background: 'transparent',
-              color: 'var(--text-secondary)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'var(--transition)',
-              flexShrink: 0,
-            }}
-          >
-            <ArrowRightLeft size={14} />
-          </button>
+          <Tiptop text={toggleLabel}>
+            <button
+              type="button"
+              onClick={onToggle}
+              aria-label={toggleLabel}
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+                background: 'transparent',
+                color: 'var(--text-secondary)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'var(--transition)',
+                flexShrink: 0,
+              }}
+            >
+              <ArrowRightLeft size={14} />
+            </button>
+          </Tiptop>
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.6 }}>{description}</div>
       </div>
@@ -187,6 +189,8 @@ export default function AIPanelSettingsOverlay({
   const messageActionBarAtBottom = Boolean(globalAISettings?.messageActionBarAtBottom)
   const mcpEnabled = globalAISettings?.mcpEnabled !== false
   const mcpAllowBrowserCalls = Boolean(globalAISettings?.mcpAllowBrowserCalls)
+  const proxyNodes = Array.isArray(globalAISettings?.proxyNodes) ? globalAISettings.proxyNodes : []
+  const aiRequestProxyId = typeof globalAISettings?.aiRequestProxyId === 'string' ? globalAISettings.aiRequestProxyId : ''
 
   return (
     <div
@@ -210,15 +214,16 @@ export default function AIPanelSettingsOverlay({
       <div style={{ width: '100%', height: '100%', background: 'var(--surface-overlay)', border: '1px solid var(--border)', borderRadius: 0, boxShadow: 'var(--shadow-xl)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
         <div style={{ height: 50, padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{t('设置')}</div>
-          <button
-            type="button"
-            onClick={onClose}
-            title={t('关闭设置面板')}
-            aria-label={t('关闭设置面板')}
-            style={{ width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, color: 'var(--text-secondary)', background: 'transparent', border: '1px solid transparent', transition: 'var(--transition)' }}
-          >
-            <X size={16} />
-          </button>
+          <Tiptop text={t('关闭设置面板')}>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label={t('关闭设置面板')}
+              style={{ width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, color: 'var(--text-secondary)', background: 'transparent', border: '1px solid transparent', transition: 'var(--transition)' }}
+            >
+              <X size={16} />
+            </button>
+          </Tiptop>
         </div>
         <div style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
           <div style={{ width: 'fit-content', borderRight: '1px solid var(--border)', background: 'var(--surface-base)', padding: 0, display: 'flex', flexDirection: 'column', gap: 0, flex: '0 0 auto' }}>
@@ -418,6 +423,30 @@ export default function AIPanelSettingsOverlay({
                       onChange={onTerminalOutputCharacterLimitChange}
                       style={{ width: '100%', cursor: 'pointer' }}
                     />
+                  </div>
+                  <div style={{ borderTop: '1px solid var(--border)' }} />
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700 }}>{t('AI 请求代理')}</div>
+                      <div style={{ color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.6 }}>{t('选择 AI 请求使用的代理节点，首项为不使用。')}</div>
+                    </div>
+                    <select
+                      className="select"
+                      value={aiRequestProxyId}
+                      onChange={(event) => onSaveGlobalAISettings?.({ aiRequestProxyId: event.target.value })}
+                      style={{ width: '100%' }}
+                    >
+                      <option value="">{t('不使用')}</option>
+                      {proxyNodes.map((node) => (
+                        <option key={node.id} value={node.id}>
+                          {[
+                            node.name || t('未命名节点'),
+                            node.type === 'http' ? t('HTTP 代理') : t('SOCKS5 代理'),
+                            `${node.host}:${node.port}`,
+                          ].join(' · ')}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               </>

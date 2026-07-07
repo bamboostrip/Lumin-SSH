@@ -309,8 +309,11 @@ func (a *App) ConnectSSH(sessionId string, connId string) error {
 	if !ok {
 		return fmt.Errorf("connection not found")
 	}
-	conn = a.configManager.ResolveConnectionAuth(conn)
-	return a.sshManager.Connect(sessionId, conn)
+	resolvedConn, err := a.configManager.ResolveConnectionRuntime(conn)
+	if err != nil {
+		return err
+	}
+	return a.sshManager.Connect(sessionId, resolvedConn)
 }
 
 // ReconnectWithPassword 更新密码并重连（认证失败后使用）
@@ -330,7 +333,10 @@ func (a *App) ReconnectWithPassword(sessionId string, connId string, newPassword
 		}
 	}
 
-	resolved := a.configManager.ResolveConnectionAuth(conn)
+	resolved, err := a.configManager.ResolveConnectionRuntime(conn)
+	if err != nil {
+		return err
+	}
 	resolved.Password = newPassword
 
 	if persist && conn.CredentialID == "" {
@@ -441,9 +447,19 @@ func (a *App) RenameItem(sessionId string, oldPath string, newPath string) error
 	return a.sshManager.RenameItem(sessionId, oldPath, newPath)
 }
 
-// ChmodFile changes file permissions via SFTP
-func (a *App) ChmodFile(sessionId string, path string, mode string) error {
-	return a.sshManager.ChmodFile(sessionId, path, mode)
+// GetChmodDialogSettings returns remembered chmod dialog preferences
+func (a *App) GetChmodDialogSettings() map[string]interface{} {
+	return a.configManager.GetChmodDialogSettings()
+}
+
+// SaveChmodDialogSettings persists chmod dialog preferences
+func (a *App) SaveChmodDialogSettings(mode string, includeSubdirectories bool) error {
+	return a.configManager.SaveChmodDialogSettings(mode, includeSubdirectories)
+}
+
+// ChmodFile changes file permissions via SFTP or recursively via chmod -R
+func (a *App) ChmodFile(sessionId string, path string, mode string, recursive bool) error {
+	return a.sshManager.ChmodFile(sessionId, path, mode, recursive)
 }
 
 // CompressItem archives a file or directory on the remote server
@@ -476,6 +492,34 @@ func (a *App) UploadFileContentBase64(sessionId string, fileName string, remoteD
 	return a.sshManager.UploadFileContentBase64(sessionId, fileName, remoteDir, base64Content)
 }
 
+func (a *App) BeginChunkedUploadTask(sessionId string, remoteDir string, maxClients int) (string, error) {
+	return a.sshManager.BeginChunkedUploadTask(sessionId, remoteDir, maxClients)
+}
+
+func (a *App) BeginChunkedUploadFile(taskID string, relativePath string, size int64, totalChunks int) (string, error) {
+	return a.sshManager.BeginChunkedUploadFile(taskID, relativePath, size, totalChunks)
+}
+
+func (a *App) UploadChunkBase64(taskID string, fileID string, chunkIndex int, offset int64, base64Content string) error {
+	return a.sshManager.UploadChunkBase64(taskID, fileID, chunkIndex, offset, base64Content)
+}
+
+func (a *App) CompleteChunkedUploadFile(taskID string, fileID string) error {
+	return a.sshManager.CompleteChunkedUploadFile(taskID, fileID)
+}
+
+func (a *App) AbortChunkedUploadFile(taskID string, fileID string) error {
+	return a.sshManager.AbortChunkedUploadFile(taskID, fileID)
+}
+
+func (a *App) FinishChunkedUploadTask(taskID string) error {
+	return a.sshManager.FinishChunkedUploadTask(taskID)
+}
+
+func (a *App) AbortChunkedUploadTask(taskID string) error {
+	return a.sshManager.AbortChunkedUploadTask(taskID)
+}
+
 // UploadFile opens a file dialog to select a local file and uploads it to the remote path
 func (a *App) UploadFile(sessionId string, remotePath string) error {
 	filepaths, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
@@ -487,16 +531,164 @@ func (a *App) UploadFile(sessionId string, remotePath string) error {
 	return a.sshManager.UploadFile(sessionId, filepaths, remotePath)
 }
 
-func (a *App) DownloadFile(sessionId string, remotePath string) error {
+func (a *App) SelectUploadFiles() ([]string, error) {
+	return runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Select Files to Upload",
+	})
+}
+
+func (a *App) SelectUploadDirectory() (string, error) {
+	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Select Folder to Upload",
+	})
+}
+
+func (a *App) SelectDownloadFilePath(remotePath string, defaultDir string) (string, error) {
 	filename := filepath.Base(remotePath)
-	destPath, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+	options := runtime.SaveDialogOptions{
 		Title:           "Save File",
 		DefaultFilename: filename,
-	})
-	if err != nil || destPath == "" {
+	}
+	defaultDirectory := resolveDownloadDefaultDirectory(defaultDir)
+	if defaultDirectory != "" {
+		_ = os.MkdirAll(defaultDirectory, 0o755)
+		options.DefaultDirectory = defaultDirectory
+	}
+	return runtime.SaveFileDialog(a.ctx, options)
+}
+
+func (a *App) SelectDownloadDirectory(defaultDir string) (string, error) {
+	options := runtime.OpenDialogOptions{
+		Title: "Select Download Directory",
+	}
+	defaultDirectory := resolveDownloadDefaultDirectory(defaultDir)
+	if defaultDirectory != "" {
+		_ = os.MkdirAll(defaultDirectory, 0o755)
+		options.DefaultDirectory = defaultDirectory
+	}
+	return runtime.OpenDirectoryDialog(a.ctx, options)
+}
+
+func (a *App) UploadLocalPathsCompressed(sessionId string, uploadID string, maxConcurrent int, localPaths []string, remoteDir string) error {
+	return a.sshManager.UploadLocalPathsCompressed(sessionId, uploadID, maxConcurrent, localPaths, remoteDir)
+}
+
+func (a *App) AbortCompressedUpload(sessionId string) error {
+	return a.sshManager.AbortCompressedUpload(sessionId)
+}
+
+func getProgramDirectory() string {
+	exePath, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	return filepath.Dir(exePath)
+}
+
+func resolveDownloadDefaultDirectory(template string) string {
+	programDir := getProgramDirectory()
+	trimmed := strings.TrimSpace(template)
+	if trimmed == "" {
+		trimmed = "${APP_DIR}\\download"
+	}
+	resolved := strings.ReplaceAll(trimmed, "${APP_DIR}", programDir)
+	resolved = strings.ReplaceAll(resolved, "%APP_DIR%", programDir)
+	resolved = strings.ReplaceAll(resolved, "\\", string(os.PathSeparator))
+	resolved = strings.ReplaceAll(resolved, "/", string(os.PathSeparator))
+	if !filepath.IsAbs(resolved) && programDir != "" {
+		resolved = filepath.Join(programDir, resolved)
+	}
+	absolutePath, err := filepath.Abs(resolved)
+	if err == nil {
+		resolved = absolutePath
+	}
+	return filepath.Clean(resolved)
+}
+
+func resolveDownloadBasePath(remotePath string, defaultDir string, isDirectory bool) string {
+	defaultDirectory := resolveDownloadDefaultDirectory(defaultDir)
+	if defaultDirectory == "" {
+		return ""
+	}
+	baseName := filepath.Base(strings.TrimSpace(remotePath))
+	if isDirectory {
+		baseName = remoteDownloadBaseName(remotePath)
+	}
+	return filepath.Join(defaultDirectory, baseName)
+}
+
+func resolveDownloadLocalPath(localPath string, isDirectory bool, optionsJSON string) string {
+	cleaned := filepath.Clean(strings.TrimSpace(localPath))
+	if cleaned == "" {
+		return ""
+	}
+	options := parseDownloadConflictOptions(optionsJSON)
+	if options.strategyFor(".") != downloadConflictStrategyAutoRename {
+		return cleaned
+	}
+	if _, err := os.Stat(cleaned); os.IsNotExist(err) {
+		return cleaned
+	}
+	renamedPath, err := buildDownloadRenamedPath(cleaned, options.RenameSuffixMode, isDirectory)
+	if err != nil {
+		return cleaned
+	}
+	return renamedPath
+}
+
+func resolveDownloadTargetPath(remotePath string, defaultDir string, isDirectory bool, optionsJSON string) string {
+	basePath := resolveDownloadBasePath(remotePath, defaultDir, isDirectory)
+	if basePath == "" {
+		return ""
+	}
+	return resolveDownloadLocalPath(basePath, isDirectory, optionsJSON)
+}
+
+func (a *App) GetProgramDirectory() string {
+	return getProgramDirectory()
+}
+
+func (a *App) ResolveDownloadPath(remotePath string, defaultDir string, isDirectory bool, optionsJSON string) string {
+	return resolveDownloadTargetPath(remotePath, defaultDir, isDirectory, optionsJSON)
+}
+
+func (a *App) ResolveDownloadLocalPath(localPath string, isDirectory bool, optionsJSON string) string {
+	return resolveDownloadLocalPath(localPath, isDirectory, optionsJSON)
+}
+
+func (a *App) PreviewDownloadConflicts(sessionId string, remotePath string, localPath string, isDirectory bool) ([]map[string]interface{}, error) {
+	return a.sshManager.PreviewDownloadConflicts(sessionId, remotePath, localPath, isDirectory)
+}
+
+func (a *App) DownloadFile(sessionId string, remotePath string, defaultDir string) error {
+	localPath := resolveDownloadTargetPath(remotePath, defaultDir, false, "")
+	if localPath == "" {
+		return fmt.Errorf("failed to resolve download path")
+	}
+	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
 		return err
 	}
-	return a.sshManager.DownloadFile(sessionId, remotePath, destPath)
+	return a.sshManager.DownloadFile(sessionId, remotePath, localPath)
+}
+
+func (a *App) DownloadFileToLocal(sessionId string, downloadID string, remotePath string, localPath string, optionsJSON string) error {
+	return a.sshManager.DownloadFileToLocal(sessionId, downloadID, remotePath, localPath, optionsJSON)
+}
+
+func (a *App) DownloadDirectoryToLocal(sessionId string, downloadID string, remotePath string, localDir string, optionsJSON string) error {
+	return a.sshManager.DownloadDirectoryToLocal(sessionId, downloadID, remotePath, localDir, optionsJSON)
+}
+
+func (a *App) DownloadDirectoryCompressed(sessionId string, downloadID string, remotePath string, localDir string, optionsJSON string) error {
+	return a.sshManager.DownloadDirectoryCompressed(sessionId, downloadID, remotePath, localDir, optionsJSON)
+}
+
+func (a *App) AbortDownloadTransfer(identifier string) error {
+	return a.sshManager.AbortDownloadTransfer(identifier)
+}
+
+func (a *App) OpenLocalPathInExplorer(localPath string, isDirectory bool) error {
+	return openLocalPathInExplorer(localPath, isDirectory)
 }
 
 // ReadPrivateKeyFile opens a file dialog to read a private key file
@@ -695,6 +887,26 @@ func (a *App) SaveQuickCommandsLocal(jsonStr string) error {
 	return a.configManager.SaveQuickCommandsLocal(jsonStr)
 }
 
+func (a *App) GetRememberWorkspace() bool {
+	return a.configManager.GetRememberWorkspace()
+}
+
+func (a *App) SetRememberWorkspace(enabled bool) error {
+	return a.configManager.SetRememberWorkspace(enabled)
+}
+
+func (a *App) GetWorkspaceState() string {
+	return a.configManager.GetWorkspaceState()
+}
+
+func (a *App) SaveWorkspaceState(jsonStr string) error {
+	return a.configManager.SaveWorkspaceState(jsonStr)
+}
+
+func (a *App) ClearWorkspaceState() error {
+	return a.configManager.ClearWorkspaceState()
+}
+
 // GetParamHistory 获取参数历史
 func (a *App) GetParamHistory() string {
 	return a.configManager.GetParamHistory()
@@ -726,8 +938,22 @@ func (a *App) SaveGlobalCommandHistory(jsonStr string) error {
 }
 
 // PingServer pings a server
-func (a *App) PingServer(host string, port int) map[string]interface{} {
-	return PingServer(host, port)
+func (a *App) PingServer(connId string) map[string]interface{} {
+	conn, ok := a.configManager.GetConnectionByID(connId)
+	if !ok {
+		return map[string]interface{}{
+			"online":  false,
+			"latency": 0,
+		}
+	}
+	resolvedConn, err := a.configManager.ResolveConnectionProxy(conn)
+	if err != nil {
+		return map[string]interface{}{
+			"online":  false,
+			"latency": 0,
+		}
+	}
+	return PingServer(resolvedConn)
 }
 
 // UpdateApp downloads a platform update package, verifies it, and starts the

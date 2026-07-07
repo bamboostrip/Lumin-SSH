@@ -22,7 +22,8 @@ import { useUpdateChecker } from './hooks/useUpdateChecker.js';
 import ConnectingCard from './components/ConnectingCard.jsx';
 import UpdateModal from './components/UpdateModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
-import { Bot, Settings, House, Minus, Square, X, Plus, Monitor, RefreshCw, Folder, ScrollText, Cpu, ChevronLeft, ChevronRight, ChevronDown, Search, Globe } from 'lucide-react';
+import Tiptop from './components/Tiptop.jsx';
+import { Bot, Settings, House, Minus, Square, X, Plus, Monitor, RefreshCw, Folder, ScrollText, Cpu, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Search, Globe, Rocket } from 'lucide-react';
 import { Z } from './constants/zIndex';
 
 import logoImg from './assets/logo.png';
@@ -38,23 +39,266 @@ function withAlpha(color, alpha, fallback) {
   return trimmed || fallback;
 }
 
-function Tiptop({ text, children }) {
-  return (
-    <div className="tiptop">
-      <div className="tiptop-trigger">
-        {children}
-      </div>
-      <div className="tiptop-bubble">{text}</div>
-    </div>
-  );
-}
-
 const FILE_MANAGER_LEFT_MIN = 180;
 const FILE_MANAGER_BOTTOM_MIN = 100;
 const PROBE_PANEL_MIN = 280;
 const AI_PANEL_MIN = 450;
-const COLLAPSE_ARMED_SIZE = 32;
+const COLLAPSE_ARMED_SIZE = 52;
 const FILE_MANAGER_DOCK_HOTZONE = 88;
+const TERMINAL_DOCK_LONG_PRESS_MS = 280;
+const TERMINAL_PANE_CELL_IDS = ['tl', 'tr', 'bl', 'br'];
+const TERMINAL_PANE_CELL_META = {
+  tl: { row: 0, col: 0 },
+  tr: { row: 0, col: 1 },
+  bl: { row: 1, col: 0 },
+  br: { row: 1, col: 1 },
+};
+
+function sortTerminalPaneCells(cells) {
+  return TERMINAL_PANE_CELL_IDS.filter((cellId) => Array.isArray(cells) && cells.includes(cellId));
+}
+
+function getTerminalPaneRect(cells) {
+  const normalized = sortTerminalPaneCells(cells);
+  if (normalized.length === 0) {
+    return null;
+  }
+  const rows = normalized.map((cellId) => TERMINAL_PANE_CELL_META[cellId].row);
+  const cols = normalized.map((cellId) => TERMINAL_PANE_CELL_META[cellId].col);
+  const minRow = Math.min(...rows);
+  const maxRow = Math.max(...rows);
+  const minCol = Math.min(...cols);
+  const maxCol = Math.max(...cols);
+  return {
+    minRow,
+    maxRow,
+    minCol,
+    maxCol,
+    width: maxCol - minCol + 1,
+    height: maxRow - minRow + 1,
+  };
+}
+
+function getTerminalPaneCellsFromRect(rect) {
+  if (!rect) {
+    return [];
+  }
+  return TERMINAL_PANE_CELL_IDS.filter((cellId) => {
+    const meta = TERMINAL_PANE_CELL_META[cellId];
+    return meta.row >= rect.minRow
+      && meta.row <= rect.maxRow
+      && meta.col >= rect.minCol
+      && meta.col <= rect.maxCol;
+  });
+}
+
+function getTerminalPaneRemainingCells(panes) {
+  const occupied = new Set((panes || []).flatMap((pane) => sortTerminalPaneCells(pane.cells)));
+  return TERMINAL_PANE_CELL_IDS.filter((cellId) => !occupied.has(cellId));
+}
+
+function getTerminalDockTargetPreferences(target) {
+  switch (target) {
+    case 'top-left':
+      return { primary: 'up', secondary: 'left' };
+    case 'top-right':
+      return { primary: 'right', secondary: 'up' };
+    case 'bottom-left':
+      return { primary: 'left', secondary: 'down' };
+    case 'bottom-right':
+      return { primary: 'down', secondary: 'right' };
+    default:
+      return { primary: null, secondary: null };
+  }
+}
+
+function getTerminalDockTargetCellId(target) {
+  switch (target) {
+    case 'top-left':
+      return 'tl';
+    case 'top-right':
+      return 'tr';
+    case 'bottom-left':
+      return 'bl';
+    case 'bottom-right':
+      return 'br';
+    default:
+      return null;
+  }
+}
+
+function getTerminalPaneSplitDirection(rect, target) {
+  if (!rect) {
+    return null;
+  }
+  const { primary, secondary } = getTerminalDockTargetPreferences(target);
+  const canSplit = (direction) => {
+    if (direction === 'left' || direction === 'right') {
+      return rect.width >= 2;
+    }
+    if (direction === 'up' || direction === 'down') {
+      return rect.height >= 2;
+    }
+    return false;
+  };
+  if (primary && canSplit(primary)) {
+    return primary;
+  }
+  if (secondary && canSplit(secondary)) {
+    return secondary;
+  }
+  return null;
+}
+
+function splitTerminalPaneCells(cells, target) {
+  const rect = getTerminalPaneRect(cells);
+  const direction = getTerminalPaneSplitDirection(rect, target);
+  if (!rect || !direction) {
+    return null;
+  }
+
+  if (direction === 'left' || direction === 'right') {
+    const leftRect = { ...rect, maxCol: rect.minCol };
+    const rightRect = { ...rect, minCol: rect.maxCol };
+    const newRect = direction === 'left' ? leftRect : rightRect;
+    const remainingRect = direction === 'left' ? rightRect : leftRect;
+    return {
+      direction,
+      newCells: sortTerminalPaneCells(getTerminalPaneCellsFromRect(newRect)),
+      remainingCells: sortTerminalPaneCells(getTerminalPaneCellsFromRect(remainingRect)),
+    };
+  }
+
+  const topRect = { ...rect, maxRow: rect.minRow };
+  const bottomRect = { ...rect, minRow: rect.maxRow };
+  const newRect = direction === 'up' ? topRect : bottomRect;
+  const remainingRect = direction === 'up' ? bottomRect : topRect;
+  return {
+    direction,
+    newCells: sortTerminalPaneCells(getTerminalPaneCellsFromRect(newRect)),
+    remainingCells: sortTerminalPaneCells(getTerminalPaneCellsFromRect(remainingRect)),
+  };
+}
+
+function getTerminalPaneGridPlacement(cells) {
+  const rect = getTerminalPaneRect(cells);
+  if (!rect) {
+    return {};
+  }
+  return {
+    gridColumn: `${rect.minCol + 1} / span ${rect.width}`,
+    gridRow: `${rect.minRow + 1} / span ${rect.height}`,
+  };
+}
+
+function getTerminalPaneAbsolutePlacement(cells) {
+  const rect = getTerminalPaneRect(cells);
+  if (!rect) {
+    return {};
+  }
+  return {
+    left: `${rect.minCol * 50}%`,
+    top: `${rect.minRow * 50}%`,
+    width: `${rect.width * 50}%`,
+    height: `${rect.height * 50}%`,
+  };
+}
+
+function remapTerminalPaneLayouts(layouts, idMap, sessionId) {
+  const next = {};
+  Object.entries(layouts || {}).forEach(([layoutId, layout]) => {
+    if (layout?.sessionId !== sessionId) {
+      next[layoutId] = layout;
+      return;
+    }
+    const mappedLayoutId = idMap[layoutId] || layoutId;
+    const mappedRootTerminalId = idMap[layout.rootTerminalId || layoutId] || layout.rootTerminalId || layoutId;
+    next[mappedLayoutId] = {
+      ...layout,
+      sessionId,
+      rootTerminalId: mappedRootTerminalId,
+      panes: (layout.panes || []).map((pane) => ({
+        ...pane,
+        terminalId: idMap[pane.terminalId] || pane.terminalId,
+        cells: sortTerminalPaneCells(pane.cells),
+      })),
+    };
+  });
+  return next;
+}
+
+function isTerminalPaneRectangular(cells) {
+  const normalized = sortTerminalPaneCells(cells);
+  const rect = getTerminalPaneRect(normalized);
+  if (!rect) {
+    return false;
+  }
+  return sortTerminalPaneCells(getTerminalPaneCellsFromRect(rect)).join(',') === normalized.join(',');
+}
+
+function getTerminalPaneCellsForOrientation(anchorCellId, orientation) {
+  const meta = TERMINAL_PANE_CELL_META[anchorCellId];
+  if (!meta) {
+    return null;
+  }
+  if (orientation === 'rows') {
+    return sortTerminalPaneCells(TERMINAL_PANE_CELL_IDS.filter((cellId) => TERMINAL_PANE_CELL_META[cellId].row === meta.row));
+  }
+  if (orientation === 'cols') {
+    return sortTerminalPaneCells(TERMINAL_PANE_CELL_IDS.filter((cellId) => TERMINAL_PANE_CELL_META[cellId].col === meta.col));
+  }
+  return null;
+}
+
+function getTerminalPaneDiffCount(sourceCells, targetCells) {
+  const source = new Set(sortTerminalPaneCells(sourceCells));
+  const target = new Set(sortTerminalPaneCells(targetCells));
+  return TERMINAL_PANE_CELL_IDS.reduce((count, cellId) => (
+    count + (source.has(cellId) === target.has(cellId) ? 0 : 1)
+  ), 0);
+}
+
+function normalizeTwoTerminalPaneLayout(rootCells, pane, preferredOrientation = null) {
+  const anchorCellId = sortTerminalPaneCells(pane?.cells)[0];
+  if (!anchorCellId) {
+    return null;
+  }
+
+  const orientations = preferredOrientation === 'rows' || preferredOrientation === 'cols'
+    ? [preferredOrientation, preferredOrientation === 'rows' ? 'cols' : 'rows']
+    : ['rows', 'cols'];
+
+  const candidates = orientations.map((orientation, index) => {
+    const paneCells = getTerminalPaneCellsForOrientation(anchorCellId, orientation);
+    if (!paneCells) {
+      return null;
+    }
+    const nextRootCells = getTerminalPaneRemainingCells([{ cells: paneCells }]);
+    return {
+      orientation,
+      paneCells,
+      rootCells: nextRootCells,
+      preferredRank: index,
+      diff: getTerminalPaneDiffCount(rootCells, nextRootCells) + getTerminalPaneDiffCount(pane.cells, paneCells),
+    };
+  }).filter(Boolean);
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  candidates.sort((left, right) => {
+    if (left.diff !== right.diff) {
+      return left.diff - right.diff;
+    }
+    if (left.preferredRank !== right.preferredRank) {
+      return left.preferredRank - right.preferredRank;
+    }
+    return left.orientation === 'rows' ? -1 : 1;
+  });
+
+  return candidates[0];
+}
 
 export default function App() {
   const { t } = useTranslation();
@@ -71,6 +315,20 @@ export default function App() {
   const activeSessionIdRef = useRef(null);
   useEffect(() => { activeSessionIdRef.current = activeSessionId; }, [activeSessionId]);
   const [activeTerminalId, setActiveTerminalId] = useState(null);
+  const activeTerminalIdRef = useRef(null);
+  useEffect(() => { activeTerminalIdRef.current = activeTerminalId; }, [activeTerminalId]);
+  const [rememberWorkspace, setRememberWorkspace] = useState(false);
+  const [rememberWorkspaceLoaded, setRememberWorkspaceLoaded] = useState(false);
+  const [workspaceRestoreReady, setWorkspaceRestoreReady] = useState(false);
+  const [terminalPaneLayouts, setTerminalPaneLayouts] = useState({});
+  const terminalPaneLayoutsRef = useRef({});
+  useEffect(() => { terminalPaneLayoutsRef.current = terminalPaneLayouts; }, [terminalPaneLayouts]);
+  const persistWorkspaceSnapshotRef = useRef(() => {});
+  const terminalPaneIdRef = useRef(0);
+  const [serversLoaded, setServersLoaded] = useState(false);
+  const workspaceRestoreStartedRef = useRef(false);
+  const restoringWorkspaceRef = useRef(false);
+  const [restoringWorkspaceSessionIds, setRestoringWorkspaceSessionIds] = useState(new Set());
   const lastTerminalRef = useRef({}); // 记录每个 session 最后选中的终端
   const [mountedSessions, setMountedSessions] = useState(new Set());
   const [contentTab, setContentTab] = useState('terminal'); // 'terminal' | 'files'
@@ -84,15 +342,19 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showCredentials, setShowCredentials] = useState(false);
   const [tabContextMenu, setTabContextMenu] = useState(null);
+  const [terminalTabContextMenu, setTerminalTabContextMenu] = useState(null);
   useEffect(() => {
-    if (!tabContextMenu) return;
-    const close = () => setTabContextMenu(null);
+    if (!tabContextMenu && !terminalTabContextMenu) return;
+    const close = () => {
+      setTabContextMenu(null);
+      setTerminalTabContextMenu(null);
+    };
     // 延迟注册避免右键事件立即触发关闭
     const timer = setTimeout(() => {
       document.addEventListener('click', close);
     }, 0);
     return () => { clearTimeout(timer); document.removeEventListener('click', close); };
-  }, [tabContextMenu]);
+  }, [tabContextMenu, terminalTabContextMenu]);
   const [connectingServers, setConnectingServers] = useState([]); // [{ server, sessionId, startTime }]
   const connectingServersRef = useRef([]);
   useEffect(() => { connectingServersRef.current = connectingServers; }, [connectingServers]);
@@ -122,7 +384,68 @@ export default function App() {
   }, []);
 
   // ponytail: 3 处 s.terminals?.length > 0 ? s.terminals : [{ id: s.id }] 提取为帮助函数
-  const getEffectiveTerminals = (s) => s.terminals?.length > 0 ? s.terminals : [{ id: s.id }];
+  const getEffectiveTerminals = useCallback((s) => s.terminals?.length > 0 ? s.terminals : [{ id: s.id }], []);
+  const getSessionPanes = useCallback((layoutId, layoutSource = terminalPaneLayouts) => layoutSource[layoutId]?.panes || [], [terminalPaneLayouts]);
+  const getSessionRootPaneCells = useCallback((layoutId, layoutSource = terminalPaneLayouts) => (
+    getTerminalPaneRemainingCells(getSessionPanes(layoutId, layoutSource))
+  ), [getSessionPanes, terminalPaneLayouts]);
+  const getSessionPaneLayouts = useCallback((sessionId, layoutSource = terminalPaneLayouts) => (
+    Object.entries(layoutSource)
+      .filter(([, layout]) => layout?.sessionId === sessionId)
+      .map(([layoutId, layout]) => ({
+        ...layout,
+        id: layoutId,
+        rootTerminalId: layout.rootTerminalId || layoutId,
+        panes: layout.panes || [],
+      }))
+  ), [terminalPaneLayouts]);
+  const getSessionGroupedTerminalIds = useCallback((sessionId, layoutSource = terminalPaneLayouts) => {
+    const ids = new Set();
+    getSessionPaneLayouts(sessionId, layoutSource).forEach((layout) => {
+      ids.add(layout.rootTerminalId);
+      (layout.panes || []).forEach((pane) => ids.add(pane.terminalId));
+    });
+    return ids;
+  }, [getSessionPaneLayouts, terminalPaneLayouts]);
+  const getSessionRootTerminals = useCallback((session, layoutSource = terminalPaneLayouts) => {
+    const groupedTerminalIds = getSessionGroupedTerminalIds(session.id, layoutSource);
+    return getEffectiveTerminals(session).filter((term) => !groupedTerminalIds.has(term.id));
+  }, [getEffectiveTerminals, getSessionGroupedTerminalIds, terminalPaneLayouts]);
+  const getSessionWorkspaceTabs = useCallback((session, layoutSource = terminalPaneLayouts) => {
+    const terminals = getEffectiveTerminals(session);
+    const terminalById = new Map(terminals.map((term) => [term.id, term]));
+    const layoutsByRoot = new Map(getSessionPaneLayouts(session.id, layoutSource).map((layout) => [layout.rootTerminalId, layout]));
+    const groupedTerminalIds = getSessionGroupedTerminalIds(session.id, layoutSource);
+    return terminals.flatMap((term) => {
+      const layout = layoutsByRoot.get(term.id);
+      if (layout) {
+        const names = [layout.rootTerminalId, ...(layout.panes || []).map((pane) => pane.terminalId)]
+          .map((terminalId) => terminalById.get(terminalId)?.label)
+          .filter(Boolean);
+        return [{
+          id: layout.id,
+          type: 'group',
+          label: names.length > 0 ? names.join(' / ') : t('分屏组'),
+          terminalIds: [layout.rootTerminalId, ...(layout.panes || []).map((pane) => pane.terminalId)],
+        }];
+      }
+      if (groupedTerminalIds.has(term.id)) {
+        return [];
+      }
+      return [{ ...term, type: 'terminal', terminalIds: [term.id] }];
+    });
+  }, [getEffectiveTerminals, getSessionGroupedTerminalIds, getSessionPaneLayouts, terminalPaneLayouts, t]);
+  const resolveSessionRootTerminalId = useCallback((session, preferredId, layoutSource = terminalPaneLayouts) => {
+    const tabs = getSessionWorkspaceTabs(session, layoutSource);
+    if (tabs.some((tab) => tab.id === preferredId)) {
+      return preferredId;
+    }
+    return tabs[0]?.id || null;
+  }, [getSessionWorkspaceTabs, terminalPaneLayouts]);
+  const canSplitSessionRootPane = useCallback((layoutId, layoutSource = terminalPaneLayouts) => {
+    const rect = getTerminalPaneRect(getSessionRootPaneCells(layoutId, layoutSource));
+    return !!rect && (rect.width > 1 || rect.height > 1);
+  }, [getSessionRootPaneCells, terminalPaneLayouts]);
 
   const renderSessionFileManagers = (s) => getEffectiveTerminals(s).map(t => {
     const isActive = activeSessionId === s.id && activeTerminalId === t.id;
@@ -131,6 +454,7 @@ export default function App() {
       <div key={t.id} style={isActive ? { display: 'contents' } : { display: 'none' }}>
         <FileManager
           sessionId={t.id}
+          sessionGroupId={s.id}
           addToast={addToast}
           isActive={isActive}
           initialPath={serverConfig?.fileManagerInitPath || ''}
@@ -138,10 +462,68 @@ export default function App() {
       </div>
     );
   });
+
+  useEffect(() => {
+    if (restoringWorkspaceRef.current) {
+      return;
+    }
+    setTerminalPaneLayouts((prev) => {
+      let changed = false;
+      const sessionMap = new Map(sessions.map((session) => [session.id, session]));
+      const next = {};
+      Object.entries(prev).forEach(([layoutId, layout]) => {
+        const sessionId = layout?.sessionId;
+        const session = sessionMap.get(sessionId);
+        if (!session) {
+          changed = true;
+          return;
+        }
+        const validTerminalIds = new Set(getEffectiveTerminals(session).map((term) => term.id));
+        if (!validTerminalIds.has(layout.rootTerminalId || layoutId)) {
+          changed = true;
+          return;
+        }
+        const nextPanes = (layout?.panes || [])
+          .filter((pane) => validTerminalIds.has(pane.terminalId))
+          .map((pane) => ({ ...pane, cells: sortTerminalPaneCells(pane.cells) }));
+        if (nextPanes.length !== (layout?.panes || []).length) {
+          changed = true;
+        }
+        next[layoutId] = {
+          ...layout,
+          sessionId,
+          rootTerminalId: layout.rootTerminalId || layoutId,
+          panes: nextPanes,
+        };
+      });
+      if (Object.keys(prev).length !== Object.keys(next).length) {
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [getEffectiveTerminals, sessions]);
+
+  useEffect(() => {
+    if (!activeSessionId) {
+      return;
+    }
+    const session = sessionsRef.current.find((item) => item.id === activeSessionId);
+    if (!session) {
+      return;
+    }
+    const nextTerminalId = resolveSessionRootTerminalId(session, activeTerminalIdRef.current);
+    if (nextTerminalId !== activeTerminalIdRef.current) {
+      setActiveTerminalId(nextTerminalId);
+    }
+  }, [activeSessionId, resolveSessionRootTerminalId, sessions, terminalPaneLayouts]);
   
   // ── 新增自动检测更新状态 ──────────────────────────────
   const [startupUpdateInfo, setStartupUpdateInfo] = useState(null);
   const [isUpdateModalVisible, setIsUpdateModalVisible] = useState(false);
+  const [showUpdateBubble, setShowUpdateBubble] = useState(false);
+  const updateBubbleTimeoutRef = useRef(null);
+  const updateBubbleRemainingRef = useRef(4000);
+  const updateBubbleStartedAtRef = useRef(0);
   const [syncFailed, setSyncFailed] = useState(null); // { provider, error }
   
   // ── 新增分屏拖拽大小控制状态与逻辑 ──────────────────────
@@ -172,6 +554,10 @@ export default function App() {
   const terminalSubTabScrollTargetRef = useRef(0);
   const terminalSubTabScrollFrameRef = useRef(0);
   const terminalSubTabDraggingRef = useRef(false);
+  const terminalDockLongPressTimerRef = useRef(null);
+  const terminalDockPointerCleanupRef = useRef(null);
+  const terminalDockClickSuppressUntilRef = useRef(0);
+  const [terminalDockDragPreview, setTerminalDockDragPreview] = useState(null);
   const fileManagerDockTabAnchorRef = useRef(null);
   const resizerClickSuppressUntilRef = useRef(0);
   const [collapseDragIntent, setCollapseDragIntent] = useState(null);
@@ -202,6 +588,70 @@ export default function App() {
     setFileManagerDockConfirmTarget(next);
   }, []);
   const shouldIgnoreResizerClick = useCallback(() => Date.now() < resizerClickSuppressUntilRef.current, []);
+  const clearTerminalDockLongPressTimer = useCallback(() => {
+    if (!terminalDockLongPressTimerRef.current) {
+      return;
+    }
+    clearTimeout(terminalDockLongPressTimerRef.current);
+    terminalDockLongPressTimerRef.current = null;
+  }, []);
+  const shouldIgnoreTerminalDockClick = useCallback(() => Date.now() < terminalDockClickSuppressUntilRef.current, []);
+  const getTerminalDockPreviewZones = useCallback(() => {
+    const container = document.getElementById('terminal-dock-preview-host');
+    if (!container) {
+      return [];
+    }
+    const rect = container.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return [];
+    }
+
+    const inset = 18;
+    const gap = 14;
+    const innerWidth = rect.width - inset * 2;
+    const innerHeight = rect.height - inset * 2;
+    if (innerWidth <= gap || innerHeight <= gap) {
+      return [];
+    }
+
+    const cellWidth = (innerWidth - gap) / 2;
+    const cellHeight = (innerHeight - gap) / 2;
+    const entries = [
+      { target: 'top-left', label: t('左上'), column: 0, row: 0 },
+      { target: 'top-right', label: t('右上'), column: 1, row: 0 },
+      { target: 'bottom-left', label: t('左下'), column: 0, row: 1 },
+      { target: 'bottom-right', label: t('右下'), column: 1, row: 1 },
+    ];
+
+    return entries.map(({ target, label, column, row }) => {
+      const left = inset + column * (cellWidth + gap);
+      const top = inset + row * (cellHeight + gap);
+      return {
+        target,
+        label,
+        bounds: {
+          left: rect.left + left,
+          top: rect.top + top,
+          right: rect.left + left + cellWidth,
+          bottom: rect.top + top + cellHeight,
+        },
+        style: {
+          left: `${rect.left + left}px`,
+          top: `${rect.top + top}px`,
+          width: `${cellWidth}px`,
+          height: `${cellHeight}px`,
+        },
+      };
+    });
+  }, [t]);
+  const getTerminalDockPreviewTarget = useCallback((clientX, clientY, zones) => {
+    return zones.find((zone) =>
+      clientX >= zone.bounds.left
+      && clientX <= zone.bounds.right
+      && clientY >= zone.bounds.top
+      && clientY <= zone.bounds.bottom
+    )?.target || null;
+  }, []);
   const setFileManagerCollapsedPersistent = useCallback((next) => {
     setFileManagerCollapsed(next);
     localStorage.setItem('fileManagerCollapsed', String(next));
@@ -781,7 +1231,6 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
           url: result.url,
           filename: result.filename,
         });
-        setIsUpdateModalVisible(true);
       }
     }
   });
@@ -791,6 +1240,81 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     const timer = setTimeout(checkUpdate, 2500);
     return () => clearTimeout(timer);
   }, [checkUpdate]);
+
+  useEffect(() => {
+    const clearBubbleTimer = () => {
+      if (updateBubbleTimeoutRef.current) {
+        clearTimeout(updateBubbleTimeoutRef.current);
+        updateBubbleTimeoutRef.current = null;
+      }
+    };
+
+    const pauseBubbleTimer = () => {
+      if (!updateBubbleTimeoutRef.current || !updateBubbleStartedAtRef.current) {
+        return;
+      }
+      const elapsed = Date.now() - updateBubbleStartedAtRef.current;
+      updateBubbleRemainingRef.current = Math.max(0, updateBubbleRemainingRef.current - elapsed);
+      updateBubbleStartedAtRef.current = 0;
+      clearBubbleTimer();
+    };
+
+    const startBubbleTimer = () => {
+      if (updateBubbleTimeoutRef.current) {
+        return;
+      }
+      if (!startupUpdateInfo || updateBubbleRemainingRef.current <= 0) {
+        setShowUpdateBubble(false);
+        return;
+      }
+      if (document.hidden || (typeof document.hasFocus === 'function' && !document.hasFocus())) {
+        return;
+      }
+      updateBubbleStartedAtRef.current = Date.now();
+      updateBubbleTimeoutRef.current = window.setTimeout(() => {
+        updateBubbleTimeoutRef.current = null;
+        updateBubbleStartedAtRef.current = 0;
+        updateBubbleRemainingRef.current = 0;
+        setShowUpdateBubble(false);
+      }, updateBubbleRemainingRef.current);
+    };
+
+    if (!startupUpdateInfo) {
+      clearBubbleTimer();
+      updateBubbleRemainingRef.current = 4000;
+      updateBubbleStartedAtRef.current = 0;
+      setShowUpdateBubble(false);
+      return undefined;
+    }
+
+    clearBubbleTimer();
+    updateBubbleRemainingRef.current = 4000;
+    updateBubbleStartedAtRef.current = 0;
+    setShowUpdateBubble(true);
+    startBubbleTimer();
+
+    const handleFocus = () => startBubbleTimer();
+    const handleBlur = () => pauseBubbleTimer();
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        pauseBubbleTimer();
+        return;
+      }
+      startBubbleTimer();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('blur', handleBlur);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearBubbleTimer();
+      updateBubbleStartedAtRef.current = 0;
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('blur', handleBlur);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [startupUpdateInfo]);
 
   const handleApplyStartupUpdate = async () => {
     try {
@@ -810,11 +1334,14 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
 
   // ── Toast helpers ──────────────────────────────────────────
   const toastIdRef = useRef(0);
+  const removeToast = useCallback((id) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
   const addToast = useCallback((message, type = 'info', duration = 3000) => {
     const id = ++toastIdRef.current;
     setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => { if (mountedRef.current) setToasts((prev) => prev.filter((t) => t.id !== id)); }, duration);
-  }, []);
+    setTimeout(() => { if (mountedRef.current) removeToast(id); }, duration);
+  }, [removeToast]);
 
   const activeChangeReview = changeReviewQueue.length > 0 ? changeReviewQueue[0] : null;
 
@@ -926,9 +1453,37 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
       const creds = await AppGo.GetCredentials();
       setCredentials(creds || []);
     } catch (_) {}
+    setServersLoaded(true);
   }, [addToast]);
 
   useEffect(() => { loadServers(); }, [loadServers]);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve(window?.go?.main?.App?.GetRememberWorkspace?.())
+      .then((enabled) => {
+        if (cancelled) return;
+        setRememberWorkspace(!!enabled);
+        setRememberWorkspaceLoaded(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRememberWorkspace(false);
+        setRememberWorkspaceLoaded(true);
+      });
+    const handler = (event) => {
+      if (typeof event?.detail !== 'boolean') {
+        return;
+      }
+      setRememberWorkspace(event.detail);
+      setRememberWorkspaceLoaded(true);
+    };
+    window.addEventListener('workspace-remember-changed', handler);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('workspace-remember-changed', handler);
+    };
+  }, []);
 
   // ── Ping all servers ───────────────────────────────────────
   const pingAll = useCallback(async () => {
@@ -937,7 +1492,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     const results = await Promise.all(
       list.map(async (s) => {
         try {
-          const res = await AppGo.PingServer(s.host, s.port || 22);
+          const res = await AppGo.PingServer(s.id);
           return { id: s.id, ...res };
         } catch {
           return { id: s.id, online: false, latency: null };
@@ -976,30 +1531,33 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     if (remaining.length > 0) {
       const nextSession = remaining[remaining.length - 1];
       setActiveSessionId(nextSession.id);
-      const lastTid = lastTerminalRef.current[nextSession.id];
-      const validTerminal = nextSession.terminals?.find(t => t.id === lastTid);
-      setActiveTerminalId(validTerminal ? validTerminal.id : (nextSession.terminals?.[0]?.id || nextSession.id));
+      setActiveTerminalId(resolveSessionRootTerminalId(nextSession, lastTerminalRef.current[nextSession.id]));
+      setContentTab('terminal');
     } else {
       setActiveSessionId(null);
       setActiveTerminalId(null);
     }
-  }, []);
+  }, [resolveSessionRootTerminalId]);
 
   // ponytail: 提取 tab 点击处理，避免每次渲染创建 N 个闭包
   const handleTabClick = useCallback((sessionId) => {
     setTabContextMenu(null);
+    setTerminalTabContextMenu(null);
     setActiveSessionId(sessionId);
     const sess = sessionsRef.current.find(x => x.id === sessionId);
-    const lastTid = lastTerminalRef.current[sessionId];
-    const validTerminal = sess?.terminals?.find(t => t.id === lastTid);
-    setActiveTerminalId(validTerminal ? validTerminal.id : (sess?.terminals?.[0]?.id || sessionId));
-  }, []);
+    const nextTerminalId = sess ? resolveSessionRootTerminalId(sess, lastTerminalRef.current[sessionId]) : null;
+    setActiveTerminalId(nextTerminalId);
+    setContentTab('terminal');
+    persistWorkspaceSnapshotRef.current({
+      activeSessionId: sessionId,
+      activeTerminalId: nextTerminalId,
+    });
+  }, [resolveSessionRootTerminalId]);
 
   // ── 重连会话核心逻辑 ────────────────────────────────────────
-  const reconnectSession = useCallback(async (session, requestingTerminalId) => {
+  const reconnectSession = useCallback(async (session, requestingTerminalId, options = {}) => {
+    const deferState = options?.deferState === true;
     updateSessionStatus(session.id, 'connecting');
-
-    // 如果是当前激活的会话，展示连接等待卡片
     const serverObj = serversRef.current.find((sv) => sv.id === session.serverId);
     if (serverObj) {
       setConnectingServers((prev) => [...prev, { server: serverObj, sessionId: session.id, startTime: Date.now() }]);
@@ -1008,31 +1566,36 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     try {
       await AppGo.ConnectSSH(session.id, session.serverId);
 
-      // 重建子终端 (终端2, 终端3, ...)
-      const subTerminals = (session.terminals || []).filter(t => t.id !== session.id);
-      const oldToNew = { [session.id]: session.id };
-      const newTerminals = [{ id: session.id, label: `${t('终端')}1` }];
+      const savedTerminals = session.terminals?.length > 0 ? session.terminals : [{ id: session.id, label: `${t('终端')}1` }];
+      const rootTerminal = savedTerminals.find(term => term.id === session.id) || savedTerminals[0] || { id: session.id, label: `${t('终端')}1` };
+      const subTerminals = savedTerminals.filter(term => term.id !== session.id);
+      const oldToNew = { [rootTerminal.id]: session.id, [session.id]: session.id };
       for (const sub of subTerminals) {
         try {
           const newTermId = await AppGo.OpenTerminal(session.id);
           oldToNew[sub.id] = newTermId;
-          newTerminals.push({ id: newTermId, label: sub.label });
-        } catch (_) {}
+        } catch {}
       }
+      const newTerminals = savedTerminals
+        .map(term => ({
+          id: oldToNew[term.id],
+          label: term.label || `${t('终端')}1`,
+        }))
+        .filter(term => !!term.id);
 
-      setSessions((prev) =>
-        prev.map((s) => (s.id === session.id ? { ...s, status: 'connected', terminals: newTerminals } : s))
-      );
+      if (!deferState) {
+        setSessions((prev) =>
+          prev.map((s) => (s.id === session.id ? { ...s, status: 'connected', terminals: newTerminals } : s))
+        );
+      }
       setConnectingServers((prev) => prev.filter((s) => s.sessionId !== session.id));
-      addToast(t('重新连接成功'), 'success');
 
-      // 切回重连前所在的终端
       if (requestingTerminalId && oldToNew[requestingTerminalId]) {
         setActiveTerminalId(oldToNew[requestingTerminalId]);
       }
 
-      // 后台重新部署并激活探针状态
       await postConnectSetup(session.id, session.serverId);
+      return { oldToNew, newTerminals };
     } catch (err) {
       const errMsg = String(err);
       const isHostKeyChange = errMsg.includes('主机密钥已变更');
@@ -1041,10 +1604,134 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
       );
       if (!isHostKeyChange) {
         setConnectingServers((prev) => prev.filter((s) => s.sessionId !== session.id));
-        addToast(`${t('重新连接失败')}: ${err}`, 'error', 5000);
+        if (!deferState) {
+          addToast(`${t('重新连接失败')}: ${err}`, 'error', 5000);
+        }
       }
+      return null;
     }
   }, [addToast, t, postConnectSetup]);
+
+  useEffect(() => {
+    if (!serversLoaded || !rememberWorkspaceLoaded || workspaceRestoreStartedRef.current) {
+      return;
+    }
+    workspaceRestoreStartedRef.current = true;
+    if (!rememberWorkspace) {
+      setWorkspaceRestoreReady(true);
+      return;
+    }
+    (async () => {
+      const raw = await window?.go?.main?.App?.GetWorkspaceState?.();
+      if (typeof raw !== 'string' || !raw.trim()) {
+        return;
+      }
+      let snapshot;
+      try {
+        snapshot = JSON.parse(raw);
+      } catch {
+        return;
+      }
+      const savedSessions = (snapshot.sessions || [])
+        .filter((session) => session?.id && session?.serverId && serversRef.current.some((server) => server.id === session.serverId))
+        .map((session) => {
+          const terminalById = new Map((session.terminals || []).map((term) => [term.id, term]));
+          const workspaceTerminalIds = (session.workspaceTabs || []).flatMap((tab) => tab.terminalIds || []);
+          const orderedTerminalIds = Array.from(new Set([...workspaceTerminalIds, ...terminalById.keys(), session.id]));
+          return {
+            id: session.id,
+            serverId: session.serverId,
+            serverName: session.serverName || session.host,
+            host: session.host || '',
+            status: 'connecting',
+            terminals: orderedTerminalIds.map((terminalId, index) => {
+              const terminal = terminalById.get(terminalId);
+              return {
+                id: terminalId,
+                label: terminal?.label || `${t('终端')}${index + 1}`,
+              };
+            }),
+          };
+        });
+      if (savedSessions.length === 0) {
+        return;
+      }
+      const savedLayouts = Object.fromEntries(
+        Object.entries(snapshot.terminalPaneLayouts || {})
+          .filter(([, layout]) => savedSessions.some((session) => session.id === layout?.sessionId))
+          .map(([layoutId, layout]) => [
+            layoutId,
+            {
+              ...layout,
+              sessionId: layout.sessionId,
+              rootTerminalId: layout.rootTerminalId || layoutId,
+              panes: (layout.panes || []).map((pane) => ({
+                ...pane,
+                cells: sortTerminalPaneCells(pane.cells),
+              })),
+            },
+          ])
+      );
+      const initialActiveSessionId = savedSessions.some((session) => session.id === snapshot.activeSessionId)
+        ? snapshot.activeSessionId
+        : savedSessions[0].id;
+      restoringWorkspaceRef.current = true;
+      setRestoringWorkspaceSessionIds(new Set(savedSessions.map((session) => session.id)));
+      setSessions(savedSessions);
+      setTerminalPaneLayouts(savedLayouts);
+      setMountedSessions(new Set(initialActiveSessionId ? [initialActiveSessionId] : []));
+      setActiveSessionId(initialActiveSessionId);
+      setActiveTerminalId(snapshot.activeTerminalId || initialActiveSessionId);
+      setContentTab('terminal');
+
+      const idMap = {};
+      let restoredLayouts = savedLayouts;
+      let restoredSessions = savedSessions;
+      for (const savedSession of savedSessions) {
+        const result = await reconnectSession(
+          { ...savedSession, status: 'closed', terminals: savedSession.terminals },
+          undefined,
+          { deferState: true },
+        );
+        setRestoringWorkspaceSessionIds((prev) => {
+          if (!prev.has(savedSession.id)) {
+            return prev;
+          }
+          const next = new Set(prev);
+          next.delete(savedSession.id);
+          return next;
+        });
+        if (result?.oldToNew) {
+          Object.assign(idMap, result.oldToNew);
+          restoredLayouts = remapTerminalPaneLayouts(restoredLayouts, result.oldToNew, savedSession.id);
+          restoredSessions = restoredSessions.map((session) => (
+            session.id === savedSession.id
+              ? { ...session, status: 'connected', terminals: result.newTerminals }
+              : session
+          ));
+          terminalPaneLayoutsRef.current = restoredLayouts;
+          sessionsRef.current = restoredSessions;
+          setSessions(restoredSessions);
+          setTerminalPaneLayouts(restoredLayouts);
+        }
+      }
+
+      const finalSession = restoredSessions.find((session) => session.id === initialActiveSessionId) || restoredSessions[0];
+      if (!finalSession) {
+        return;
+      }
+      const preferredTerminalId = idMap[snapshot.activeTerminalId] || snapshot.activeTerminalId;
+      const resolvedTerminalId = resolveSessionRootTerminalId(finalSession, preferredTerminalId, restoredLayouts);
+      lastTerminalRef.current[finalSession.id] = resolvedTerminalId;
+      setActiveSessionId(finalSession.id);
+      setActiveTerminalId(resolvedTerminalId);
+      setContentTab('terminal');
+    })().finally(() => {
+      restoringWorkspaceRef.current = false;
+      setRestoringWorkspaceSessionIds(new Set());
+      setWorkspaceRestoreReady(true);
+    });
+  }, [rememberWorkspace, rememberWorkspaceLoaded, reconnectSession, resolveSessionRootTerminalId, serversLoaded, t]);
 
   // ── 监听 SSH 意外断开事件 ────────────────────────────────────
   useEffect(() => {
@@ -1335,9 +2022,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     const existing = sessionsRef.current.find((s) => s.serverId === server.id && s.status !== 'closed' && s.status !== 'error');
     if (existing) {
       setActiveSessionId(existing.id);
-      const lastTid = lastTerminalRef.current[existing.id];
-      const validTerminal = existing.terminals?.find(t => t.id === lastTid);
-      setActiveTerminalId(validTerminal ? validTerminal.id : (existing.terminals?.[0]?.id || existing.id));
+      setActiveTerminalId(resolveSessionRootTerminalId(existing, lastTerminalRef.current[existing.id]));
       setContentTab('terminal');
       return;
     }
@@ -1346,7 +2031,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     const closedSession = sessionsRef.current.find((s) => s.serverId === server.id && (s.status === 'closed' || s.status === 'error'));
     if (closedSession) {
       setActiveSessionId(closedSession.id);
-      setActiveTerminalId(closedSession.terminals?.[0]?.id || closedSession.id);
+      setActiveTerminalId(resolveSessionRootTerminalId(closedSession, lastTerminalRef.current[closedSession.id]));
       setContentTab('terminal');
       await reconnectSession(closedSession);
       return;
@@ -1397,7 +2082,22 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     for (const id of termIds) {
       AppGo.DisconnectSSH(id).catch(() => {});
     }
-    setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+    setSessions((prev) => {
+      const next = prev.filter((s) => s.id !== sessionId);
+      if (next.length === 0) {
+        window?.go?.main?.App?.ClearWorkspaceState?.().catch(() => {});
+      }
+      return next;
+    });
+    setTerminalPaneLayouts((prev) => {
+      const next = { ...prev };
+      Object.entries(next).forEach(([layoutId, layout]) => {
+        if (layout?.sessionId === sessionId) {
+          delete next[layoutId];
+        }
+      });
+      return next;
+    });
     if (activeSessionIdRef.current === sessionId) {
       switchToNextSession(sessionId);
     }
@@ -1438,7 +2138,9 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     for (const id of allTermIds) {
       AppGo.DisconnectSSH(id).catch(() => {});
     }
+    window?.go?.main?.App?.ClearWorkspaceState?.().catch(() => {});
     setSessions([]);
+    setTerminalPaneLayouts({});
     setActiveSessionId(null);
     setActiveTerminalId(null);
     setConnectingServers([]);
@@ -1454,10 +2156,8 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     creatingTerminalRef.current = sessionId;
     setCreatingTerminalSessionId(sessionId);
 
-    // 使用当前会话中任意一个现有终端的 ID，确保即使第一个终端已关闭也能找到共享连接
     const baseTermId = session.terminals?.[0]?.id || sessionId;
 
-    // 计算下一个终端编号（找最大编号 + 1）
     let maxNum = 0;
     (session.terminals || []).forEach(term => {
       const match = term.label?.match(/(\d+)$/);
@@ -1467,14 +2167,19 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
 
     try {
       const newTermId = await AppGo.OpenTerminal(baseTermId);
-      setSessions((prev) =>
-        prev.map((s) => s.id === sessionId
+      const nextSessions = sessionsRef.current.map((s) => (
+        s.id === sessionId
           ? { ...s, terminals: [...(s.terminals || []), { id: newTermId, label: termLabel }] }
           : s
-        )
-      );
+      ));
+      setSessions(nextSessions);
       setActiveTerminalId(newTermId);
       setContentTab('terminal');
+      persistWorkspaceSnapshotRef.current({
+        sessions: nextSessions,
+        activeSessionId: sessionId,
+        activeTerminalId: newTermId,
+      });
     } catch (err) {
       addToast(`${t('新建终端失败')}: ${err}`, 'error', 5000);
     } finally {
@@ -1488,36 +2193,469 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     e?.stopPropagation();
     const session = sessionsRef.current.find(s => s.id === sessionId);
     if (!session?.terminals) return;
-    
+
+    const remaining = (session.terminals || []).filter(t => t.id !== terminalId);
     AppGo.DisconnectSSH(terminalId).catch(() => {});
-    
+
     setSessions((prev) => {
-      return prev.map((s) => {
+      const next = prev.map((s) => {
         if (s.id !== sessionId) return s;
-        const remaining = (s.terminals || []).filter(t => t.id !== terminalId);
-        if (remaining.length === 0) return null; // 标记删除
+        if (remaining.length === 0) return null;
         return { ...s, terminals: remaining };
-      }).filter(Boolean); // 移除被标记的
+      }).filter(Boolean);
+      if (next.length === 0) {
+        window?.go?.main?.App?.ClearWorkspaceState?.().catch(() => {});
+      }
+      return next;
     });
-    
-    if (activeTerminalId === terminalId) {
-      const remaining = (session.terminals || []).filter(t => t.id !== terminalId);
-      if (remaining.length > 0) {
-        setActiveTerminalId(remaining[remaining.length - 1].id);
-      } else {
-        // 最后一个终端被关闭，整个 session 也被移除了
-        setMountedSessions(prev => {
-          if (!prev.has(sessionId)) return prev;
-          const next = new Set(prev);
-          next.delete(sessionId);
-          return next;
-        });
+
+    if (remaining.length === 0) {
+      setMountedSessions(prev => {
+        if (!prev.has(sessionId)) return prev;
+        const next = new Set(prev);
+        next.delete(sessionId);
+        return next;
+      });
+      if (activeSessionIdRef.current === sessionId) {
         switchToNextSession(sessionId);
       }
+      return;
     }
-  }, [activeTerminalId]);
+
+    if (activeSessionIdRef.current === sessionId && activeTerminalIdRef.current === terminalId) {
+      setActiveTerminalId(resolveSessionRootTerminalId({ ...session, terminals: remaining }, lastTerminalRef.current[sessionId]));
+    }
+  }, [resolveSessionRootTerminalId, switchToNextSession]);
+
+  const dispatchTerminalPaneResize = useCallback(() => {
+    setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+    }, 50);
+  }, []);
+
+  const getTerminalDockLayoutId = useCallback((session, terminalId, layoutSource = terminalPaneLayouts) => {
+    if (!session?.id || !terminalId) {
+      return null;
+    }
+    const activeId = activeSessionIdRef.current === session.id ? activeTerminalIdRef.current : null;
+    if (activeId && layoutSource[activeId]?.sessionId === session.id) {
+      return activeId;
+    }
+    if (activeId && activeId !== terminalId && getEffectiveTerminals(session).some((term) => term.id === activeId)) {
+      const groupedIds = getSessionGroupedTerminalIds(session.id, layoutSource);
+      if (!groupedIds.has(activeId)) {
+        return activeId;
+      }
+    }
+    const firstGroup = getSessionPaneLayouts(session.id, layoutSource)[0];
+    return firstGroup?.id || null;
+  }, [getEffectiveTerminals, getSessionGroupedTerminalIds, getSessionPaneLayouts, terminalPaneLayouts]);
+
+  const isTerminalDockTargetOccupied = useCallback((session, terminalId, target, layoutSource = terminalPaneLayouts) => {
+    const layoutId = getTerminalDockLayoutId(session, terminalId, layoutSource);
+    const targetCellId = getTerminalDockTargetCellId(target);
+    if (!layoutId || !targetCellId) {
+      return false;
+    }
+    return getSessionPanes(layoutId, layoutSource).some((pane) => sortTerminalPaneCells(pane.cells).includes(targetCellId));
+  }, [getSessionPanes, getTerminalDockLayoutId, terminalPaneLayouts]);
+
+  const getTerminalDockTargetStates = useCallback((session, terminalId, zones, layoutSource = terminalPaneLayouts) => {
+    return (zones || []).reduce((acc, zone) => {
+      acc[zone.target] = {
+        occupied: isTerminalDockTargetOccupied(session, terminalId, zone.target, layoutSource),
+        enabled: !!session && canMoveTerminalToDockTargetRef.current?.(session, terminalId, zone.target, layoutSource),
+      };
+      return acc;
+    }, {});
+  }, [isTerminalDockTargetOccupied, terminalPaneLayouts]);
+
+  const canMoveTerminalToDockTarget = useCallback((session, terminalId, target, layoutSource = terminalPaneLayouts) => {
+    if (!session?.id || !terminalId || !target) {
+      return false;
+    }
+
+    const rootTerminals = getSessionRootTerminals(session, layoutSource);
+    if (!rootTerminals.some((term) => term.id === terminalId)) {
+      return false;
+    }
+
+    const layoutId = getTerminalDockLayoutId(session, terminalId, layoutSource);
+    if (!layoutId) {
+      return rootTerminals.some((term) => term.id !== terminalId) && !!splitTerminalPaneCells(TERMINAL_PANE_CELL_IDS, target);
+    }
+
+    const targetCellId = getTerminalDockTargetCellId(target);
+    if (!targetCellId) {
+      return false;
+    }
+
+    const panes = getSessionPanes(layoutId, layoutSource);
+    const occupiedPane = panes.find((pane) => sortTerminalPaneCells(pane.cells).includes(targetCellId));
+    if (occupiedPane) {
+      const occupiedCells = sortTerminalPaneCells(occupiedPane.cells);
+      return occupiedCells.length === 1 || !!splitTerminalPaneCells(occupiedCells, target);
+    }
+
+    return !!splitTerminalPaneCells(getSessionRootPaneCells(layoutId, layoutSource), target);
+  }, [getSessionPanes, getSessionRootPaneCells, getSessionRootTerminals, getTerminalDockLayoutId, terminalPaneLayouts]);
+  const canMoveTerminalToDockTargetRef = useRef(null);
+  useEffect(() => {
+    canMoveTerminalToDockTargetRef.current = canMoveTerminalToDockTarget;
+  }, [canMoveTerminalToDockTarget]);
+
+  const handleTerminalPaneDrop = useCallback((session, terminalId, target) => {
+    if (!session?.id || !terminalId || !target) {
+      return;
+    }
+
+    let didCreate = false;
+    let nextActiveTabId = null;
+
+    setTerminalPaneLayouts((prev) => {
+      if (!canMoveTerminalToDockTarget(session, terminalId, target, prev)) {
+        return prev;
+      }
+
+      const rootTerminals = getSessionRootTerminals(session, prev);
+      const layoutId = getTerminalDockLayoutId(session, terminalId, prev)
+        || rootTerminals.find((term) => term.id !== terminalId)?.id;
+      if (!layoutId || layoutId === terminalId) {
+        return prev;
+      }
+
+      const existingLayout = prev[layoutId] || { sessionId: session.id, rootTerminalId: layoutId, panes: [] };
+      const panes = existingLayout.panes || [];
+      const targetCellId = getTerminalDockTargetCellId(target);
+      const occupiedPane = targetCellId
+        ? panes.find((pane) => sortTerminalPaneCells(pane.cells).includes(targetCellId))
+        : null;
+
+      if (occupiedPane) {
+        const occupiedCells = sortTerminalPaneCells(occupiedPane.cells);
+        const occupiedSplit = occupiedCells.length > 1 ? splitTerminalPaneCells(occupiedCells, target) : null;
+        const splitNormalizeOrientation = occupiedSplit?.direction === 'up' || occupiedSplit?.direction === 'down'
+          ? 'rows'
+          : occupiedSplit?.direction === 'left' || occupiedSplit?.direction === 'right'
+            ? 'cols'
+            : occupiedPane.normalizeOrientation;
+
+        const nextLayouts = {
+          ...prev,
+          [layoutId]: {
+            ...existingLayout,
+            sessionId: session.id,
+            rootTerminalId: existingLayout.rootTerminalId || layoutId,
+            panes: occupiedSplit
+              ? [
+                ...panes.map((pane) => (
+                  pane.id === occupiedPane.id
+                    ? { ...pane, cells: occupiedSplit.remainingCells, normalizeOrientation: splitNormalizeOrientation }
+                    : pane
+                )),
+                {
+                  id: `pane_${++terminalPaneIdRef.current}`,
+                  terminalId,
+                  cells: occupiedSplit.newCells,
+                  normalizeOrientation: splitNormalizeOrientation,
+                },
+              ]
+              : panes.map((pane) => (
+                pane.id === occupiedPane.id
+                  ? { ...pane, terminalId }
+                  : pane
+              )),
+          },
+        };
+
+        nextActiveTabId = layoutId;
+        didCreate = true;
+        return nextLayouts;
+      }
+
+      const rootPaneCells = getSessionRootPaneCells(layoutId, prev);
+      const rootRect = getTerminalPaneRect(rootPaneCells);
+      const splitResult = splitTerminalPaneCells(rootPaneCells, target);
+      if (!splitResult || splitResult.newCells.length === 0 || splitResult.remainingCells.length === 0) {
+        return prev;
+      }
+
+      const normalizeOrientation = rootRect?.width === 1 && rootRect?.height === 2
+        ? 'rows'
+        : rootRect?.width === 2 && rootRect?.height === 1
+          ? 'cols'
+          : null;
+
+      const nextLayouts = {
+        ...prev,
+        [layoutId]: {
+          ...existingLayout,
+          sessionId: session.id,
+          rootTerminalId: existingLayout.rootTerminalId || layoutId,
+          panes: [
+            ...panes,
+            {
+              id: `pane_${++terminalPaneIdRef.current}`,
+              terminalId,
+              cells: splitResult.newCells,
+              normalizeOrientation,
+            },
+          ],
+        },
+      };
+
+      nextActiveTabId = layoutId;
+      didCreate = true;
+      return nextLayouts;
+    });
+
+    if (!didCreate) {
+      return;
+    }
+
+    if (activeSessionIdRef.current === session.id) {
+      setActiveTerminalId(nextActiveTabId);
+    }
+    if (nextActiveTabId) {
+      lastTerminalRef.current[session.id] = nextActiveTabId;
+    }
+    setContentTab('terminal');
+    setTabContextMenu(null);
+    setTerminalTabContextMenu(null);
+    dispatchTerminalPaneResize();
+  }, [canMoveTerminalToDockTarget, dispatchTerminalPaneResize, getSessionRootPaneCells, getSessionRootTerminals, getTerminalDockLayoutId]);
+
+  const moveTerminalToDockTarget = useCallback((session, terminalId, target) => {
+    handleTerminalPaneDrop(session, terminalId, target);
+  }, [handleTerminalPaneDrop]);
+
+  const closeTerminalGroup = useCallback((sessionId, layoutId, terminalIds, e) => {
+    e?.stopPropagation();
+    const session = sessionsRef.current.find((item) => item.id === sessionId);
+    if (!session) {
+      return;
+    }
+
+    const ids = Array.isArray(terminalIds) && terminalIds.length > 0 ? terminalIds : [layoutId];
+    const remainingTerminals = (session.terminals || []).filter((item) => !ids.includes(item.id));
+    let nextActiveTabId = null;
+
+    setTerminalPaneLayouts((prev) => {
+      const next = { ...prev };
+      delete next[layoutId];
+      if (remainingTerminals.length > 0) {
+        const preferredTabId = activeSessionIdRef.current === sessionId ? activeTerminalIdRef.current : lastTerminalRef.current[sessionId];
+        nextActiveTabId = resolveSessionRootTerminalId(
+          { ...session, terminals: remainingTerminals },
+          preferredTabId === layoutId ? null : preferredTabId,
+          next,
+        );
+      }
+      return next;
+    });
+
+    ids.forEach((id) => AppGo.DisconnectSSH(id).catch(() => {}));
+
+    if (remainingTerminals.length === 0) {
+      window?.go?.main?.App?.ClearWorkspaceState?.().catch(() => {});
+      setSessions((prev) => prev.filter((item) => item.id !== sessionId));
+      setMountedSessions((prev) => {
+        if (!prev.has(sessionId)) return prev;
+        const next = new Set(prev);
+        next.delete(sessionId);
+        return next;
+      });
+      if (activeSessionIdRef.current === sessionId) {
+        switchToNextSession(sessionId);
+      }
+      return;
+    }
+
+    setSessions((prev) => prev.map((item) => (
+      item.id === sessionId ? { ...item, terminals: remainingTerminals } : item
+    )));
+    if (nextActiveTabId) {
+      lastTerminalRef.current[sessionId] = nextActiveTabId;
+    }
+    if (activeSessionIdRef.current === sessionId) {
+      setContentTab('terminal');
+      setActiveTerminalId(nextActiveTabId || null);
+    }
+    dispatchTerminalPaneResize();
+  }, [dispatchTerminalPaneResize, resolveSessionRootTerminalId, switchToNextSession]);
+
+  const closeTerminalPane = useCallback((layoutId, paneId, e) => {
+    e?.stopPropagation();
+
+    let sessionId = null;
+    let nextActiveTabId = null;
+    let changed = false;
+
+    setTerminalPaneLayouts((prev) => {
+      const layout = prev[layoutId];
+      const panes = getSessionPanes(layoutId, prev);
+      const pane = panes.find((item) => item.id === paneId);
+      if (!layout || !pane) {
+        return prev;
+      }
+
+      sessionId = layout.sessionId;
+      const remainingPanes = panes.filter((item) => item.id !== paneId);
+      const nextLayouts = { ...prev };
+      if (remainingPanes.length > 0) {
+        nextLayouts[layoutId] = { ...layout, panes: remainingPanes };
+      } else {
+        delete nextLayouts[layoutId];
+      }
+
+      const session = sessionsRef.current.find((item) => item.id === sessionId);
+      if (session) {
+        const rootCells = getSessionRootPaneCells(layoutId, nextLayouts);
+        if (remainingPanes.length === 1 && !isTerminalPaneRectangular(rootCells)) {
+          const normalized = normalizeTwoTerminalPaneLayout(
+            rootCells,
+            remainingPanes[0],
+            remainingPanes[0].normalizeOrientation || null,
+          );
+          if (normalized) {
+            nextLayouts[layoutId] = {
+              ...layout,
+              panes: [
+                {
+                  ...remainingPanes[0],
+                  cells: normalized.paneCells,
+                  normalizeOrientation: normalized.orientation,
+                },
+              ],
+            };
+          }
+        }
+        nextActiveTabId = resolveSessionRootTerminalId(session, layoutId, nextLayouts);
+      }
+      changed = true;
+      return nextLayouts;
+    });
+
+    if (!changed || !sessionId) {
+      return;
+    }
+
+    if (nextActiveTabId) {
+      lastTerminalRef.current[sessionId] = nextActiveTabId;
+    }
+    if (activeSessionIdRef.current === sessionId) {
+      setContentTab('terminal');
+      setActiveTerminalId(nextActiveTabId || null);
+    }
+    dispatchTerminalPaneResize();
+  }, [dispatchTerminalPaneResize, getSessionPanes, getSessionRootPaneCells, resolveSessionRootTerminalId]);
 
   const activeSession = useMemo(() => sessions.find((s) => s.id === activeSessionId), [sessions, activeSessionId]);
+  const isSessionWorkspaceVisible = useCallback((session) => (
+    !!session && (session.status === 'connected' || restoringWorkspaceSessionIds.has(session.id))
+  ), [restoringWorkspaceSessionIds]);
+  const activeSessionRootTerminals = useMemo(() => (
+    activeSession ? getSessionWorkspaceTabs(activeSession) : []
+  ), [activeSession, getSessionWorkspaceTabs]);
+
+  useEffect(() => {
+    if (!activeSession) {
+      return;
+    }
+  }, [activeSession, activeSessionId, activeSessionRootTerminals, activeTerminalId, contentTab, mountedSessions, terminalPaneLayouts]);
+
+  const persistWorkspaceSnapshot = useCallback((overrides = {}) => {
+    if (!rememberWorkspaceLoaded || !workspaceRestoreReady) {
+      return;
+    }
+    if (restoringWorkspaceRef.current) {
+      return;
+    }
+    const clearSnapshot = () => {
+      window?.go?.main?.App?.ClearWorkspaceState?.().catch(() => {});
+    };
+    if (!rememberWorkspace) {
+      clearSnapshot();
+      return;
+    }
+    const nextSessions = overrides.sessions || sessionsRef.current;
+    const nextActiveSessionId = overrides.activeSessionId ?? activeSessionIdRef.current;
+    const nextActiveTerminalId = overrides.activeTerminalId ?? activeTerminalIdRef.current;
+    const nextLayouts = overrides.terminalPaneLayouts || terminalPaneLayoutsRef.current;
+    const openSessions = nextSessions.filter((session) => session.status !== 'closed' && session.status !== 'error');
+    if (openSessions.length === 0) {
+      clearSnapshot();
+      return;
+    }
+    const sessionIds = new Set(openSessions.map((session) => session.id));
+    const savedLayouts = Object.fromEntries(
+      Object.entries(nextLayouts)
+        .filter(([, layout]) => sessionIds.has(layout?.sessionId))
+        .map(([layoutId, layout]) => [
+          layoutId,
+          {
+            ...layout,
+            sessionId: layout.sessionId,
+            rootTerminalId: layout.rootTerminalId || layoutId,
+            panes: (layout.panes || []).map((pane) => ({
+              ...pane,
+              cells: sortTerminalPaneCells(pane.cells),
+            })),
+          },
+        ])
+    );
+    const savedActiveSessionId = openSessions.some((session) => session.id === nextActiveSessionId)
+      ? nextActiveSessionId
+      : (openSessions[openSessions.length - 1]?.id || null);
+    const savedActiveSession = openSessions.find((session) => session.id === savedActiveSessionId) || openSessions[0] || null;
+    const savedActiveTerminalId = savedActiveSession
+      ? resolveSessionRootTerminalId(
+          savedActiveSession,
+          savedActiveSession.id === nextActiveSessionId ? nextActiveTerminalId : lastTerminalRef.current[savedActiveSession.id],
+          savedLayouts,
+        )
+      : null;
+    const workspaceStatePayload = JSON.stringify({
+      version: 2,
+      activeSessionId: savedActiveSessionId,
+      activeTerminalId: savedActiveTerminalId,
+      sessions: openSessions.map((session) => {
+        const workspaceTabs = getSessionWorkspaceTabs(session, savedLayouts).map((tab) => ({
+          id: tab.id,
+          type: tab.type,
+          label: tab.label,
+          terminalIds: tab.terminalIds || [tab.id],
+        }));
+        const terminalOrder = Array.from(new Set([
+          ...workspaceTabs.flatMap((tab) => tab.terminalIds || []),
+          ...(session.terminals || []).map((term) => term.id),
+        ]));
+        const terminalById = new Map((session.terminals || []).map((term) => [term.id, term]));
+        return {
+          id: session.id,
+          serverId: session.serverId,
+          serverName: session.serverName,
+          host: session.host,
+          workspaceTabs,
+          terminals: terminalOrder
+            .map((terminalId) => terminalById.get(terminalId))
+            .filter(Boolean)
+            .map((term) => ({ id: term.id, label: term.label })),
+        };
+      }),
+      terminalPaneLayouts: savedLayouts,
+    });
+    window?.go?.main?.App?.SaveWorkspaceState?.(workspaceStatePayload).catch(() => {});
+  }, [activeSessionId, activeTerminalId, getSessionWorkspaceTabs, rememberWorkspace, rememberWorkspaceLoaded, resolveSessionRootTerminalId, sessions, terminalPaneLayouts, workspaceRestoreReady]);
+
+  useEffect(() => {
+    persistWorkspaceSnapshotRef.current = persistWorkspaceSnapshot;
+  }, [persistWorkspaceSnapshot]);
+
+  useEffect(() => {
+    persistWorkspaceSnapshot();
+  }, [persistWorkspaceSnapshot]);
+
   const terminalSubTabScrollStyle = useMemo(() => ({
     '--terminal-list-scrollbar-thumb': withAlpha(terminalSubTabTheme?.xterm?.cursor, 0.32, 'rgba(var(--accent-rgb), 0.32)'),
     '--terminal-list-scrollbar-thumb-hover': withAlpha(terminalSubTabTheme?.xterm?.blue || terminalSubTabTheme?.xterm?.cursor, 0.58, 'rgba(var(--accent-rgb), 0.58)'),
@@ -1644,6 +2782,116 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
       e.stopPropagation();
     }
   }, []);
+  const handleTerminalSubTabDockMouseDown = useCallback((e, session, term) => {
+    if (e.button !== 0) {
+      return;
+    }
+    const target = e.target instanceof Element ? e.target : null;
+    if (target?.closest('.terminal-sub-tab-close')) {
+      return;
+    }
+    const rootTerminals = getSessionRootTerminals(session);
+    const hasMovableTarget = ['top-left', 'top-right', 'bottom-left', 'bottom-right']
+      .some((dockTarget) => canMoveTerminalToDockTarget(session, term.id, dockTarget));
+    if (rootTerminals.length === 0 || !hasMovableTarget) {
+      return;
+    }
+
+    e.stopPropagation();
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let previewActive = false;
+    const createZoneStates = (zones) => getTerminalDockTargetStates(session, term.id, zones);
+    const resolveDockTarget = (clientX, clientY, zones = getTerminalDockPreviewZones()) => {
+      const hoveredTarget = getTerminalDockPreviewTarget(clientX, clientY, zones);
+      return hoveredTarget && canMoveTerminalToDockTarget(session, term.id, hoveredTarget) ? hoveredTarget : null;
+    };
+
+    const cleanup = () => {
+      clearTerminalDockLongPressTimer();
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('blur', handleWindowBlur);
+      terminalDockPointerCleanupRef.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    const closePreview = () => {
+      const hadPreview = previewActive;
+      previewActive = false;
+      cleanup();
+      setTerminalDockDragPreview(null);
+      if (hadPreview) {
+        terminalDockClickSuppressUntilRef.current = Date.now() + 180;
+      }
+    };
+
+    const handleMouseMove = (moveEvent) => {
+      if (!previewActive) {
+        if (Math.abs(moveEvent.clientX - startX) > 6 || Math.abs(moveEvent.clientY - startY) > 6) {
+          clearTerminalDockLongPressTimer();
+        }
+        return;
+      }
+      setTerminalDockDragPreview((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        return {
+          ...prev,
+          pointer: { x: moveEvent.clientX, y: moveEvent.clientY },
+          activeTarget: resolveDockTarget(moveEvent.clientX, moveEvent.clientY, prev.zones),
+        };
+      });
+    };
+
+    const handleMouseUp = (upEvent) => {
+      const finalTarget = previewActive
+        ? resolveDockTarget(upEvent.clientX, upEvent.clientY)
+        : null;
+      if (finalTarget) {
+        handleTerminalPaneDrop(session, term.id, finalTarget);
+      }
+      closePreview();
+    };
+
+    const handleWindowBlur = () => {
+      closePreview();
+    };
+
+    terminalDockPointerCleanupRef.current?.();
+    terminalDockPointerCleanupRef.current = cleanup;
+    clearTerminalDockLongPressTimer();
+    terminalDockLongPressTimerRef.current = setTimeout(() => {
+      const zones = getTerminalDockPreviewZones();
+      if (zones.length === 0) {
+        closePreview();
+        return;
+      }
+      previewActive = true;
+      document.body.style.cursor = 'grabbing';
+      document.body.style.userSelect = 'none';
+      setTerminalDockDragPreview({
+        sessionId: session.id,
+        terminalId: term.id,
+        label: term.label,
+        pointer: { x: startX, y: startY },
+        activeTarget: resolveDockTarget(startX, startY, zones),
+        zoneStates: createZoneStates(zones),
+        zones,
+      });
+    }, TERMINAL_DOCK_LONG_PRESS_MS);
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('blur', handleWindowBlur);
+  }, [canMoveTerminalToDockTarget, clearTerminalDockLongPressTimer, getSessionRootTerminals, getTerminalDockPreviewTarget, getTerminalDockPreviewZones, getTerminalDockTargetStates, handleTerminalPaneDrop]);
+  useEffect(() => () => {
+    clearTerminalDockLongPressTimer();
+    terminalDockPointerCleanupRef.current?.();
+  }, [clearTerminalDockLongPressTimer]);
   const fileManagerDockDropzones = useMemo(() => {
     const dockTargets = fileManagerDockPreview === 'tab'
       ? ['left', 'bottom']
@@ -2329,14 +3577,16 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
           
           {sessions.length > 0 && (
             <div className="tab-bar">
-              <button
-                className="btn btn-ghost btn-sm no-drag"
-                onClick={() => { setActiveSessionId(null); setActiveTerminalId(null); }}
-                title={t('返回主页')}
-                style={{ flexShrink: 0 }}
-              >
-                <House size={14} />
-              </button>
+              <Tiptop text={t('返回主页')} placement="bottom">
+                <button
+                  className="btn btn-ghost btn-sm no-drag"
+                  onClick={() => { setActiveSessionId(null); setActiveTerminalId(null); }}
+                  aria-label={t('返回主页')}
+                  style={{ flexShrink: 0 }}
+                >
+                  <House size={14} />
+                </button>
+              </Tiptop>
               <div className="tab-scroll" ref={tabScrollRef}>
                 <div ref={tabListRef} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', height: '100%' }}>
                   {sessions.map((s) => (
@@ -2360,17 +3610,19 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                         {s.serverName}
                       </span>
                       {(s.status === 'closed' || s.status === 'error') && (
-                        <span
-                          className="tab-reconnect no-drag"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            reconnectSession(s);
-                          }}
-                          title={t('重新连接')}
-                          style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-                        >
-                          <RefreshCw size={12} />
-                        </span>
+                        <Tiptop text={t('重新连接')} placement="bottom">
+                          <span
+                            className="tab-reconnect no-drag"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              reconnectSession(s);
+                            }}
+                            aria-label={t('重新连接')}
+                            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                          >
+                            <RefreshCw size={12} />
+                          </span>
+                        </Tiptop>
                       )}
                       <span className="tab-close no-drag" onClick={(e) => closeSession(s.id, e)}><X size={12} /></span>
                     </div>
@@ -2378,23 +3630,27 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                 </div>
                 <div ref={tabActionsRef} style={{ position: 'sticky', right: 0, display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, background: 'transparent' }}>
                   {tabsOverflow && (
-                    <button
-                      ref={sessionListBtnRef}
-                      className="btn btn-icon no-drag"
-                      onClick={toggleSessionList}
-                      title={t('服务器列表')}
-                    >
-                      <ChevronDown size={14} />
-                    </button>
+                    <Tiptop text={t('服务器列表')} placement="bottom">
+                      <button
+                        ref={sessionListBtnRef}
+                        className="btn btn-icon no-drag"
+                        onClick={toggleSessionList}
+                        aria-label={t('服务器列表')}
+                      >
+                        <ChevronDown size={14} />
+                      </button>
+                    </Tiptop>
                   )}
                   {sessions.length >= 2 && (
-                    <button
-                      className="btn btn-danger btn-sm no-drag"
-                      onClick={closeAllSessions}
-                      title={t('关闭全部')}
-                    >
-                      <X size={12} /> {t('关闭全部')}
-                    </button>
+                    <Tiptop text={t('关闭全部')} placement="bottom">
+                      <button
+                        className="btn btn-danger btn-sm no-drag"
+                        onClick={closeAllSessions}
+                        aria-label={t('关闭全部')}
+                      >
+                        <X size={12} /> {t('关闭全部')}
+                      </button>
+                    </Tiptop>
                   )}
                 </div>
               </div>
@@ -2403,12 +3659,84 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
           {sessions.length === 0 && <div style={{ flex: 1 }}></div>}
 
           <div className="window-controls">
-            {activeSessionId !== null && sessions.length > 0 && <button className="btn btn-ghost btn-icon no-drag" onClick={() => setAIPanelVisibility(!showAIPanel)} title={showAIPanel ? t('收起 AI 助手面板') : t('打开 AI 助手面板')} aria-label={showAIPanel ? t('收起 AI 助手面板') : t('打开 AI 助手面板')} style={{ color: showAIPanel ? 'var(--accent)' : undefined }}><Bot size={16} /></button>}
-            <button className="btn btn-ghost btn-icon no-drag" onClick={() => setShowSettings(true)} title={t('设置')} aria-label={t('设置')}><Settings size={16} /></button>
+            {activeSessionId !== null && sessions.length > 0 && (
+              <Tiptop text={showAIPanel ? t('收起 AI 助手面板') : t('打开 AI 助手面板')} placement="bottom">
+                <button
+                  className="btn btn-ghost btn-icon no-drag"
+                  onClick={() => setAIPanelVisibility(!showAIPanel)}
+                  aria-label={showAIPanel ? t('收起 AI 助手面板') : t('打开 AI 助手面板')}
+                  style={{ color: showAIPanel ? 'var(--accent)' : undefined }}
+                >
+                  <Bot size={16} />
+                </button>
+              </Tiptop>
+            )}
+            {startupUpdateInfo && (
+              <Tiptop text={`${t('发现新版本')} ${startupUpdateInfo.version}`} placement="bottom">
+                <div className="update-entry no-drag" style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <div
+                    className={`update-bubble${showUpdateBubble ? ' visible' : ''}`}
+                    style={{
+                      position: 'absolute',
+                      top: 'calc(100% + 10px)',
+                      right: -4,
+                      opacity: showUpdateBubble ? 1 : 0,
+                      transform: `translateY(${showUpdateBubble ? '0' : '-8px'}) scale(${showUpdateBubble ? '1' : '0.94'})`,
+                      pointerEvents: 'none',
+                      zIndex: Z.POPOVER,
+                    }}
+                  >
+                    <span className="update-bubble-pulse" />
+                    <span className="update-bubble-dot" />
+                    <div className="update-bubble-content">
+                      <span className="update-bubble-pill">{t('发现新版本')}</span>
+                      <span className="update-bubble-text">{startupUpdateInfo.version}</span>
+                    </div>
+                  </div>
+                  <button
+                    className={`btn btn-ghost btn-icon no-drag update-entry-button${isUpdateModalVisible ? ' active' : ''}`}
+                    onClick={() => {
+                      setShowUpdateBubble(false);
+                      setIsUpdateModalVisible(true);
+                    }}
+                    aria-label={`${t('发现新版本')} ${startupUpdateInfo.version}`}
+                    style={{
+                      color: isUpdateModalVisible ? 'var(--accent)' : 'var(--text-secondary)',
+                      position: 'relative',
+                      overflow: 'visible',
+                    }}
+                  >
+                    <Rocket size={16} />
+                    <span
+                      className="update-entry-badge"
+                      style={{
+                        position: 'absolute',
+                        top: 6,
+                        right: 6,
+                        width: 6,
+                        height: 6,
+                        borderRadius: '50%',
+                        background: 'var(--danger)',
+                        boxShadow: '0 0 0 2px var(--surface-base)',
+                      }}
+                    />
+                  </button>
+                </div>
+              </Tiptop>
+            )}
+            <Tiptop text={t('设置')} placement="bottom">
+              <button className="btn btn-ghost btn-icon no-drag" onClick={() => setShowSettings(true)} aria-label={t('设置')}><Settings size={16} /></button>
+            </Tiptop>
             <div className="window-divider" />
-            <button className="btn btn-ghost btn-icon no-drag" onClick={WindowMinimise} title={t('最小化')} aria-label={t('最小化')}><Minus size={14} /></button>
-            <button className="btn btn-ghost btn-icon no-drag" onClick={WindowToggleMaximise} title={t('最大化')} aria-label={t('最大化')}><Square size={14} /></button>
-            <button className="btn btn-ghost btn-icon no-drag" title={t('关闭')} aria-label={t('关闭')} onClick={handleCloseWindow}><X size={14} /></button>
+            <Tiptop text={t('最小化')} placement="bottom">
+              <button className="btn btn-ghost btn-icon no-drag" onClick={WindowMinimise} aria-label={t('最小化')}><Minus size={14} /></button>
+            </Tiptop>
+            <Tiptop text={t('最大化')} placement="bottom">
+              <button className="btn btn-ghost btn-icon no-drag" onClick={WindowToggleMaximise} aria-label={t('最大化')}><Square size={14} /></button>
+            </Tiptop>
+            <Tiptop text={t('关闭')} placement="bottom">
+              <button className="btn btn-ghost btn-icon no-drag" aria-label={t('关闭')} onClick={handleCloseWindow}><X size={14} /></button>
+            </Tiptop>
           </div>
         </div>
       </div>
@@ -2458,46 +3786,49 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
           />
         </div>
 
-        <div style={{ display: activeSessionId !== null ? 'flex' : 'none', flexDirection: 'row', height: '100%', flex: 1, overflow: 'hidden', position: 'relative' }}>
+        <div data-ai-workspace-root="true" style={{ display: activeSessionId !== null ? 'flex' : 'none', flexDirection: 'row', height: '100%', flex: 1, overflow: 'hidden', position: 'relative' }}>
           {aiPanelNode && probePanelPosition === 'right' && (
             showAIPanel ? (
               <>
                 {aiPanelNode}
-                <div
-                  className={`split-resizer-v${collapseDragIntent === 'ai' ? ' armed' : ''}`}
-                  onMouseDown={(e) => startDrag(e, 'ai')}
-                  onClick={() => {
-                    if (shouldIgnoreResizerClick()) return;
-                    setAIPanelVisibility(false);
-                  }}
-                  title={t('收起 AI 助手面板')}
-                  aria-label={t('收起 AI 助手面板')}
-                />
+                <Tiptop text={t('收起 AI 助手面板')} placement="bottom" style={{ display: 'flex' }}>
+                  <div
+                    className={`split-resizer-v${collapseDragIntent === 'ai' ? ' armed' : ''}`}
+                    onMouseDown={(e) => startDrag(e, 'ai')}
+                    onClick={() => {
+                      if (shouldIgnoreResizerClick()) return;
+                      setAIPanelVisibility(false);
+                    }}
+                    aria-label={t('收起 AI 助手面板')}
+                  />
+                </Tiptop>
               </>
             ) : (
-              <button
-                type="button"
-                className="panel-collapse-strip panel-collapse-strip-vertical panel-collapse-strip-left no-drag"
-                onClick={() => setAIPanelVisibility(true)}
-                title={t('打开 AI 助手面板')}
-                aria-label={t('打开 AI 助手面板')}
-              >
-                <ChevronRight size={14} />
-              </button>
+              <Tiptop text={t('打开 AI 助手面板')} placement="bottom">
+                <button
+                  type="button"
+                  className="panel-collapse-strip panel-collapse-strip-vertical panel-collapse-strip-left no-drag"
+                  onClick={() => setAIPanelVisibility(true)}
+                  aria-label={t('打开 AI 助手面板')}
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </Tiptop>
             )
           )}
           {/* 系统监控探针面板（独立分栏，左侧） */}
           {probePanelNode && probePanelPosition === 'left' && (
             probePanelCollapsed ? (
-              <button
-                type="button"
-                className="panel-collapse-strip panel-collapse-strip-vertical panel-collapse-strip-left no-drag"
-                onClick={() => setProbePanelCollapsedPersistent(false)}
-                title={t('展开监控面板')}
-                aria-label={t('展开监控面板')}
-              >
-                <ChevronRight size={14} />
-              </button>
+              <Tiptop text={t('展开监控面板')} placement="bottom">
+                <button
+                  type="button"
+                  className="panel-collapse-strip panel-collapse-strip-vertical panel-collapse-strip-left no-drag"
+                  onClick={() => setProbePanelCollapsedPersistent(false)}
+                  aria-label={t('展开监控面板')}
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </Tiptop>
             ) : (
               <>
                 <div
@@ -2522,23 +3853,24 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                   )}
                   {probePanelNode}
                 </div>
-                <div
-                  className={`split-resizer-v probe-resizer${collapseDragIntent === 'probe' ? ' armed' : ''}`}
-                  onMouseDown={(e) => startDrag(e, 'probe')}
-                  onClick={() => {
-                    if (shouldIgnoreResizerClick()) return;
-                    setProbePanelCollapsedPersistent(true);
-                  }}
-                  title={t('收起监控面板')}
-                  aria-label={t('收起监控面板')}
-                />
+                <Tiptop text={t('收起监控面板')} placement="bottom" style={{ display: 'flex' }}>
+                  <div
+                    className={`split-resizer-v probe-resizer${collapseDragIntent === 'probe' ? ' armed' : ''}`}
+                    onMouseDown={(e) => startDrag(e, 'probe')}
+                    onClick={() => {
+                      if (shouldIgnoreResizerClick()) return;
+                      setProbePanelCollapsedPersistent(true);
+                    }}
+                    aria-label={t('收起监控面板')}
+                  />
+                </Tiptop>
               </>
             )
           )}
           {/* 左侧主区域：标签、终端子标签、会话内容 */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100%', overflow: 'hidden' }}>
             {/* ── 终端子标签栏（多终端支持） ──────────────────── */}
-            {activeSession && (contentTab === 'terminal' || contentTab === 'process' || contentTab === 'network' || contentTab === 'history' || (fileManagerPosition === 'tab' && contentTab === 'files')) && activeSession.status === 'connected' && activeSession.terminals && activeSession.terminals.length >= 1 && (
+            {activeSession && (contentTab === 'terminal' || contentTab === 'process' || contentTab === 'network' || contentTab === 'history' || (fileManagerPosition === 'tab' && contentTab === 'files')) && isSessionWorkspaceVisible(activeSession) && activeSession.terminals && activeSession.terminals.length >= 1 && (
               <div className="terminal-sub-tab-bar">
                 <div
                   ref={terminalSubTabScrollRef}
@@ -2549,23 +3881,57 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                   onScroll={handleTerminalSubTabScroll}
                   onClickCapture={handleTerminalSubTabClickCapture}
                 >
-                  {activeSession.terminals.map((term) => (
-                    <div
-                      key={term.id}
-                      className={`terminal-sub-tab ${activeTerminalId === term.id ? 'active' : ''}`}
-                      onClick={() => { setActiveTerminalId(term.id); setContentTab('terminal'); lastTerminalRef.current[activeSession.id] = term.id; }}
-                      title={term.label}
-                    >
-                      <Monitor size={11} />
-                      <span>{term.label}</span>
-                      {activeSession.terminals.length > 1 && (
-                        <span
-                          className="terminal-sub-tab-close"
-                          onClick={(e) => closeTerminal(activeSession.id, term.id, e)}
-                        ><X size={10} /></span>
-                      )}
-                    </div>
-                  ))}
+                  {activeSessionRootTerminals.map((term) => {
+                    const canPreviewDock = term.type === 'terminal' && activeSessionRootTerminals.length > 1;
+                    return (
+                      <Tiptop key={term.id} text={term.label} placement="bottom">
+                        <div
+                          className={`terminal-sub-tab ${activeTerminalId === term.id ? 'active' : ''}`}
+                          onMouseDown={canPreviewDock ? (e) => handleTerminalSubTabDockMouseDown(e, activeSession, term) : undefined}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            setTabContextMenu(null);
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setTerminalTabContextMenu({
+                              sessionId: activeSession.id,
+                              terminalId: term.id,
+                              type: term.type,
+                              terminalIds: term.terminalIds,
+                              label: term.label,
+                              x: rect.left,
+                              y: rect.bottom + 4,
+                            });
+                          }}
+                          onClick={() => {
+                            if (shouldIgnoreTerminalDockClick()) return;
+                            setTerminalTabContextMenu(null);
+                            setActiveTerminalId(term.id);
+                            setContentTab('terminal');
+                            lastTerminalRef.current[activeSession.id] = term.id;
+                            persistWorkspaceSnapshotRef.current({
+                              activeSessionId: activeSession.id,
+                              activeTerminalId: term.id,
+                            });
+                          }}
+                        >
+                          <Monitor size={11} />
+                          <span>{term.label}</span>
+                          {activeSessionRootTerminals.length > 1 && (
+                            <span
+                              className="terminal-sub-tab-close"
+                              onClick={(e) => {
+                                if (term.type === 'group') {
+                                  closeTerminalGroup(activeSession.id, term.id, term.terminalIds, e);
+                                  return;
+                                }
+                                closeTerminal(activeSession.id, term.id, e);
+                              }}
+                            ><X size={10} /></span>
+                          )}
+                        </div>
+                      </Tiptop>
+                    );
+                  })}
                 </div>
                 <div className="terminal-sub-tab-actions" ref={terminalSubTabActionsRef}>
                   {fileManagerPosition !== 'tab' && (fileManagerDockPreview === 'left' || fileManagerDockPreview === 'bottom') && (
@@ -2645,7 +4011,6 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                           type="button"
                           className="panel-collapse-strip panel-collapse-strip-vertical panel-collapse-strip-left no-drag"
                           onClick={() => setFileManagerCollapsedPersistent(false)}
-                          title={t('展开文件管理面板')}
                           aria-label={t('展开文件管理面板')}
                         >
                           <ChevronRight size={14} />
@@ -2676,7 +4041,6 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                               if (shouldIgnoreResizerClick()) return;
                               setFileManagerCollapsedPersistent(true);
                             }}
-                            title={t('收起文件管理面板')}
                             aria-label={t('收起文件管理面板')}
                             style={{ zIndex: Z.PANEL_BUTTON, marginLeft: '-2px', marginRight: '-2px' }}
                           />
@@ -2685,33 +4049,153 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                     )}
 
                     {/* 主要视口 (终端/标签页模式下的文件) */}
-                    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
+                    <div id="terminal-dock-preview-host" style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
                       <div style={{ display: (contentTab === 'terminal' || s.status !== 'connected') ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0, height: '100%', position: 'relative' }}>
-                        {mountedSessions.has(s.id) && (s.terminals && s.terminals.length > 0 ? s.terminals : [{ id: s.id, label: t('终端') }]).map((t) => {
-                          const isTermActive = (contentTab === 'terminal' || s.status !== 'connected') && activeTerminalId === t.id;
-                          return (
-                          <div key={t.id} style={{
-                            position: 'absolute', inset: 0,
-                            display: 'flex',
-                            visibility: isTermActive ? 'visible' : 'hidden',
-                            pointerEvents: isTermActive ? 'auto' : 'none',
-                            contain: isTermActive ? 'none' : 'strict',
-                            flexDirection: 'column',
-                          }}>
-                            <ErrorBoundary label={`终端 ${t.id} 渲染出错`}>
-                              <Terminal
-                                sessionId={t.id}
-                                serverId={s.id}
-                                historyServerId={s.serverId}
-                                status={s.status}
-                                isActive={activeSessionId === s.id && activeTerminalId === t.id && (contentTab === 'terminal' || fileManagerPosition !== 'tab')}
-                                serverName={s.serverName}
-                                connectedSessions={connectedSessions}
-                              />
-                            </ErrorBoundary>
-                          </div>
-                        );
-                        })}
+                        {mountedSessions.has(s.id) && (
+                          isSessionWorkspaceVisible(s) ? (() => {
+                            const isTerminalViewActive = activeSessionId === s.id && contentTab === 'terminal';
+                            const isWorkspacePreview = s.status !== 'connected';
+                            const workspaceTabs = getSessionWorkspaceTabs(s);
+                            const activeWorkspaceTab = workspaceTabs.find((tab) => tab.id === activeTerminalId);
+                            const activeLayout = activeWorkspaceTab?.type === 'group' ? terminalPaneLayouts[activeWorkspaceTab.id] : null;
+                            const activeLayoutId = activeLayout?.sessionId === s.id ? activeWorkspaceTab.id : null;
+                            const terminalPlacements = new Map();
+                            if (activeLayoutId) {
+                              terminalPlacements.set(activeLayout.rootTerminalId || activeLayoutId, {
+                                cells: getSessionRootPaneCells(activeLayoutId),
+                                layoutId: activeLayoutId,
+                                paneId: null,
+                                showHeader: false,
+                              });
+                              getSessionPanes(activeLayoutId).forEach((pane) => {
+                                terminalPlacements.set(pane.terminalId, {
+                                  cells: pane.cells,
+                                  layoutId: activeLayoutId,
+                                  paneId: pane.id,
+                                  showHeader: true,
+                                });
+                              });
+                            } else if (activeWorkspaceTab?.type === 'terminal') {
+                              terminalPlacements.set(activeWorkspaceTab.id, {
+                                cells: TERMINAL_PANE_CELL_IDS,
+                                layoutId: null,
+                                paneId: null,
+                                showHeader: false,
+                              });
+                            }
+                            return getEffectiveTerminals(s).map((term) => {
+                              const placement = terminalPlacements.get(term.id);
+                              const isTermVisible = !!placement && isTerminalViewActive;
+                              const isGrouped = !!placement?.layoutId;
+                              return (
+                                <div
+                                  key={term.id}
+                                  style={{
+                                    position: 'absolute',
+                                    ...getTerminalPaneAbsolutePlacement(placement?.cells || TERMINAL_PANE_CELL_IDS),
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    visibility: isTermVisible ? 'visible' : 'hidden',
+                                    pointerEvents: isTermVisible ? 'auto' : 'none',
+                                    contain: isTermVisible ? 'none' : 'strict',
+                                    minWidth: 0,
+                                    minHeight: 0,
+                                    overflow: 'hidden',
+                                    border: isGrouped ? '1px solid var(--border)' : 'none',
+                                    borderRadius: 0,
+                                    background: 'var(--surface-base)',
+                                  }}
+                                >
+                                  {placement?.showHeader && (
+                                    <div
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 8,
+                                        minHeight: 32,
+                                        padding: '0 10px',
+                                        borderBottom: '1px solid var(--border-subtle)',
+                                        background: 'var(--surface-raised)',
+                                        color: 'var(--text-secondary)',
+                                        fontSize: 12,
+                                        fontWeight: 600,
+                                        flexShrink: 0,
+                                      }}
+                                    >
+                                      <Monitor size={12} />
+                                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {term.label}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        className="btn btn-ghost btn-sm no-drag"
+                                        onClick={(e) => closeTerminalPane(placement.layoutId, placement.paneId, e)}
+                                        aria-label={t('关闭分屏')}
+                                        style={{ minHeight: 24, padding: '0 6px' }}
+                                      >
+                                        <X size={12} />
+                                      </button>
+                                    </div>
+                                  )}
+                                  <div style={{ flex: 1, minHeight: 0 }}>
+                                    {isWorkspacePreview ? (
+                                      <div
+                                        style={{
+                                          height: '100%',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          color: 'var(--text-tertiary)',
+                                          fontSize: 13,
+                                          letterSpacing: '0.01em',
+                                          background: 'var(--surface-base)',
+                                        }}
+                                      >
+                                        {t('正在恢复终端工作区…')}
+                                      </div>
+                                    ) : (
+                                      <ErrorBoundary label={`终端 ${term.id} 渲染出错`}>
+                                        <Terminal
+                                          sessionId={term.id}
+                                          serverId={s.id}
+                                          historyServerId={s.serverId}
+                                          status={s.status}
+                                          isActive={isTermVisible}
+                                          serverName={s.serverName}
+                                          connectedSessions={connectedSessions}
+                                        />
+                                      </ErrorBoundary>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            });
+                          })() : (getEffectiveTerminals(s).map((t) => {
+                            const isTermActive = (contentTab === 'terminal' || s.status !== 'connected') && activeTerminalId === t.id;
+                            return (
+                              <div key={t.id} style={{
+                                position: 'absolute', inset: 0,
+                                display: 'flex',
+                                visibility: isTermActive ? 'visible' : 'hidden',
+                                pointerEvents: isTermActive ? 'auto' : 'none',
+                                contain: isTermActive ? 'none' : 'strict',
+                                flexDirection: 'column',
+                              }}>
+                                <ErrorBoundary label={`终端 ${t.id} 渲染出错`}>
+                                  <Terminal
+                                    sessionId={t.id}
+                                    serverId={s.id}
+                                    historyServerId={s.serverId}
+                                    status={s.status}
+                                    isActive={activeSessionId === s.id && activeTerminalId === t.id && (contentTab === 'terminal' || fileManagerPosition !== 'tab')}
+                                    serverName={s.serverName}
+                                    connectedSessions={connectedSessions}
+                                  />
+                                </ErrorBoundary>
+                              </div>
+                            );
+                          }))
+                        )}
                       </div>
                       {s.status === 'connected' && fileManagerPosition === 'tab' && mountedSessions.has(s.id) && (
                         <div style={{ display: contentTab === 'files' ? 'flex' : 'none', height: '100%', flex: 1, flexDirection: 'column' }}>
@@ -2753,10 +4237,9 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                           type="button"
                           className="panel-collapse-strip panel-collapse-strip-horizontal panel-collapse-strip-bottom no-drag"
                           onClick={() => setFileManagerCollapsedPersistent(false)}
-                          title={t('展开文件管理面板')}
                           aria-label={t('展开文件管理面板')}
                         >
-                          <ChevronDown size={14} />
+                          <ChevronUp size={14} />
                         </button>
                       ) : (
                         <>
@@ -2767,7 +4250,6 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                               if (shouldIgnoreResizerClick()) return;
                               setFileManagerCollapsedPersistent(true);
                             }}
-                            title={t('收起文件管理面板')}
                             aria-label={t('收起文件管理面板')}
                             style={{ zIndex: Z.PANEL_BUTTON, marginTop: '-2px', marginBottom: '-2px' }}
                           />
@@ -2793,6 +4275,37 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                     )}
                   </div>
                 ))}
+                {terminalDockDragPreview && terminalDockDragPreview.zones.length > 0 && (
+                  <>
+                    <div
+                      className="terminal-pane-dock-preview-layer"
+                      aria-hidden="true"
+                      style={{ position: 'fixed', inset: 0, zIndex: Z.PANEL_BUTTON + 7 }}
+                    >
+                      {terminalDockDragPreview.zones.map((zone) => (
+                        <div
+                          key={zone.target}
+                          className={`terminal-pane-dock-preview-slot${terminalDockDragPreview.activeTarget === zone.target ? ' active' : ''}${terminalDockDragPreview.zoneStates?.[zone.target]?.occupied ? ' occupied' : ''}${terminalDockDragPreview.zoneStates?.[zone.target]?.enabled === false ? ' disabled' : ''}`}
+                          style={zone.style}
+                        >
+                          <span className="terminal-pane-dock-preview-label">{zone.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div
+                      className="terminal-pane-dock-drag-ghost"
+                      aria-hidden="true"
+                      style={{
+                        left: `${terminalDockDragPreview.pointer.x}px`,
+                        top: `${terminalDockDragPreview.pointer.y}px`,
+                        zIndex: Z.MODAL - 1,
+                      }}
+                    >
+                      <Monitor size={12} />
+                      <span>{terminalDockDragPreview.label}</span>
+                    </div>
+                  </>
+                )}
               </div>
               {fileManagerDockDropzones.filter(({ target }) => target !== 'tab').map(({ target, style }) => (
                 <div
@@ -2851,27 +4364,29 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
           {/* 系统监控探针面板（独立分栏，右侧） */}
           {probePanelNode && probePanelPosition === 'right' && (
             probePanelCollapsed ? (
-              <button
-                type="button"
-                className="panel-collapse-strip panel-collapse-strip-vertical panel-collapse-strip-right no-drag"
-                onClick={() => setProbePanelCollapsedPersistent(false)}
-                title={t('展开监控面板')}
-                aria-label={t('展开监控面板')}
-              >
-                <ChevronLeft size={14} />
-              </button>
+              <Tiptop text={t('展开监控面板')} placement="bottom">
+                <button
+                  type="button"
+                  className="panel-collapse-strip panel-collapse-strip-vertical panel-collapse-strip-right no-drag"
+                  onClick={() => setProbePanelCollapsedPersistent(false)}
+                  aria-label={t('展开监控面板')}
+                >
+                  <ChevronLeft size={14} />
+                </button>
+              </Tiptop>
             ) : (
               <>
-                <div
-                  className={`split-resizer-v probe-resizer${collapseDragIntent === 'probe' ? ' armed' : ''}`}
-                  onMouseDown={(e) => startDrag(e, 'probe')}
-                  onClick={() => {
-                    if (shouldIgnoreResizerClick()) return;
-                    setProbePanelCollapsedPersistent(true);
-                  }}
-                  title={t('收起监控面板')}
-                  aria-label={t('收起监控面板')}
-                />
+                <Tiptop text={t('收起监控面板')} placement="bottom" style={{ display: 'flex' }}>
+                  <div
+                    className={`split-resizer-v probe-resizer${collapseDragIntent === 'probe' ? ' armed' : ''}`}
+                    onMouseDown={(e) => startDrag(e, 'probe')}
+                    onClick={() => {
+                      if (shouldIgnoreResizerClick()) return;
+                      setProbePanelCollapsedPersistent(true);
+                    }}
+                    aria-label={t('收起监控面板')}
+                  />
+                </Tiptop>
                 <div
                   className="probe-panel-wrapper"
                   style={{
@@ -2899,28 +4414,30 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
           {aiPanelNode && probePanelPosition === 'left' && (
             showAIPanel ? (
               <>
-                <div
-                  className={`split-resizer-v${collapseDragIntent === 'ai' ? ' armed' : ''}`}
-                  onMouseDown={(e) => startDrag(e, 'ai')}
-                  onClick={() => {
-                    if (shouldIgnoreResizerClick()) return;
-                    setAIPanelVisibility(false);
-                  }}
-                  title={t('收起 AI 助手面板')}
-                  aria-label={t('收起 AI 助手面板')}
-                />
+                <Tiptop text={t('收起 AI 助手面板')} placement="bottom" style={{ display: 'flex' }}>
+                  <div
+                    className={`split-resizer-v${collapseDragIntent === 'ai' ? ' armed' : ''}`}
+                    onMouseDown={(e) => startDrag(e, 'ai')}
+                    onClick={() => {
+                      if (shouldIgnoreResizerClick()) return;
+                      setAIPanelVisibility(false);
+                    }}
+                    aria-label={t('收起 AI 助手面板')}
+                  />
+                </Tiptop>
                 {aiPanelNode}
               </>
             ) : (
-              <button
-                type="button"
-                className="panel-collapse-strip panel-collapse-strip-vertical panel-collapse-strip-right no-drag"
-                onClick={() => setAIPanelVisibility(true)}
-                title={t('打开 AI 助手面板')}
-                aria-label={t('打开 AI 助手面板')}
-              >
-                <ChevronLeft size={14} />
-              </button>
+              <Tiptop text={t('打开 AI 助手面板')} placement="bottom">
+                <button
+                  type="button"
+                  className="panel-collapse-strip panel-collapse-strip-vertical panel-collapse-strip-right no-drag"
+                  onClick={() => setAIPanelVisibility(true)}
+                  aria-label={t('打开 AI 助手面板')}
+                >
+                  <ChevronLeft size={14} />
+                </button>
+              </Tiptop>
             )
           )}
         </div>
@@ -3032,7 +4549,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
       )}
 
       {/* ── Toasts ────────────────────────────────────────── */}
-      <Toast toasts={toasts} />
+      <Toast toasts={toasts} onClose={removeToast} closeLabel={t('关闭')} />
       <GlobalDialog />
 
       {/* ── 连接进度卡片（只跟随当前激活会话） ── */}
@@ -3112,6 +4629,53 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
 
       <GlobalContextMenu />
 
+      {/* ── 终端子标签右键菜单 ── */}
+      {terminalTabContextMenu && (() => {
+        const session = sessions.find((item) => item.id === terminalTabContextMenu.sessionId);
+        const moveTargets = [
+          { target: 'top-left', label: t('移至左上面板') },
+          { target: 'top-right', label: t('移至右上面板') },
+          { target: 'bottom-left', label: t('移至左下面板') },
+          { target: 'bottom-right', label: t('移至右下面板') },
+        ];
+        return (
+          <div className="tab-context-menu" style={{ left: terminalTabContextMenu.x, top: terminalTabContextMenu.y }}>
+            {terminalTabContextMenu.type === 'terminal' && moveTargets.map((item) => {
+              const occupied = !!session && isTerminalDockTargetOccupied(session, terminalTabContextMenu.terminalId, item.target);
+              const enabled = !!session && canMoveTerminalToDockTarget(session, terminalTabContextMenu.terminalId, item.target);
+              return (
+                <div
+                  key={item.target}
+                  className={`tab-context-menu-item${occupied ? ' occupied' : ''}`}
+                  onClick={() => {
+                    if (!session || !enabled) return;
+                    moveTerminalToDockTarget(session, terminalTabContextMenu.terminalId, item.target);
+                  }}
+                  style={enabled ? undefined : { opacity: 0.42, pointerEvents: 'none' }}
+                >
+                  <span className="tab-context-menu-state">{occupied ? '☒' : '☑'}</span> {item.label}
+                </div>
+              );
+            })}
+            <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+            <div
+              className="tab-context-menu-item"
+              onClick={(e) => {
+                const { sessionId, terminalId, type, terminalIds } = terminalTabContextMenu;
+                setTerminalTabContextMenu(null);
+                if (type === 'group') {
+                  closeTerminalGroup(sessionId, terminalId, terminalIds, e);
+                  return;
+                }
+                closeTerminal(sessionId, terminalId, e);
+              }}
+            >
+              <X size={14} /> {terminalTabContextMenu.type === 'group' ? t('关闭分屏组') : t('关闭终端')}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── 标签右键菜单 ── */}
       {tabContextMenu && (
         <div className="tab-context-menu" style={{ left: tabContextMenu.x, top: tabContextMenu.y }}>
@@ -3171,13 +4735,15 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                 >
                   <span className={`status-dot ${s.status === 'connecting' ? 'connecting' : s.status === 'connected' ? 'online' : 'offline'}`} />
                   <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.serverName}</span>
-                  <span
-                    onClick={(e) => { e.stopPropagation(); closeSession(s.id, e); }}
-                    title={t('关闭')}
-                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', opacity: 0.5, flexShrink: 0 }}
-                  >
-                    <X size={13} />
-                  </span>
+                  <Tiptop text={t('关闭')} placement="bottom">
+                    <span
+                      onClick={(e) => { e.stopPropagation(); closeSession(s.id, e); }}
+                      aria-label={t('关闭')}
+                      style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', opacity: 0.5, flexShrink: 0 }}
+                    >
+                      <X size={13} />
+                    </span>
+                  </Tiptop>
                 </div>
               ))}
             {sessions.filter(s => !sessionListQuery || (s.serverName || '').toLowerCase().includes(sessionListQuery.toLowerCase()) || (s.host || '').toLowerCase().includes(sessionListQuery.toLowerCase())).length === 0 && (

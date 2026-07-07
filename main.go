@@ -74,6 +74,9 @@ func main() {
 		Width:     1440,
 		Height:    900,
 		Frameless: true,
+		DragAndDrop: &options.DragAndDrop{
+			EnableFileDrop: true,
+		},
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},

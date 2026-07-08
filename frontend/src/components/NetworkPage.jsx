@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as AppGo from '../../wailsjs/go/main/App.js';
 import { useTranslation } from '../i18n.js';
+import Tiptop from './Tiptop.jsx';
 import { formatRate, formatTransferTotal } from './probeFormatting.js';
 import { Globe, RefreshCw, ArrowDown, ArrowUp, Info, ArrowUpDown } from 'lucide-react';
 
@@ -315,16 +316,18 @@ export default function NetworkPage({ sessionId, active }) {
                 const peers = Array.isArray(item.peers) ? item.peers : [];
                 const active = activeDetailKey === key;
                 return (
-                  <div key={key} title={peers.length > 0 ? t('点击查看连接明细') : t('无连接可展开')} onClick={() => openConnectionDetail(item, key)} style={{ display: 'grid', gridTemplateColumns: connectionTableColumns, gap: 0, minWidth: connectionTableMinWidth, borderBottom: '1px solid var(--border-subtle)', alignItems: 'center', fontSize: 12.5, cursor: peers.length > 0 ? 'pointer' : 'not-allowed', opacity: peers.length > 0 ? 1 : 0.72, background: active ? 'var(--surface-active)' : 'transparent' }}>
-                    <span style={{ padding: '8px 6px', textAlign: 'right', borderRight: '1px solid var(--border-light)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>{item.pid || '-'}</span>
-                    <span style={{ padding: '8px 6px', borderRight: '1px solid var(--border-light)', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.name || '-'}>{item.name || '-'}</span>
-                    <span style={{ padding: '8px 6px', borderRight: '1px solid var(--border-light)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.listenIP || '*'}>{item.listenIP || '*'}</span>
-                    <span style={{ padding: '8px 6px', textAlign: 'right', borderRight: '1px solid var(--border-light)', color: 'var(--accent)', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{item.port || '-'}</span>
-                    <span style={{ padding: '8px 6px', textAlign: 'right', borderRight: '1px solid var(--border-light)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>{item.ipCount ?? 0}</span>
-                    <span style={{ padding: '8px 6px', textAlign: 'right', borderRight: '1px solid var(--border-light)', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{item.connCount ?? 0}</span>
-                    <span style={{ padding: '8px 6px', textAlign: 'right', borderRight: '1px solid var(--border-light)', color: 'var(--success)', fontFamily: 'var(--font-mono)' }}>{formatOptionalTransfer(item.upload)}</span>
-                    <span style={{ padding: '8px 6px', textAlign: 'right', color: 'var(--accent)', fontFamily: 'var(--font-mono)' }}>{formatOptionalTransfer(item.download)}</span>
-                  </div>
+                  <Tiptop key={key} text={peers.length > 0 ? t('点击查看连接明细') : t('无连接可展开')}>
+                    <div onClick={() => openConnectionDetail(item, key)} style={{ display: 'grid', gridTemplateColumns: connectionTableColumns, gap: 0, minWidth: connectionTableMinWidth, borderBottom: '1px solid var(--border-subtle)', alignItems: 'center', fontSize: 12.5, cursor: peers.length > 0 ? 'pointer' : 'not-allowed', opacity: peers.length > 0 ? 1 : 0.72, background: active ? 'var(--surface-active)' : 'transparent' }}>
+                      <span style={{ padding: '8px 6px', textAlign: 'right', borderRight: '1px solid var(--border-light)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>{item.pid || '-'}</span>
+                      <span style={{ padding: '8px 6px', borderRight: '1px solid var(--border-light)', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.name || '-'}>{item.name || '-'}</span>
+                      <span style={{ padding: '8px 6px', borderRight: '1px solid var(--border-light)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.listenIP || '*'}>{item.listenIP || '*'}</span>
+                      <span style={{ padding: '8px 6px', textAlign: 'right', borderRight: '1px solid var(--border-light)', color: 'var(--accent)', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{item.port || '-'}</span>
+                      <span style={{ padding: '8px 6px', textAlign: 'right', borderRight: '1px solid var(--border-light)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>{item.ipCount ?? 0}</span>
+                      <span style={{ padding: '8px 6px', textAlign: 'right', borderRight: '1px solid var(--border-light)', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{item.connCount ?? 0}</span>
+                      <span style={{ padding: '8px 6px', textAlign: 'right', borderRight: '1px solid var(--border-light)', color: 'var(--success)', fontFamily: 'var(--font-mono)' }}>{formatOptionalTransfer(item.upload)}</span>
+                      <span style={{ padding: '8px 6px', textAlign: 'right', color: 'var(--accent)', fontFamily: 'var(--font-mono)' }}>{formatOptionalTransfer(item.download)}</span>
+                    </div>
+                  </Tiptop>
                 );
               }) : (
                 <div style={{ minWidth: connectionTableMinWidth, padding: 18, color: 'var(--text-tertiary)', fontSize: 13, textAlign: 'center' }}>{loading ? t('加载中...') : connections.length > 0 ? t('空闲监听端口已隐藏') : t('暂无网络连接数据')}</div>

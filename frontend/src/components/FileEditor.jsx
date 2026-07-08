@@ -15,8 +15,10 @@ import { xml } from '@codemirror/lang-xml';
 import { sql } from '@codemirror/lang-sql';
 import { StreamLanguage } from '@codemirror/language';
 import { shell } from '@codemirror/legacy-modes/mode/shell';
-import { X, Pencil, Save, SquarePen } from 'lucide-react';
+import { X, Pencil, Save, SquarePen, Upload } from 'lucide-react';
 import { Z } from '../constants/zIndex';
+import { getSessionWorkbenchState, setSessionWorkbenchState, subscribeSessionWorkbenchState } from '../utils/fileWorkbench.js';
+import Tiptop from './Tiptop.jsx';
 
 // Debian sources.list 语法高亮
 const debianList = StreamLanguage.define({
@@ -123,6 +125,8 @@ export default function FileEditor({
   splitPosition = 'right',
   onSplitPositionChange,
   isActive = true,
+  workbenchSessionId = '',
+  workbenchOwnerId = '',
 }) {
   const { t } = useTranslation();
   const C = getTerminalTheme().container;
@@ -137,8 +141,11 @@ export default function FileEditor({
     if (minimized && activePath) setMinimized(false);
   }, [activePath]);
   const [contextMenu, setContextMenu] = useState(null);
+  const [workbenchState, setWorkbenchStateState] = useState(() => getSessionWorkbenchState(workbenchSessionId));
 
   const activeFile = files.find(f => f.path === activePath) || files[0];
+  const showWorkbenchTabs = !!workbenchState.uploadOpen;
+  const activeWorkbenchTab = showWorkbenchTabs && workbenchState.activeTab === 'upload' ? 'upload' : 'editor';
 
   // popup 模式的位置状态
   const [popupPos, setPopupPos] = useState(() => {
@@ -155,6 +162,47 @@ export default function FileEditor({
   useEffect(() => {
     popupPosRef.current = popupPos;
   }, [popupPos]);
+
+  useEffect(() => {
+    if (!workbenchSessionId) return undefined;
+    return subscribeSessionWorkbenchState(workbenchSessionId, setWorkbenchStateState);
+  }, [workbenchSessionId]);
+
+  useEffect(() => {
+    if (!workbenchSessionId || !workbenchOwnerId) return undefined;
+    if (mode === 'split' && isActive) {
+      const current = getSessionWorkbenchState(workbenchSessionId);
+      setSessionWorkbenchState(workbenchSessionId, {
+        editorSplitOpen: true,
+        editorOwnerId: workbenchOwnerId,
+        activeTab: current.uploadOpen ? current.activeTab || 'upload' : 'editor',
+      });
+      return () => {
+        const latest = getSessionWorkbenchState(workbenchSessionId);
+        if (latest.editorOwnerId === workbenchOwnerId) {
+          setSessionWorkbenchState(workbenchSessionId, {
+            editorSplitOpen: false,
+            editorOwnerId: '',
+            activeTab: latest.uploadOpen ? 'upload' : 'editor',
+          });
+        }
+      };
+    }
+    const latest = getSessionWorkbenchState(workbenchSessionId);
+    if (latest.editorOwnerId === workbenchOwnerId && latest.editorSplitOpen) {
+      setSessionWorkbenchState(workbenchSessionId, {
+        editorSplitOpen: false,
+        editorOwnerId: '',
+        activeTab: latest.uploadOpen ? 'upload' : 'editor',
+      });
+    }
+    return undefined;
+  }, [mode, isActive, workbenchOwnerId, workbenchSessionId]);
+
+  const handleWorkbenchTabChange = useCallback((tab) => {
+    if (!workbenchSessionId) return;
+    setSessionWorkbenchState(workbenchSessionId, { activeTab: tab });
+  }, [workbenchSessionId]);
 
   // 当前激活文件的内容（优先使用编辑缓存）
   const currentContent = activeFile
@@ -336,34 +384,13 @@ export default function FileEditor({
     const host = document.getElementById('editor-split-host');
     const container = document.getElementById('session-editor-container');
     if (!host || !container) return;
+    if (!isActive || mode !== 'split') return;
 
-    if (!isActive || mode !== 'split') {
-      // 非活跃或非分栏模式：隐藏 split host 和 resizer
-      const resizer = document.getElementById('editor-split-resizer');
-      const mainContent = document.getElementById('editor-main-content');
-      if (resizer) resizer.style.display = 'none';
-      if (mainContent) mainContent.style.order = '1';
-      container.style.flexDirection = 'row';
-      host.style.width = '0px';
-      host.style.height = '100%';
-      host.style.minWidth = '0px';
-      host.style.maxWidth = '0px';
-      host.style.minHeight = '0px';
-      host.style.maxHeight = '0px';
-      host.style.borderLeft = 'none';
-      host.style.borderRight = 'none';
-      host.style.borderTop = 'none';
-      host.style.order = '2';
-      return;
-    }
-
-    // 显示 resize handle
     const resizer = document.getElementById('editor-split-resizer');
     const mainContent = document.getElementById('editor-main-content');
     if (resizer) {
       resizer.style.display = '';
     }
-    // 分栏在左：split=0, resizer=1, main=2；分栏在右：main=1, resizer=2, split=3 → 改为 main=0, resizer=1, split=2
     if (splitPosition === 'left') {
       host.style.order = '0';
       if (resizer) resizer.style.order = '1';
@@ -401,12 +428,12 @@ export default function FileEditor({
     }
 
     return () => {
-      // 组件卸载时重置 split host 和 container 样式
-      if (!host || !container) return;
-      const resizer = document.getElementById('editor-split-resizer');
-      const mainContent = document.getElementById('editor-main-content');
-      if (resizer) resizer.style.display = 'none';
-      if (mainContent) mainContent.style.order = '1';
+      const latest = getSessionWorkbenchState(workbenchSessionId);
+      if (latest.uploadOpen) return;
+      const nextResizer = document.getElementById('editor-split-resizer');
+      const nextMainContent = document.getElementById('editor-main-content');
+      if (nextResizer) nextResizer.style.display = 'none';
+      if (nextMainContent) nextMainContent.style.order = '1';
       container.style.flexDirection = 'row';
       host.style.width = '0px';
       host.style.height = '100%';
@@ -419,7 +446,7 @@ export default function FileEditor({
       host.style.borderTop = 'none';
       host.style.order = '2';
     };
-  }, [mode, splitPosition, isActive]);
+  }, [mode, splitPosition, isActive, workbenchSessionId]);
 
   // 标签页栏
   const tabsBar = (
@@ -544,15 +571,17 @@ export default function FileEditor({
           </button>
         </div>
         {mode !== 'split' && (
-          <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setMinimized(true)} title={t('最小化')}
-            style={{ position: 'absolute', top: 8, right: 28, zIndex: Z.PANEL_BUTTON }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          </button>
+          <Tiptop text={t('最小化')} placement="bottom" style={{ position: 'absolute', top: 8, right: 28, zIndex: Z.PANEL_BUTTON }}>
+            <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setMinimized(true)} aria-label={t('最小化')}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+          </Tiptop>
         )}
-        <button className="btn btn-ghost btn-icon btn-sm" onClick={handleCloseCurrent} title={t('关闭当前文件')}
-          style={{ position: 'absolute', top: 8, right: 8, zIndex: Z.PANEL_BUTTON }}>
-          <X size={14} />
-        </button>
+        <Tiptop text={t('关闭当前文件')} placement="bottom" style={{ position: 'absolute', top: 8, right: 8, zIndex: Z.PANEL_BUTTON }}>
+          <button className="btn btn-ghost btn-icon btn-sm" onClick={handleCloseCurrent} aria-label={t('关闭当前文件')}>
+            <X size={14} />
+          </button>
+        </Tiptop>
       </div>
 
       {/* Tabs */}
@@ -707,23 +736,21 @@ export default function FileEditor({
       >
         {editorContent}
         {/* resize handle */}
-        <div
-          onMouseDown={startPopupResize}
-          style={{
-            position: 'absolute',
-            right: 0,
-            bottom: 0,
-            width: 16,
-            height: 16,
-            cursor: 'se-resize',
-            zIndex: Z.STACK,
-          }}
-          title={t('调整大小')}
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" style={{ position: 'absolute', right: 2, bottom: 2, opacity: 0.3 }}>
-            <path d="M8 12v-2h2v2H8zm0-4V6h2v2H8zm0-4V2h2v2H8zM4 12v-2h2v2H4z" fill="currentColor" />
-          </svg>
-        </div>
+        <Tiptop text={t('调整大小')} style={{ position: 'absolute', right: 0, bottom: 0, zIndex: Z.STACK }}>
+          <div
+            onMouseDown={startPopupResize}
+            aria-label={t('调整大小')}
+            style={{
+              width: 16,
+              height: 16,
+              cursor: 'se-resize',
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" style={{ position: 'absolute', right: 2, bottom: 2, opacity: 0.3 }}>
+              <path d="M8 12v-2h2v2H8zm0-4V6h2v2H8zm0-4V2h2v2H8zM4 12v-2h2v2H4z" fill="currentColor" />
+            </svg>
+          </div>
+        </Tiptop>
       </div>
     );
   }
@@ -734,7 +761,46 @@ export default function FileEditor({
     if (!host) return null;
     return createPortal(
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }} onContextMenu={handleContextMenu}>
-        {editorContent}
+        {showWorkbenchTabs && (
+          <div className="terminal-sub-tab-bar">
+            <button
+              className={`btn btn-ghost btn-sm terminal-create-btn terminal-tool-btn ${activeWorkbenchTab === 'editor' ? 'active' : ''}`}
+              onClick={() => handleWorkbenchTabChange('editor')}
+            >
+              <SquarePen size={14} />
+              {t('编辑器')}
+            </button>
+            <button
+              className={`btn btn-ghost btn-sm terminal-create-btn terminal-tool-btn ${activeWorkbenchTab === 'upload' ? 'active' : ''}`}
+              onClick={() => handleWorkbenchTabChange('upload')}
+            >
+              <Upload size={14} />
+              {t('上传队列')}
+            </button>
+          </div>
+        )}
+        <div
+          id={`workbench-editor-panel-${workbenchSessionId}`}
+          style={{
+            display: activeWorkbenchTab === 'editor' ? 'flex' : 'none',
+            flexDirection: 'column',
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
+          {editorContent}
+        </div>
+        {showWorkbenchTabs && (
+          <div
+            id={`workbench-upload-panel-${workbenchSessionId}`}
+            style={{
+              display: activeWorkbenchTab === 'upload' ? 'flex' : 'none',
+              flexDirection: 'column',
+              flex: 1,
+              minHeight: 0,
+            }}
+          />
+        )}
       </div>,
       host
     );

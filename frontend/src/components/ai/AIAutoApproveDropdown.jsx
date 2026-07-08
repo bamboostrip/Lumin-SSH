@@ -135,6 +135,7 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
   const [open, setOpen] = useState(false)
   const [expandLeft, setExpandLeft] = useState(false)
   const [triggerRect, setTriggerRect] = useState(null)
+  const [panelBounds, setPanelBounds] = useState(null)
   const [commandInput, setCommandInput] = useState('')
   const [deniedCommandInput, setDeniedCommandInput] = useState('')
   const normalizedSettings = useMemo(() => normalizeAutoApprovalSettings(settings), [settings])
@@ -146,14 +147,25 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
   useEffect(() => {
     if (!open) {
       setTriggerRect(null)
+      setPanelBounds(null)
       return undefined
     }
     const measure = () => {
       const el = containerRef.current
       if (el) {
         const rect = el.getBoundingClientRect()
+        const root = el.closest('[data-ai-panel-root="true"]')
+        const rootRect = root?.getBoundingClientRect()
         setExpandLeft(rect.left + 320 > window.innerWidth - 16)
         setTriggerRect(rect)
+        if (rootRect && rootRect.width > 0) {
+          setPanelBounds({
+            left: rootRect.left,
+            width: rootRect.width,
+          })
+        } else {
+          setPanelBounds(null)
+        }
       }
     }
     measure()
@@ -165,9 +177,11 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
     }
     window.addEventListener('pointerdown', handlePointerDown)
     window.addEventListener('resize', handleResize)
+    window.addEventListener('scroll', handleResize, true)
     return () => {
       window.removeEventListener('pointerdown', handlePointerDown)
       window.removeEventListener('resize', handleResize)
+      window.removeEventListener('scroll', handleResize, true)
     }
   }, [open])
 
@@ -175,6 +189,7 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
     setOpen(false)
     setExpandLeft(false)
     setTriggerRect(null)
+    setPanelBounds(null)
   }, [dismissSignal])
 
   const patchSettings = async (patch) => {
@@ -261,17 +276,21 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
         <div
           style={{
             position: 'fixed',
-            ...(expandLeft
-              ? { right: window.innerWidth - triggerRect.right }
-              : { left: triggerRect.left }),
+            ...(panelBounds
+              ? { left: panelBounds.left }
+              : expandLeft
+                ? { right: window.innerWidth - triggerRect.right }
+                : { left: triggerRect.left }),
             bottom: window.innerHeight - triggerRect.top + 8,
-            width: 320,
-            maxWidth: 'min(320px, calc(100vw - 32px))',
+            width: panelBounds?.width ?? 320,
+            maxWidth: panelBounds?.width ? `${panelBounds.width}px` : 'min(320px, calc(100vw - 32px))',
             border: '1px solid var(--border)',
             borderRadius: 10,
             background: 'var(--surface-overlay)',
             boxShadow: 'var(--shadow-xl)',
             overflow: 'hidden',
+            overflowX: 'hidden',
+            boxSizing: 'border-box',
             zIndex: 10000,
           }}>
           <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-subtle)', display: 'grid', gap: 8 }}>
@@ -282,7 +301,7 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
               {t('当前阶段仅展示并生效读取,写入,执行.')}
             </div>
           </div>
-          <div style={{ padding: 12, display: 'grid', gap: 8 }}>
+          <div style={{ padding: 12, display: 'grid', gap: 8, overflowX: 'hidden' }}>
             {VISIBLE_OPTIONS.map((option) => (
               <OptionButton
                 key={option.key}
@@ -294,15 +313,15 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
             ))}
           </div>
           {normalizedSettings.alwaysAllowExecute ? (
-            <div style={{ padding: '0 12px 12px', display: 'grid', gap: 12 }}>
-              <div style={{ padding: 12, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface-base)', display: 'grid', gap: 12 }}>
+            <div style={{ padding: '0 12px 12px', display: 'grid', gap: 12, overflowX: 'hidden' }}>
+              <div style={{ padding: 12, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface-base)', display: 'grid', gap: 12, overflowX: 'hidden' }}>
                 <div style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 700 }}>{t('执行')}</div>
                 <div style={{ display: 'grid', gap: 6 }}>
                   <div style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 600 }}>{t('命令白名单')}</div>
                   <div style={{ color: 'var(--text-tertiary)', fontSize: 11, lineHeight: 1.5 }}>
                     {t('当前启用时可以自动执行的命令前缀,添加 * 以允许所有命令.')}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                     <input
                       value={commandInput}
                       onChange={(event) => setCommandInput(event.target.value)}
@@ -315,6 +334,7 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
                       placeholder={t("输入命令前缀(例如 'git')")}
                       style={{
                         flex: 1,
+                        minWidth: 0,
                         height: 34,
                         borderRadius: 8,
                         border: '1px solid var(--border)',
@@ -343,7 +363,7 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
                       {t('添加')}
                     </button>
                   </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, minWidth: 0, overflow: 'hidden' }}>
                     {normalizedSettings.allowedCommands.map((command) => (
                       <CommandChip key={command} text={command} onRemove={() => void handleRemoveAllowedCommand(command)} />
                     ))}
@@ -354,7 +374,7 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
                   <div style={{ color: 'var(--text-tertiary)', fontSize: 11, lineHeight: 1.5 }}>
                     {t('将自动拒绝的命令前缀,无需用户批准;与许可命令冲突时,最长前缀匹配优先.')}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                     <input
                       value={deniedCommandInput}
                       onChange={(event) => setDeniedCommandInput(event.target.value)}
@@ -367,6 +387,7 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
                       placeholder={t("输入要拒绝的命令前缀(例如 'rm -rf')")}
                       style={{
                         flex: 1,
+                        minWidth: 0,
                         height: 34,
                         borderRadius: 8,
                         border: '1px solid var(--border)',
@@ -395,7 +416,7 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
                       {t('添加')}
                     </button>
                   </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, minWidth: 0, overflow: 'hidden' }}>
                     {normalizedSettings.deniedCommands.map((command) => (
                       <CommandChip key={command} text={command} onRemove={() => void handleRemoveDeniedCommand(command)} />
                     ))}

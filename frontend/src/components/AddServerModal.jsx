@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { Eye, EyeOff, Plus, X, Monitor, Key, FolderOpen, SquarePen, KeyRound } from 'lucide-react';
+import { Eye, EyeOff, Plus, X, Monitor, Key, FolderOpen, SquarePen, KeyRound, Globe } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/main/App.js';
 import { useTranslation } from '../i18n.js';
+import { getAIGlobalSettings } from './ai/aiGlobalSettingsBridge.js';
 
 const defaultForm = {
   name: '',
@@ -14,6 +15,13 @@ const defaultForm = {
   passphrase: '',
   terminalInitPath: '',
   fileManagerInitPath: '',
+  proxyMode: 'direct',
+  proxyNodeId: '',
+  proxyType: 'socks5',
+  proxyHost: '',
+  proxyPort: '1080',
+  proxyUsername: '',
+  proxyPassword: '',
 };
 
 export default function AddServerModal({ server, onSave, onSaveAndConnect, onClose, allGroups = [], credentials = [], onOpenCredentials, inline = false, shiningFields = {} }) {
@@ -23,6 +31,8 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
 
   const [showPassword, setShowPassword] = useState(false);
   const [showPassphrase, setShowPassphrase] = useState(false);
+  const [showProxyPassword, setShowProxyPassword] = useState(false);
+  const [proxyNodes, setProxyNodes] = useState([]);
 
   const [authMode, setAuthMode] = useState('custom'); // 'custom' | 'credential'
   const [selectedCredId, setSelectedCredId] = useState('');
@@ -36,6 +46,7 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
     setForm(defaultForm);
     setShowPassword(false);
     setShowPassphrase(false);
+    setShowProxyPassword(false);
   };
 
   useEffect(() => {
@@ -46,10 +57,19 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
       setForm({
         ...defaultForm,
         ...server,
+        port: server.port ? String(server.port) : '',
         authType: server.authMethod ? (server.authMethod === 'privateKey' ? 'key' : 'password') : (server.authType || 'password'),
         password: '',
         passphrase: server.passphrase || '',
+        proxyMode: server.proxyMode || 'direct',
+        proxyNodeId: server.proxyNodeId || '',
+        proxyType: server.proxyType || 'socks5',
+        proxyHost: server.proxyHost || '',
+        proxyPort: server.proxyPort ? String(server.proxyPort) : '1080',
+        proxyUsername: server.proxyUsername || '',
+        proxyPassword: '',
       });
+      setShowProxyPassword(false);
     } else {
       resetInlineForm();
     }
@@ -67,6 +87,22 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
+  useEffect(() => {
+    let cancelled = false;
+    getAIGlobalSettings()
+      .then((settings) => {
+        if (cancelled) return;
+        setProxyNodes(Array.isArray(settings?.proxyNodes) ? settings.proxyNodes : []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setProxyNodes([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
   const inputClass = (key) => `input${shiningFields?.[key] ? ' editor-field-shine' : ''}`;
   const inputShellClass = (key) => `editor-field-shell${shiningFields?.[key] ? ' editor-field-shell-shine' : ''}`;
@@ -76,6 +112,8 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
     if (!form.host.trim()) return window.luminDialog?.alert(t('请填写主机地址'));
     if (authMode === 'custom' && !form.username.trim()) return window.luminDialog?.alert(t('请填写用户名'));
     if (authMode === 'credential' && !selectedCredId) return window.luminDialog?.alert(t('请选择凭据'));
+    if (form.proxyMode === 'node' && !form.proxyNodeId) return window.luminDialog?.alert(t('请选择代理节点'));
+    if (form.proxyMode === 'custom' && !String(form.proxyHost || '').trim()) return window.luminDialog?.alert(t('请输入代理主机地址'));
 
     setSaving(true);
     try {
@@ -83,6 +121,12 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
       data.port = parseInt(data.port, 10) || 22;
       data.terminalInitPath = String(data.terminalInitPath || '').trim();
       data.fileManagerInitPath = String(data.fileManagerInitPath || '').trim();
+      data.proxyMode = form.proxyMode || 'direct';
+      data.proxyNodeId = String(data.proxyNodeId || '').trim();
+      data.proxyType = form.proxyType || 'socks5';
+      data.proxyHost = String(data.proxyHost || '').trim();
+      data.proxyPort = parseInt(String(data.proxyPort || '').trim(), 10) || 1080;
+      data.proxyUsername = String(data.proxyUsername || '').trim();
 
       if (authMode === 'credential') {
         data.credentialId = selectedCredId;
@@ -102,6 +146,10 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
         if (server?.id && (!data.passphrase || data.passphrase === '****')) {
           delete data.passphrase;
         }
+      }
+
+      if (server?.id && data.proxyMode === 'custom' && !data.proxyPassword) {
+        delete data.proxyPassword;
       }
 
       if (server?.id) data.id = server.id;
@@ -349,6 +397,102 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
               )}
               </>
               )}
+            </div>
+          </div>
+
+          <div className="webdav-section server-editor-section">
+            <div className="webdav-section-title server-editor-section-title"><span className="server-editor-section-icon"><Globe size={15} /></span> {t('代理服务器')}</div>
+            <div className="server-editor-fields">
+              <div className="form-group">
+                <label className="form-label">{t('代理模式')}</label>
+                <select className="select" value={form.proxyMode || 'direct'} onChange={set('proxyMode')}>
+                  <option value="direct">{t('直连')}</option>
+                  <option value="node">{t('选择代理节点')}</option>
+                  <option value="custom">{t('自定义代理')}</option>
+                </select>
+              </div>
+              {form.proxyMode === 'node' ? (
+                proxyNodes.length === 0 ? (
+                  <div className="server-editor-empty">
+                    {t('暂无代理节点，请先到设置中创建')}
+                  </div>
+                ) : (
+                  <div className="form-group">
+                    <label className="form-label">{t('代理节点')} *</label>
+                    <select className="select" value={form.proxyNodeId || ''} onChange={set('proxyNodeId')}>
+                      <option value="">{t('请选择代理节点')}</option>
+                      {proxyNodes.map((node) => (
+                        <option key={node.id} value={node.id}>
+                          {[
+                            node.name || t('未命名节点'),
+                            node.type === 'http' ? t('HTTP 代理') : t('SOCKS5 代理'),
+                            `${node.host}:${node.port}`,
+                          ].join(' · ')}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )
+              ) : null}
+              {form.proxyMode === 'custom' ? (
+                <>
+                  <div className="form-group">
+                    <label className="form-label">{t('协议类型')}</label>
+                    <select className="select" value={form.proxyType || 'socks5'} onChange={set('proxyType')}>
+                      <option value="socks5">{t('SOCKS5 代理')}</option>
+                      <option value="http">{t('HTTP 代理')}</option>
+                    </select>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label className="form-label">{t('代理主机')} *</label>
+                      <input
+                        className="input"
+                        placeholder="127.0.0.1"
+                        value={form.proxyHost || ''}
+                        onChange={set('proxyHost')}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">{t('代理端口')}</label>
+                      <input
+                        className="input"
+                        type="number"
+                        min={1}
+                        max={65535}
+                        placeholder="1080"
+                        value={form.proxyPort || ''}
+                        onChange={set('proxyPort')}
+                      />
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">{t('代理用户名')}</label>
+                    <input
+                      className="input"
+                      placeholder="user"
+                      value={form.proxyUsername || ''}
+                      onChange={set('proxyUsername')}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">{t('代理密码')}</label>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        className="input"
+                        type={showProxyPassword ? "text" : "password"}
+                        placeholder={t('代理密码')}
+                        value={form.proxyPassword || ''}
+                        onChange={set('proxyPassword')}
+                        style={{ paddingRight: 36 }}
+                      />
+                      <button type="button" onClick={() => setShowProxyPassword(!showProxyPassword)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}>
+                        {showProxyPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : null}
             </div>
           </div>
 

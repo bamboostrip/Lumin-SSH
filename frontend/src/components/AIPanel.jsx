@@ -515,6 +515,17 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   }, [])
 
   useEffect(() => {
+    if (!showSettingsPanel) {
+      return
+    }
+    getAIGlobalSettings()
+      .then((settings) => {
+        setGlobalAISettings(settings)
+      })
+      .catch(() => {})
+  }, [showSettingsPanel])
+
+  useEffect(() => {
     const unbind = EventsOn('ai-chat-stream', (payload) => {
       const requestId = payload?.requestId
       if (!requestId) {

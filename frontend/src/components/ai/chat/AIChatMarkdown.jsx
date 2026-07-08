@@ -2,6 +2,18 @@ import ReactMarkdown from 'react-markdown'
 import rehypeSanitize from 'rehype-sanitize'
 import remarkGfm from 'remark-gfm'
 
+function openExternalLink(event, href) {
+  const nextHref = typeof href === 'string' ? href.trim() : ''
+  if (!nextHref) {
+    return
+  }
+  const openUrl = window?.runtime?.BrowserOpenURL
+  if (typeof openUrl === 'function') {
+    event.preventDefault()
+    openUrl(nextHref)
+  }
+}
+
 const markdownComponents = {
   p: ({ children }) => <p style={{ margin: 0, lineHeight: 1.7 }}>{children}</p>,
   ul: ({ children }) => <ul style={{ margin: '0 0 10px', paddingLeft: 20 }}>{children}</ul>,
@@ -12,6 +24,7 @@ const markdownComponents = {
       href={href}
       target="_blank"
       rel="noreferrer"
+      onClick={(event) => openExternalLink(event, href)}
       style={{ color: 'var(--accent)', textDecoration: 'underline' }}
     >
       {children}

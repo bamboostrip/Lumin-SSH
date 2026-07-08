@@ -54,6 +54,7 @@ type SessionData struct {
 	ShellPath           string
 	TerminalInitPath    string
 	CurrentCwd          string
+	PromptReady         bool
 }
 
 type SSHManager struct {
@@ -67,8 +68,10 @@ type SSHManager struct {
 	pendingHostKeys  map[string]*PendingHostKey    // sessionId -> pending host key info
 	tempAcceptedKeys map[string]string             // sessionId -> fingerprint (accept this time only)
 	pendingCancels   map[string]context.CancelFunc // sessionId -> cancel func for in-progress Connect
+	uploadTasks      map[string]*chunkedUploadTask
 	mu               sync.RWMutex
 	pendingMu        sync.Mutex
+	uploadMu         sync.Mutex
 	bufPool          sync.Pool
 }
 
@@ -90,6 +93,7 @@ func NewSSHManager() *SSHManager {
 		pendingHostKeys:  make(map[string]*PendingHostKey),
 		tempAcceptedKeys: make(map[string]string),
 		pendingCancels:   make(map[string]context.CancelFunc),
+		uploadTasks:      make(map[string]*chunkedUploadTask),
 		bufPool: sync.Pool{
 			New: func() any {
 				buf := make([]byte, 32768)
@@ -244,9 +248,7 @@ func (m *SSHManager) Connect(sessionId string, conn Connection) error {
 				log.Printf("[Connect] 瞬态网络错误重试 %d/%d: %s", attempt, maxRetries, conn.Host)
 			}
 
-			var d net.Dialer
-			d.Timeout = config.Timeout
-			netConn, dialErr := d.DialContext(cancelCtx, "tcp", target)
+			netConn, dialErr := dialConnectionTargetContext(cancelCtx, conn, target, config.Timeout)
 			if dialErr != nil {
 				if errors.Is(dialErr, context.Canceled) || cancelCtx.Err() != nil {
 					return fmt.Errorf("连接已取消")
@@ -265,7 +267,6 @@ func (m *SSHManager) Connect(sessionId string, conn Connection) error {
 					}
 					return fmt.Errorf("连接被拒绝")
 				}
-				// 瞬态错误继续重试
 				if attempt < maxRetries && isTransientNetError(dialErr) {
 					continue
 				}
@@ -529,6 +530,7 @@ func (m *SSHManager) setupSession(client *ssh.Client, connKey, sessionId, groupS
 		RemoteHistoryActive: remoteHistoryActive,
 		ShellPath:           strings.TrimSpace(shellPath),
 		TerminalInitPath:    strings.TrimSpace(terminalInitPath),
+		PromptReady:         !remoteHistoryActive,
 	}
 	if groupSessionId != "" {
 		sd.GroupSessionId = groupSessionId
@@ -568,9 +570,14 @@ func (m *SSHManager) pipeOutput(sessionId string, r io.Reader, historyStream *co
 				if cwd != "" {
 					shouldEmitCwd := false
 					m.mu.Lock()
-					if s, ok := m.sessions[sessionId]; ok && s.CurrentCwd != cwd {
-						s.CurrentCwd = cwd
-						shouldEmitCwd = true
+					if s, ok := m.sessions[sessionId]; ok {
+						if s.CurrentCwd != cwd {
+							s.CurrentCwd = cwd
+							shouldEmitCwd = true
+						}
+						if s.RemoteHistoryActive {
+							s.PromptReady = true
+						}
 					}
 					m.mu.Unlock()
 					if shouldEmitCwd && m.ctx != nil {
@@ -639,6 +646,23 @@ func (m *SSHManager) getSFTPClient(sessionId string) (*sftp.Client, error) {
 	return sftpClient, nil
 }
 
+func (m *SSHManager) abortUploadsForSession(sessionId string) {
+	_ = m.AbortCompressedUpload(sessionId)
+
+	taskIDs := make([]string, 0)
+	m.uploadMu.Lock()
+	for taskID, task := range m.uploadTasks {
+		if task != nil && task.sessionId == sessionId {
+			taskIDs = append(taskIDs, taskID)
+		}
+	}
+	m.uploadMu.Unlock()
+
+	for _, taskID := range taskIDs {
+		_ = m.AbortChunkedUploadTask(taskID)
+	}
+}
+
 func (m *SSHManager) Disconnect(sessionId string) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -653,6 +677,9 @@ func (m *SSHManager) Disconnect(sessionId string) {
 		delete(m.pendingCancels, sessionId)
 	}
 	m.pendingMu.Unlock()
+
+	_ = m.AbortDownloadTransfer(sessionId)
+	m.abortUploadsForSession(sessionId)
 
 	// 1. 在锁内完成 map 清理，收集需要关闭的资源
 	m.mu.Lock()
@@ -958,11 +985,18 @@ func (m *SSHManager) GetTerminalCwd(sessionId string) (string, error) {
 
 // WriteBytes sends raw bytes to the SSH PTY stdin (used by WebSocket handler)
 func (m *SSHManager) WriteBytes(sessionId string, data []byte) {
-	m.mu.RLock()
+	m.mu.Lock()
 	s, ok := m.sessions[sessionId]
-	m.mu.RUnlock()
-	if ok && s.Stdin != nil {
-		_, _ = s.Stdin.Write(data)
+	var stdin io.WriteCloser
+	if ok && s != nil {
+		if s.RemoteHistoryActive && len(data) > 0 {
+			s.PromptReady = false
+		}
+		stdin = s.Stdin
+	}
+	m.mu.Unlock()
+	if stdin != nil {
+		_, _ = stdin.Write(data)
 	}
 }
 
@@ -2106,18 +2140,25 @@ func (m *SSHManager) ListDirContext(ctx context.Context, sessionId string, path 
 	return results, nil
 }
 
-func (m *SSHManager) ChmodFile(sessionId string, path string, modeStr string) error {
-	sftpClient, err := m.getSFTPClient(sessionId)
-	if err != nil {
-		return err
-	}
-
-	// 解析八进制权限字符串（如 "0755"、"644"）
-	modeInt, err := strconv.ParseInt(modeStr, 8, 32)
+func (m *SSHManager) ChmodFile(sessionId string, path string, modeStr string, recursive bool) error {
+	modeValue := strings.TrimSpace(modeStr)
+	modeInt, err := strconv.ParseInt(modeValue, 8, 32)
 	if err != nil {
 		return fmt.Errorf("invalid mode: %w", err)
 	}
-	return sftpClient.Chmod(path, os.FileMode(modeInt))
+	if !recursive {
+		sftpClient, err := m.getSFTPClient(sessionId)
+		if err != nil {
+			return err
+		}
+		return sftpClient.Chmod(path, os.FileMode(modeInt))
+	}
+	client, _, err := m.getClientEntry(sessionId)
+	if err != nil {
+		return err
+	}
+	_, err = m.executeCmdWithClient(client, "chmod -R "+modeValue+" -- "+shellQuotePath(path))
+	return err
 }
 
 func (m *SSHManager) ReadFile(sessionId string, path string) (string, error) {

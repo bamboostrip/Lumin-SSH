@@ -46,7 +46,7 @@ type aiProviderModelsResponse struct {
 	} `json:"data"`
 }
 
-func fetchCompatibleProviderModels(baseURL string, apiKey string) ([]string, error) {
+func fetchCompatibleProviderModels(client *http.Client, baseURL string, apiKey string) ([]string, error) {
 	trimmedBaseURL := strings.TrimSpace(baseURL)
 	if trimmedBaseURL == "" {
 		return nil, fmt.Errorf("请先填写 OpenAI 基础 URL")
@@ -63,7 +63,10 @@ func fetchCompatibleProviderModels(baseURL string, apiKey string) ([]string, err
 		request.Header.Set("Authorization", "Bearer "+key)
 	}
 
-	response, err := (&http.Client{Timeout: 20 * time.Second}).Do(request)
+	if client == nil {
+		client = &http.Client{Timeout: 20 * time.Second}
+	}
+	response, err := client.Do(request)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +110,27 @@ func fetchCompatibleProviderModels(baseURL string, apiKey string) ([]string, err
 }
 
 func (a *App) RequestAIProviderModels(baseURL string, apiKey string) ([]string, error) {
-	return fetchCompatibleProviderModels(baseURL, apiKey)
+	client, err := a.newAIHTTPClient(20 * time.Second)
+	if err != nil {
+		return nil, err
+	}
+	return fetchCompatibleProviderModels(client, baseURL, apiKey)
+}
+
+func (a *App) RequestAIProviderModelsWithProfile(jsonStr string) ([]string, error) {
+	profile := AIProviderProfile{}
+	if strings.TrimSpace(jsonStr) != "" {
+		if err := json.Unmarshal([]byte(jsonStr), &profile); err != nil {
+			return nil, err
+		}
+	}
+	profile.BaseURL = strings.TrimSpace(profile.BaseURL)
+	profile.APIKey = strings.TrimSpace(profile.APIKey)
+	client, err := a.newAIHTTPClientForProfile(&profile, 20*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	return fetchCompatibleProviderModels(client, profile.BaseURL, profile.APIKey)
 }
 
 func (a *App) requestCompatibleAIChatRound(ctx context.Context, requestID string, payload AIChatRequestPayload, profile AIProviderProfile, requestMessages []AIChatRequestMessage) (aiChatRoundResult, error) {
@@ -150,7 +173,11 @@ func (a *App) requestCompatibleAIChatRound(ctx context.Context, requestID string
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 
-	resp, err := (&http.Client{}).Do(req)
+	client, err := a.newAIHTTPClientForProfile(&profile, 0)
+	if err != nil {
+		return result, err
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return result, err
 	}

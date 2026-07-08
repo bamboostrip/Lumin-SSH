@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useReducer } from 'react';
 import * as AppGo from '../../wailsjs/go/main/App.js';
 import { useTranslation } from '../i18n.js';
+import Tiptop from './Tiptop.jsx';
 import { ClipboardList, Search, RefreshCw, XCircle, X, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 
 // ponytail: input is MB from Go backend (ps RSS KB → /1024 → MB)
@@ -475,11 +476,13 @@ export default function ProcessPage({ sessionId, addToast, active }) {
                       maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap', color: detailState.activePid === p.pid ? 'var(--text-primary)' : 'var(--text-tertiary)',
                     }}>{p.name}</span>
-                    <span
-                      onClick={e => { e.stopPropagation(); detailDispatch({ type: 'close', pid: p.pid }); }}
-                      style={{ marginLeft: 2, opacity: 0.4, cursor: 'pointer', fontSize: 13, lineHeight: 1 }}
-                      title={t('关闭')}
-                    >×</span>
+                    <Tiptop text={t('关闭')} placement="bottom">
+                      <span
+                        onClick={e => { e.stopPropagation(); detailDispatch({ type: 'close', pid: p.pid }); }}
+                        aria-label={t('关闭')}
+                        style={{ marginLeft: 2, opacity: 0.4, cursor: 'pointer', fontSize: 13, lineHeight: 1 }}
+                      >×</span>
+                    </Tiptop>
                   </div>
                 ))}
               </div>

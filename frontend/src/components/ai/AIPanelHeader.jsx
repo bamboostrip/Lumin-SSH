@@ -1,6 +1,7 @@
 import { House, Settings } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from '../../i18n.js'
+import Tiptop from '../Tiptop.jsx'
 import IconActionButton from './IconActionButton.jsx'
 
 function formatAIContextTokens(value) {
@@ -38,37 +39,37 @@ export default function AIPanelHeader({
     <div style={{ height: 54, padding: '0 14px', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto minmax(0,1fr)', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border)', background: 'var(--surface-raised)', flexShrink: 0 }}>
       <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: 0.2 }}>{t('AI 助手')}</div>
       {showContextTokens ? (
-        <button
-          type="button"
-          title={isCondensingContext ? t('正在智能压缩上下文') : t('当前对话上下文 Token,点击智能压缩')}
-          aria-label={isCondensingContext ? t('正在智能压缩上下文') : t('当前对话上下文 Token,点击智能压缩')}
-          disabled={!canCondenseContext}
-          onClick={onCondenseContext}
-          style={{
-            justifySelf: 'center',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 'fit-content',
-            minWidth: 0,
-            maxWidth: '100%',
-            height: 28,
-            padding: '0 10px',
-            borderRadius: 999,
-            border: `1px solid ${isCondensingContext ? 'var(--accent-border)' : 'var(--border)'}`,
-            background: isCondensingContext ? 'var(--accent-dim)' : 'transparent',
-            color: isCondensingContext ? 'var(--accent)' : 'var(--text-secondary)',
-            fontSize: 12,
-            fontWeight: 700,
-            opacity: canCondenseContext || isCondensingContext ? 1 : 0.6,
-            transition: 'var(--transition)',
-            whiteSpace: 'nowrap',
-            lineHeight: 1,
-            fontVariantNumeric: 'tabular-nums',
-          }}
-        >
-          {contextTokenLabel}
-        </button>
+        <Tiptop text={isCondensingContext ? t('正在智能压缩上下文') : t('当前对话上下文 Token,点击智能压缩')} placement="bottom" style={{ justifySelf: 'center' }}>
+          <button
+            type="button"
+            aria-label={isCondensingContext ? t('正在智能压缩上下文') : t('当前对话上下文 Token,点击智能压缩')}
+            disabled={!canCondenseContext}
+            onClick={onCondenseContext}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 'fit-content',
+              minWidth: 0,
+              maxWidth: '100%',
+              height: 28,
+              padding: '0 10px',
+              borderRadius: 999,
+              border: `1px solid ${isCondensingContext ? 'var(--accent-border)' : 'var(--border)'}`,
+              background: isCondensingContext ? 'var(--accent-dim)' : 'transparent',
+              color: isCondensingContext ? 'var(--accent)' : 'var(--text-secondary)',
+              fontSize: 12,
+              fontWeight: 700,
+              opacity: canCondenseContext || isCondensingContext ? 1 : 0.6,
+              transition: 'var(--transition)',
+              whiteSpace: 'nowrap',
+              lineHeight: 1,
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {contextTokenLabel}
+          </button>
+        </Tiptop>
       ) : (
         <div />
       )}

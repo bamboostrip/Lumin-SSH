@@ -1,32 +1,34 @@
 import { Check, Pin, SquarePen } from 'lucide-react';
 import { useTranslation } from '../../i18n.js';
+import Tiptop from '../Tiptop.jsx';
 
 function IconButton({ title, active = false, onClick, children }) {
   return (
-    <button
-      type="button"
-      title={title}
-      aria-label={title}
-      onClick={(event) => {
-        event.stopPropagation();
-        onClick?.();
-      }}
-      style={{
-        width: 28,
-        height: 28,
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderRadius: 0,
-        border: '1px solid transparent',
-        background: active ? 'rgba(var(--accent-rgb), 0.10)' : 'transparent',
-        color: active ? 'var(--accent)' : 'var(--text-muted)',
-        transition: 'var(--transition)',
-        flexShrink: 0,
-      }}
-    >
-      {children}
-    </button>
+    <Tiptop text={title}>
+      <button
+        type="button"
+        aria-label={title}
+        onClick={(event) => {
+          event.stopPropagation();
+          onClick?.();
+        }}
+        style={{
+          width: 28,
+          height: 28,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: 0,
+          border: '1px solid transparent',
+          background: active ? 'rgba(var(--accent-rgb), 0.10)' : 'transparent',
+          color: active ? 'var(--accent)' : 'var(--text-muted)',
+          transition: 'var(--transition)',
+          flexShrink: 0,
+        }}
+      >
+        {children}
+      </button>
+    </Tiptop>
   );
 }
 
@@ -52,6 +54,8 @@ export default function AIProviderListRow({ item, active = false, onSelect, onEd
         color: 'var(--text-primary)',
         textAlign: 'left',
         transition: 'var(--transition)',
+        boxSizing: 'border-box',
+        overflow: 'hidden',
       }}
     >
       <div style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'baseline', gap: 6, overflow: 'hidden' }}>

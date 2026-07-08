@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImper
 import { Folder, FolderPlus, Zap, Save, Pencil, Trash2, Rocket, SquarePen } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/main/App.js';
 import { useTranslation } from '../i18n.js';
+import Tiptop from './Tiptop.jsx';
 import { getModKey } from '../utils/platform.js';
 import { Z } from '../constants/zIndex';
 import { getTerminalTheme } from '../utils/theme.js';
@@ -91,15 +92,16 @@ function TreeNode({ item, index, path, selectedPath, onSelect, contextMenu, onCo
   useEffect(() => { setDropPos(null); }, [dragVersion]);
 
   const arrowBtn = (dir) => (
-    <span
-      onClick={(e) => { e.stopPropagation(); onMove && onMove(path, dir); }}
-      style={{
-        fontSize: 10, cursor: 'pointer', color: theme.mutedColor, padding: '0 3px',
-        visibility: hover ? 'visible' : 'hidden', lineHeight: '14px',
-        userSelect: 'none',
-      }}
-      title={dir === -1 ? t('上移') : t('下移')}
-    >{dir === -1 ? '▲' : '▼'}</span>
+    <Tiptop text={dir === -1 ? t('上移') : t('下移')}>
+      <span
+        onClick={(e) => { e.stopPropagation(); onMove && onMove(path, dir); }}
+        style={{
+          fontSize: 10, cursor: 'pointer', color: theme.mutedColor, padding: '0 3px',
+          visibility: hover ? 'visible' : 'hidden', lineHeight: '14px',
+          userSelect: 'none',
+        }}
+      >{dir === -1 ? '▲' : '▼'}</span>
+    </Tiptop>
   );
 
   const commonDragProps = {
@@ -1039,18 +1041,19 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
                   <label style={{ fontSize: 11, color: C.statusBarColor }}>{t('命令')}</label>
                   <div style={{ display: 'flex', gap: 4 }}>
                     {[1,2,3,4,5].map(n => (
-                      <button
-                        key={n}
-                        onClick={() => {
-                          setEditCmdText(prev => prev + `[p#${n} ${t('参数')}${n}]`);
-                          setDirty(true);
-                        }}
-                        title={t('插入参数 p#') + n}
-                        style={{
-                          background: 'transparent', border: '1px solid ' + C.btnBorder, borderRadius: 3,
-                          color: C.statusBarColor, fontSize: 10, cursor: 'pointer', padding: '1px 5px',
-                        }}
-                      >{t('参数')}{n}</button>
+                      <Tiptop key={n} text={t('插入参数 p#') + n}>
+                        <button
+                          onClick={() => {
+                            setEditCmdText(prev => prev + `[p#${n} ${t('参数')}${n}]`);
+                            setDirty(true);
+                          }}
+                          aria-label={t('插入参数 p#') + n}
+                          style={{
+                            background: 'transparent', border: '1px solid ' + C.btnBorder, borderRadius: 3,
+                            color: C.statusBarColor, fontSize: 10, cursor: 'pointer', padding: '1px 5px',
+                          }}
+                        >{t('参数')}{n}</button>
+                      </Tiptop>
                     ))}
                   </div>
                 </div>
@@ -1131,18 +1134,19 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
                                 {p.label || `p#${p.num}`}
                               </span>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <input
-                                  type="text"
-                                  value={paramValues[p.num] || ''}
-                                  onChange={e => setParamValues(prev => ({ ...prev, [p.num]: e.target.value }))}
-                                  onKeyDown={e => { if (e.key === 'Enter') doExecute(selectedItem); }}
-                                  title={t('参数 ') + (p.label || '#' + p.num)}
-                                  style={{
-                                    ...inputStyle, width: 100,
-                                    fontSize: 11, padding: '3px 6px',
-                                    fontFamily: "'JetBrains Mono', monospace",
-                                  }}
-                                />
+                                <Tiptop text={t('参数 ') + (p.label || '#' + p.num)}>
+                                  <input
+                                    type="text"
+                                    value={paramValues[p.num] || ''}
+                                    onChange={e => setParamValues(prev => ({ ...prev, [p.num]: e.target.value }))}
+                                    onKeyDown={e => { if (e.key === 'Enter') doExecute(selectedItem); }}
+                                    style={{
+                                      ...inputStyle, width: 100,
+                                      fontSize: 11, padding: '3px 6px',
+                                      fontFamily: "'JetBrains Mono', monospace",
+                                    }}
+                                  />
+                                </Tiptop>
                                 <button
                                   onClick={() => {
                                     if (isOpen) { setHistoryDropdown(null); setHistorySearch(''); }
@@ -1450,16 +1454,17 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
                 <label style={_labelStyle}>{t('命令')}</label>
                 <div style={{ display: 'flex', gap: 3 }}>
                   {[1,2,3,4,5].map(n => (
-                    <button
-                      key={n}
-                      onClick={() => insertParam(n)}
-                      title={t('插入参数 p#') + n}
-                      style={{
-                        background: 'transparent', border: '1px solid ' + C.btnBorder, borderRadius: 3,
-                        color: C.statusBarColor, fontSize: 10, cursor: 'pointer', padding: '1px 6px',
-                        fontFamily: 'monospace',
-                      }}
-                    >{t('参数')}{n}</button>
+                    <Tiptop key={n} text={t('插入参数 p#') + n}>
+                      <button
+                        onClick={() => insertParam(n)}
+                        aria-label={t('插入参数 p#') + n}
+                        style={{
+                          background: 'transparent', border: '1px solid ' + C.btnBorder, borderRadius: 3,
+                          color: C.statusBarColor, fontSize: 10, cursor: 'pointer', padding: '1px 6px',
+                          fontFamily: 'monospace',
+                        }}
+                      >{t('参数')}{n}</button>
+                    </Tiptop>
                   ))}
                 </div>
               </div>

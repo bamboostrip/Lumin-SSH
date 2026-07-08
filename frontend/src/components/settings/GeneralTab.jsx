@@ -5,9 +5,10 @@ export default function GeneralTab({
   language, onLanguageChange,
   confirmCloseSession, onToggleConfirmCloseSession,
   confirmCloseAll, onToggleConfirmCloseAll,
+  confirmFileDelete, onToggleConfirmFileDelete,
   windowCloseAction, onWindowCloseActionChange,
   updateUseProxy, onToggleUpdateUseProxy,
-  fileManagerFollowTerminalCwd, onToggleFileManagerFollowTerminalCwd,
+  rememberWorkspace, onToggleRememberWorkspace,
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
@@ -48,6 +49,14 @@ export default function GeneralTab({
           <div className="divider" style={{ margin: '12px 0', borderTop: '1px solid var(--border)' }} />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
+              <div style={{ color: 'var(--text-primary)', fontSize: 13 }}>{$t('文件管理器删除时确认')}</div>
+              <div style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{$t('删除文件或文件夹前弹出确认弹窗')}</div>
+            </div>
+            <ToggleSwitch checked={confirmFileDelete} onChange={onToggleConfirmFileDelete} />
+          </div>
+          <div className="divider" style={{ margin: '12px 0', borderTop: '1px solid var(--border)' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
               <div style={{ color: 'var(--text-primary)', fontSize: 13 }}>{$t('关闭窗口时')}</div>
               <div style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{$t('选择关闭窗口时的默认行为')}</div>
             </div>
@@ -61,14 +70,14 @@ export default function GeneralTab({
       </div>
 
       <div>
-        <h3 style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 12, fontWeight: 600 }}>{$t('偏好设置')}</h3>
+        <h3 style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 12, fontWeight: 600 }}>{$t('工作区')}</h3>
         <div className="form-group" style={{ background: 'var(--surface-overlay)', padding: 16, borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <div style={{ color: 'var(--text-primary)', fontSize: 13 }}>{$t('文件管理器跟随终端目录')}</div>
-              <div style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{$t('终端 cd 切换目录时自动同步文件管理器路径')}</div>
+              <div style={{ color: 'var(--text-primary)', fontSize: 13 }}>{$t('记忆工作区')}</div>
+              <div style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{$t('重新启动后自动恢复上次的连接、终端标签和分屏布局')}</div>
             </div>
-            <ToggleSwitch checked={fileManagerFollowTerminalCwd} onChange={onToggleFileManagerFollowTerminalCwd} />
+            <ToggleSwitch checked={rememberWorkspace} onChange={onToggleRememberWorkspace} />
           </div>
         </div>
       </div>
@@ -78,8 +87,8 @@ export default function GeneralTab({
         <div className="form-group" style={{ background: 'var(--surface-overlay)', padding: 16, borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <div style={{ color: 'var(--text-primary)', fontSize: 13 }}>{$t('优先使用代理下载')}</div>
-              <div style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{$t('通过多个代理加速 GitHub 更新下载，失败自动回退直连')}</div>
+              <div style={{ color: 'var(--text-primary)', fontSize: 13 }}>{$t('优先使用镜像下载')}</div>
+              <div style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{$t('优先通过多个镜像地址下载 GitHub 更新,失败后自动回退为官方直连下载')}</div>
             </div>
             <ToggleSwitch checked={updateUseProxy} onChange={onToggleUpdateUseProxy} />
           </div>

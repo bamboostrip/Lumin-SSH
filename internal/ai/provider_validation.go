@@ -117,7 +117,13 @@ func (a *App) ValidateAIProviderWebSearch(jsonStr string) AIProviderWebSearchVal
 	request.Header.Set("Accept", "text/event-stream")
 	request.Header.Set("Authorization", "Bearer "+resolvedProfile.APIKey)
 
-	response, err := (&http.Client{}).Do(request)
+	client, err := a.newAIHTTPClientForProfile(&resolvedProfile, 0)
+	if err != nil {
+		result.Message = aiProviderWebSearchUnsupportedMessage
+		result.RawOutput = err.Error()
+		return result
+	}
+	response, err := client.Do(request)
 	if err != nil {
 		result.Message = aiProviderWebSearchUnsupportedMessage
 		result.RawOutput = err.Error()

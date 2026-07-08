@@ -22,6 +22,8 @@ type AIProviderProfile struct {
 	WebSearchEnabled             bool   `json:"webSearchEnabled"`
 	DedicatedWebSearchEnabled    bool   `json:"dedicatedWebSearchEnabled"`
 	DedicatedWebSearchProviderID string `json:"dedicatedWebSearchProviderId,omitempty"`
+	DedicatedProxyEnabled        bool   `json:"dedicatedProxyEnabled"`
+	DedicatedProxyID             string `json:"dedicatedProxyId,omitempty"`
 	ReasoningEffort              string `json:"reasoningEffort"`
 	EnableReasoningEffort        bool   `json:"enableReasoningEffort"`
 	ModelMaxTokens               int    `json:"modelMaxTokens,omitempty"`
@@ -113,6 +115,7 @@ func normalizeAIProviderProfiles(profiles []AIProviderProfile) []AIProviderProfi
 		}
 		profile.BaseURL = strings.TrimSpace(profile.BaseURL)
 		profile.APIKey = strings.TrimSpace(profile.APIKey)
+		profile.DedicatedProxyID = strings.TrimSpace(profile.DedicatedProxyID)
 		profile.CacheStrategy = normalizeAIProviderCacheStrategy(profile.CacheStrategy)
 		profile.ReasoningEffort = normalizeAIProviderReasoningEffort(profile.ReasoningEffort)
 		profile.EnableReasoningEffort = profile.EnableReasoningEffort || (profile.ReasoningEffort != "" && profile.ReasoningEffort != "disable") || profile.ModelMaxTokens > 0 || profile.ModelMaxThinkingTokens > 0

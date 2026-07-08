@@ -6,6 +6,7 @@ import * as AppGo from '../../wailsjs/go/main/App.js';
 import { getModKey, formatShortcut } from '../utils/platform.js';
 import { clampMenuPosition } from '../utils/menuPosition.js';
 import QuickCommands from './QuickCommands.jsx';
+import Tiptop from './Tiptop.jsx';
 import '@xterm/xterm/css/xterm.css';
 import { useTranslation } from '../i18n.js';
 import defaultTermBg from '../assets/term_bg.png';
@@ -1039,46 +1040,54 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
         />
 
         {/* 历史按钮 */}
-        <button
-          ref={historyBtnRef}
-          onClick={toggleHistory}
-          title={t('历史指令')}
-          className={`term-btn${showHistory ? ' active' : ''}`}
-        >
-          <Clock size={13} />
-          <span>{t('历史')}</span>
-        </button>
+        <Tiptop text={t('历史指令')}>
+          <button
+            ref={historyBtnRef}
+            onClick={toggleHistory}
+            aria-label={t('历史指令')}
+            className={`term-btn${showHistory ? ' active' : ''}`}
+          >
+            <Clock size={13} />
+            <span>{t('历史')}</span>
+          </button>
+        </Tiptop>
 
         {/* 快捷命令按钮 */}
-        <button
-          ref={commandsBtnRef}
-          onClick={toggleCommands}
-          title={t('快捷命令')}
-          className={`term-btn${showCommands ? ' active' : ''}`}
-        >
-          <span style={{ display: 'inline-flex', alignItems: 'center' }}><Zap size={13} /></span>
-          <span>{t('命令')}</span>
-        </button>
+        <Tiptop text={t('快捷命令')}>
+          <button
+            ref={commandsBtnRef}
+            onClick={toggleCommands}
+            aria-label={t('快捷命令')}
+            className={`term-btn${showCommands ? ' active' : ''}`}
+          >
+            <span style={{ display: 'inline-flex', alignItems: 'center' }}><Zap size={13} /></span>
+            <span>{t('命令')}</span>
+          </button>
+        </Tiptop>
 
         {/* 执行按钮（绿色） */}
-        <button
-          onClick={() => executeCommand()}
-          disabled={!cmdTrimmed || !isConnected}
-          title={t('执行')}
-          className={`term-btn-icon success${(cmdTrimmed && isConnected) ? ' enabled' : ''}`}
-        >
-          <Play size={13} />
-        </button>
+        <Tiptop text={t('执行')}>
+          <button
+            onClick={() => executeCommand()}
+            disabled={!cmdTrimmed || !isConnected}
+            aria-label={t('执行')}
+            className={`term-btn-icon success${(cmdTrimmed && isConnected) ? ' enabled' : ''}`}
+          >
+            <Play size={13} />
+          </button>
+        </Tiptop>
 
         {/* 复制按钮（蓝色） */}
-        <button
-          onClick={copyCommand}
-          disabled={!cmdTrimmed}
-          title={t('复制')}
-          className={`term-btn-icon accent${cmdTrimmed ? ' enabled' : ''}`}
-        >
-          <Clipboard size={13} />
-        </button>
+        <Tiptop text={t('复制')}>
+          <button
+            onClick={copyCommand}
+            disabled={!cmdTrimmed}
+            aria-label={t('复制')}
+            className={`term-btn-icon accent${cmdTrimmed ? ' enabled' : ''}`}
+          >
+            <Clipboard size={13} />
+          </button>
+        </Tiptop>
       </div>
       </div>
 
@@ -1160,28 +1169,34 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
                 </span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
                   {/* 执行（绿色） */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); executeCommand(item.command); }}
-                    title={t('执行')}
-                    style={{ ...iconBtnStyle('var(--text-secondary)') }}
-                  >
-                    <Play size={12} />
-                  </button>
+                  <Tiptop text={t('执行')}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); executeCommand(item.command); }}
+                      aria-label={t('执行')}
+                      style={{ ...iconBtnStyle('var(--text-secondary)') }}
+                    >
+                      <Play size={12} />
+                    </button>
+                  </Tiptop>
                   {/* 复制（蓝色） */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(item.command).catch(() => {}); }}
-                    title={t('复制')}
-                    style={{ ...iconBtnStyle('var(--text-secondary)') }}>
-                    <Clipboard size={12} />
-                  </button>
+                  <Tiptop text={t('复制')}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(item.command).catch(() => {}); }}
+                      aria-label={t('复制')}
+                      style={{ ...iconBtnStyle('var(--text-secondary)') }}>
+                      <Clipboard size={12} />
+                    </button>
+                  </Tiptop>
                   {/* 删除（红色） */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); deleteHistoryItem(item.id); }}
-                    title={t('删除')}
-                    style={{ ...iconBtnStyle('var(--danger)', 'rgba(255,123,114,0.15)') }}
-                  >
-                    <X size={12} />
-                  </button>
+                  <Tiptop text={t('删除')}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteHistoryItem(item.id); }}
+                      aria-label={t('删除')}
+                      style={{ ...iconBtnStyle('var(--danger)', 'rgba(255,123,114,0.15)') }}
+                    >
+                      <X size={12} />
+                    </button>
+                  </Tiptop>
                 </div>
               </div>
             ))}

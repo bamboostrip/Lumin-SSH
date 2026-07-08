@@ -5,6 +5,7 @@ import { ClipboardGetText } from '../../../wailsjs/runtime/runtime.js'
 import { useTranslation, t as translate } from '../../i18n.js'
 import AIAutoApproveDropdown from './AIAutoApproveDropdown.jsx'
 import AIProviderSelector from './AIProviderSelector.jsx'
+import Tiptop from '../Tiptop.jsx'
 import {
   buildRemoteFileMention,
   buildRemoteFolderMention,
@@ -90,30 +91,31 @@ function buildComposerContextHighlightHTML(value, slashCommands) {
 
 function ActionButton({ title, children, primary = false, disabled = false, onClick, onContextMenu }) {
   return (
-    <button
-      type="button"
-      title={title}
-      aria-label={title}
-      onClick={onClick}
-      onContextMenu={onContextMenu}
-      disabled={disabled}
-      style={{
-        width: 34,
-        height: 34,
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderRadius: 8,
-        border: `1px solid ${primary ? 'var(--accent-border)' : 'var(--border)'}`,
-        background: primary ? 'rgba(var(--accent-rgb), 0.14)' : 'transparent',
-        color: primary ? 'var(--accent)' : 'var(--text-secondary)',
-        transition: 'var(--transition)',
-        flexShrink: 0,
-        opacity: disabled ? 0.45 : 1,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-      }}>
-      {children}
-    </button>
+    <Tiptop text={title}>
+      <button
+        type="button"
+        aria-label={title}
+        onClick={onClick}
+        onContextMenu={onContextMenu}
+        disabled={disabled}
+        style={{
+          width: 34,
+          height: 34,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: 8,
+          border: `1px solid ${primary ? 'var(--accent-border)' : 'var(--border)'}`,
+          background: primary ? 'rgba(var(--accent-rgb), 0.14)' : 'transparent',
+          color: primary ? 'var(--accent)' : 'var(--text-secondary)',
+          transition: 'var(--transition)',
+          flexShrink: 0,
+          opacity: disabled ? 0.45 : 1,
+          cursor: disabled ? 'not-allowed' : 'pointer',
+        }}>
+        {children}
+      </button>
+    </Tiptop>
   )
 }
 

@@ -2,6 +2,18 @@ import AIChatMessageActionBar from './AIChatMessageActionBar.jsx'
 
 const userTitleKey = '用户'
 
+function openExternalLink(event, href) {
+  const nextHref = typeof href === 'string' ? href.trim() : ''
+  if (!nextHref) {
+    return
+  }
+  const openUrl = window?.runtime?.BrowserOpenURL
+  if (typeof openUrl === 'function') {
+    event.preventDefault()
+    openUrl(nextHref)
+  }
+}
+
 export default function AIChatUserMessage({ message, onRetry, onEdit, onDelete, messageActionBarAtBottom = false }) {
   const text = typeof message?.text === 'string' ? message.text : ''
   const time = typeof message?.time === 'string' ? message.time : ''
@@ -40,6 +52,7 @@ export default function AIChatUserMessage({ message, onRetry, onEdit, onDelete, 
           href={image}
           target="_blank"
           rel="noreferrer"
+          onClick={(event) => openExternalLink(event, image)}
           style={{
             display: 'block',
             borderRadius: 12,

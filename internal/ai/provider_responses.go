@@ -83,7 +83,11 @@ func (a *App) requestResponsesAIChatRound(ctx context.Context, requestID string,
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 
-	resp, err := (&http.Client{}).Do(req)
+	client, err := a.newAIHTTPClientForProfile(&profile, 0)
+	if err != nil {
+		return result, err
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return result, err
 	}

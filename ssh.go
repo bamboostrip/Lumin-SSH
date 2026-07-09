@@ -391,6 +391,7 @@ func (m *SSHManager) Connect(sessionId string, conn Connection) error {
 			m.connTerminals[connKey] = []string{}
 			m.mu.Unlock()
 
+			go m.watchClient(connKey, client)
 			go func() {
 				_ = client.Wait()
 				m.mu.Lock()
@@ -546,6 +547,31 @@ func (m *SSHManager) setupSession(client *ssh.Client, connKey, sessionId, groupS
 	return nil
 }
 
+func (m *SSHManager) watchClient(connKey string, client *ssh.Client) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		m.mu.RLock()
+		entry, ok := m.clients[connKey]
+		if !ok || entry.Client != client {
+			m.mu.RUnlock()
+			return
+		}
+		terminalIds := append([]string{}, m.connTerminals[connKey]...)
+		m.mu.RUnlock()
+		_, _, err := client.SendRequest("keepalive@lumin-ssh", true, nil)
+		if err == nil {
+			continue
+		}
+		for _, tid := range terminalIds {
+			if m.Disconnect(tid) && m.ctx != nil {
+				runtime.EventsEmit(m.ctx, "ssh-disconnected", tid)
+			}
+		}
+		return
+	}
+}
+
 func (m *SSHManager) pipeOutput(sessionId string, r io.Reader, historyStream *commandHistoryStream) {
 	bufPtr := m.bufPool.Get().(*[]byte)
 	defer m.bufPool.Put(bufPtr)
@@ -613,7 +639,9 @@ func (m *SSHManager) pipeOutput(sessionId string, r io.Reader, historyStream *co
 			}
 		}
 		if err != nil {
-			m.Disconnect(sessionId)
+			if m.Disconnect(sessionId) && m.ctx != nil {
+				runtime.EventsEmit(m.ctx, "ssh-disconnected", sessionId)
+			}
 			return
 		}
 	}
@@ -664,7 +692,8 @@ func (m *SSHManager) abortUploadsForSession(sessionId string) {
 	}
 }
 
-func (m *SSHManager) Disconnect(sessionId string) {
+func (m *SSHManager) Disconnect(sessionId string) bool {
+	disconnected := false
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("[Disconnect] panic recovered: %v\n%s", r, debug.Stack())
@@ -687,8 +716,9 @@ func (m *SSHManager) Disconnect(sessionId string) {
 	s, ok := m.sessions[sessionId]
 	if !ok {
 		m.mu.Unlock()
-		return
+		return false
 	}
+	disconnected = true
 	connKey := s.ConnKey
 	delete(m.sessions, sessionId)
 	// 清理该会话临时接受的主机密钥记录，避免无限累积
@@ -737,6 +767,7 @@ func (m *SSHManager) Disconnect(sessionId string) {
 		closeWithTimeout(clientToClose, 3*time.Second)
 	}
 	m.closeSessionOutputTaps(sessionId)
+	return disconnected
 }
 
 // closeWithTimeout 关闭资源，最多等待 timeout，超时放弃避免半死服务端卡住调用方

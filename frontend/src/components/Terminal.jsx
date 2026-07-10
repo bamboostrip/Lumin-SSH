@@ -331,6 +331,8 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
 
     // ── 每行时间戳追踪：marker 会跟随 xterm scrollback 裁剪同步移动 ──
     term.onLineFeed(() => {
+      if (!timestampsEnabledRef.current) return;
+
       const buf = term.buffer.active;
       const cursorLine = buf.baseY + buf.cursorY;
       // 往回跳过 isWrapped 包裹行，记到逻辑行首行
@@ -342,9 +344,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
       if (pos >= 0) {
         tsSet(term.registerMarker(pos - cursorLine), new Date().toLocaleTimeString());
       }
-      if (timestampsEnabledRef.current) {
-        requestAnimationFrame(() => syncGutter());
-      }
+      requestAnimationFrame(() => syncGutter());
     });
     const wheelHandler = (e) => {
       // 无论向上还是向下滚动，都检查当前位置并更新锁定状态

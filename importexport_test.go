@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 )
 
@@ -214,5 +215,168 @@ func TestMergeImportCredentials_SkipExisting(t *testing.T) {
 	toAdd := mergeImportCredentials(local, incoming)
 	if len(toAdd) != 2 {
 		t.Fatalf("expected 2 to add (both get new/distinct handling), got %d", len(toAdd))
+	}
+}
+
+// ── 密文导入/导出测试 ──────────────────────────────────────────
+
+// newTestConfigManager 创建一个临时 ConfigManager 用于加解密测试（会生成临时配置目录）。
+func newTestConfigManager(t *testing.T) *ConfigManager {
+	t.Helper()
+	return NewConfigManager()
+}
+
+// TestEncryptedRoundTrip_PasswordKey 密文往返：用密码加密 → parseImportData 解密 → 数据一致
+func TestEncryptedRoundTrip_PasswordKey(t *testing.T) {
+	cm := newTestConfigManager(t)
+	exp := buildConnectionsExport([]Connection{
+		{ID: "c1", Host: "h1", Port: 22, Username: "root", Password: "secret", AuthMethod: "password"},
+	}, []Credential{})
+	password := "myPassword123"
+	key := sha256Key(password)
+
+	encrypted, err := cm.encryptExportData(exp, key)
+	if err != nil {
+		t.Fatalf("encrypt failed: %v", err)
+	}
+
+	// 用错误密码解密应返回 errNeedPassword
+	wrongKey := sha256Key("wrong")
+	_, err = cm.parseImportData([]byte(encrypted), [][]byte{}, wrongKey)
+	if !errors.Is(err, errNeedPassword) {
+		t.Fatalf("expected errNeedPassword with wrong key, got %v", err)
+	}
+
+	// 用正确密码解密
+	parsed, err := cm.parseImportData([]byte(encrypted), [][]byte{}, key)
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+	if len(parsed.Connections) != 1 || parsed.Connections[0].Password != "secret" {
+		t.Fatalf("roundtrip lost data: %+v", parsed)
+	}
+}
+
+// TestParseImportData_Plaintext 明文 JSON 应直接解析，不走解密
+func TestParseImportData_Plaintext(t *testing.T) {
+	cm := newTestConfigManager(t)
+	plainExp := buildConnectionsExport([]Connection{
+		{Host: "h1", Port: 22, Username: "root"},
+	}, []Credential{})
+	data, _ := json.Marshal(plainExp)
+
+	parsed, err := cm.parseImportData(data, [][]byte{}, nil)
+	if err != nil {
+		t.Fatalf("plaintext parse failed: %v", err)
+	}
+	if len(parsed.Connections) != 1 || parsed.Connections[0].Host != "h1" {
+		t.Fatalf("plaintext data mismatch: %+v", parsed)
+	}
+}
+
+// TestParseImportData_SyncSnapshotFormat 云端 SyncSnapshot 格式（明文）应能解析
+func TestParseImportData_SyncSnapshotFormat(t *testing.T) {
+	cm := newTestConfigManager(t)
+	snap := SyncSnapshot{
+		Connections: []Connection{{Host: "snap-host", Port: 22, Username: "u"}},
+	}
+	data, _ := json.Marshal(snap)
+	// SyncSnapshot 没有 format 字段，tryParseExportJSON 会失败，应回退到 tryParseSnapshotJSON
+	parsed, err := cm.parseImportData(data, [][]byte{}, nil)
+	if err != nil {
+		t.Fatalf("snapshot parse failed: %v", err)
+	}
+	if len(parsed.Connections) != 1 || parsed.Connections[0].Host != "snap-host" {
+		t.Fatalf("snapshot data mismatch: %+v", parsed)
+	}
+}
+
+// TestParseImportData_EncryptedSnapshot 加密的云端备份格式应能用云端密钥解密
+func TestParseImportData_EncryptedSnapshot(t *testing.T) {
+	cm := newTestConfigManager(t)
+	snap := SyncSnapshot{
+		Connections: []Connection{{Host: "cloud-host", Port: 2222, Username: "cloud-user"}},
+	}
+	snapJSON, _ := json.Marshal(snap)
+	cloudKey := sha256Key("fake-cloud-credentials")
+	encrypted, err := cm.encryptWithKey(string(snapJSON), cloudKey)
+	if err != nil {
+		t.Fatalf("encrypt snapshot failed: %v", err)
+	}
+
+	// 用云端密钥作为候选密钥，应能解密并识别为 SyncSnapshot
+	parsed, err := cm.parseImportData([]byte(encrypted), [][]byte{cloudKey}, nil)
+	if err != nil {
+		t.Fatalf("encrypted snapshot parse failed: %v", err)
+	}
+	if len(parsed.Connections) != 1 || parsed.Connections[0].Host != "cloud-host" {
+		t.Fatalf("encrypted snapshot data mismatch: %+v", parsed)
+	}
+}
+
+// TestParseImportData_NeedPassword 无任何正确密钥时返回 errNeedPassword
+func TestParseImportData_NeedPassword(t *testing.T) {
+	cm := newTestConfigManager(t)
+	exp := buildConnectionsExport([]Connection{{Host: "h1"}}, []Credential{})
+	realKey := sha256Key("correct")
+	encrypted, _ := cm.encryptExportData(exp, realKey)
+
+	// 没有提供任何正确密钥
+	_, err := cm.parseImportData([]byte(encrypted), [][]byte{sha256Key("wrong1"), sha256Key("wrong2")}, nil)
+	if !errors.Is(err, errNeedPassword) {
+		t.Fatalf("expected errNeedPassword, got %v", err)
+	}
+}
+
+// TestParseImportData_PasswordKeyPriority 用户密码优先于候选密钥
+func TestParseImportData_PasswordKeyPriority(t *testing.T) {
+	cm := newTestConfigManager(t)
+	exp := buildConnectionsExport([]Connection{{Host: "h1", Password: "pw"}}, []Credential{})
+	passwordKey := sha256Key("user-password")
+	encrypted, _ := cm.encryptExportData(exp, passwordKey)
+
+	// passwordKey 正确，candidateKeys 全错，应优先用 passwordKey 成功
+	parsed, err := cm.parseImportData([]byte(encrypted), [][]byte{sha256Key("wrong")}, passwordKey)
+	if err != nil {
+		t.Fatalf("expected success with passwordKey priority, got %v", err)
+	}
+	if parsed.Connections[0].Password != "pw" {
+		t.Fatalf("data mismatch: %+v", parsed)
+	}
+}
+
+// TestBuildImportTemplate 模板应包含 2 条样例且格式合法
+func TestBuildImportTemplate(t *testing.T) {
+	tmpl := buildImportTemplate()
+	if tmpl.Format != connectionsExportFormat {
+		t.Fatalf("wrong format: %s", tmpl.Format)
+	}
+	if len(tmpl.Connections) != 2 {
+		t.Fatalf("expected 2 sample connections, got %d", len(tmpl.Connections))
+	}
+	// 应能被 tryParseExportJSON 正确解析
+	data, _ := json.Marshal(tmpl)
+	parsed, ok := tryParseExportJSON(data)
+	if !ok {
+		t.Fatal("template should parse as connectionsExport")
+	}
+	if len(parsed.Connections) != 2 {
+		t.Fatalf("parsed template has %d connections", len(parsed.Connections))
+	}
+}
+
+// TestProviderOrder 同步后端排序：当前模式应排第一
+func TestProviderOrder(t *testing.T) {
+	order := providerOrder("r2")
+	if order[0] != "r2" {
+		t.Fatalf("expected r2 first, got %v", order)
+	}
+	if len(order) != 4 {
+		t.Fatalf("expected 4 providers, got %d", len(order))
+	}
+	// "all" 时保持默认顺序
+	orderAll := providerOrder("all")
+	if orderAll[0] != "webdav" {
+		t.Fatalf("expected webdav first for 'all', got %v", orderAll)
 	}
 }

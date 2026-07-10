@@ -22,6 +22,7 @@ import { useUpdateChecker } from './hooks/useUpdateChecker.js';
 import ConnectingCard from './components/ConnectingCard.jsx';
 import UpdateModal from './components/UpdateModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
+import ImportExportDialog from './components/ImportExportDialog.jsx';
 import Tiptop from './components/Tiptop.jsx';
 import { Bot, Settings, House, Minus, Square, X, Plus, Monitor, RefreshCw, Folder, ScrollText, Cpu, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Search, Globe, Rocket } from 'lucide-react';
 import { Z } from './constants/zIndex';
@@ -3156,30 +3157,110 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     }
   }, [addToast]);
 
-  // ── 节点导入/导出 ───────────────────────────────────────────
-  const handleExportServers = useCallback(async () => {
+  // ── 节点导入/导出（数据管理） ───────────────────────────────
+  const [showImportExportDialog, setShowImportExportDialog] = useState(false);
+  const [ieBusy, setIeBusy] = useState(false);
+  const [hasCloudProvider, setHasCloudProvider] = useState(false);
+
+  const handleOpenImportExport = useCallback(async () => {
     try {
-      const path = await AppGo.ExportConnections();
-      if (!path) return; // 用户取消对话框，静默
+      const configured = await AppGo.HasCloudSyncConfigured();
+      setHasCloudProvider(!!configured);
+    } catch { setHasCloudProvider(false); }
+    setShowImportExportDialog(true);
+  }, []);
+
+  const handleExport = useCallback(async (opts) => {
+    setIeBusy(true);
+    try {
+      const path = await AppGo.ExportConnections(!!opts.useEncryption, opts.password || '');
+      if (!path) { return; } // 用户取消保存对话框
       addToast(t('已导出到 {path}', { path }), 'success');
     } catch (err) {
       addToast(`${t('导出失败')}: ${err}`, 'error');
+    } finally {
+      setIeBusy(false);
     }
   }, [addToast, t]);
 
-  const handleImportServers = useCallback(async () => {
+  // 导入流程：选文件 → 尝试导入 → 若需要密码则弹 luminDialog.prompt 取密码 → 重试
+  // 注意：用单一 try-finally 包裹全流程，保证任意路径退出（含用户取消文件选择/
+  // 取消密码框）都重置 ieBusy，否则按钮会永久禁用。
+  const handleImport = useCallback(async () => {
+    setIeBusy(true);
     try {
-      const result = await AppGo.ImportConnections();
-      // 后端在用户取消对话框时返回空 ImportResult（total/imported/skipped 均为 0），静默
-      if (result && result.total === 0 && result.imported === 0 && result.skipped === 0) return;
-      if (result.imported > 0 || result.skipped > 0) {
-        addToast(t('已导入 {imported} 个，跳过 {skipped} 个重复', { imported: result.imported, skipped: result.skipped }), 'success');
+      // 1. 选文件
+      let filePath = '';
+      try {
+        filePath = await AppGo.SelectImportFile();
+      } catch (err) {
+        addToast(`${t('导入失败')}: ${err}`, 'error');
+        return;
       }
-      await loadServers();
-    } catch (err) {
-      addToast(`${t('导入失败')}: ${err}`, 'error');
+      if (!filePath) { return; } // 用户取消文件选择，静默
+
+      // 尝试导入（无密码）；失败若是 needPassword 则弹密码框重试
+      const doImport = async (pwd) => {
+        const result = await AppGo.ImportConnections(filePath, pwd);
+        // 后端取消时返回空 ImportResult（全 0），静默
+        if (result && result.total === 0 && result.imported === 0 && result.skipped === 0) {
+          return { silent: true };
+        }
+        return { result, silent: false };
+      };
+
+      const finishImportSuccess = (result) => {
+        if (result.imported > 0 || result.skipped > 0) {
+          addToast(t('已导入 {imported} 个，跳过 {skipped} 个重复', { imported: result.imported, skipped: result.skipped }), 'success');
+        }
+        void loadServers();
+      };
+
+      // 2. 首次尝试（无密码）
+      try {
+        const outcome = await doImport('');
+        if (outcome.silent) { return; }
+        finishImportSuccess(outcome.result);
+      } catch (err) {
+        // 检测 needPassword：后端返回的 error 字符串含 "need password"
+        if (String(err).includes('need password')) {
+          // 弹密码框让用户输入
+          const pwd = await window.luminDialog?.prompt?.(
+            t('密文需要密码请输入'),
+            '',
+            t('导入密码'),
+            t(' ')
+          );
+          if (pwd === null) { return; } // 用户取消密码框
+          const pwdStr = typeof pwd === 'object' ? pwd.value : pwd;
+          try {
+            const outcome = await doImport(pwdStr);
+            if (outcome.silent) { return; }
+            finishImportSuccess(outcome.result);
+          } catch (err2) {
+            addToast(`${t('导入失败')}: ${t('密码错误或文件不兼容')}`, 'error');
+          }
+        } else {
+          addToast(`${t('导入失败')}: ${err}`, 'error');
+        }
+      }
+    } finally {
+      setIeBusy(false);
     }
   }, [addToast, loadServers, t]);
+
+  const handleDownloadTemplate = useCallback(async () => {
+    setIeBusy(true);
+    try {
+      const path = await AppGo.DownloadImportTemplate();
+      if (!path) { return; } // 用户取消
+      addToast(t('已下载模板到 {path}', { path }), 'success');
+    } catch (err) {
+      addToast(`${t('模板下载失败')}: ${err}`, 'error');
+    } finally {
+      setIeBusy(false);
+    }
+  }, [addToast, t]);
 
   const filteredServers = useMemo(() => {
     if (!searchQuery) return servers;
@@ -3816,8 +3897,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
             onMoveGroup={handleMoveGroup}
             addToast={addToast}
             onOpenCredentials={() => setShowCredentials(true)}
-            onExportServers={handleExportServers}
-            onImportServers={handleImportServers}
+            onOpenImportExport={handleOpenImportExport}
           />
         </div>
 
@@ -4497,6 +4577,17 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
           onClose={() => { setShowCredentials(false); loadServers(); }}
           onChange={loadServers}
           addToast={addToast}
+        />
+      )}
+
+      {showImportExportDialog && (
+        <ImportExportDialog
+          onClose={() => setShowImportExportDialog(false)}
+          onExport={handleExport}
+          onImport={handleImport}
+          onDownloadTemplate={handleDownloadTemplate}
+          hasCloudProvider={hasCloudProvider}
+          busy={ieBusy}
         />
       )}
 

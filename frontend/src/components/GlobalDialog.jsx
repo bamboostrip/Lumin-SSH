@@ -130,7 +130,7 @@ function DialogContent({ current, onClose, onConfirm, onChoice }) {
             <input 
               autoFocus
               className="input" 
-              style={{ width: '100%', textAlign: 'center', fontSize: 16, padding: '12px 60px 12px 16px' }}
+              style={{ width: '100%', textAlign: 'center', fontSize: 16, padding: current.checkboxLabel ? '12px 68px 12px 16px' : '12px 36px 12px 16px' }}
               value={inputValue}
               onChange={e => setInputValue(e.target.value)}
               type={current.checkboxLabel && !showPassword ? 'password' : 'text'}
@@ -139,22 +139,35 @@ function DialogContent({ current, onClose, onConfirm, onChoice }) {
                 if (e.key === 'Escape') onClose();
               }}
             />
-            <Tiptop text={showPassword ? t('隐藏密码') : t('显示密码')}>
-              <button
-                type="button"
-                aria-label={showPassword ? t('隐藏密码') : t('显示密码')}
-                onClick={() => setShowPassword(!showPassword)}
+            {current.checkboxLabel && (
+              <Tiptop
+                text={showPassword ? t('隐藏密码') : t('显示密码')}
                 style={{
                   position: 'absolute', right: 42, top: '50%', transform: 'translateY(-50%)',
-                  background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer',
-                  padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 16, lineHeight: 1, borderRadius: 4, transition: 'background 0.15s',
+                  zIndex: 2,
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--accent-rgb), 0.12)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'none'}
-              >{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button>
-            </Tiptop>
-            <Tiptop text={t('粘贴')}>
+              >
+                <button
+                  type="button"
+                  aria-label={showPassword ? t('隐藏密码') : t('显示密码')}
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer',
+                    padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 16, lineHeight: 1, borderRadius: 4, transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--accent-rgb), 0.12)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                >{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button>
+              </Tiptop>
+            )}
+            <Tiptop
+              text={t('粘贴')}
+              style={{
+                position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                zIndex: 2,
+              }}
+            >
               <button
                 onClick={async () => {
                   try {
@@ -170,7 +183,6 @@ function DialogContent({ current, onClose, onConfirm, onChoice }) {
                 }}
                 aria-label={t('粘贴')}
                 style={{
-                  position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
                   background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer',
                   padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 16, lineHeight: 1, borderRadius: 4, transition: 'background 0.15s',
@@ -180,7 +192,7 @@ function DialogContent({ current, onClose, onConfirm, onChoice }) {
               ><Clipboard size={16} /></button>
             </Tiptop>
           </div>
-          {current.checkboxLabel && (
+          {current.checkboxLabel && current.checkboxLabel.trim() && (
             <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 28, fontSize: 13, color: 'var(--text-tertiary)', cursor: 'pointer' }}>
               <input type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)} />
               {current.checkboxLabel}

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -306,17 +307,42 @@ func (a *App) DeleteConnection(id string) bool {
 	return a.configManager.DeleteConnection(id)
 }
 
-// ExportConnections 导出全部节点（明文，含真实密码/私钥）到用户选择的文件。
-// 弹出保存对话框；用户取消时返回 ("", nil)。
-// 返回写入的文件路径。
-func (a *App) ExportConnections() (string, error) {
-	defaultName := fmt.Sprintf("lumin-ssh-connections-%s.json", time.Now().Format("20060102"))
+// ExportConnections 导出全部节点到用户选择的文件。
+// useEncryption=false 导出明文 .json（含真实密码/私钥）；true 导出密文 .enc。
+// password 非空时用 sha256(password) 当密钥；空则用本机已配置的云端密钥（GetActiveSyncKey）。
+// 弹出保存对话框；用户取消时返回 ("", nil)。返回写入的文件路径。
+func (a *App) ExportConnections(useEncryption bool, password string) (string, error) {
+	// 选定密钥
+	var key []byte
+	var keySource string
+	if useEncryption {
+		if strings.TrimSpace(password) != "" {
+			key = sha256Key(password)
+			keySource = "password"
+		} else {
+			k, name := a.configManager.GetActiveSyncKey()
+			if k == nil {
+				return "", fmt.Errorf("未配置任何云同步后端，请输入密码或先在设置中配置云同步")
+			}
+			key = k
+			keySource = name
+		}
+	}
+
+	// 保存对话框
+	ext := ".json"
+	title := "导出节点"
+	if useEncryption {
+		ext = ".enc"
+	}
+	defaultName := fmt.Sprintf("lumin-ssh-connections-%s%s", time.Now().Format("20060102"), ext)
+	filters := []runtime.FileFilter{
+		{DisplayName: fmt.Sprintf("Lumin-SSH (*%s)", ext), Pattern: "*" + ext},
+	}
 	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           "导出节点",
+		Title:           title,
 		DefaultFilename: defaultName,
-		Filters: []runtime.FileFilter{
-			{DisplayName: "JSON (*.json)", Pattern: "*.json"},
-		},
+		Filters:         filters,
 	})
 	if err != nil {
 		return "", err
@@ -329,42 +355,109 @@ func (a *App) ExportConnections() (string, error) {
 	conns := a.configManager.GetConnections()
 	creds := a.configManager.GetCredentials()
 	exp := buildConnectionsExport(conns, creds)
-	data, err := json.MarshalIndent(exp, "", "  ")
+
+	if !useEncryption {
+		// 明文：序列化后直接写文件
+		data, err := json.MarshalIndent(exp, "", "  ")
+		if err != nil {
+			return "", fmt.Errorf("导出失败: %w", err)
+		}
+		if err := atomicWriteFile(path, data, 0600); err != nil {
+			return "", fmt.Errorf("导出失败: %w", err)
+		}
+		return path, nil
+	}
+
+	// 密文：序列化 → 加密 → 写 hex
+	encrypted, err := a.configManager.encryptExportData(exp, key)
 	if err != nil {
 		return "", fmt.Errorf("导出失败: %w", err)
 	}
-	if err := atomicWriteFile(path, data, 0600); err != nil {
+	if err := atomicWriteFile(path, []byte(encrypted), 0600); err != nil {
 		return "", fmt.Errorf("导出失败: %w", err)
+	}
+	_ = keySource // 密钥来源（可用于日志/提示，当前不返回给前端）
+	return path, nil
+}
+
+// SelectImportFile 弹出打开对话框让用户选择导入文件，返回文件路径（用户取消返回空串）。
+// 与 ImportConnections 分离，便于密文导入需要密码时无需重新选文件。
+func (a *App) SelectImportFile() (string, error) {
+	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "导入节点",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "Lumin-SSH (*.json;*.enc)", Pattern: "*.json;*.enc"},
+		},
+	})
+	if err != nil {
+		return "", err
 	}
 	return path, nil
 }
 
-// ImportConnections 从用户选择的文件导入节点（合并，跳过重复）。
-// 弹出打开对话框；用户取消时返回空结果。
-func (a *App) ImportConnections() (ImportResult, error) {
-	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "导入节点",
+// ImportConnections 从指定文件导入节点（合并，跳过重复）。
+// filePath 由前端通过 SelectImportFile 获取；password 为用户输入的解密密码（可空）。
+// 智能识别明文 JSON / 密码密文 / 云端 .enc：
+//   - 明文直接解析
+//   - 密文先用 password 派生密钥解密，再尝试本机各已配置后端密钥
+//   - 都失败返回 errNeedPassword（前端据此弹密码框重试）
+func (a *App) ImportConnections(filePath string, password string) (ImportResult, error) {
+	if filePath == "" {
+		return ImportResult{}, nil
+	}
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return ImportResult{}, fmt.Errorf("导入失败: %w", err)
+	}
+
+	var passwordKey []byte
+	if strings.TrimSpace(password) != "" {
+		passwordKey = sha256Key(password)
+	}
+	candidateKeys := a.configManager.CandidateSyncKeys()
+
+	exp, err := a.configManager.parseImportData(data, candidateKeys, passwordKey)
+	if err != nil {
+		if errors.Is(err, errNeedPassword) {
+			// 原样返回，前端识别此 sentinel 并弹密码框
+			return ImportResult{}, err
+		}
+		return ImportResult{}, fmt.Errorf("导入失败: %w", err)
+	}
+	return a.configManager.ImportConnections(exp.Connections, exp.Credentials)
+}
+
+// DownloadImportTemplate 下载导入模板（含样例的明文 JSON），方便用户批量录入。
+// 弹出保存对话框；用户取消时返回 ("", nil)。返回写入的文件路径。
+func (a *App) DownloadImportTemplate() (string, error) {
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "保存导入模板",
+		DefaultFilename: "lumin-ssh-import-template.json",
 		Filters: []runtime.FileFilter{
 			{DisplayName: "JSON (*.json)", Pattern: "*.json"},
 		},
 	})
 	if err != nil {
-		return ImportResult{}, err
+		return "", err
 	}
 	if path == "" {
-		// 用户取消，非错误
-		return ImportResult{}, nil
+		return "", nil
 	}
+	tmpl := buildImportTemplate()
+	data, err := json.MarshalIndent(tmpl, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("生成模板失败: %w", err)
+	}
+	if err := atomicWriteFile(path, data, 0600); err != nil {
+		return "", fmt.Errorf("保存模板失败: %w", err)
+	}
+	return path, nil
+}
 
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ImportResult{}, fmt.Errorf("导入失败: %w", err)
-	}
-	exp, err := parseConnectionsExport(data)
-	if err != nil {
-		return ImportResult{}, fmt.Errorf("导入失败: %w", err)
-	}
-	return a.configManager.ImportConnections(exp.Connections, exp.Credentials)
+// HasCloudSyncConfigured 返回本机是否配置了任意云同步后端（供前端 UI 决定是否提示输入密码）。
+func (a *App) HasCloudSyncConfigured() bool {
+	key, _ := a.configManager.GetActiveSyncKey()
+	return key != nil
 }
 
 // SetConnectionGroup 仅更新服务器分组

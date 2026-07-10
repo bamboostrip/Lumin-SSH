@@ -2,8 +2,11 @@ package main
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -178,4 +181,228 @@ func parseConnectionsExport(data []byte) (*connectionsExport, error) {
 		}
 	}
 	return &exp, nil
+}
+
+// buildImportTemplate 生成带样例的导入模板，方便用户批量录入。
+// 含 2 条样例（密码认证 + 私钥认证），host/密码用占位符，用户照着复制修改。
+func buildImportTemplate() connectionsExport {
+	return connectionsExport{
+		Format:     connectionsExportFormat,
+		Version:    1,
+		ExportedAt: 0, // 模板不填时间戳
+		Connections: []Connection{
+			{
+				ID:         "",
+				Name:       "示例-密码认证",
+				Host:       "1.2.3.4",
+				Port:       22,
+				Username:   "root",
+				Password:   "your-password-here",
+				AuthMethod: "password",
+				Group:      "web-servers",
+			},
+			{
+				ID:         "",
+				Name:       "示例-私钥认证",
+				Host:       "5.6.7.8",
+				Port:       22,
+				Username:   "ubuntu",
+				AuthMethod: "privateKey",
+				PrivateKey: "-----BEGIN OPENSSH PRIVATE KEY-----\nyour-private-key-content-here\n-----END OPENSSH PRIVATE KEY-----",
+				Passphrase: "optional-key-passphrase",
+				Group:      "db-servers",
+			},
+		},
+		Credentials: []Credential{},
+	}
+}
+
+// ── 密文导入/导出 ──────────────────────────────────────────
+
+// errNeedPassword 表示密文导入时所有候选密钥都解密失败，需要用户输入密码。
+var errNeedPassword = errors.New("need password")
+
+// sha256Key 把用户密码派生为 32 字节 AES 密钥（与云端各后端裸 SHA-256 口径一致）。
+func sha256Key(password string) []byte {
+	h := sha256.Sum256([]byte(password))
+	return h[:]
+}
+
+// encryptExportData 把导出对象序列化为 JSON 并用指定密钥加密，返回 hex 密文字符串。
+// 产出格式与云端备份 .enc 一致（encryptWithKey 的输出），只是密钥来源不同。
+func (c *ConfigManager) encryptExportData(exp connectionsExport, key []byte) (string, error) {
+	data, err := json.MarshalIndent(exp, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("marshal export: %w", err)
+	}
+	enc, err := c.encryptWithKey(string(data), key)
+	if err != nil {
+		return "", fmt.Errorf("encrypt export: %w", err)
+	}
+	return enc, nil
+}
+
+// providerOrder 返回按"当前同步后端优先"排序的候选后端列表（固定四后端，去重）。
+func providerOrder(currentMode string) []string {
+	all := []string{"webdav", "r2", "ftp", "sftp"}
+	current := strings.ToLower(strings.TrimSpace(currentMode))
+	if current == "" || current == "all" {
+		return all
+	}
+	// 把 current 放最前，其余保持原顺序
+	order := []string{current}
+	for _, p := range all {
+		if p != current {
+			order = append(order, p)
+		}
+	}
+	return order
+}
+
+// providerKeyIfConfigured 返回指定后端已配置时的派生密钥与显示名；未配置返回 (nil, "")。
+// 使用公开的 GetXxxConfig（自带锁），可在外部安全调用。
+func (c *ConfigManager) providerKeyIfConfigured(provider string) ([]byte, string) {
+	switch provider {
+	case "webdav":
+		conf := c.GetWebdavConfig()
+		if conf == nil || conf["url"] == "" {
+			return nil, ""
+		}
+		return c.getWebdavKey(), "WebDAV"
+	case "r2":
+		conf := c.GetR2Config()
+		if conf == nil || conf.Bucket == "" || conf.Endpoint == "" {
+			return nil, ""
+		}
+		return c.getR2Key(), "R2 (S3)"
+	case "ftp":
+		conf := c.GetFTPConfig()
+		if conf == nil || conf.Host == "" {
+			return nil, ""
+		}
+		return c.getFTPKey(), "FTP"
+	case "sftp":
+		conf := c.GetSFTPConfig()
+		if conf == nil || conf.Host == "" {
+			return nil, ""
+		}
+		return c.getSFTPKey(), "SFTP"
+	}
+	return nil, ""
+}
+
+// GetActiveSyncKey 按"当前同步后端优先 + 其他已配后端"策略返回本机可用的云端密钥。
+// 返回 (key, providerName)；都没有则返回 (nil, "")。
+func (c *ConfigManager) GetActiveSyncKey() ([]byte, string) {
+	mode := c.GetSyncMode()
+	for _, p := range providerOrder(mode) {
+		if key, name := c.providerKeyIfConfigured(p); key != nil {
+			return key, name
+		}
+	}
+	return nil, ""
+}
+
+// CandidateSyncKeys 返回本机所有已配置后端的密钥列表（当前后端优先），用于导入时自动尝试解密云端 .enc。
+func (c *ConfigManager) CandidateSyncKeys() [][]byte {
+	mode := c.GetSyncMode()
+	var keys [][]byte
+	for _, p := range providerOrder(mode) {
+		if key, _ := c.providerKeyIfConfigured(p); key != nil {
+			keys = append(keys, key)
+		}
+	}
+	return keys
+}
+
+// parseImportData 智能解析导入文件原始字节：先试明文 JSON，失败则用候选密钥逐个解密。
+//
+// 解析优先级：
+//  1. 明文 connectionsExport（format 字段匹配）
+//  2. 明文 SyncSnapshot（兼容云端解密后的结构，忽略 quick_commands 等无关字段）
+//  3. hex 密文：依次用 passwordKey 和 candidateKeys 解密，解密成功后再按 1/2 解析
+//
+// passwordKey 为空表示用户未提供密码；candidateKeys 为本机各已配置后端密钥。
+// 所有密钥都解密失败时返回 errNeedPassword。
+func (c *ConfigManager) parseImportData(data []byte, candidateKeys [][]byte, passwordKey []byte) (*connectionsExport, error) {
+	// 先尝试明文 JSON：优先 connectionsExport 格式
+	if exp, ok := tryParseExportJSON(data); ok {
+		return exp, nil
+	}
+	// 再尝试明文 SyncSnapshot 格式（云端备份解密后的结构，或用户手动构造）
+	if exp, ok := tryParseSnapshotJSON(data); ok {
+		return exp, nil
+	}
+
+	// 否则当 hex 密文处理。decryptWithKey 对非法 hex/非密文会返回空串。
+	raw := strings.TrimSpace(string(data))
+	// 构造尝试顺序：用户密码优先，再本机云凭据
+	var keysToTry [][]byte
+	if len(passwordKey) > 0 {
+		keysToTry = append(keysToTry, passwordKey)
+	}
+	keysToTry = append(keysToTry, candidateKeys...)
+
+	for _, key := range keysToTry {
+		decrypted := c.decryptWithKey(raw, key)
+		if decrypted == "" {
+			continue
+		}
+		if exp, ok := tryParseExportJSON([]byte(decrypted)); ok {
+			return exp, nil
+		}
+		// 解密成功但不是 connectionsExport，尝试 SyncSnapshot 格式（云端备份）
+		if exp, ok := tryParseSnapshotJSON([]byte(decrypted)); ok {
+			return exp, nil
+		}
+	}
+	return nil, errNeedPassword
+}
+
+// tryParseExportJSON 尝试解析为 connectionsExport，校验 format 字段并补默认值。
+func tryParseExportJSON(data []byte) (*connectionsExport, bool) {
+	var exp connectionsExport
+	if err := json.Unmarshal(data, &exp); err != nil {
+		return nil, false
+	}
+	if exp.Format != connectionsExportFormat {
+		return nil, false
+	}
+	for i := range exp.Connections {
+		if exp.Connections[i].Port == 0 {
+			exp.Connections[i].Port = 22
+		}
+		if exp.Connections[i].AuthMethod == "" {
+			exp.Connections[i].AuthMethod = "password"
+		}
+	}
+	return &exp, true
+}
+
+// tryParseSnapshotJSON 尝试解析为 SyncSnapshot（云端备份解密后的结构），
+// 转换为 connectionsExport（只取 connections + credentials，忽略 quick_commands 等无关字段）。
+func tryParseSnapshotJSON(data []byte) (*connectionsExport, bool) {
+	var snap SyncSnapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		return nil, false
+	}
+	if snap.Connections == nil {
+		return nil, false
+	}
+	exp := &connectionsExport{
+		Format:      connectionsExportFormat,
+		Version:     1,
+		ExportedAt:  snap.SnapshotTime,
+		Connections: snap.Connections,
+		Credentials: snap.Credentials,
+	}
+	for i := range exp.Connections {
+		if exp.Connections[i].Port == 0 {
+			exp.Connections[i].Port = 22
+		}
+		if exp.Connections[i].AuthMethod == "" {
+			exp.Connections[i].AuthMethod = "password"
+		}
+	}
+	return exp, true
 }

@@ -551,6 +551,11 @@ body.theme-light .update-bubble::after {
   outline: none;
 }
 .input::placeholder { color: var(--text-muted); }
+input::-ms-reveal,
+input::-ms-clear {
+  display: none;
+}
+
 
 .select {
   cursor: pointer;

@@ -3,7 +3,7 @@ import * as AppGo from '../../wailsjs/go/main/App.js';
 import { setLanguage as setGlobalLanguage, t as $t } from '../i18n.js';
 import { getModKey } from '../utils/platform.js';
 import logoImg from '../assets/logo.png';
-import { APP_VERSION } from '../config.js';
+import { APP_BUILD_TIME, APP_VERSION } from '../config.js';
 import { useUpdateChecker } from '../hooks/useUpdateChecker.js';
 import { Sun, Monitor, Moon, Keyboard, Cloud, Info, Database, Folder, X, RefreshCw, Globe, Palette, Lock, SlidersHorizontal } from 'lucide-react';
 import { Z } from '../constants/zIndex';
@@ -204,6 +204,7 @@ export default function SettingsModal({
   onProbePanelPositionChange,
 }) {
   const CURRENT_VERSION = APP_VERSION;
+  const CURRENT_BUILD_TIME = APP_BUILD_TIME;
   const [updateInfo, setUpdateInfo] = useState(null);
 
   const { checking: checkingUpdate, downloadProgress, checkUpdate, applyUpdate } = useUpdateChecker({
@@ -911,6 +912,7 @@ export default function SettingsModal({
             {activeTab === 'app' && (
               <AppTab
                 CURRENT_VERSION={CURRENT_VERSION}
+                BUILD_TIME={CURRENT_BUILD_TIME}
                 updateInfo={updateInfo}
                 checkingUpdate={checkingUpdate}
                 downloadProgress={downloadProgress}

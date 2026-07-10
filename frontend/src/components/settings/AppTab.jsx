@@ -4,7 +4,7 @@ import logoImg from '../../assets/logo.png';
 import { Z } from '../../constants/zIndex';
 import { AboutLink } from './SharedComponents';
 
-export default function AppTab({ CURRENT_VERSION, updateInfo, checkingUpdate, downloadProgress, onCheckUpdate, onApplyUpdate }) {
+export default function AppTab({ CURRENT_VERSION, BUILD_TIME, updateInfo, checkingUpdate, downloadProgress, onCheckUpdate, onApplyUpdate }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', padding: '16px 24px', gap: 32, maxWidth: 640 }}>
       {/* 顶部布局：图标与标题 */}
@@ -33,10 +33,15 @@ export default function AppTab({ CURRENT_VERSION, updateInfo, checkingUpdate, do
             Lumin
             <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-tertiary)', letterSpacing: '0' }}>by WuMing</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 14, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
               {CURRENT_VERSION}
             </span>
+            {BUILD_TIME && (
+              <span style={{ fontSize: 12, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                {BUILD_TIME}
+              </span>
+            )}
             {(updateInfo?.hasUpdate || downloadProgress >= 0) && (
               <span
                 onClick={onApplyUpdate}

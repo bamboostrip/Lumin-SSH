@@ -876,7 +876,7 @@ export default function SettingsModal({
   const isAnyConfigured = isConfigured || r2Configured || ftpConfigured || sftpConfigured;
 
   return (
-    <div className="modal-overlay">
+    <div className="modal-overlay" style={{ zIndex: Z.MODAL }}>
       <div className="modal modal-xl" style={{ display: 'flex', flexDirection: 'column', height: '80vh', background: 'var(--surface-raised)' }}>
         
         {/* Settings Header */}

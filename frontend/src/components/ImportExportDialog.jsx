@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Database, Upload, Download, FileDown, Eye, EyeOff, X } from 'lucide-react';
 import { useTranslation } from '../i18n.js';
 import Tiptop from './Tiptop.jsx';
+import { Z } from '../constants/zIndex';
 
 /**
  * 数据管理弹窗：导入 / 导出 / 下载模板。
@@ -82,7 +83,7 @@ export default function ImportExportDialog({ onClose, onExport, onImport, onDown
   );
 
   return (
-    <div className="modal-overlay" style={{ zIndex: 9999 }}>
+    <div className="modal-overlay" style={{ zIndex: Z.MODAL }}>
       <div className="modal modal-md" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

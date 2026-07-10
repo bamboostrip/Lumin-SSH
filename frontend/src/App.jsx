@@ -4999,6 +4999,17 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
       </main>
 
       {/* ── Modals ────────────────────────────────────────── */}
+      {showImportExportDialog && (
+        <ImportExportDialog
+          onClose={() => setShowImportExportDialog(false)}
+          onExport={handleExport}
+          onImport={handleImport}
+          onDownloadTemplate={handleDownloadTemplate}
+          hasCloudProvider={hasCloudProvider}
+          busy={ieBusy}
+        />
+      )}
+
       {showSettings && (
         <SettingsModal
           onClose={() => { setShowSettings(false); loadServers(); }}
@@ -5017,17 +5028,6 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
           onClose={() => { setShowCredentials(false); loadServers(); }}
           onChange={loadServers}
           addToast={addToast}
-        />
-      )}
-
-      {showImportExportDialog && (
-        <ImportExportDialog
-          onClose={() => setShowImportExportDialog(false)}
-          onExport={handleExport}
-          onImport={handleImport}
-          onDownloadTemplate={handleDownloadTemplate}
-          hasCloudProvider={hasCloudProvider}
-          busy={ieBusy}
         />
       )}
 

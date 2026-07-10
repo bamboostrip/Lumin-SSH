@@ -1048,6 +1048,16 @@ const dict = {
     "关闭 WebView GPU 加速，重启应用后生效": "关闭 WebView GPU 加速，重启应用后生效",
     "设置已保存，重启后生效": "设置已保存，重启后生效",
     "硬件加速设置保存失败": "硬件加速设置保存失败",
+    "导入": "导入",
+    "导出": "导出",
+    "导出节点": "导出节点",
+    "导入节点": "导入节点",
+    "已导出到 {path}": "已导出到 {path}",
+    "已导入 {imported} 个，跳过 {skipped} 个重复": "已导入 {imported} 个，跳过 {skipped} 个重复",
+    "导出失败": "导出失败",
+    "导入失败": "导入失败",
+    "导入的文件格式无效": "导入的文件格式无效",
+    "没有可导出的节点": "没有可导出的节点",
   },
   "en-US": {
     "闪电直连": "Quick Connect",
@@ -2129,6 +2139,16 @@ const dict = {
     "关闭 WebView GPU 加速，重启应用后生效": "Disable WebView GPU acceleration. Takes effect after restarting the app",
     "设置已保存，重启后生效": "Setting saved. Restart the app to apply it",
     "硬件加速设置保存失败": "Failed to save hardware acceleration setting",
+    "导入": "Import",
+    "导出": "Export",
+    "导出节点": "Export Connections",
+    "导入节点": "Import Connections",
+    "已导出到 {path}": "Exported to {path}",
+    "已导入 {imported} 个，跳过 {skipped} 个重复": "Imported {imported}, skipped {skipped} duplicate(s)",
+    "导出失败": "Export failed",
+    "导入失败": "Import failed",
+    "导入的文件格式无效": "Invalid import file format",
+    "没有可导出的节点": "No connections to export",
   }
 };
 

@@ -770,6 +770,52 @@ func (c *ConfigManager) saveCredentialsFile(creds []Credential) error {
 	return atomicWriteFile(c.credFile, data, 0600)
 }
 
+// ImportConnections 合并导入节点：按 host+port+username 判重，本地已存在则跳过，仅新增。
+// incoming 为待导入的明文节点列表，incomingCreds 为待导入的明文凭据列表。
+// 走 saveConnectionsFile/saveCredentialsFile 自动加密 + 原子写，并触发云同步。
+func (c *ConfigManager) ImportConnections(incoming []Connection, incomingCreds []Credential) (ImportResult, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	localConns := c.getConnectionsLocked()
+	localCreds := c.getCredentialsLocked()
+
+	toAdd, result := mergeImport(localConns, incoming)
+	if len(toAdd) == 0 && len(incomingCreds) == 0 {
+		// 无需新增任何数据，直接返回统计（仍可能全是重复）
+		return result, nil
+	}
+
+	// 合并节点
+	if len(toAdd) > 0 {
+		mergedConns := make([]Connection, 0, len(localConns)+len(toAdd))
+		mergedConns = append(mergedConns, localConns...)
+		mergedConns = append(mergedConns, toAdd...)
+		if err := c.saveConnectionsFile(mergedConns); err != nil {
+			return result, fmt.Errorf("保存导入的节点失败: %w", err)
+		}
+		c.connCacheDirty = true
+	}
+
+	// 合并凭据（按 ID 去重）
+	if len(incomingCreds) > 0 {
+		toAddCreds := mergeImportCredentials(localCreds, incomingCreds)
+		if len(toAddCreds) > 0 {
+			mergedCreds := make([]Credential, 0, len(localCreds)+len(toAddCreds))
+			mergedCreds = append(mergedCreds, localCreds...)
+			mergedCreds = append(mergedCreds, toAddCreds...)
+			if err := c.saveCredentialsFile(mergedCreds); err != nil {
+				return result, fmt.Errorf("保存导入的凭据失败: %w", err)
+			}
+			c.credCacheDirty = true
+		}
+	}
+
+	c.bumpSnapshotTime()
+	go c.AutoSync()
+	return result, nil
+}
+
 // ResolveConnectionAuth 如果 Connection 引用了 Credential，返回用凭据填充认证字段的副本
 func (c *ConfigManager) ResolveConnectionAuth(conn Connection) Connection {
 	if conn.CredentialID == "" {

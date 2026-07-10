@@ -3156,6 +3156,31 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     }
   }, [addToast]);
 
+  // ── 节点导入/导出 ───────────────────────────────────────────
+  const handleExportServers = useCallback(async () => {
+    try {
+      const path = await AppGo.ExportConnections();
+      if (!path) return; // 用户取消对话框，静默
+      addToast(t('已导出到 {path}', { path }), 'success');
+    } catch (err) {
+      addToast(`${t('导出失败')}: ${err}`, 'error');
+    }
+  }, [addToast, t]);
+
+  const handleImportServers = useCallback(async () => {
+    try {
+      const result = await AppGo.ImportConnections();
+      // 后端在用户取消对话框时返回空 ImportResult（total/imported/skipped 均为 0），静默
+      if (result && result.total === 0 && result.imported === 0 && result.skipped === 0) return;
+      if (result.imported > 0 || result.skipped > 0) {
+        addToast(t('已导入 {imported} 个，跳过 {skipped} 个重复', { imported: result.imported, skipped: result.skipped }), 'success');
+      }
+      await loadServers();
+    } catch (err) {
+      addToast(`${t('导入失败')}: ${err}`, 'error');
+    }
+  }, [addToast, loadServers, t]);
+
   const filteredServers = useMemo(() => {
     if (!searchQuery) return servers;
     const q = searchQuery.toLowerCase();
@@ -3791,6 +3816,8 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
             onMoveGroup={handleMoveGroup}
             addToast={addToast}
             onOpenCredentials={() => setShowCredentials(true)}
+            onExportServers={handleExportServers}
+            onImportServers={handleImportServers}
           />
         </div>
 

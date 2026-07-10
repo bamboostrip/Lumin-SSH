@@ -46,6 +46,7 @@ Lumin is a desktop SSH client for developers and system administrators. Built wi
 ### Server Management
 - **Auto-Save** — Quick-connected servers are automatically saved after successful connection
 - **Clone Server** — Right-click to clone any server with all configuration (passwords, keys included)
+- **Import/Export** — The host list toolbar lets you export all connections (and referenced credentials) to a JSON file, or bulk-import from a file. Import deduplicates by host+port+username, adding only non-duplicate entries — ideal for batch entry and cross-machine migration
 - **Duplicate Detection** — Detects host+port+username duplicates on add/edit/clone/quick connect
 - **Group Management** — Organize servers into groups, move between groups, filter by group
 - **OS Icon Recognition** — Auto-detects 30+ OS types with rich icon set

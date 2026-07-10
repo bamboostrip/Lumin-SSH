@@ -1,4 +1,4 @@
-import { BarChart3, Monitor, Search, LayoutGrid, List, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { BarChart3, Monitor, Search, LayoutGrid, List, Eye, EyeOff, RefreshCw, Upload, Download } from 'lucide-react';
 import { useTranslation } from '../i18n.js';
 import AddServerModal from './AddServerModal.jsx';
 import ServerList from './ServerList.jsx';
@@ -13,6 +13,7 @@ export default function Dashboard({
   servers, pingCounts, isRefreshingPing, onRefreshPing,
   filteredServers, pings, sessions, activeSessionId,
   onConnect, onStartAdd, onEdit, onClone, onDelete, onMoveGroup, addToast,
+  onExportServers, onImportServers,
 }) {
   const { t } = useTranslation();
 
@@ -109,6 +110,26 @@ export default function Dashboard({
                   style={hideSensitive ? { background: 'var(--warning-dim)', color: 'var(--warning)', border: '1px solid var(--warning)' } : {}}
                 >
                   {hideSensitive ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </Tiptop>
+              {/* 导入节点 */}
+              <Tiptop text={t('导入')} placement="bottom">
+                <button
+                  className="btn btn-ghost btn-icon"
+                  onClick={onImportServers}
+                  aria-label={t('导入')}
+                >
+                  <Upload size={14} />
+                </button>
+              </Tiptop>
+              {/* 导出节点 */}
+              <Tiptop text={t('导出')} placement="bottom">
+                <button
+                  className="btn btn-ghost btn-icon"
+                  onClick={onExportServers}
+                  aria-label={t('导出')}
+                >
+                  <Download size={14} />
                 </button>
               </Tiptop>
             </div>

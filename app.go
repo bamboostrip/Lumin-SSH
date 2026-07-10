@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -303,6 +304,67 @@ func (a *App) SaveConnection(conn Connection, noSync bool) Connection {
 // DeleteConnection removes a connection by ID
 func (a *App) DeleteConnection(id string) bool {
 	return a.configManager.DeleteConnection(id)
+}
+
+// ExportConnections 导出全部节点（明文，含真实密码/私钥）到用户选择的文件。
+// 弹出保存对话框；用户取消时返回 ("", nil)。
+// 返回写入的文件路径。
+func (a *App) ExportConnections() (string, error) {
+	defaultName := fmt.Sprintf("lumin-ssh-connections-%s.json", time.Now().Format("20060102"))
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "导出节点",
+		DefaultFilename: defaultName,
+		Filters: []runtime.FileFilter{
+			{DisplayName: "JSON (*.json)", Pattern: "*.json"},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	if path == "" {
+		// 用户取消，非错误
+		return "", nil
+	}
+
+	conns := a.configManager.GetConnections()
+	creds := a.configManager.GetCredentials()
+	exp := buildConnectionsExport(conns, creds)
+	data, err := json.MarshalIndent(exp, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("导出失败: %w", err)
+	}
+	if err := atomicWriteFile(path, data, 0600); err != nil {
+		return "", fmt.Errorf("导出失败: %w", err)
+	}
+	return path, nil
+}
+
+// ImportConnections 从用户选择的文件导入节点（合并，跳过重复）。
+// 弹出打开对话框；用户取消时返回空结果。
+func (a *App) ImportConnections() (ImportResult, error) {
+	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "导入节点",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "JSON (*.json)", Pattern: "*.json"},
+		},
+	})
+	if err != nil {
+		return ImportResult{}, err
+	}
+	if path == "" {
+		// 用户取消，非错误
+		return ImportResult{}, nil
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ImportResult{}, fmt.Errorf("导入失败: %w", err)
+	}
+	exp, err := parseConnectionsExport(data)
+	if err != nil {
+		return ImportResult{}, fmt.Errorf("导入失败: %w", err)
+	}
+	return a.configManager.ImportConnections(exp.Connections, exp.Credentials)
 }
 
 // SetConnectionGroup 仅更新服务器分组

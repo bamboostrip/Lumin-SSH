@@ -64,8 +64,8 @@ func defaultAIGlobalSettings() AIGlobalSettings {
 		ConfirmDelete:                 true,
 		ConversationAutoBackupEnabled: true,
 		MessageActionBarAtBottom:      true,
-		ApprovalButtonOrder:      "reject-approve",
-		CommandActionButtonOrder: "terminate-continue",
+		ApprovalButtonOrder:           "reject-approve",
+		CommandActionButtonOrder:      "terminate-continue",
 	}
 }
 
@@ -350,23 +350,16 @@ func (c *ConfigManager) SaveAIGlobalSettings(settings AIGlobalSettings) error {
 	if c == nil {
 		return nil
 	}
+	settings.ProxyNodes = LoadAIProxyNodes(c.configDir)
 	normalized := normalizeAIGlobalSettings(settings)
 	normalized.UpdatedAt = time.Now().UnixMilli()
-	proxyNodes := normalized.ProxyNodes
 	normalized.ProxyNodes = nil
 	settingsData, err := json.MarshalIndent(normalized, "", "  ")
 	if err != nil {
 		return err
 	}
-	proxyData, err := json.MarshalIndent(proxyNodes, "", "  ")
-	if err != nil {
-		return err
-	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if err := atomicWriteFile(c.aiProxyNodesPath(), proxyData, 0600); err != nil {
-		return err
-	}
 	return atomicWriteFile(c.aiGlobalSettingsPath(), settingsData, 0600)
 }
 

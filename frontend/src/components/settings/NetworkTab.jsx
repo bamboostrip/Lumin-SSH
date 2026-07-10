@@ -3,6 +3,7 @@ import { t as $t } from '../../i18n.js';
 import { Lightbulb } from 'lucide-react';
 import { ToggleSwitch } from './SharedComponents';
 import { getAIGlobalSettings, saveAIGlobalSettings } from '../ai/aiGlobalSettingsBridge.js';
+import { getProxyNodes, saveProxyNodes, normalizeProxyNode } from './proxyNodesBridge.js';
 
 const PROXY_NODES_CHANGED_EVENT = 'lumin:proxy-nodes-changed';
 
@@ -17,20 +18,6 @@ const defaultProxyForm = {
 
 function createProxyId() {
   return `proxy_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function normalizeProxyNode(node) {
-  const parsedPort = parseInt(String(node?.port ?? '').trim(), 10);
-  return {
-    id: String(node?.id || createProxyId()),
-    name: String(node?.name || '').trim(),
-    type: node?.type === 'http' ? 'http' : 'socks5',
-    host: String(node?.host || '').trim(),
-    port: Number.isFinite(parsedPort) && parsedPort > 0 && parsedPort <= 65535 ? parsedPort : 1080,
-    username: String(node?.username || '').trim(),
-    password: String(node?.password || ''),
-    updatedAt: Number.isFinite(Number(node?.updatedAt)) && Number(node?.updatedAt) > 0 ? Number(node.updatedAt) : Date.now(),
-  };
 }
 
 const MOBILE_MEDIA_QUERY = '(max-width: 820px)';
@@ -49,16 +36,17 @@ export default function NetworkTab({ pingEnabled, onTogglePingEnabled, probeInte
   const persistProxyNodes = (nextNodes) => {
     setProxyNodes(nextNodes);
     window.dispatchEvent(new CustomEvent(PROXY_NODES_CHANGED_EVENT, { detail: nextNodes }));
-    const nextSelectedProxyId = nextNodes.some((item) => item.id === aiGlobalSettings?.aiRequestProxyId)
-      ? (aiGlobalSettings?.aiRequestProxyId || '')
-      : '';
-    const nextSettings = {
-      ...(aiGlobalSettings || {}),
-      proxyNodes: nextNodes,
-      aiRequestProxyId: nextSelectedProxyId,
-    };
-    setAIGlobalSettings(nextSettings);
-    saveAIGlobalSettings(nextSettings).catch(() => {});
+    saveProxyNodes(nextNodes).catch(() => {});
+    const currentSelectedProxyId = aiGlobalSettings?.aiRequestProxyId || '';
+    const nextSelectedProxyId = nextNodes.some((item) => item.id === currentSelectedProxyId) ? currentSelectedProxyId : '';
+    if (nextSelectedProxyId !== currentSelectedProxyId) {
+      const nextSettings = {
+        ...(aiGlobalSettings || {}),
+        aiRequestProxyId: nextSelectedProxyId,
+      };
+      setAIGlobalSettings(nextSettings);
+      saveAIGlobalSettings(nextSettings).catch(() => {});
+    }
   };
 
   const setProxyField = (key) => (e) => {
@@ -88,12 +76,11 @@ export default function NetworkTab({ pingEnabled, onTogglePingEnabled, probeInte
 
   useEffect(() => {
     let cancelled = false;
-    getAIGlobalSettings()
-      .then((settings) => {
+    Promise.all([getAIGlobalSettings(), getProxyNodes()])
+      .then(([settings, nextNodes]) => {
         if (cancelled) {
           return;
         }
-        const nextNodes = Array.isArray(settings?.proxyNodes) ? settings.proxyNodes.map(normalizeProxyNode) : [];
         setAIGlobalSettings(settings);
         setProxyNodes(nextNodes);
         window.dispatchEvent(new CustomEvent(PROXY_NODES_CHANGED_EVENT, { detail: nextNodes }));
@@ -155,7 +142,13 @@ export default function NetworkTab({ pingEnabled, onTogglePingEnabled, probeInte
     });
   };
 
-  const handleProxyDelete = (id) => {
+  const handleProxyDelete = async (id) => {
+    const node = proxyNodes.find((item) => item.id === id);
+    const name = node?.name || node?.host || $t('未命名节点');
+    const confirmed = await window.luminDialog?.confirm?.(`${$t('确定删除代理节点')}「${name}」？${$t('此操作不可撤销')}`);
+    if (!confirmed) {
+      return;
+    }
     const nextNodes = proxyNodes.filter((item) => item.id !== id);
     persistProxyNodes(nextNodes);
     if (editingProxyId === id) {

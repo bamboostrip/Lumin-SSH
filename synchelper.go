@@ -7,10 +7,13 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	ai "luminssh-go/internal/ai"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -50,11 +53,14 @@ type storageCloser interface {
 
 // SyncSnapshot 同步快照，包含连接和快捷命令等所有可同步数据
 type SyncSnapshot struct {
-	Connections         []Connection `json:"connections"`
-	Credentials         []Credential `json:"credentials,omitempty"`
-	QuickCommands       string       `json:"quick_commands,omitempty"`
-	FileManagerSettings string       `json:"file_manager_settings,omitempty"`
-	SnapshotTime        int64        `json:"snapshot_time,omitempty"` // 快照总时间戳（Unix 毫秒），用于判断同步方向
+	Connections         []Connection           `json:"connections"`
+	Credentials         []Credential           `json:"credentials"`
+	QuickCommands       string                 `json:"quick_commands"`
+	FileManagerSettings string                 `json:"file_manager_settings"`
+	AIProviders         []ai.AIProviderProfile `json:"ai_providers"`
+	AIGlobalSettings    *ai.AIGlobalSettings   `json:"ai_global_settings"`
+	ProxyNodes          []ai.AIProxyNode       `json:"proxy_nodes"`
+	SnapshotTime        int64                  `json:"snapshot_time,omitempty"` // 快照总时间戳（Unix 毫秒），用于判断同步方向
 }
 
 // ─── 共享解密/解析 ─────────────────────────────────────────
@@ -97,10 +103,7 @@ func connsEqual(a, b []Connection) bool {
 		if !ok {
 			return false
 		}
-		if e.Name != c.Name || e.Host != c.Host || e.Port != c.Port ||
-			e.Username != c.Username || e.Password != c.Password ||
-			e.AuthMethod != c.AuthMethod || e.PrivateKey != c.PrivateKey ||
-			e.Passphrase != c.Passphrase || e.Os != c.Os || e.Group != c.Group {
+		if e != c {
 			return false
 		}
 	}
@@ -121,6 +124,15 @@ func snapshotEqual(s1, s2 *SyncSnapshot) bool {
 	if !fileManagerSettingsEqual(s1.FileManagerSettings, s2.FileManagerSettings) {
 		return false
 	}
+	if !aiProvidersEqual(s1.AIProviders, s2.AIProviders) {
+		return false
+	}
+	if !aiGlobalSettingsEqual(s1.AIGlobalSettings, s2.AIGlobalSettings) {
+		return false
+	}
+	if !aiProxyNodesEqual(s1.ProxyNodes, s2.ProxyNodes) {
+		return false
+	}
 	return true
 }
 
@@ -138,13 +150,196 @@ func credsEqual(a, b []Credential) bool {
 		if !ok {
 			return false
 		}
-		if e.Name != c.Name || e.AuthMethod != c.AuthMethod ||
-			e.Username != c.Username || e.Password != c.Password ||
-			e.PrivateKey != c.PrivateKey || e.Passphrase != c.Passphrase {
+		if e != c {
 			return false
 		}
 	}
 	return true
+}
+
+func aiProvidersEqual(a, b []ai.AIProviderProfile) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	m := make(map[string]ai.AIProviderProfile, len(a))
+	for _, p := range a {
+		m[p.ID] = p
+	}
+	for _, p := range b {
+		e, ok := m[p.ID]
+		if !ok || !reflect.DeepEqual(e, p) {
+			return false
+		}
+	}
+	return true
+}
+
+func aiGlobalSettingsEqual(a, b *ai.AIGlobalSettings) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	aa := *a
+	bb := *b
+	aa.ProxyNodes = nil
+	bb.ProxyNodes = nil
+	return reflect.DeepEqual(aa, bb)
+}
+
+func aiProxyNodesEqual(a, b []ai.AIProxyNode) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	m := make(map[string]ai.AIProxyNode, len(a))
+	for _, n := range a {
+		m[n.ID] = n
+	}
+	for _, n := range b {
+		e, ok := m[n.ID]
+		if !ok || !reflect.DeepEqual(e, n) {
+			return false
+		}
+	}
+	return true
+}
+
+func (c *ConfigManager) aiProviderRegistryPath() string {
+	return filepath.Join(c.configDir, "ai_providers.json")
+}
+
+func (c *ConfigManager) aiGlobalSettingsPath() string {
+	return filepath.Join(c.configDir, "ai_global_settings.json")
+}
+
+func (c *ConfigManager) aiProxyNodesPath() string {
+	return filepath.Join(c.configDir, "proxy_nodes.json")
+}
+
+func (c *ConfigManager) GetAIProviderRegistry() ai.AIProviderRegistry {
+	registry := ai.AIProviderRegistry{Providers: []ai.AIProviderProfile{}}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	data, err := os.ReadFile(c.aiProviderRegistryPath())
+	if err == nil {
+		_ = json.Unmarshal(data, &registry)
+	}
+	if registry.Providers == nil {
+		registry.Providers = []ai.AIProviderProfile{}
+	}
+	return registry
+}
+
+func (c *ConfigManager) SaveAIProviderRegistry(registry ai.AIProviderRegistry) error {
+	registry.Providers = normalizeSyncAIProviders(registry.Providers)
+	data, err := json.MarshalIndent(registry, "", "  ")
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return atomicWriteFile(c.aiProviderRegistryPath(), data, 0600)
+}
+
+func (c *ConfigManager) GetAIGlobalSettings() ai.AIGlobalSettings {
+	settings := ai.LoadAIGlobalSettings(c.configDir)
+	settings.ProxyNodes = nil
+	return settings
+}
+
+func (c *ConfigManager) SaveAIGlobalSettings(settings ai.AIGlobalSettings) error {
+	settings.ProxyNodes = nil
+	if settings.UpdatedAt <= 0 {
+		settings.UpdatedAt = time.Now().UnixMilli()
+	}
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return atomicWriteFile(c.aiGlobalSettingsPath(), data, 0600)
+}
+
+func (c *ConfigManager) GetAIProxyNodes() []ai.AIProxyNode {
+	return ai.LoadAIProxyNodes(c.configDir)
+}
+
+func (c *ConfigManager) SaveAIProxyNodes(nodes []ai.AIProxyNode) error {
+	nodes = normalizeSyncAIProxyNodes(nodes)
+	data, err := json.MarshalIndent(nodes, "", "  ")
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return atomicWriteFile(c.aiProxyNodesPath(), data, 0600)
+}
+
+func normalizeSyncAIProviders(providers []ai.AIProviderProfile) []ai.AIProviderProfile {
+	if providers == nil {
+		return []ai.AIProviderProfile{}
+	}
+	now := time.Now().UnixMilli()
+	normalized := make([]ai.AIProviderProfile, 0, len(providers))
+	seen := make(map[string]struct{}, len(providers))
+	for i, provider := range providers {
+		provider.ID = strings.TrimSpace(provider.ID)
+		if provider.ID == "" {
+			provider.ID = fmt.Sprintf("ai-provider-%d-%d", now, i)
+		}
+		if _, ok := seen[provider.ID]; ok {
+			continue
+		}
+		seen[provider.ID] = struct{}{}
+		provider.Name = strings.TrimSpace(provider.Name)
+		if provider.Name == "" {
+			provider.Name = "未命名供应商"
+		}
+		provider.BaseURL = strings.TrimSpace(provider.BaseURL)
+		provider.APIKey = strings.TrimSpace(provider.APIKey)
+		provider.DedicatedProxyID = strings.TrimSpace(provider.DedicatedProxyID)
+		if provider.UpdatedAt <= 0 {
+			provider.UpdatedAt = now
+		}
+		normalized = append(normalized, provider)
+	}
+	return normalized
+}
+
+func normalizeSyncAIProxyNodes(nodes []ai.AIProxyNode) []ai.AIProxyNode {
+	if nodes == nil {
+		return []ai.AIProxyNode{}
+	}
+	now := time.Now().UnixMilli()
+	normalized := make([]ai.AIProxyNode, 0, len(nodes))
+	seen := make(map[string]struct{}, len(nodes))
+	for i, node := range nodes {
+		node.Host = strings.TrimSpace(node.Host)
+		if node.Host == "" {
+			continue
+		}
+		node.ID = strings.TrimSpace(node.ID)
+		if node.ID == "" {
+			node.ID = fmt.Sprintf("proxy-%d-%d", now, i)
+		}
+		if _, ok := seen[node.ID]; ok {
+			continue
+		}
+		seen[node.ID] = struct{}{}
+		node.Name = strings.TrimSpace(node.Name)
+		node.Type = strings.ToLower(strings.TrimSpace(node.Type))
+		if node.Type != "http" {
+			node.Type = "socks5"
+		}
+		if node.Port <= 0 || node.Port > 65535 {
+			node.Port = 1080
+		}
+		node.Username = strings.TrimSpace(node.Username)
+		if node.UpdatedAt <= 0 {
+			node.UpdatedAt = now
+		}
+		normalized = append(normalized, node)
+	}
+	return normalized
 }
 
 // ─── 共享远端操作 ─────────────────────────────────────────
@@ -205,11 +400,16 @@ func (c *ConfigManager) fetchLatestBackup(s RemoteStorage) (*SyncSnapshot, error
 
 // backupConnections 加密本地所有可同步数据并上传到远端，同时清理超出 maxBackups 的旧备份
 func (c *ConfigManager) backupConnections(s RemoteStorage, maxBackups int) (map[string]interface{}, error) {
+	aiGlobalSettings := c.GetAIGlobalSettings()
+	aiGlobalSettings.ProxyNodes = nil
 	snap := SyncSnapshot{
 		Connections:         c.GetConnections(),
 		Credentials:         c.GetCredentials(),
 		QuickCommands:       c.loadRawFile(c.quickCmdFile),
 		FileManagerSettings: c.loadRawFile(c.fileManagerSettingsFile),
+		AIProviders:         c.GetAIProviderRegistry().Providers,
+		AIGlobalSettings:    &aiGlobalSettings,
+		ProxyNodes:          c.GetAIProxyNodes(),
 		SnapshotTime:        c.loadSnapshotTime(),
 	}
 	data, err := json.MarshalIndent(snap, "", "  ")
@@ -348,11 +548,36 @@ func (c *ConfigManager) syncFromProvider(s RemoteStorage) (map[string]interface{
 		log.Printf("[syncFromProvider] failed to write file manager settings: %v", err)
 	}
 
+	localAIProviders := c.GetAIProviderRegistry().Providers
+	mergedAIProviders := c.mergeAIProviders(localAIProviders, remoteSnap.AIProviders, lastSyncTime)
+	if remoteSnap.AIProviders != nil {
+		if err := c.SaveAIProviderRegistry(ai.AIProviderRegistry{Providers: mergedAIProviders}); err != nil {
+			log.Printf("[syncFromProvider] failed to save AI providers: %v", err)
+		}
+	}
+	localAIGlobalSettings := c.GetAIGlobalSettings()
+	mergedAIGlobalSettings := mergeAIGlobalSettings(localAIGlobalSettings, remoteSnap.AIGlobalSettings)
+	if remoteSnap.AIGlobalSettings != nil {
+		if err := c.SaveAIGlobalSettings(mergedAIGlobalSettings); err != nil {
+			log.Printf("[syncFromProvider] failed to save AI global settings: %v", err)
+		}
+	}
+	localProxyNodes := c.GetAIProxyNodes()
+	mergedProxyNodes := c.mergeAIProxyNodes(localProxyNodes, remoteSnap.ProxyNodes, lastSyncTime)
+	if remoteSnap.ProxyNodes != nil {
+		if err := c.SaveAIProxyNodes(mergedProxyNodes); err != nil {
+			log.Printf("[syncFromProvider] failed to save AI proxy nodes: %v", err)
+		}
+	}
+
 	var backupResult interface{}
 	changed := !connsEqual(deduped, remoteSnap.Connections) ||
 		!quickCmdsEqual(mergedQuickCmds, remoteSnap.QuickCommands) ||
 		!fileManagerSettingsEqual(mergedFileManagerSettings, remoteSnap.FileManagerSettings) ||
-		(mergedCreds != nil && !credsEqual(mergedCreds, remoteSnap.Credentials))
+		(mergedCreds != nil && !credsEqual(mergedCreds, remoteSnap.Credentials)) ||
+		(remoteSnap.AIProviders != nil && !aiProvidersEqual(mergedAIProviders, remoteSnap.AIProviders)) ||
+		(remoteSnap.AIGlobalSettings != nil && !aiGlobalSettingsEqual(&mergedAIGlobalSettings, remoteSnap.AIGlobalSettings)) ||
+		(remoteSnap.ProxyNodes != nil && !aiProxyNodesEqual(mergedProxyNodes, remoteSnap.ProxyNodes))
 	if changed {
 		c.bumpSnapshotTime() // 手动同步后更新总时间戳，确保下次自动同步方向正确
 		// 通过可选接口获取后端配置的 maxBackups，未实现者默认 0（不清理）
@@ -395,11 +620,17 @@ func (c *ConfigManager) syncAllProviders(entries []providerEntry) (map[string]in
 	localCreds := c.GetCredentials()
 	localQuickCmds := c.loadRawFile(c.quickCmdFile)
 	localFileManagerSettings := c.loadRawFile(c.fileManagerSettingsFile)
+	localAIProviders := c.GetAIProviderRegistry().Providers
+	localAIGlobalSettings := c.GetAIGlobalSettings()
+	localProxyNodes := c.GetAIProxyNodes()
 
 	mergedConns := localConns
 	mergedCreds := localCreds
 	mergedQuickCmds := localQuickCmds
 	mergedFileManagerSettings := localFileManagerSettings
+	mergedAIProviders := localAIProviders
+	mergedAIGlobalSettings := localAIGlobalSettings
+	mergedProxyNodes := localProxyNodes
 	var errs []string
 	downloaded := 0
 
@@ -416,6 +647,9 @@ func (c *ConfigManager) syncAllProviders(entries []providerEntry) (map[string]in
 		}
 		mergedQuickCmds = c.mergeQuickCommands(mergedQuickCmds, remoteSnap.QuickCommands, lastSyncTime)
 		mergedFileManagerSettings = mergeFileManagerSettings(mergedFileManagerSettings, remoteSnap.FileManagerSettings, localSnapTime, remoteSnap.SnapshotTime)
+		mergedAIProviders = c.mergeAIProviders(mergedAIProviders, remoteSnap.AIProviders, lastSyncTime)
+		mergedAIGlobalSettings = mergeAIGlobalSettings(mergedAIGlobalSettings, remoteSnap.AIGlobalSettings)
+		mergedProxyNodes = c.mergeAIProxyNodes(mergedProxyNodes, remoteSnap.ProxyNodes, lastSyncTime)
 	}
 
 	c.mu.Lock()
@@ -430,6 +664,15 @@ func (c *ConfigManager) syncAllProviders(entries []providerEntry) (map[string]in
 	atomicWriteFile(c.quickCmdFile, []byte(mergedQuickCmds), 0600)
 	atomicWriteFile(c.fileManagerSettingsFile, []byte(mergedFileManagerSettings), 0600)
 	c.mu.Unlock()
+	if err := c.SaveAIProviderRegistry(ai.AIProviderRegistry{Providers: mergedAIProviders}); err != nil {
+		log.Printf("[syncAllProviders] save AI providers: %v", err)
+	}
+	if err := c.SaveAIGlobalSettings(mergedAIGlobalSettings); err != nil {
+		log.Printf("[syncAllProviders] save AI global settings: %v", err)
+	}
+	if err := c.SaveAIProxyNodes(mergedProxyNodes); err != nil {
+		log.Printf("[syncAllProviders] save AI proxy nodes: %v", err)
+	}
 	c.CleanupOrphanedHistory()
 	c.bumpSnapshotTime()
 
@@ -503,15 +746,28 @@ func (c *ConfigManager) autoSyncProvider(s RemoteStorage, maxBackups int) error 
 	localFileManagerSettings := c.loadRawFile(c.fileManagerSettingsFile)
 	mergedFileManagerSettings := mergeFileManagerSettings(localFileManagerSettings, remoteSnap.FileManagerSettings, localSnapTime, remoteSnapTime)
 
+	localAIProviders := c.GetAIProviderRegistry().Providers
+	mergedAIProviders := c.mergeAIProviders(localAIProviders, remoteSnap.AIProviders, lastSyncTime)
+	localAIGlobalSettings := c.GetAIGlobalSettings()
+	mergedAIGlobalSettings := mergeAIGlobalSettings(localAIGlobalSettings, remoteSnap.AIGlobalSettings)
+	localProxyNodes := c.GetAIProxyNodes()
+	mergedProxyNodes := c.mergeAIProxyNodes(localProxyNodes, remoteSnap.ProxyNodes, lastSyncTime)
+
 	// 本地有变化 → 保存
 	credsChanged := remoteSnap.Credentials != nil && !credsEqual(mergedCreds, localCreds)
 	fileManagerSettingsChanged := !fileManagerSettingsEqual(mergedFileManagerSettings, localFileManagerSettings)
-	localChanged := !connsEqual(merged, localConns) || !quickCmdsEqual(mergedQuickCmds, localQuickCmds) || fileManagerSettingsChanged || credsChanged
+	aiProvidersChanged := remoteSnap.AIProviders != nil && !aiProvidersEqual(mergedAIProviders, localAIProviders)
+	aiGlobalSettingsChanged := remoteSnap.AIGlobalSettings != nil && !aiGlobalSettingsEqual(&mergedAIGlobalSettings, &localAIGlobalSettings)
+	proxyNodesChanged := remoteSnap.ProxyNodes != nil && !aiProxyNodesEqual(mergedProxyNodes, localProxyNodes)
+	localChanged := !connsEqual(merged, localConns) || !quickCmdsEqual(mergedQuickCmds, localQuickCmds) || fileManagerSettingsChanged || credsChanged || aiProvidersChanged || aiGlobalSettingsChanged || proxyNodesChanged
 
 	// 云端有变化 → 需要上传
 	cloudCredsChanged := !credsEqual(mergedCreds, remoteSnap.Credentials)
 	cloudFileManagerSettingsChanged := !fileManagerSettingsEqual(mergedFileManagerSettings, remoteSnap.FileManagerSettings)
-	cloudChanged := !connsEqual(merged, remoteSnap.Connections) || !quickCmdsEqual(mergedQuickCmds, remoteSnap.QuickCommands) || cloudFileManagerSettingsChanged || cloudCredsChanged
+	cloudAIProvidersChanged := remoteSnap.AIProviders != nil && !aiProvidersEqual(mergedAIProviders, remoteSnap.AIProviders)
+	cloudAIGlobalSettingsChanged := remoteSnap.AIGlobalSettings != nil && !aiGlobalSettingsEqual(&mergedAIGlobalSettings, remoteSnap.AIGlobalSettings)
+	cloudProxyNodesChanged := remoteSnap.ProxyNodes != nil && !aiProxyNodesEqual(mergedProxyNodes, remoteSnap.ProxyNodes)
+	cloudChanged := !connsEqual(merged, remoteSnap.Connections) || !quickCmdsEqual(mergedQuickCmds, remoteSnap.QuickCommands) || cloudFileManagerSettingsChanged || cloudCredsChanged || cloudAIProvidersChanged || cloudAIGlobalSettingsChanged || cloudProxyNodesChanged
 
 	// 无变化 → 静默跳过
 	if !localChanged && !cloudChanged {
@@ -555,6 +811,21 @@ func (c *ConfigManager) autoSyncProvider(s RemoteStorage, maxBackups int) error 
 			}
 		}
 		c.mu.Unlock()
+		if aiProvidersChanged {
+			if err := c.SaveAIProviderRegistry(ai.AIProviderRegistry{Providers: mergedAIProviders}); err != nil {
+				log.Printf("[autoSyncProvider] save AI providers: %v", err)
+			}
+		}
+		if aiGlobalSettingsChanged {
+			if err := c.SaveAIGlobalSettings(mergedAIGlobalSettings); err != nil {
+				log.Printf("[autoSyncProvider] save AI global settings: %v", err)
+			}
+		}
+		if proxyNodesChanged {
+			if err := c.SaveAIProxyNodes(mergedProxyNodes); err != nil {
+				log.Printf("[autoSyncProvider] save AI proxy nodes: %v", err)
+			}
+		}
 		c.CleanupOrphanedHistory()
 	}
 
@@ -655,12 +926,6 @@ func (c *ConfigManager) mergeWithDeletionPropagation(localConns, remoteConns []C
 
 // mergeCredentials 合并本地和云端凭据，逻辑与 mergeWithDeletionPropagation 一致
 func (c *ConfigManager) mergeCredentials(localCreds, remoteCreds []Credential, lastSyncTime int64) []Credential {
-	// ponytail: 本地无凭据说明是首次同步凭据的新设备，
-	// lastSyncTime 可能已被其他数据类型（连接）的同步设置，不应因此丢弃远程凭据
-	if len(localCreds) == 0 {
-		lastSyncTime = 0
-	}
-
 	localMap := make(map[string]Credential, len(localCreds))
 	for _, lc := range localCreds {
 		localMap[lc.ID] = lc
@@ -700,6 +965,91 @@ func (c *ConfigManager) mergeCredentials(localCreds, remoteCreds []Credential, l
 		}
 	}
 	return merged
+}
+
+func (c *ConfigManager) mergeAIProviders(localProviders, remoteProviders []ai.AIProviderProfile, lastSyncTime int64) []ai.AIProviderProfile {
+	if remoteProviders == nil {
+		return localProviders
+	}
+	remoteMap := make(map[string]ai.AIProviderProfile, len(remoteProviders))
+	for _, p := range remoteProviders {
+		remoteMap[p.ID] = p
+	}
+	merged := make([]ai.AIProviderProfile, 0, len(localProviders)+len(remoteProviders))
+	added := make(map[string]bool)
+	for _, lp := range localProviders {
+		if added[lp.ID] {
+			continue
+		}
+		if rp, hasRemote := remoteMap[lp.ID]; hasRemote {
+			if lp.UpdatedAt >= rp.UpdatedAt {
+				merged = append(merged, lp)
+			} else {
+				merged = append(merged, rp)
+			}
+		} else if lp.UpdatedAt > lastSyncTime {
+			merged = append(merged, lp)
+		}
+		added[lp.ID] = true
+	}
+	for _, rp := range remoteProviders {
+		if !added[rp.ID] {
+			if rp.UpdatedAt > lastSyncTime {
+				merged = append(merged, rp)
+			}
+			added[rp.ID] = true
+		}
+	}
+	return merged
+}
+
+func (c *ConfigManager) mergeAIProxyNodes(localNodes, remoteNodes []ai.AIProxyNode, lastSyncTime int64) []ai.AIProxyNode {
+	if remoteNodes == nil {
+		return localNodes
+	}
+	remoteMap := make(map[string]ai.AIProxyNode, len(remoteNodes))
+	for _, n := range remoteNodes {
+		remoteMap[n.ID] = n
+	}
+	merged := make([]ai.AIProxyNode, 0, len(localNodes)+len(remoteNodes))
+	added := make(map[string]bool)
+	for _, ln := range localNodes {
+		if added[ln.ID] {
+			continue
+		}
+		if rn, hasRemote := remoteMap[ln.ID]; hasRemote {
+			if ln.UpdatedAt >= rn.UpdatedAt {
+				merged = append(merged, ln)
+			} else {
+				merged = append(merged, rn)
+			}
+		} else if ln.UpdatedAt > lastSyncTime {
+			merged = append(merged, ln)
+		}
+		added[ln.ID] = true
+	}
+	for _, rn := range remoteNodes {
+		if !added[rn.ID] {
+			if rn.UpdatedAt > lastSyncTime {
+				merged = append(merged, rn)
+			}
+			added[rn.ID] = true
+		}
+	}
+	return merged
+}
+
+func mergeAIGlobalSettings(localSettings ai.AIGlobalSettings, remoteSettings *ai.AIGlobalSettings) ai.AIGlobalSettings {
+	if remoteSettings == nil || remoteSettings.UpdatedAt <= 0 {
+		return localSettings
+	}
+	if localSettings.UpdatedAt <= 0 || remoteSettings.UpdatedAt > localSettings.UpdatedAt {
+		merged := *remoteSettings
+		merged.ProxyNodes = nil
+		return merged
+	}
+	localSettings.ProxyNodes = nil
+	return localSettings
 }
 
 // ─── 同步模式分发 ─────────────────────────────────────────
@@ -901,18 +1251,23 @@ func mergeFileManagerSettings(local, remote string, localSnapTime, remoteSnapTim
 // - 单侧独有：last_modified > lastSyncTime → 保留，否则视为已删除
 // - 组内 children 同样逻辑
 func (c *ConfigManager) mergeQuickCommands(localStr, remoteStr string, lastSyncTime int64) string {
-	if remoteStr == "" || remoteStr == "[]" {
-		return localStr
-	}
-	if localStr == "" || localStr == "[]" {
-		return remoteStr
+	parseQuick := func(raw string) ([]interface{}, bool) {
+		if strings.TrimSpace(raw) == "" {
+			return []interface{}{}, true
+		}
+		var arr []interface{}
+		if err := json.Unmarshal([]byte(raw), &arr); err != nil {
+			return nil, false
+		}
+		return arr, true
 	}
 
-	var local, remote []interface{}
-	if err := json.Unmarshal([]byte(localStr), &local); err != nil {
+	local, ok := parseQuick(localStr)
+	if !ok {
 		return localStr
 	}
-	if err := json.Unmarshal([]byte(remoteStr), &remote); err != nil {
+	remote, ok := parseQuick(remoteStr)
+	if !ok {
 		return localStr
 	}
 
@@ -1099,6 +1454,16 @@ func markSnapshotRestored(snap *SyncSnapshot, t int64) {
 	if snap.QuickCommands != "" {
 		snap.QuickCommands = touchQuickCommands(snap.QuickCommands, t)
 	}
+	for i := range snap.AIProviders {
+		snap.AIProviders[i].UpdatedAt = t
+	}
+	if snap.AIGlobalSettings != nil {
+		snap.AIGlobalSettings.UpdatedAt = t
+		snap.AIGlobalSettings.ProxyNodes = nil
+	}
+	for i := range snap.ProxyNodes {
+		snap.ProxyNodes[i].UpdatedAt = t
+	}
 	snap.SnapshotTime = t
 }
 
@@ -1155,12 +1520,27 @@ func (c *ConfigManager) restoreSnapshotToLocal(snap *SyncSnapshot) {
 			log.Printf("[restoreSnapshotToLocal] failed to write file manager settings: %v", err)
 		}
 	}
+	if snap.AIProviders != nil {
+		if err := c.SaveAIProviderRegistry(ai.AIProviderRegistry{Providers: snap.AIProviders}); err != nil {
+			log.Printf("[restoreSnapshotToLocal] failed to write AI providers: %v", err)
+		}
+	}
+	if snap.AIGlobalSettings != nil {
+		if err := c.SaveAIGlobalSettings(*snap.AIGlobalSettings); err != nil {
+			log.Printf("[restoreSnapshotToLocal] failed to write AI global settings: %v", err)
+		}
+	}
+	if snap.ProxyNodes != nil {
+		if err := c.SaveAIProxyNodes(snap.ProxyNodes); err != nil {
+			log.Printf("[restoreSnapshotToLocal] failed to write AI proxy nodes: %v", err)
+		}
+	}
 }
 
 // restoreFromProvider 是 RestoreFromXxxFile 的共享实现：
 // 读取远端文件 → 解密解析快照 → 写回本地。
 // 统一用 filepath.Base 防止路径穿越。
-func (c *ConfigManager) restoreFromProvider(s RemoteStorage, filename string) error {
+func (c *ConfigManager) restoreFromProvider(s RemoteStorage, filename string, maxBackups int) error {
 	filename = filepath.Base(filename) // 防止路径穿越
 	data, err := s.ReadFile(filename)
 	if err != nil {
@@ -1175,6 +1555,10 @@ func (c *ConfigManager) restoreFromProvider(s RemoteStorage, filename string) er
 	c.restoreSnapshotToLocal(snap)
 	atomicWriteFile(c.syncTimeFile, []byte(fmt.Sprintf("%d", restoreTime)), 0600)
 	c.saveLastSyncTime(restoreTime - 1)
+	if _, err := c.backupConnections(s, maxBackups); err != nil {
+		return err
+	}
+	c.saveLastSyncTime(time.Now().UnixMilli())
 	return nil
 }
 
@@ -1229,12 +1613,12 @@ func (c *ConfigManager) syncFrom(storageFn func() (RemoteStorage, int, error)) (
 
 // restoreFrom 创建存储、恢复、关闭连接
 func (c *ConfigManager) restoreFrom(storageFn func() (RemoteStorage, int, error), filename string) (map[string]interface{}, error) {
-	s, _, err := storageFn()
+	s, max, err := storageFn()
 	if err != nil {
 		return nil, err
 	}
 	if cl, ok := s.(storageCloser); ok {
 		defer cl.Close()
 	}
-	return restoreResult(c.restoreFromProvider(s, filename))
+	return restoreResult(c.restoreFromProvider(s, filename, max))
 }

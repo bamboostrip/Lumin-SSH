@@ -7,10 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pkg/sftp"
-	"golang.org/x/crypto/ssh"
 	ai "luminssh-go/internal/ai"
 	"luminssh-go/internal/mcpserver"
+
+	"github.com/pkg/sftp"
+	"golang.org/x/crypto/ssh"
 )
 
 type AIBindings struct {
@@ -172,6 +173,10 @@ func (b *AIBindings) SaveAIGlobalSettings(jsonStr string) error {
 	current := b.runtime().GetAIGlobalSettings()
 	if previous.MCPEnabled != current.MCPEnabled || previous.MCPAllowBrowserCalls != current.MCPAllowBrowserCalls {
 		applyMCPServiceState(b.app)
+	}
+	if b != nil && b.app != nil && b.app.configManager != nil {
+		b.app.configManager.bumpSnapshotTime()
+		go b.app.configManager.AutoSync()
 	}
 	return nil
 }

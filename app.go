@@ -970,6 +970,31 @@ func (a *App) SetAutoSyncEnabled(enabled bool) error {
 	return a.configManager.SetAutoSyncEnabled(enabled)
 }
 
+func (a *App) GetProxyNodes() []ai.AIProxyNode {
+	if a == nil || a.configManager == nil {
+		return []ai.AIProxyNode{}
+	}
+	return a.configManager.GetAIProxyNodes()
+}
+
+func (a *App) SaveProxyNodes(jsonStr string) error {
+	if a == nil || a.configManager == nil {
+		return nil
+	}
+	var nodes []ai.AIProxyNode
+	if strings.TrimSpace(jsonStr) != "" {
+		if err := json.Unmarshal([]byte(jsonStr), &nodes); err != nil {
+			return err
+		}
+	}
+	if err := a.configManager.SaveAIProxyNodes(nodes); err != nil {
+		return err
+	}
+	a.configManager.bumpSnapshotTime()
+	go a.configManager.AutoSync()
+	return nil
+}
+
 func (a *App) SyncAllProviders() (map[string]interface{}, error) {
 	return a.configManager.SyncAllProviders()
 }

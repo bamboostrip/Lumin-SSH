@@ -1,4 +1,5 @@
 import { normalizeAISlashCommands } from './aiSlashCommands.js'
+import { getProxyNodes } from '../settings/proxyNodesBridge.js'
 
 const DEFAULT_AI_GLOBAL_SETTINGS = {
   currentProviderId: '',
@@ -164,8 +165,8 @@ export async function getAIGlobalSettings() {
     return DEFAULT_AI_GLOBAL_SETTINGS
   }
   try {
-    const settings = await bridge.GetAIGlobalSettings()
-    return normalizeAIGlobalSettings(settings)
+    const [settings, proxyNodes] = await Promise.all([bridge.GetAIGlobalSettings(), getProxyNodes()])
+    return normalizeAIGlobalSettings({ ...settings, proxyNodes })
   } catch {
     return DEFAULT_AI_GLOBAL_SETTINGS
   }
@@ -176,10 +177,12 @@ export async function saveAIGlobalSettings(settings) {
     ...normalizeAIGlobalSettings(settings),
     updatedAt: Date.now(),
   }
+  const settingsToSave = { ...normalizedSettings }
+  delete settingsToSave.proxyNodes
   const bridge = getAppBridge()
   if (!bridge?.SaveAIGlobalSettings) {
     return normalizedSettings
   }
-  await bridge.SaveAIGlobalSettings(JSON.stringify(normalizedSettings))
+  await bridge.SaveAIGlobalSettings(JSON.stringify(settingsToSave))
   return normalizedSettings
 }

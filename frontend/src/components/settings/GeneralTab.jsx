@@ -2,7 +2,7 @@ import { t as $t } from '../../i18n.js';
 import { ToggleSwitch } from './SharedComponents';
 
 export default function GeneralTab({
-  language, onLanguageChange,
+  language, onLanguageChange, availableLanguages = [],
   confirmCloseSession, onToggleConfirmCloseSession,
   confirmCloseAll, onToggleConfirmCloseAll,
   confirmFileDelete, onToggleConfirmFileDelete,
@@ -22,8 +22,9 @@ export default function GeneralTab({
               <div style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{$t('选择界面显示语言')}</div>
             </div>
             <select className="select" style={{ width: 200 }} value={language} onChange={onLanguageChange}>
-              <option value="zh-CN">简体中文</option>
-              <option value="en-US">English</option>
+              {availableLanguages.map((item) => (
+                <option key={item.code} value={item.code}>{item.label}</option>
+              ))}
             </select>
           </div>
         </div>

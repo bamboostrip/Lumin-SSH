@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
-import { t } from './i18n.js';
+import { initializeI18n, t } from './i18n.js';
 import { AlertTriangle } from 'lucide-react';
 import './index.css';
 import { hexToRgb } from './utils/theme.js';
@@ -75,10 +75,15 @@ window.addEventListener('unhandledrejection', (e) => {
   console.error('[Unhandled Rejection]', e.reason);
 });
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <ErrorBoundary>
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
-  </ErrorBoundary>
-);
+async function bootstrap() {
+  await initializeI18n();
+  ReactDOM.createRoot(document.getElementById('root')).render(
+    <ErrorBoundary>
+      <React.StrictMode>
+        <App />
+      </React.StrictMode>
+    </ErrorBoundary>
+  );
+}
+
+void bootstrap();

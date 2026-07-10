@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as AppGo from '../../wailsjs/go/main/App.js';
-import { setLanguage as setGlobalLanguage, t as $t } from '../i18n.js';
+import { getAvailableLanguages, setLanguage as setGlobalLanguage, t as $t } from '../i18n.js';
 import { getModKey } from '../utils/platform.js';
 import logoImg from '../assets/logo.png';
 import { APP_BUILD_TIME, APP_VERSION } from '../config.js';
@@ -178,6 +178,7 @@ const PROVIDER_LIST = [
 ];
 
 const DEFAULT_FILE_MANAGER_DOWNLOAD_DIR = '${APP_DIR}\\download';
+const AVAILABLE_LANGUAGES = getAvailableLanguages();
 
 function resolveFileManagerDownloadDirPreview(template, programDirectory) {
   const baseDir = String(programDirectory || '').trim();
@@ -410,11 +411,10 @@ export default function SettingsModal({
     addToast(nextVal ? $t('已启用自定义强调色') : $t('已恢复默认强调色'), 'success');
   };
 
-  const handleLanguageChange = (e) => {
+  const handleLanguageChange = async (e) => {
     const lang = e.target.value;
     setLanguage(lang);
-    setGlobalLanguage(lang);
-    addToast(lang === 'en-US' ? 'Language switched to English' : $t('语言已切换至 简体中文'), 'success');
+    await setGlobalLanguage(lang);
   };
 
   const handleTerminalFontChange = (e) => {
@@ -932,6 +932,7 @@ export default function SettingsModal({
               <GeneralTab
                 language={language}
                 onLanguageChange={handleLanguageChange}
+                availableLanguages={AVAILABLE_LANGUAGES}
                 confirmCloseSession={confirmCloseSession}
                 onToggleConfirmCloseSession={handleToggleConfirmCloseSession}
                 confirmCloseAll={confirmCloseAll}

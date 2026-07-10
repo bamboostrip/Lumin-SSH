@@ -157,3 +157,11 @@ export async function deleteAIConversation(conversationId) {
   }
   await bridge.DeleteAIConversation(conversationId)
 }
+
+export async function openAIConversationFolder(conversationId) {
+  const bridge = getAppBridge()
+  if (!bridge?.OpenAIConversationFolder) {
+    throw new Error(t('打开任务所在文件夹能力未就绪'))
+  }
+  await bridge.OpenAIConversationFolder(conversationId)
+}

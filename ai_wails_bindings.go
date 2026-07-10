@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/pkg/sftp"
@@ -121,6 +123,17 @@ func (b *AIBindings) SaveAIConversation(jsonStr string) (ai.AIConversationSnapsh
 
 func (b *AIBindings) DeleteAIConversation(conversationID string) error {
 	return b.runtime().DeleteAIConversation(conversationID)
+}
+
+func (b *AIBindings) OpenAIConversationFolder(conversationID string) error {
+	trimmedConversationID := strings.TrimSpace(conversationID)
+	if trimmedConversationID == "" {
+		return fmt.Errorf("conversation id is required")
+	}
+	if b == nil || b.app == nil || b.app.configManager == nil {
+		return fmt.Errorf("config manager unavailable")
+	}
+	return openLocalPathInExplorer(filepath.Join(b.app.configManager.configDir, "tasks", trimmedConversationID), true)
 }
 
 func (b *AIBindings) ListAIConversationBackups(conversationID string) []ai.AIConversationBackup {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { FolderOpen } from 'lucide-react'
 import { EventsOn } from '../../wailsjs/runtime/runtime.js'
 import * as AppGo from '../../wailsjs/go/main/App.js'
 import { useTranslation, t as translate } from '../i18n.js'
@@ -7,7 +8,7 @@ import AIConversationBackupSettings from './ai/AIConversationBackupSettings.jsx'
 import AIPanelSettingsOverlay from './ai/AIPanelSettingsOverlay.jsx'
 import AIComposer from './ai/AIComposer.jsx'
 import { approveAIChatTools, assignAIChatToolTerminal, cancelAIChat, continueAIChatTool, listAIChatCommandTerminalCandidates, previewAIChatToolRestore, rejectAIChatTools, rejectAIChatToolsForQueuedSubmission, restoreAIChatTool, setAIChatSkipNextAutomaticRequest, startAIChat, terminateAIChatTool } from './ai/aiChatBridge.js'
-import { createAIConversation, deleteAIConversation, getAIConversation, listAIConversations, normalizeAIConversationSnapshot, normalizeAIConversationTaskSettings, saveAIConversation } from './ai/aiConversationBridge.js'
+import { createAIConversation, deleteAIConversation, getAIConversation, listAIConversations, normalizeAIConversationSnapshot, normalizeAIConversationTaskSettings, openAIConversationFolder, saveAIConversation } from './ai/aiConversationBridge.js'
 import { buildExecutionContextDetails, getExecutionContextSnapshot } from './ai/aiExecutionContext.js'
 import { getAIGlobalSettings, normalizeAIGlobalSettings, saveAIGlobalSettings } from './ai/aiGlobalSettingsBridge.js'
 import { processRemoteFileMentions } from './ai/aiMentions.js'
@@ -321,7 +322,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   const [composerImages, setComposerImages] = useState([])
   const [composerEditState, setComposerEditState] = useState({ mode: 'new', targetMessageId: '', targetMessageText: '' })
   const [conversationScrollSignal, setConversationScrollSignal] = useState(0)
-  const [hoveredConversationDeleteId, setHoveredConversationDeleteId] = useState('')
+  const [hoveredConversationActionKey, setHoveredConversationActionKey] = useState('')
   const terminalPanelsRef = useRef({})
   const panelMountedRef = useRef(true)
   const panelInstanceKey = `${sessionId || 'session'}::${terminalId || 'terminal'}`
@@ -1478,6 +1479,15 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     void refreshAIConversationContextTokens(snapshot, panelInstanceKey)
   }, [panelInstanceKey, refreshAIConversationContextTokens, resetComposerEditState, setPanelState])
 
+  const handleOpenConversationFolder = useCallback(async (conversationId) => {
+    try {
+      await openAIConversationFolder(conversationId)
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : t('打开任务所在文件夹失败')
+      await showAlert(message)
+    }
+  }, [showAlert, t])
+
   const handleDeleteConversation = useCallback(async (conversationId) => {
     clearRestorePreview()
     const confirmed = await requestDeleteConfirmation(t('确定删除这条对话吗？此操作不可撤销。'))
@@ -2368,7 +2378,8 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     return (
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: 'var(--surface-base)' }}>
         {conversationList.map((item) => {
-          const isDeleteHovered = hoveredConversationDeleteId === item.id
+          const isFolderHovered = hoveredConversationActionKey === `${item.id}:folder`
+          const isDeleteHovered = hoveredConversationActionKey === `${item.id}:delete`
           return (
             <div
               key={item.id}
@@ -2406,41 +2417,71 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
                   </div>
                 </div>
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setHoveredConversationDeleteId('')
-                  void handleDeleteConversation(item.id)
-                }}
-                onMouseEnter={() => setHoveredConversationDeleteId(item.id)}
-                onMouseLeave={() => setHoveredConversationDeleteId((current) => (current === item.id ? '' : current))}
-                onFocus={() => setHoveredConversationDeleteId(item.id)}
-                onBlur={() => setHoveredConversationDeleteId((current) => (current === item.id ? '' : current))}
-                style={{
-                  width: 28,
-                  height: 28,
-                  marginRight: 16,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRadius: 8,
-                  color: isDeleteHovered ? '#ff9b9b' : 'var(--text-muted)',
-                  background: isDeleteHovered ? 'rgba(255, 107, 107, 0.12)' : 'transparent',
-                  border: isDeleteHovered ? '1px solid rgba(255, 107, 107, 0.32)' : '1px solid transparent',
-                  boxShadow: isDeleteHovered ? '0 0 0 1px rgba(255, 107, 107, 0.05)' : 'none',
-                  flexShrink: 0,
-                  cursor: 'pointer',
-                  transition: 'background 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease',
-                }}
-              >
-                ×
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 16, flexShrink: 0 }}>
+                <button
+                  type="button"
+                  title={t('打开任务所在文件夹')}
+                  aria-label={t('打开任务所在文件夹')}
+                  onClick={() => void handleOpenConversationFolder(item.id)}
+                  onMouseEnter={() => setHoveredConversationActionKey(`${item.id}:folder`)}
+                  onMouseLeave={() => setHoveredConversationActionKey((current) => (current === `${item.id}:folder` ? '' : current))}
+                  onFocus={() => setHoveredConversationActionKey(`${item.id}:folder`)}
+                  onBlur={() => setHoveredConversationActionKey((current) => (current === `${item.id}:folder` ? '' : current))}
+                  style={{
+                    width: 28,
+                    height: 28,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: 8,
+                    color: isFolderHovered ? 'var(--accent)' : 'var(--text-muted)',
+                    background: isFolderHovered ? 'rgba(var(--accent-rgb), 0.12)' : 'transparent',
+                    border: isFolderHovered ? '1px solid rgba(var(--accent-rgb), 0.28)' : '1px solid transparent',
+                    boxShadow: isFolderHovered ? '0 0 0 1px rgba(var(--accent-rgb), 0.05)' : 'none',
+                    flexShrink: 0,
+                    cursor: 'pointer',
+                    transition: 'background 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease',
+                  }}
+                >
+                  <FolderOpen size={14} />
+                </button>
+                <button
+                  type="button"
+                  title={t('删除')}
+                  aria-label={t('删除')}
+                  onClick={() => {
+                    setHoveredConversationActionKey('')
+                    void handleDeleteConversation(item.id)
+                  }}
+                  onMouseEnter={() => setHoveredConversationActionKey(`${item.id}:delete`)}
+                  onMouseLeave={() => setHoveredConversationActionKey((current) => (current === `${item.id}:delete` ? '' : current))}
+                  onFocus={() => setHoveredConversationActionKey(`${item.id}:delete`)}
+                  onBlur={() => setHoveredConversationActionKey((current) => (current === `${item.id}:delete` ? '' : current))}
+                  style={{
+                    width: 28,
+                    height: 28,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: 8,
+                    color: isDeleteHovered ? '#ff9b9b' : 'var(--text-muted)',
+                    background: isDeleteHovered ? 'rgba(255, 107, 107, 0.12)' : 'transparent',
+                    border: isDeleteHovered ? '1px solid rgba(255, 107, 107, 0.32)' : '1px solid transparent',
+                    boxShadow: isDeleteHovered ? '0 0 0 1px rgba(255, 107, 107, 0.05)' : 'none',
+                    flexShrink: 0,
+                    cursor: 'pointer',
+                    transition: 'background 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease',
+                  }}
+                >
+                  ×
+                </button>
+              </div>
             </div>
           )
         })}
       </div>
     )
-  }, [conversationList, handleDeleteConversation, handleOpenConversation, panelState.activeConversationId, t])
+  }, [conversationList, handleDeleteConversation, handleOpenConversation, handleOpenConversationFolder, hoveredConversationActionKey, panelState.activeConversationId, t])
 
   return (
     <div

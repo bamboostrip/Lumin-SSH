@@ -835,6 +835,44 @@ func (a *App) GetProgramDirectory() string {
 	return getProgramDirectory()
 }
 
+func (a *App) ListProgramFonts() ([]ProgramFontInfo, error) {
+	return listProgramFontsFromDirectory()
+}
+
+func (a *App) SelectProgramFontFiles() ([]string, error) {
+	return runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "选择字体文件",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "字体文件 (*.ttf;*.otf;*.ttc;*.woff;*.woff2)", Pattern: "*.ttf;*.otf;*.ttc;*.woff;*.woff2"},
+		},
+	})
+}
+
+func (a *App) ImportProgramFontFiles(paths []string) ([]ProgramFontInfo, error) {
+	fontsDirectory, err := ensureProgramFontsDirectory()
+	if err != nil {
+		return nil, err
+	}
+	imported := make([]ProgramFontInfo, 0, len(paths))
+	seen := map[string]bool{}
+	for _, path := range paths {
+		fontInfo, copyErr := copyProgramFontFile(path, fontsDirectory)
+		if copyErr != nil {
+			return nil, copyErr
+		}
+		if seen[fontInfo.FileName] {
+			continue
+		}
+		seen[fontInfo.FileName] = true
+		imported = append(imported, fontInfo)
+	}
+	return imported, nil
+}
+
+func (a *App) GetProgramFontDataURL(fileName string) (string, error) {
+	return buildProgramFontDataURL(fileName)
+}
+
 func (a *App) ResolveDownloadPath(remotePath string, defaultDir string, isDirectory bool, optionsJSON string) string {
 	return resolveDownloadTargetPath(remotePath, defaultDir, isDirectory, optionsJSON)
 }

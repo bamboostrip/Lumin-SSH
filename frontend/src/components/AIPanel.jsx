@@ -2614,6 +2614,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         boxSizing: 'border-box',
         overflow: 'hidden',
         position: 'relative',
+        fontFamily: 'var(--font-ai-panel)',
       }}
     >
       <AIPanelHeader

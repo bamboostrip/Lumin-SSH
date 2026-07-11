@@ -22,6 +22,7 @@ import { useTranslation } from '../i18n.js';
 import defaultTermBg from '../assets/term_bg.png';
 import { Z } from '../constants/zIndex';
 import { getTerminalTheme, getAppThemeMode } from '../utils/theme.js';
+import { getResolvedProgramFontPreferences } from '../utils/programFonts.js';
 
 const textDecoder = new TextDecoder();
 const textEncoder = new TextEncoder();
@@ -312,7 +313,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
 
     const term = new XTerm({
       theme:            T.xterm,
-      fontFamily:       "'JetBrains Mono', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Fira Code', monospace",
+      fontFamily:       getResolvedProgramFontPreferences().terminalFontFamily,
       fontSize:         fontSize,
       fontWeight:       500,
       fontWeightBold:   700,
@@ -908,7 +909,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
     }
   }, [T]);
 
-  // 监听快捷键 & 本地回显变更，同步更新 ref 缓存（保持设置即时生效）
+  // 监听快捷键 / 本地回显 / 字体变更，同步更新 ref 缓存（保持设置即时生效）
   useEffect(() => {
     const handleShortcutsChange = (e) => {
       shortcutsRef.current = e.detail;
@@ -925,13 +926,27 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
         requestAnimationFrame(() => syncGutter());
       }
     };
+    const handleProgramFontSettingsChange = (e) => {
+      const nextFontFamily = typeof e?.detail?.terminalFontFamily === 'string' && e.detail.terminalFontFamily.trim()
+        ? e.detail.terminalFontFamily
+        : getResolvedProgramFontPreferences().terminalFontFamily;
+      if (termRef.current) {
+        termRef.current.options.fontFamily = nextFontFamily;
+        if (fitAddonRef.current) {
+          try { fitAddonRef.current.fit(); } catch (_) {}
+        }
+        requestAnimationFrame(() => syncGutter());
+      }
+    };
     window.addEventListener('app-shortcuts-changed', handleShortcutsChange);
     window.addEventListener('terminal-local-echo-changed', handleLocalEchoChange);
     window.addEventListener('terminal-timestamps-changed', handleTimestampsChange);
+    window.addEventListener('program-font-settings-changed', handleProgramFontSettingsChange);
     return () => {
       window.removeEventListener('app-shortcuts-changed', handleShortcutsChange);
       window.removeEventListener('terminal-local-echo-changed', handleLocalEchoChange);
       window.removeEventListener('terminal-timestamps-changed', handleTimestampsChange);
+      window.removeEventListener('program-font-settings-changed', handleProgramFontSettingsChange);
     };
   }, []);
 
@@ -1596,7 +1611,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
           style={{
             flex: 1,
             fontSize: 12,
-            fontFamily: "'JetBrains Mono', monospace",
+            fontFamily: 'var(--font-terminal)',
             padding: '7px 10px',
             minHeight: 32,
             background: 'var(--term-input-bg)',
@@ -1725,7 +1740,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
                       flex: 1,
                       minWidth: 0,
                       fontSize: 12,
-                      fontFamily: "'JetBrains Mono', monospace",
+                      fontFamily: 'var(--font-terminal)',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
@@ -1781,7 +1796,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
             maxHeight: 280,
             display: 'flex', flexDirection: 'column',
             zIndex: Z.POPUP,
-            fontFamily: "'JetBrains Mono', monospace",
+            fontFamily: 'var(--font-terminal)',
             fontSize: 12,
           }}>
             {/* 弹窗头部（标题 + 操作按钮） */}

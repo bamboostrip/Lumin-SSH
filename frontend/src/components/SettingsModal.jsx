@@ -9,6 +9,7 @@ import { Sun, Monitor, Moon, Keyboard, Cloud, Info, Database, Folder, X, Refresh
 import { Z } from '../constants/zIndex';
 import { WindowSetSize, WindowUnmaximise } from '../../wailsjs/runtime/runtime.js';
 import { hexToRgb } from '../utils/theme.js';
+import { getProgramFontAssignmentSnapshot, listProgramFonts, selectAndImportProgramFontFiles, setProgramFontPreference } from '../utils/programFonts.js';
 import AppTab from './settings/AppTab';
 import GeneralTab from './settings/GeneralTab';
 import NetworkTab from './settings/NetworkTab';
@@ -315,6 +316,11 @@ export default function SettingsModal({
   const [terminalLocalEcho, setTerminalLocalEcho] = useState(localStorage.getItem('terminalLocalEcho') === 'true');
   const [terminalTimestamps, setTerminalTimestamps] = useState(localStorage.getItem('terminalTimestamps') === 'true');
   const [rememberWindowSize, setRememberWindowSize] = useState(localStorage.getItem('rememberWindowSize') !== 'false');
+  const [programFonts, setProgramFonts] = useState([]);
+  const [programFontSearchQuery, setProgramFontSearchQuery] = useState('');
+  const [programFontAssignments, setProgramFontAssignments] = useState(() => getProgramFontAssignmentSnapshot());
+  const [programFontImporting, setProgramFontImporting] = useState(false);
+  const [activeProgramFontDropTarget, setActiveProgramFontDropTarget] = useState('');
   // Shortcuts state
   const defaultShortcuts = {
     copy: 'Ctrl+C',
@@ -497,6 +503,78 @@ export default function SettingsModal({
     const h = Math.min(900, Math.floor(screen.height * 0.9));
     WindowSetSize(w, h);
     addToast($t('窗口大小已恢复默认'), 'success');
+  };
+
+  const refreshProgramFonts = async () => {
+    try {
+      const fonts = await listProgramFonts();
+      setProgramFonts(Array.isArray(fonts) ? fonts : []);
+    } catch {
+      setProgramFonts([]);
+    }
+    setProgramFontAssignments(getProgramFontAssignmentSnapshot());
+  };
+
+  const handleAddProgramFonts = async () => {
+    setProgramFontImporting(true);
+    try {
+      const importedFonts = await selectAndImportProgramFontFiles();
+      await refreshProgramFonts();
+      if (Array.isArray(importedFonts) && importedFonts.length > 0) {
+        addToast($t('字体已添加到字体目录'), 'success');
+      }
+    } catch (err) {
+      addToast($t('字体导入失败') + ': ' + err, 'error');
+    } finally {
+      setProgramFontImporting(false);
+    }
+  };
+
+  const handleProgramFontDragStart = (event, fileName) => {
+    event.dataTransfer.effectAllowed = 'copy';
+    event.dataTransfer.setData('text/plain', fileName);
+  };
+
+  const handleProgramFontDragEnd = () => {
+    setActiveProgramFontDropTarget('');
+  };
+
+  const handleProgramFontDragEnter = (target) => {
+    setActiveProgramFontDropTarget(target);
+  };
+
+  const handleProgramFontDragLeave = (target) => {
+    setActiveProgramFontDropTarget((current) => current === target ? '' : current);
+  };
+
+  const handleProgramFontDrop = async (target, fileName) => {
+    const normalizedTarget = typeof target === 'string' ? target.trim() : '';
+    const normalizedFileName = typeof fileName === 'string' ? fileName.trim() : '';
+    setActiveProgramFontDropTarget('');
+    if (!normalizedTarget || !normalizedFileName) {
+      return;
+    }
+    try {
+      await setProgramFontPreference(normalizedTarget, normalizedFileName);
+      setProgramFontAssignments(getProgramFontAssignmentSnapshot());
+      addToast($t('字体分配已更新'), 'success');
+    } catch (err) {
+      addToast($t('字体分配失败') + ': ' + err, 'error');
+    }
+  };
+
+  const handleProgramFontReset = async (target) => {
+    const normalizedTarget = typeof target === 'string' ? target.trim() : '';
+    if (!normalizedTarget) {
+      return;
+    }
+    try {
+      await setProgramFontPreference(normalizedTarget, '');
+      setProgramFontAssignments(getProgramFontAssignmentSnapshot());
+      addToast($t('已恢复默认字体'), 'success');
+    } catch (err) {
+      addToast($t('恢复默认字体失败') + ': ' + err, 'error');
+    }
   };
 
   // 操作确认开关
@@ -723,6 +801,30 @@ export default function SettingsModal({
     ]);
 
     return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    listProgramFonts()
+      .then((fonts) => {
+        if (cancelled) return;
+        setProgramFonts(Array.isArray(fonts) ? fonts : []);
+        setProgramFontAssignments(getProgramFontAssignmentSnapshot());
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setProgramFonts([]);
+        setProgramFontAssignments(getProgramFontAssignmentSnapshot());
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    const handleProgramFontSettingsChange = () => {
+      setProgramFontAssignments(getProgramFontAssignmentSnapshot());
+    };
+    window.addEventListener('program-font-settings-changed', handleProgramFontSettingsChange);
+    return () => window.removeEventListener('program-font-settings-changed', handleProgramFontSettingsChange);
   }, []);
 
   const setWebdav = (key) => (e) => setWebdavForm((f) => ({ ...f, [key]: e.target.value }));
@@ -1056,6 +1158,19 @@ export default function SettingsModal({
             )}
             {activeTab === 'appearance' && (
               <AppearanceTab
+                programFonts={programFonts}
+                programFontSearchQuery={programFontSearchQuery}
+                onProgramFontSearchQueryChange={setProgramFontSearchQuery}
+                onAddProgramFonts={handleAddProgramFonts}
+                programFontImporting={programFontImporting}
+                programFontAssignments={programFontAssignments}
+                onProgramFontDragStart={handleProgramFontDragStart}
+                onProgramFontDragEnd={handleProgramFontDragEnd}
+                onProgramFontDragEnter={handleProgramFontDragEnter}
+                onProgramFontDragLeave={handleProgramFontDragLeave}
+                onProgramFontDrop={(target, fileName) => { void handleProgramFontDrop(target, fileName); }}
+                onProgramFontReset={(target) => { void handleProgramFontReset(target); }}
+                activeProgramFontDropTarget={activeProgramFontDropTarget}
                 terminalFontSize={terminalFontSize}
                 onTerminalFontSizeChange={handleTerminalFontChange}
                 terminalLocalEcho={terminalLocalEcho}

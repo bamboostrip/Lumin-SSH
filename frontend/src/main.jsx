@@ -5,6 +5,7 @@ import { initializeI18n, t } from './i18n.js';
 import { AlertTriangle } from 'lucide-react';
 import './index.css';
 import { hexToRgb } from './utils/theme.js';
+import { applyProgramFontPreferences } from './utils/programFonts.js';
 
 // 全局错误边界，防止渲染错误导致白屏
 class ErrorBoundary extends React.Component {
@@ -77,6 +78,7 @@ window.addEventListener('unhandledrejection', (e) => {
 
 async function bootstrap() {
   await initializeI18n();
+  await applyProgramFontPreferences().catch(() => {});
   ReactDOM.createRoot(document.getElementById('root')).render(
     <ErrorBoundary>
       <React.StrictMode>

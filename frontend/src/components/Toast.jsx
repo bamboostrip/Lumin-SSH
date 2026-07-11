@@ -1,4 +1,4 @@
-import { CheckCircle, XCircle, Info, X } from 'lucide-react';
+import { CheckCircle, Info, X, XCircle } from 'lucide-react';
 import Tiptop from './Tiptop.jsx';
 
 const ICON_MAP = {
@@ -12,16 +12,18 @@ export default function Toast({ toasts, onClose, closeLabel = '关闭' }) {
   return (
     <div className="toast-container">
       {toasts.map((t) => (
-        <div key={t.id} className={`toast toast-${t.type}`}>
-          <div className="toast-content">
-            <span className="toast-icon">{ICON_MAP[t.type] || <Info size={16} />}</span>
-            <span className="toast-message">{t.message}</span>
+        <div key={t.id} className={`toast-shell${t.closing ? ' toast-shell-closing' : ''}`}>
+          <div className={`toast toast-${t.type}${t.closing ? ' toast-closing' : ''}`}>
+            <div className="toast-content">
+              <span className="toast-icon">{ICON_MAP[t.type] || <Info size={16} />}</span>
+              <span className="toast-message">{t.message}</span>
+            </div>
+            <Tiptop text={closeLabel} placement="bottom">
+              <button type="button" className="toast-close" onClick={() => onClose?.(t.id)} aria-label={closeLabel}>
+                <X size={14} />
+              </button>
+            </Tiptop>
           </div>
-          <Tiptop text={closeLabel} placement="bottom">
-            <button type="button" className="toast-close" onClick={() => onClose?.(t.id)} aria-label={closeLabel}>
-              <X size={14} />
-            </button>
-          </Tiptop>
         </div>
       ))}
     </div>

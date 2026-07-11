@@ -149,12 +149,16 @@ export default function AIPanelSettingsOverlay({
       return undefined
     }
 
+    if (activeTab) {
+      return undefined
+    }
+
     const firstTabKey = tabListRef.current?.querySelector('[data-ai-settings-tab-key]')?.dataset?.aiSettingsTabKey || ''
-    if (firstTabKey && activeTab !== firstTabKey) {
+    if (firstTabKey) {
       onChangeTab(firstTabKey)
     }
     return undefined
-  }, [activeConversationId, activeTab, onChangeTab, show])
+  }, [activeTab, onChangeTab, show])
 
   useEffect(() => {
     if (!show) {

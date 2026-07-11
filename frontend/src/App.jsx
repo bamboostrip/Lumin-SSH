@@ -1384,16 +1384,64 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     setTimeout(() => { if (mountedRef.current) setIsRefreshingPing(false); }, 800);
   };
 
-  // ── Toast helpers ──────────────────────────────────────────
+  const TOAST_EXIT_DURATION = 1080;
   const toastIdRef = useRef(0);
-  const removeToast = useCallback((id) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+  const toastAutoDismissTimersRef = useRef(new Map());
+  const toastExitTimersRef = useRef(new Map());
+  const clearToastTimer = useCallback((timersRef, id) => {
+    const timer = timersRef.current.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      timersRef.current.delete(id);
+    }
   }, []);
+  const removeToastImmediately = useCallback((id) => {
+    clearToastTimer(toastAutoDismissTimersRef, id);
+    clearToastTimer(toastExitTimersRef, id);
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, [clearToastTimer]);
+  const removeToast = useCallback((id) => {
+    clearToastTimer(toastAutoDismissTimersRef, id);
+    clearToastTimer(toastExitTimersRef, id);
+    let shouldAnimate = false;
+    setToasts((prev) => prev.map((t) => {
+      if (t.id !== id) {
+        return t;
+      }
+      if (t.closing) {
+        return t;
+      }
+      shouldAnimate = true;
+      return { ...t, closing: true };
+    }));
+    if (!shouldAnimate) {
+      return;
+    }
+    const exitTimer = setTimeout(() => {
+      if (mountedRef.current) {
+        removeToastImmediately(id);
+      }
+    }, TOAST_EXIT_DURATION);
+    toastExitTimersRef.current.set(id, exitTimer);
+  }, [clearToastTimer, removeToastImmediately]);
   const addToast = useCallback((message, type = 'info', duration = 3000) => {
     const id = ++toastIdRef.current;
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => { if (mountedRef.current) removeToast(id); }, duration);
+    setToasts((prev) => [...prev, { id, message, type, closing: false }]);
+    if (duration > 0) {
+      const autoTimer = setTimeout(() => {
+        if (mountedRef.current) {
+          removeToast(id);
+        }
+      }, duration);
+      toastAutoDismissTimersRef.current.set(id, autoTimer);
+    }
   }, [removeToast]);
+  useEffect(() => () => {
+    toastAutoDismissTimersRef.current.forEach((timer) => clearTimeout(timer));
+    toastAutoDismissTimersRef.current.clear();
+    toastExitTimersRef.current.forEach((timer) => clearTimeout(timer));
+    toastExitTimersRef.current.clear();
+  }, []);
 
   const activeWorkspaceTerminalKey = useMemo(() => buildAIWorkspaceTerminalPanelKey(activeSessionId, activeTerminalId), [activeSessionId, activeTerminalId]);
   const activeChangeReviewQueue = useMemo(() => (

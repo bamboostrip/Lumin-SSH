@@ -43,6 +43,22 @@ function scorePrefixMatch(candidate, query) {
   return 0
 }
 
+function scoreLooseMatch(candidate, query) {
+  if (!candidate || !query) {
+    return 0
+  }
+  if (candidate === query) {
+    return 120
+  }
+  if (candidate.startsWith(query)) {
+    return 100
+  }
+  if (candidate.includes(query)) {
+    return 60
+  }
+  return 0
+}
+
 function dedupeAutocompleteItems(items) {
   const bestByValue = new Map()
 
@@ -50,7 +66,7 @@ function dedupeAutocompleteItems(items) {
     if (!item || !item.value) {
       return
     }
-    const key = String(item.value)
+    const key = String(item.dedupeKey || item.value)
     const existing = bestByValue.get(key)
     if (!existing || (item.score || 0) > (existing.score || 0)) {
       bestByValue.set(key, item)
@@ -130,6 +146,50 @@ export function buildTopLevelCommandItems({ context, sources, builtinCommandName
       appendSpace: true,
     })
   })
+
+  return dedupeAutocompleteItems(items)
+}
+
+export function buildSlashQuickCommandItems({ context, sources }) {
+  const rawQuery = String(context?.command || '')
+  if (!rawQuery.startsWith('/')) {
+    return []
+  }
+
+  const query = rawQuery.slice(1).trim().toLowerCase()
+  const items = (sources?.quickCommands || [])
+    .map((item, index) => {
+      const name = String(item?.name || '').trim()
+      const command = String(item?.command || '').trim()
+      const groupPath = String(item?.groupPath || '').trim()
+      if (!name || !command) {
+        return null
+      }
+
+      const nameScore = query ? scoreLooseMatch(name.toLowerCase(), query) : 120
+      const commandScore = query ? scoreLooseMatch(command.toLowerCase(), query) : 0
+      const groupScore = query ? scoreLooseMatch(groupPath.toLowerCase(), query) : 0
+      const matchScore = Math.max(
+        nameScore > 0 ? nameScore + 40 : 0,
+        commandScore,
+        groupScore > 0 ? groupScore - 20 : 0,
+      )
+
+      if (query && matchScore <= 0) {
+        return null
+      }
+
+      return {
+        source: 'quick',
+        label: `/${name}`,
+        value: buildCommandReplacementValue(context, command),
+        description: groupPath ? `${command} · ${groupPath}` : command,
+        badge: getAutocompleteBadge('quick'),
+        dedupeKey: `quick-slash:${name}\u0000${command}\u0000${groupPath}`,
+        score: 520 + matchScore - index,
+      }
+    })
+    .filter(Boolean)
 
   return dedupeAutocompleteItems(items)
 }
@@ -244,6 +304,7 @@ export function buildAsyncProviderContext({ context, plan }) {
     candidatePrefix,
     partialName,
     directoryOnly: Boolean(plan.argRule?.directoryOnly),
+    fileOnly: Boolean(plan.argRule?.fileOnly),
     chainPath: plan.chainPath || [],
   }
 }
@@ -264,6 +325,7 @@ export async function loadAsyncProviderItems({ sessionId, asyncContext, listDir 
   const needle = String(asyncContext.partialName || '').toLowerCase()
   const items = entries
     .filter((entry) => !asyncContext.directoryOnly || entry.isDirectory)
+    .filter((entry) => !asyncContext.fileOnly || !entry.isDirectory)
     .filter((entry) => !needle || entry.name.toLowerCase().startsWith(needle))
     .map((entry, index) => {
       const relativePath = `${asyncContext.candidatePrefix}${entry.name}${entry.isDirectory ? '/' : ''}`

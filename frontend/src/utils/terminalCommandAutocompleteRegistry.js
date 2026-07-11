@@ -52,6 +52,7 @@ export const ROOT_COMMAND_REGISTRY = [
     description: '查看文件内容',
     args: [
       createArg('path', {
+        fileOnly: true,
         repeat: true,
       }),
     ],
@@ -60,6 +61,7 @@ export const ROOT_COMMAND_REGISTRY = [
     description: '分页查看文件',
     args: [
       createArg('path', {
+        fileOnly: true,
         repeat: true,
       }),
     ],
@@ -68,6 +70,7 @@ export const ROOT_COMMAND_REGISTRY = [
     description: '查看文件尾部',
     args: [
       createArg('path', {
+        fileOnly: true,
         repeat: true,
       }),
     ],

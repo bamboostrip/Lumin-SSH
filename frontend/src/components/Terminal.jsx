@@ -147,6 +147,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
   const [commandAutocomplete, setCommandAutocomplete] = useState(createCommandAutocompleteState());
   const commandAutocompleteRequestRef         = useRef(0);
   const commandAutocompleteFocusedRef         = useRef(false);
+  const commandAutocompleteKeyboardNavigationRef = useRef(false);
   const commandAutocompleteDebounceRef        = useRef(null);
   const commandAutocompleteBlurTimerRef       = useRef(null);
   const commandAutocompleteDataRef            = useRef({
@@ -1160,6 +1161,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
 
   const closeCommandAutocomplete = useCallback(() => {
     commandAutocompleteRequestRef.current += 1;
+    commandAutocompleteKeyboardNavigationRef.current = false;
     clearCommandAutocompleteDebounce();
     clearCommandAutocompleteBlurTimer();
     setCommandAutocomplete(createCommandAutocompleteState());
@@ -1399,17 +1401,23 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
   }, [clearCommandAutocompleteBlurTimer, clearCommandAutocompleteDebounce]);
 
   useLayoutEffect(() => {
+    if (!commandAutocompleteKeyboardNavigationRef.current) {
+      return;
+    }
     if (!commandAutocomplete.open || !commandAutocompleteListRef.current || commandAutocomplete.selectedIndex < 0) {
+      commandAutocompleteKeyboardNavigationRef.current = false;
       return;
     }
     const selectedNode = commandAutocompleteListRef.current.querySelector('[data-command-autocomplete-selected="true"]');
     if (!selectedNode || typeof selectedNode.scrollIntoView !== 'function') {
+      commandAutocompleteKeyboardNavigationRef.current = false;
       return;
     }
     selectedNode.scrollIntoView({
       block: 'center',
       inline: 'nearest',
     });
+    commandAutocompleteKeyboardNavigationRef.current = false;
   }, [commandAutocomplete.open, commandAutocomplete.selectedIndex, commandAutocomplete.items.length]);
 
   return (
@@ -1531,6 +1539,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
               if (commandAutocomplete.items.length === 0) {
                 return;
               }
+              commandAutocompleteKeyboardNavigationRef.current = true;
               setCommandAutocomplete((previous) => ({
                 ...previous,
                 selectedIndex: previous.selectedIndex < 0
@@ -1545,6 +1554,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
               if (commandAutocomplete.items.length === 0) {
                 return;
               }
+              commandAutocompleteKeyboardNavigationRef.current = true;
               setCommandAutocomplete((previous) => ({
                 ...previous,
                 selectedIndex: previous.selectedIndex < 0
@@ -1554,7 +1564,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
               return;
             }
 
-            if ((e.key === 'Tab' || (e.key === 'Enter' && commandAutocomplete.open)) && cmdInput.trim()) {
+            if (e.key === 'Tab' && cmdInput.trim()) {
               e.preventDefault();
               let items = commandAutocomplete.items;
               if (items.length === 0) {
@@ -1564,11 +1574,8 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
               const selectedItem = items[selectedIndex] || items[0];
               if (selectedItem) {
                 applyCommandAutocompleteItem(selectedItem);
-                return;
               }
-              if (e.key === 'Tab') {
-                return;
-              }
+              return;
             }
 
             if (e.key === 'Escape') {
@@ -1585,7 +1592,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
               executeCommand();
             }
           }}
-          placeholder={t('输入命令')}
+          placeholder={`${t('输入命令')}(/ ${t('快捷命令')})`}
           style={{
             flex: 1,
             fontSize: 12,

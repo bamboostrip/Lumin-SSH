@@ -3,6 +3,7 @@ import { getBuiltinCommandNames, resolveAutocompletePlan } from './terminalComma
 import {
   buildAsyncProviderContext,
   buildChildCommandItems,
+  buildSlashQuickCommandItems,
   buildSyncProviderItems,
   buildTopLevelCommandItems,
   loadAsyncProviderItems,
@@ -41,6 +42,15 @@ function flattenQuickCommandItems(items, groups = [], acc = []) {
   })
 
   return acc
+}
+
+function isSlashQuickCommandContext(context) {
+  return Boolean(
+    context
+    && context.currentTokenIndex === 0
+    && !context.hasTrailingSpace
+    && String(context.command || '').startsWith('/')
+  )
 }
 
 export function createCommandAutocompleteState(patch = {}) {
@@ -82,6 +92,14 @@ export function buildStaticAutocompleteItems(inputValue, sources, { cursorPositi
     cursorPosition,
     currentCwd,
   })
+
+  if (isSlashQuickCommandContext(context)) {
+    return buildSlashQuickCommandItems({
+      context,
+      sources,
+    })
+  }
+
   const plan = resolveAutocompletePlan(context)
 
   switch (plan.kind) {
@@ -111,6 +129,11 @@ export function buildPathAutocompleteContext(inputValue, currentCwd, { cursorPos
     cursorPosition,
     currentCwd,
   })
+
+  if (isSlashQuickCommandContext(context)) {
+    return null
+  }
+
   const plan = resolveAutocompletePlan(context)
 
   return buildAsyncProviderContext({

@@ -540,9 +540,28 @@ func (c *ConfigManager) SetConnectionGroup(id string, group string) error {
 	return c.updateConnectionField(id, func(conn *Connection) { conn.Group = group })
 }
 
-// SetConnectionOS 仅更新服务器的操作系统字段
-func (c *ConfigManager) SetConnectionOS(id string, os string) error {
-	return c.updateConnectionField(id, func(conn *Connection) { conn.Os = os })
+// SetConnectionOS 仅更新服务器的操作系统字段；值未变化时不触发同步。
+func (c *ConfigManager) SetConnectionOS(id string, osValue string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	conns := c.getConnectionsLocked()
+	for i, conn := range conns {
+		if conn.ID == id {
+			if conn.Os == osValue {
+				return nil
+			}
+			conns[i].Os = osValue
+			conns[i].LastModified = time.Now().UnixMilli()
+			if err := c.saveConnectionsFile(conns); err != nil {
+				return err
+			}
+			c.bumpSnapshotTime()
+			c.connCacheDirty = true
+			go c.AutoSync()
+			return nil
+		}
+	}
+	return fmt.Errorf("connection not found: %s", id)
 }
 
 // updateConnectionField 通用：按 ID 查找并更新单个字段
@@ -1004,10 +1023,11 @@ func (c *ConfigManager) newWebdavStorage() (RemoteStorage, int, error) {
 	}
 	client := gowebdav.NewClient(conf["url"], conf["username"], conf["password"])
 	maxBackups := parseIntOrDefault(conf["maxBackups"], 0)
+	hash := sha256.Sum256([]byte(conf["url"] + conf["username"] + conf["password"]))
 	return &webdavStorage{
 		client:     client,
 		remotePath: conf["remotePath"],
-		key:        c.getWebdavKey(),
+		key:        hash[:],
 	}, maxBackups, nil
 }
 

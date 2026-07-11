@@ -1374,49 +1374,57 @@ func (a *App) UpdateApp(downloadUrl string, filename string, proxyFirst bool) er
 		return fmt.Errorf("failed to download update from all sources: %w", lastErr)
 	}
 
-	// 2.5 校验下载文件的 SHA256（如果发布方提供了 .sha256 文件）
-	// 防止下载文件被篡改或损坏后直接替换可执行文件
+	// 2.5 强制校验下载文件的 SHA256，校验失败不得继续安装/替换。
 	shaResp, shaErr := client.Get(downloadUrl + ".sha256")
 	if shaErr != nil {
-		// .sha256 文件获取失败（如 404），跳过校验但记录警告
-		fmt.Printf("[UpdateApp] warning: failed to fetch .sha256 file, skipping verification: %v\n", shaErr)
-	} else {
-		if shaResp.StatusCode != http.StatusOK {
-			shaResp.Body.Close()
-			fmt.Printf("[UpdateApp] warning: .sha256 file returned %d, skipping verification\n", shaResp.StatusCode)
-		} else {
-			shaBody, shaReadErr := io.ReadAll(shaResp.Body)
-			shaResp.Body.Close()
-			if shaReadErr != nil {
-				fmt.Printf("[UpdateApp] warning: failed to read .sha256 file, skipping verification: %v\n", shaReadErr)
-			} else {
-				// 计算下载文件的 SHA256（流式读取，避免将整个安装包读入内存）
-				f, openErr := os.Open(targetPath)
-				if openErr != nil {
-					os.Remove(targetPath)
-					return fmt.Errorf("failed to open downloaded file for verification: %w", openErr)
-				}
-				h := sha256.New()
-				if _, copyErr := io.Copy(h, f); copyErr != nil {
-					f.Close()
-					os.Remove(targetPath)
-					return fmt.Errorf("failed to hash downloaded file: %w", copyErr)
-				}
-				f.Close()
-				actualHashHex := hex.EncodeToString(h.Sum(nil))
+		os.Remove(targetPath)
+		return fmt.Errorf("failed to fetch .sha256 file: %w", shaErr)
+	}
+	defer shaResp.Body.Close()
+	if shaResp.StatusCode != http.StatusOK {
+		os.Remove(targetPath)
+		return fmt.Errorf(".sha256 file returned %d", shaResp.StatusCode)
+	}
 
-				// .sha256 文件内容通常是 "<hash>  <filename>" 格式，取第一个字段
-				expectedHash := strings.Fields(strings.TrimSpace(string(shaBody)))
-				if len(expectedHash) == 0 {
-					fmt.Printf("[UpdateApp] warning: empty .sha256 file, skipping verification\n")
-				} else {
-					if !strings.EqualFold(actualHashHex, expectedHash[0]) {
-						os.Remove(targetPath)
-						return fmt.Errorf("SHA256 mismatch: expected %s, got %s", expectedHash[0], actualHashHex)
-					}
-				}
-			}
-		}
+	shaBody, shaReadErr := io.ReadAll(shaResp.Body)
+	if shaReadErr != nil {
+		os.Remove(targetPath)
+		return fmt.Errorf("failed to read .sha256 file: %w", shaReadErr)
+	}
+
+	// .sha256 文件内容通常是 "<hash>  <filename>" 格式，取第一个字段。
+	expectedHashFields := strings.Fields(strings.TrimSpace(string(shaBody)))
+	if len(expectedHashFields) == 0 {
+		os.Remove(targetPath)
+		return fmt.Errorf("empty .sha256 file")
+	}
+	expectedHash := expectedHashFields[0]
+	if len(expectedHash) != sha256.Size*2 {
+		os.Remove(targetPath)
+		return fmt.Errorf("invalid SHA256 length: %d", len(expectedHash))
+	}
+	if _, decodeErr := hex.DecodeString(expectedHash); decodeErr != nil {
+		os.Remove(targetPath)
+		return fmt.Errorf("invalid SHA256 hex: %w", decodeErr)
+	}
+
+	// 计算下载文件的 SHA256（流式读取，避免将整个安装包读入内存）
+	f, openErr := os.Open(targetPath)
+	if openErr != nil {
+		os.Remove(targetPath)
+		return fmt.Errorf("failed to open downloaded file for verification: %w", openErr)
+	}
+	h := sha256.New()
+	if _, copyErr := io.Copy(h, f); copyErr != nil {
+		f.Close()
+		os.Remove(targetPath)
+		return fmt.Errorf("failed to hash downloaded file: %w", copyErr)
+	}
+	f.Close()
+	actualHashHex := hex.EncodeToString(h.Sum(nil))
+	if !strings.EqualFold(actualHashHex, expectedHash) {
+		os.Remove(targetPath)
+		return fmt.Errorf("SHA256 mismatch: expected %s, got %s", expectedHash, actualHashHex)
 	}
 
 	// 3. 处理 .deb 包安装（Linux）

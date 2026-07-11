@@ -1212,20 +1212,27 @@ func (c *ConfigManager) autoSyncProvider(s RemoteStorage, maxBackups int) error 
 	}
 
 	// 云端有变化 → 上传
+	syncTimeUpdated := false
 	if cloudChanged {
 		c.bumpSnapshotTime()
+		syncTimeUpdated = true
 		if _, berr := c.backupConnections(s, maxBackups); berr != nil {
 			return fmt.Errorf("上传合并快照失败: %w", berr)
 		}
 	} else if localChanged {
 		c.bumpSnapshotTime()
+		syncTimeUpdated = true
 	}
 
-	// 更新本地时间戳为双方最大值，保持同步
-	if remoteSnapTime > localSnapTime {
+	// 仅在本轮没有生成新本地快照时，才用较新的远端时间校准本地时间戳。
+	if !syncTimeUpdated && remoteSnapTime > localSnapTime {
 		atomicWriteFile(c.syncTimeFile, []byte(fmt.Sprintf("%d", remoteSnapTime)), 0600)
 	}
 	c.saveLastSyncTime(time.Now().UnixMilli())
+
+	if action == "upload" && !localChanged {
+		return nil
+	}
 
 	c.emitSyncEvent("sync-status", map[string]interface{}{
 		"action":       action,

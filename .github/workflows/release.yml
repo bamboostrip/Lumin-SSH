@@ -108,20 +108,7 @@ jobs:
           name: "Lumin SSH Client ${{ github.ref_name }}"
           body: |
             ## 功能增强
-            - 集成 MCP 客户端，增强对话缓存与工具协议
-            - 新增字体管理器
-            - 终端命令补全架构改进
-            - AI 助手增强及兼容性优化
-            - 新增多语言包（完善多语言支持）
-            - 完善双端同步数据覆盖与 PC 同步日志决策
-            - 统一导入导出快照格式，优化云同步加密
-            - 新增语言包（多语言支持扩展）
-            - 更新 GitHub 下载代理地址（ghfast.top → ghproxy.net，新增 gh-proxy.com）
-
-            ## Bug 修复
-            - 修复 AI 助手设置中心选项卡异常
-            - 修复关闭每行时间后仍记录时间戳
-            - 修正终端时间戳对齐
+            - 同步合并排序优化：按较新一边排序，移动排序可跨设备同步
 
             ## 产物下载
             - Linux 便携版 ([Lumin-V${{ steps.version.outputs.version }}-linux-amd64](https://github.com/wmwlwmwl/Lumin-SSH/releases/download/v${{ steps.version.outputs.version }}/Lumin-V${{ steps.version.outputs.version }}-linux-amd64))：即下即用

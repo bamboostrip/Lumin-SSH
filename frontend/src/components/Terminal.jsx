@@ -486,6 +486,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
         e.preventDefault();
         navigator.clipboard.readText().then((text) => {
           if (text && wsRef.current?.readyState === WebSocket.OPEN) {
+            pendingCmdRef.current += text.replace(/[\x00-\x1F\x7F]/g, '');
             wsRef.current.send(textEncoder.encode(text));
           }
         }).catch((err) => {
@@ -985,6 +986,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
       case 'paste':
         navigator.clipboard.readText().then(text => {
           if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            pendingCmdRef.current += text.replace(/[\x00-\x1F\x7F]/g, '');
             wsRef.current.send(textEncoder.encode(text));
           }
           termRef.current.focus();

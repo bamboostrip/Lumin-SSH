@@ -1,4 +1,5 @@
-import { Clipboard, RefreshCw, SquarePen, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { Check, Clipboard, RefreshCw, SquarePen, Trash2 } from 'lucide-react'
 import { t } from '../../../i18n.js'
 
 const actionMap = {
@@ -9,6 +10,8 @@ const actionMap = {
 }
 
 export default function AIChatMessageActions({ actions = [], style }) {
+  const [copied, setCopied] = useState(false)
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, ...style }}>
       {actions.map((action) => {
@@ -20,17 +23,23 @@ export default function AIChatMessageActions({ actions = [], style }) {
           return null
         }
 
-        const Icon = normalizedAction.icon
+        const isCopied = normalizedAction.key === 'copy' && copied
+        const Icon = isCopied ? Check : normalizedAction.icon
+        const title = isCopied ? '已复制' : normalizedAction.title
 
         return (
           <button
             key={normalizedAction.key}
             type="button"
-            title={t(normalizedAction.title)}
-            aria-label={t(normalizedAction.title)}
+            title={t(title)}
+            aria-label={t(title)}
             onClick={(event) => {
               event.stopPropagation()
               normalizedAction.onClick?.()
+              if (normalizedAction.key === 'copy') {
+                setCopied(true)
+                window.setTimeout(() => setCopied(false), 1200)
+              }
             }}
             style={{
               width: 26,
@@ -39,7 +48,7 @@ export default function AIChatMessageActions({ actions = [], style }) {
               alignItems: 'center',
               justifyContent: 'center',
               borderRadius: 7,
-              color: 'var(--text-muted)',
+              color: isCopied ? 'var(--success)' : 'var(--text-muted)',
               background: 'transparent',
               border: '1px solid transparent',
               transition: 'var(--transition)',

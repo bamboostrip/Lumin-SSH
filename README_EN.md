@@ -16,7 +16,7 @@
 
 ## About
 
-Lumin is a desktop SSH client for developers and system administrators. Built with Go-native concurrency + WebSocket + xterm.js, it delivers sub-millisecond terminal responsiveness. Packed with system resource probes, remote file manager, command history, cloud-synced encrypted backups, and AI agent (MCP) integration — no server-side agent required.
+Lumin is a desktop SSH client for developers and system administrators. Built with Go-native concurrency, WebSocket, and xterm.js, it delivers a low-latency terminal experience. It includes system resource probes, a remote file manager, command history and completion, optionally encrypted cloud sync, AI chat, and MCP integration with no server-side agent required.
 
 <div align="center">
   <img src="assets/pc_empty_main.png" alt="Lumin Dashboard" width="800" />
@@ -70,9 +70,10 @@ Lumin is a desktop SSH client for developers and system administrators. Built wi
 - **Copy Path** — Right-click any file or folder to copy the full remote path
 - **Three Layout Modes** — Tab, right split, bottom split
 
-### Command History & Quick Commands
-- **Auto-Capture** — Every command executed in the terminal is automatically saved per-server
+### Command History, Completion & Quick Commands
+- **Auto-Capture** — Complete commands typed or pasted into the terminal are automatically saved per server
 - **Search & Replay** — Search history per-server or globally, one-click replay
+- **Smart Completion** — Live suggestions from server and global history, quick commands, common built-ins, and remote paths
 - **Quick Commands Library** — Group-managed command snippets, send to current or all sessions
 - **Dynamic Parameters** — Insert `p#` placeholders for runtime prompts
 
@@ -82,12 +83,14 @@ Lumin is a desktop SSH client for developers and system administrators. Built wi
 - **Passphrase Support** — Optional passphrase for private key credentials
 
 ### AI Chat & Agent Integration
-- **Built-in AI Chat Panel** — In-app AI chat interface with multi-turn conversations, message edit/retry, streaming output, and reasoning trace display
-- **Multi-Provider Support** — Compatible with OpenAI API formats (Compatible / Messages / Responses protocols), freely switch between providers
+- **Built-in AI Chat Panel** — In-app AI chat with multi-turn conversations, message edit/retry/copy, streaming output, and reasoning traces
+- **Multi-Provider Support** — Compatible with OpenAI API formats (Compatible / Messages / Responses), with built-in Kimi access
+- **Prompt Caching** — Per-provider cache policy with model default, off, 5-minute, and 1-hour options
 - **Slash Commands & @Mentions** — Type `/` to trigger custom commands, type `@` to reference terminal output or remote files/directories
-- **Tool Approval & Execution** — Approval cards for AI tool calls, approve/reject individually, configurable auto-approve (read/write/execute)
+- **Tool Approval & Execution** — Approve/reject tool calls, continue/stop execution, reassign command terminals, and configure auto-approval (read/write/execute)
 - **Smart Context Compression** — One-click token compression when conversations grow long
-- **Built-in MCP Server** — Toggleable Streamable HTTP MCP server in AI panel settings, exposing SSH session access to AI tools
+- **Built-in MCP Server** — Toggleable Streamable HTTP MCP server exposing SSH sessions to external AI tools
+- **MCP Client Management** — Add external MCP servers, inspect tools and resources, and configure enablement, reload, restart, removal, and timeouts
 - **AI Agent Panel** — In-session panel showing MCP server URL, available tools list, and connection guide
 - **Visibility Control** — Toggle AI panel on/off in Settings (default: off)
 - **Terminal Isolation** — Create independent AI panels and runtime sessions per terminal
@@ -97,8 +100,9 @@ Lumin is a desktop SSH client for developers and system administrators. Built wi
 
 ### Cloud Sync (WebDAV / R2 / FTP / SFTP)
 - **Four Cloud Storage Backends** — **WebDAV**, **Cloudflare R2 (S3-compatible)**, **FTP**, **SFTP**
-- **AES-256-GCM Encryption** — Every config change auto-encrypts a snapshot before upload
+- **Optional Encrypted Backups** — Set a recovery password to create AES-256-GCM `.enc` backups; otherwise portable `.json` snapshots are used
 - **One-Click Restore** — Configure the same backend on a new machine and restore servers, credentials, quick commands, AI settings, proxy nodes, and more
+- **Smart Merge** — Merge records by update time and propagate deletions to reduce accidental overwrites across devices
 - **Multi-Cloud Merge Sync** — The “All” mode merges all configured cloud backends first, then writes the final result back to every configured backend
 - **Auto-Sync Switch & Mode** — Enable/disable auto-sync independently and choose WebDAV / R2 / FTP / SFTP / All mode
 - **Backup Retention** — Configurable max backup count
@@ -129,6 +133,7 @@ Lumin is a desktop SSH client for developers and system administrators. Built wi
 - **Minimal Compact UI** — Neutral blue-gray surfaces with unified buttons, tabs, tables, and modals
 - **Custom Accent Colors** — 10 preset color options
 - **4 Terminal Color Themes** — Lumin Default, Tokyo Night, Catppuccin, Dracula
+- **Font Manager** — Import and search `.ttf` / `.otf` / `.ttc` / `.woff` / `.woff2` fonts and assign them independently to the UI, terminal, and AI panel
 - **Custom Terminal Wallpaper** — Upload background images with adjustable opacity
 - **Lightweight Motion** — Restrained transitions for menus, modals, and state changes without heavy decorative effects
 - **Toast Notifications** — Non-intrusive compact toast messages
@@ -143,7 +148,7 @@ Lumin is a desktop SSH client for developers and system administrators. Built wi
 - **Customizable Shortcuts** — Copy, paste, clear, new tab, SIGINT, EOF, SIGTSTP, clear input — all rebindable
 - **Terminal Font Size** — Slider-based real-time adjustment
 - **Terminal Local Echo** — Disable echo for sensitive input
-- **Internationalization** — 简体中文 / English toggle
+- **Internationalization** — 28 built-in language and locale options with instant switching and Simplified Chinese fallback
 
 ### Workspace Memory
 - **Remember Window Size** — Auto-restores the last window size and maximized state on startup
@@ -229,9 +234,10 @@ Lumin provides a comprehensive settings panel organized in tabs:
 | **General** | Language, workspace memory, close session confirmation, close all confirmation, window close behavior |
 | **Network** | Ping protocol (SSH Banner RTT / TCP Dial), probe & ping refresh intervals, proxy node management, WebView GPU hardware acceleration toggle |
 | **File Manager** | Follow terminal CWD, compressed transfer, upload concurrency, download save strategy, filename conflict handling |
-| **Appearance** | Terminal font size, local echo, color theme, UI theme, accent colors, terminal wallpaper |
+| **Appearance** | Font manager, terminal font size, local echo, color theme, UI theme, accent colors, terminal wallpaper |
 | **Shortcuts** | All terminal operation shortcut rebinding |
-| **Sync & Cloud** | WebDAV / R2 / FTP / SFTP configuration and auto-sync strategy |
+| **Sync & Cloud** | WebDAV / R2 / FTP / SFTP, recovery password, retention, and auto-sync strategy |
+| **AI** | Providers, models, prompt caching, tool approval, built-in MCP server, and external MCP clients |
 | **About** | Version info, update check, community links |
 
 ---
@@ -295,7 +301,7 @@ A 32-byte random AES key is generated on first run and stored in `lumin.key`. Al
 
 ### How do I sync configs across machines?
 
-Settings → Sync & Cloud → configure any backend (WebDAV / R2 / FTP / SFTP). Lumin auto-encrypts and snapshots every config change. Configure the same backend on the new machine and restore.
+Settings → Sync & Cloud → configure any backend (WebDAV / R2 / FTP / SFTP). Set a recovery password for AES-256-GCM encrypted `.enc` snapshots; without one, Lumin syncs `.json` snapshots. Configure the same backend on the new machine to restore.
 
 ### Does server cloning copy passwords?
 

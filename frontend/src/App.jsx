@@ -376,6 +376,7 @@ export default function App() {
   const editFlyFieldTimerRefs = useRef([]);
   const editFlyShineTimerRefs = useRef([]);
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState('general');
   const [showCredentials, setShowCredentials] = useState(false);
   const [tabContextMenu, setTabContextMenu] = useState(null);
   const [terminalTabContextMenu, setTerminalTabContextMenu] = useState(null);
@@ -2431,6 +2432,25 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     return () => { if (unbind) unbind(); };
   }, [handleCloseWindow]);
 
+  useEffect(() => {
+    const handleOpenRuntimeEnvironmentSettings = (event) => {
+      const nextTab = typeof event?.detail?.tab === 'string' && event.detail.tab.trim()
+        ? event.detail.tab.trim()
+        : 'runtimeEnvironment';
+      setSettingsInitialTab(nextTab);
+      setShowSettings(true);
+      const toastMessage = typeof event?.detail?.toast === 'string' ? event.detail.toast.trim() : '';
+      if (toastMessage) {
+        const toastDuration = Number.isFinite(Number(event?.detail?.duration)) ? Number(event.detail.duration) : 6000;
+        const toastType = typeof event?.detail?.type === 'string' && event.detail.type.trim() ? event.detail.type.trim() : 'warning';
+        addToast(toastMessage, toastType, toastDuration);
+      }
+    };
+
+    window.addEventListener('open-runtime-environment-settings', handleOpenRuntimeEnvironmentSettings);
+    return () => window.removeEventListener('open-runtime-environment-settings', handleOpenRuntimeEnvironmentSettings);
+  }, [addToast]);
+
   // ── 监听云端同步失败事件 ──────────────────────────────────
   useEffect(() => {
     const unbind = EventsOn('sync-failed', (data) => {
@@ -4321,7 +4341,14 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
               </Tiptop>
             )}
             <Tiptop text={t('设置')} placement="bottom">
-              <button className="btn btn-ghost btn-icon no-drag" onClick={() => setShowSettings(true)} aria-label={t('设置')}><Settings size={16} /></button>
+              <button
+                className="btn btn-ghost btn-icon no-drag"
+                onClick={() => {
+                  setSettingsInitialTab('general');
+                  setShowSettings(true);
+                }}
+                aria-label={t('设置')}
+              ><Settings size={16} /></button>
             </Tiptop>
             <div className="window-divider" />
             <Tiptop text={t('最小化')} placement="bottom">
@@ -5109,6 +5136,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
 
       {showSettings && (
         <SettingsModal
+          initialTab={settingsInitialTab}
           onClose={() => { setShowSettings(false); loadServers(); }}
           addToast={addToast}
           onRestored={loadServers}

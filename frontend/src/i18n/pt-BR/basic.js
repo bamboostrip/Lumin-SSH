@@ -1,6 +1,9 @@
 export const LANGUAGE_LABEL = "Português (Brasil)";
 
 export default {
+  "正在恢复终端工作区…": "Restaurando o espaço de trabalho do terminal...",
+  "SSH 已认证，但打开终端通道响应较慢，服务器可能正在恢复或负载较高。": "O SSH é autenticado, mas a resposta é lenta ao abrir um canal de terminal. O servidor pode estar em recuperação ou sob carga pesada.",
+  "仍在继续等待，总等待时间达到 30 秒后会自动断开。": "Ainda aguardando, ele será desconectado automaticamente após o tempo total de espera atingir 30 segundos.",
   "服务器别名（选填）": "Alias ​​do servidor (opcional)",
   "例如：我的测试服": "Por exemplo: meu servidor de teste",
   "主机地址 *": "Endereço do anfitrião *",
@@ -44,6 +47,14 @@ export default {
   "未分组": "Não agrupado",
   "移动到分组": "Mover para grupo",
   "移出分组": "Sair do grupo",
+  "收起分组": "Recolher grupo",
+  "打开分组": "Grupo aberto",
+  "已选": "Selecionado",
+  "项": "item",
+  "确定删除": "Confirmar exclusão",
+  "个服务器": "servidores",
+  "（包含": "(Incluir",
+  "）": ")",
   "已移动到分组": "Movido para o grupo",
   "默认（不填则不分组）": "Padrão (se deixado em branco, sem agrupamento)",
   "清空列表": "Limpar lista",
@@ -98,17 +109,11 @@ export default {
   "保存中...": "Salvando...",
   "保存配置": "Salvar configuração",
   "取消": "Cancelar",
-
   "取消选择": "Limpar seleção",
-
-
-
   "选择模式": "Modo de seleção",
   "退出选择": "Sair da seleção",
   "批量删除": "Excluir em lote",
   "服务器已克隆": "Servidores clonados",
-
-
   "克隆失败": "Falha ao clonar",
   "已选择服务器": "selecionado",
   "批量打开": "Abrir em lote",
@@ -289,7 +294,6 @@ export default {
   "个 + 云端": "pessoal + nuvem",
   "个 =": "=",
   "配置已保存，已上传": "A configuração foi salva e carregada",
-  "个服务器": "servidores",
   "配置已保存，但同步失败，可稍后手动上传": "A configuração foi salva, mas a sincronização falhou. Você pode carregá-lo manualmente mais tarde.",
   "配置已保存": "Configuração salva",
   "恢复成功": "Recuperação bem-sucedida",
@@ -326,6 +330,9 @@ export default {
   "从云端恢复": "Recuperar da nuvem",
   "已开启自动云端备份：": "O backup automático na nuvem está ativado:",
   "当您添加、编辑、删除服务器或修改配置时，后台将静默保存至云端。": "Quando você adiciona, edita, exclui servidores ou modifica configurações, eles serão salvos silenciosamente na nuvem em segundo plano.",
+  "同步将写入 .lumin2 加密备份": "A sincronização gravará em backups criptografados .lumin2",
+  "未开启同步加密时写入明文 .json 备份": "Escreva backup .json em texto simples quando a criptografia de sincronização não estiver ativada",
+  "添加、编辑、删除时自动同步": "Sincronização automática ao adicionar, editar e excluir",
   "恢复中...": "Recuperando...",
   "确定恢复": "Confirmar recuperação",
   "端点地址 (URL)": "Endereço do terminal (URL)",
@@ -444,7 +451,6 @@ export default {
   "文件过大": "Arquivo muito grande",
   "最大支持 5MB 编辑": "Suporte máximo para edição de 5 MB",
   "读取目录失败": "Falha ao ler o diretório",
-  "确定删除": "Confirmar exclusão",
   "此操作不可撤销": "Esta ação é irreversível",
   "已删除": "Excluído",
   "新文件夹名称:": "Novo nome da pasta:",
@@ -1067,10 +1073,9 @@ export default {
   "密码错误或文件不兼容": "Senha errada ou arquivo incompatível",
   "导出全部节点": "Exportar todos os nós",
   "从文件导入": "importar do arquivo",
-  "支持明文 JSON 与密文 .enc；密文会优先尝试恢复密码，兼容旧版云同步密钥，失败时提示输入密码": "Suporta JSON de texto simples e texto cifrado .enc; O texto cifrado tentará recuperar a senha primeiro e é compatível com chaves antigas de sincronização em nuvem. Se falhar, você será solicitado a inserir a senha.",
+  "支持明文 JSON、密文 .lumin2 与旧 .enc；密文会优先尝试恢复密码，兼容旧版云同步密钥，失败时提示输入密码": "Suporta JSON de texto simples, texto cifrado .lumin2 e antigo .enc; O texto cifrado tentará recuperar a senha primeiro e é compatível com a versão antiga da chave de sincronização em nuvem. Se falhar, você será solicitado a inserir a senha.",
   "支持明文 JSON 与密文 .enc；密文会自动尝试本机云同步密钥，失败时提示输入密码": "Suporta JSON de texto simples e texto cifrado .enc; O texto cifrado tentará automaticamente a chave de sincronização da nuvem local e solicitará que você insira uma senha se falhar.",
   "选择文件并导入": "Selecione o arquivo e importe",
-  "项": "item",
   "执行命令": "executar comando",
   "待批准": "Aprovação pendente",
   "待审阅": "Aguardando revisão",
@@ -1144,12 +1149,9 @@ export default {
   "请先安装 uv 运行环境后再初始化内置 Kimi": "Instale primeiro o ambiente de execução uv e, em seguida, inicialize o Kimi integrado",
   "Git 命令集": "Conjunto de comandos Git",
   "Docker 命令集": "Conjunto de comandos do Docker",
-
   "导出选择": "Exportar selecionados",
   "导出已选节点": "Exportar nós selecionados",
-  "您已选择 {count} 个服务器节点进行导出。": "Você selecionou {count} nós de servidor para exportar."
-,
-  "已成功导出选择的 {count} 个节点到 {path}": "Exportado com sucesso {count} nós selecionados para {path}"
-,
-  "取消全选": "Desmarcar tudo"
+  "您已选择 {count} 个服务器节点进行导出。": "Você selecionou {count} nós de servidor para exportar.",
+  "已成功导出选择的 {count} 个节点到 {path}": "Exportado com sucesso {count} nós selecionados para {path}",
+  "取消全选": "Desmarcar tudo",
 };

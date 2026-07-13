@@ -1,6 +1,9 @@
 export const LANGUAGE_LABEL = "Polski";
 
 export default {
+  "正在恢复终端工作区…": "Przywracam obszar roboczy terminala...",
+  "SSH 已认证，但打开终端通道响应较慢，服务器可能正在恢复或负载较高。": "SSH jest uwierzytelniany, ale odpowiedź przy otwieraniu kanału terminala jest powolna. Serwer może się regenerować lub jest pod dużym obciążeniem.",
+  "仍在继续等待，总等待时间达到 30 秒后会自动断开。": "Nadal czekam, zostanie automatycznie rozłączony, gdy całkowity czas oczekiwania osiągnie 30 sekund.",
   "服务器别名（选填）": "Alias ​​serwera (opcjonalnie)",
   "例如：我的测试服": "Na przykład: mój serwer testowy",
   "主机地址 *": "Adres hosta *",
@@ -44,6 +47,14 @@ export default {
   "未分组": "Nie pogrupowane",
   "移动到分组": "Przejdź do grupy",
   "移出分组": "Wyjdź z grupy",
+  "收起分组": "Zwiń grupę",
+  "打开分组": "Grupa otwarta",
+  "已选": "Wybrany",
+  "项": "przedmiot",
+  "确定删除": "Potwierdź usunięcie",
+  "个服务器": "serwery",
+  "（包含": "(Włączać",
+  "）": ")",
   "已移动到分组": "Przeniesiono do grupy",
   "默认（不填则不分组）": "Domyślne (jeśli pozostawione puste, bez grupowania)",
   "清空列表": "Wyczyść listę",
@@ -98,17 +109,11 @@ export default {
   "保存中...": "Oszczędność...",
   "保存配置": "Zapisz konfigurację",
   "取消": "Anulować",
-
   "取消选择": "Usuń zaznaczenie",
-
-
-
   "选择模式": "Tryb wyboru",
   "退出选择": "Wyjdź z trybu wyboru",
   "批量删除": "Usuwanie wsadowe",
   "服务器已克隆": "Serwery sklonowane",
-
-
   "克隆失败": "Klonowanie nie powiodło się",
   "已选择服务器": "wybrane",
   "批量打开": "Otwieranie wsadowe",
@@ -289,7 +294,6 @@ export default {
   "个 + 云端": "osobisty + chmura",
   "个 =": "=",
   "配置已保存，已上传": "Konfiguracja została zapisana i przesłana",
-  "个服务器": "serwery",
   "配置已保存，但同步失败，可稍后手动上传": "Konfiguracja została zapisana, ale synchronizacja nie powiodła się. Możesz przesłać go później ręcznie.",
   "配置已保存": "Konfiguracja została zapisana",
   "恢复成功": "Odzyskiwanie powiodło się",
@@ -326,6 +330,9 @@ export default {
   "从云端恢复": "Odzyskaj z chmury",
   "已开启自动云端备份：": "Automatyczna kopia zapasowa w chmurze jest włączona:",
   "当您添加、编辑、删除服务器或修改配置时，后台将静默保存至云端。": "Kiedy dodajesz, edytujesz, usuwasz serwery lub modyfikujesz konfiguracje, zostanie to po cichu zapisane w chmurze w tle.",
+  "同步将写入 .lumin2 加密备份": "Synchronizacja zapisze kopie zapasowe zaszyfrowane w formacie .lumin2",
+  "未开启同步加密时写入明文 .json 备份": "Utwórz kopię zapasową w formacie .json w postaci zwykłego tekstu, jeśli szyfrowanie synchronizacji nie jest włączone",
+  "添加、编辑、删除时自动同步": "Automatyczna synchronizacja podczas dodawania, edytowania i usuwania",
   "恢复中...": "Odzyskiwanie...",
   "确定恢复": "Potwierdź odzyskanie",
   "端点地址 (URL)": "Adres punktu końcowego (URL)",
@@ -444,7 +451,6 @@ export default {
   "文件过大": "Plik jest za duży",
   "最大支持 5MB 编辑": "Maksymalna obsługa edycji 5MB",
   "读取目录失败": "Nie udało się odczytać katalogu",
-  "确定删除": "Potwierdź usunięcie",
   "此操作不可撤销": "To działanie jest nieodwracalne",
   "已删除": "Usunięto",
   "新文件夹名称:": "Nowa nazwa folderu:",
@@ -1067,10 +1073,9 @@ export default {
   "密码错误或文件不兼容": "Złe hasło lub niezgodny plik",
   "导出全部节点": "Eksportuj wszystkie węzły",
   "从文件导入": "importuj z pliku",
-  "支持明文 JSON 与密文 .enc；密文会优先尝试恢复密码，兼容旧版云同步密钥，失败时提示输入密码": "Obsługuje zwykły tekst JSON i szyfrogram .enc; szyfrogram spróbuje najpierw odzyskać hasło i jest kompatybilny ze starymi kluczami synchronizacji w chmurze. Jeśli to się nie powiedzie, zostaniesz poproszony o podanie hasła.",
+  "支持明文 JSON、密文 .lumin2 与旧 .enc；密文会优先尝试恢复密码，兼容旧版云同步密钥，失败时提示输入密码": "Obsługuje zwykły tekst JSON, szyfrogram .lumin2 i stary .enc; szyfrogram najpierw spróbuje odzyskać hasło i jest kompatybilny ze starą wersją klucza synchronizacji w chmurze. Jeśli to się nie powiedzie, zostaniesz poproszony o podanie hasła.",
   "支持明文 JSON 与密文 .enc；密文会自动尝试本机云同步密钥，失败时提示输入密码": "Obsługuje zwykły tekst JSON i szyfrogram .enc; szyfrogram automatycznie spróbuje użyć klucza synchronizacji w chmurze lokalnej, a w przypadku niepowodzenia poprosi o podanie hasła.",
   "选择文件并导入": "Wybierz plik i importuj",
-  "项": "przedmiot",
   "执行命令": "wykonaj polecenie",
   "待批准": "Oczekuje na zatwierdzenie",
   "待审阅": "Oczekiwanie na recenzję",
@@ -1144,12 +1149,9 @@ export default {
   "请先安装 uv 运行环境后再初始化内置 Kimi": "Najpierw zainstaluj środowisko wykonawcze uv, a następnie zainicjuj wbudowany Kimi",
   "Git 命令集": "Zestaw poleceń Git",
   "Docker 命令集": "Zestaw poleceń Dockera",
-
   "导出选择": "Eksportuj zaznaczone",
   "导出已选节点": "Eksportuj zaznaczone węzły",
-  "您已选择 {count} 个服务器节点进行导出。": "Wybrano {count} węzłów serwera do eksportu."
-,
-  "已成功导出选择的 {count} 个节点到 {path}": "Pomyślnie wyeksportowano {count} zaznaczonych węzłów do {path}"
-,
-  "取消全选": "Odznacz wszystko"
+  "您已选择 {count} 个服务器节点进行导出。": "Wybrano {count} węzłów serwera do eksportu.",
+  "已成功导出选择的 {count} 个节点到 {path}": "Pomyślnie wyeksportowano {count} zaznaczonych węzłów do {path}",
+  "取消全选": "Odznacz wszystko",
 };

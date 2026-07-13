@@ -1,6 +1,9 @@
 export const LANGUAGE_LABEL = "Română";
 
 export default {
+  "正在恢复终端工作区…": "Se restabilește spațiul de lucru al terminalului...",
+  "SSH 已认证，但打开终端通道响应较慢，服务器可能正在恢复或负载较高。": "SSH este autentificat, dar răspunsul este lent la deschiderea unui canal terminal. Serverul poate fi în curs de recuperare sau sub sarcină grea.",
+  "仍在继续等待，总等待时间达到 30 秒后会自动断开。": "Încă în așteptare, se va deconecta automat după ce timpul total de așteptare ajunge la 30 de secunde.",
   "服务器别名（选填）": "Alias ​​de server (opțional)",
   "例如：我的测试服": "De exemplu: serverul meu de testare",
   "主机地址 *": "Adresa gazdei *",
@@ -44,6 +47,14 @@ export default {
   "未分组": "Nu sunt grupate",
   "移动到分组": "Mutați în grup",
   "移出分组": "Mutați-vă din grup",
+  "收起分组": "Restrânge grupul",
+  "打开分组": "Grup deschis",
+  "已选": "Selectat",
+  "项": "articol",
+  "确定删除": "Confirmați ștergerea",
+  "个服务器": "servere",
+  "（包含": "(Include",
+  "）": ")",
   "已移动到分组": "Mutat în grup",
   "默认（不填则不分组）": "Implicit (dacă este lăsat necompletat, fără grupare)",
   "清空列表": "Ștergeți lista",
@@ -98,17 +109,11 @@ export default {
   "保存中...": "Economisire...",
   "保存配置": "Salvați configurația",
   "取消": "Anula",
-
   "取消选择": "Anulare selecție",
-
-
-
   "选择模式": "Mod selectare",
   "退出选择": "Ieșire din selectare",
   "批量删除": "Ștergere în lot",
   "服务器已克隆": "Servere clonate",
-
-
   "克隆失败": "Clonare eșuată",
   "已选择服务器": "Selectat",
   "批量打开": "Deschidere în masă",
@@ -289,7 +294,6 @@ export default {
   "个 + 云端": "personal + cloud",
   "个 =": "=",
   "配置已保存，已上传": "Configurația a fost salvată și încărcată",
-  "个服务器": "servere",
   "配置已保存，但同步失败，可稍后手动上传": "Configurația a fost salvată, dar sincronizarea a eșuat. Puteți să-l încărcați manual mai târziu.",
   "配置已保存": "Configurație salvată",
   "恢复成功": "Recuperare reușită",
@@ -326,6 +330,9 @@ export default {
   "从云端恢复": "Recuperează-te din nor",
   "已开启自动云端备份：": "Backup automat în cloud este activat:",
   "当您添加、编辑、删除服务器或修改配置时，后台将静默保存至云端。": "Când adăugați, editați, ștergeți servere sau modificați configurațiile, acestea vor fi salvate în tăcere în cloud în fundal.",
+  "同步将写入 .lumin2 加密备份": "Sync va scrie în copiile de rezervă criptate .lumin2",
+  "未开启同步加密时写入明文 .json 备份": "Scrieți o copie de rezervă .json în text simplu când criptarea sincronizării nu este activată",
+  "添加、编辑、删除时自动同步": "Sincronizare automată la adăugare, editare și ștergere",
   "恢复中...": "Recuperare...",
   "确定恢复": "Confirmați recuperarea",
   "端点地址 (URL)": "Adresa punctului final (URL)",
@@ -444,7 +451,6 @@ export default {
   "文件过大": "Fișier prea mare",
   "最大支持 5MB 编辑": "Suport maxim pentru editare de 5 MB",
   "读取目录失败": "Nu s-a putut citi directorul",
-  "确定删除": "Confirmați ștergerea",
   "此操作不可撤销": "Această acțiune este ireversibilă",
   "已删除": "Șters",
   "新文件夹名称:": "Nume nou folder:",
@@ -1067,10 +1073,9 @@ export default {
   "密码错误或文件不兼容": "Parolă greșită sau fișier incompatibil",
   "导出全部节点": "Exportați toate nodurile",
   "从文件导入": "import din fișier",
-  "支持明文 JSON 与密文 .enc；密文会优先尝试恢复密码，兼容旧版云同步密钥，失败时提示输入密码": "Suportă text simplu JSON și text cifrat .enc; Ciphertext va încerca mai întâi să recupereze parola și este compatibil cu vechile chei de sincronizare în cloud. Dacă nu reușește, vi se va solicita să introduceți parola.",
+  "支持明文 JSON、密文 .lumin2 与旧 .enc；密文会优先尝试恢复密码，兼容旧版云同步密钥，失败时提示输入密码": "Suportă text simplu JSON, text cifrat .lumin2 și vechi .enc; Ciphertext va încerca mai întâi să recupereze parola și este compatibil cu vechea versiune a cheii de sincronizare în cloud. Dacă nu reușește, vi se va solicita să introduceți parola.",
   "支持明文 JSON 与密文 .enc；密文会自动尝试本机云同步密钥，失败时提示输入密码": "Suportă text simplu JSON și text cifrat .enc; Ciphertext va încerca automat cheia locală de sincronizare în cloud și vă va solicita să introduceți o parolă dacă nu reușește.",
   "选择文件并导入": "Selectați fișierul și importați",
-  "项": "articol",
   "执行命令": "executa comanda",
   "待批准": "În așteptarea aprobării",
   "待审阅": "Se așteaptă revizuirea",
@@ -1144,12 +1149,9 @@ export default {
   "请先安装 uv 运行环境后再初始化内置 Kimi": "Vă rugăm să instalați mai întâi mediul de rulare UV și apoi să inițializați Kimi încorporat",
   "Git 命令集": "Set de comenzi Git",
   "Docker 命令集": "Set de comenzi Docker",
-
   "导出选择": "Exportă selecția",
   "导出已选节点": "Exportă nodurile selectate",
-  "您已选择 {count} 个服务器节点进行导出。": "Ați selectat {count} noduri de server pentru export."
-,
-  "已成功导出选择的 {count} 个节点到 {path}": "S-au exportat cu succes {count} noduri selectate în {path}"
-,
-  "取消全选": "Deselectați toate"
+  "您已选择 {count} 个服务器节点进行导出。": "Ați selectat {count} noduri de server pentru export.",
+  "已成功导出选择的 {count} 个节点到 {path}": "S-au exportat cu succes {count} noduri selectate în {path}",
+  "取消全选": "Deselectați toate",
 };

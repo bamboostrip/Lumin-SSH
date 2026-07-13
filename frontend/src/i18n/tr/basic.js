@@ -1,6 +1,9 @@
 export const LANGUAGE_LABEL = "Türkçe";
 
 export default {
+  "正在恢复终端工作区…": "Terminal çalışma alanı geri yükleniyor...",
+  "SSH 已认证，但打开终端通道响应较慢，服务器可能正在恢复或负载较高。": "SSH'nin kimliği doğrulandı ancak bir terminal kanalı açıldığında yanıt yavaş. Sunucu kurtarılıyor veya ağır yük altında olabilir.",
+  "仍在继续等待，总等待时间达到 30 秒后会自动断开。": "Hala bekliyor, toplam bekleme süresi 30 saniyeye ulaştığında otomatik olarak bağlantı kesilecektir.",
   "服务器别名（选填）": "Sunucu takma adı (isteğe bağlı)",
   "例如：我的测试服": "Örneğin: test sunucum",
   "主机地址 *": "Ana bilgisayar adresi *",
@@ -44,6 +47,14 @@ export default {
   "未分组": "Gruplandırılmamış",
   "移动到分组": "Gruba taşı",
   "移出分组": "Gruptan çık",
+  "收起分组": "Grubu daralt",
+  "打开分组": "Grubu aç",
+  "已选": "Seçildi",
+  "项": "öğe",
+  "确定删除": "Silmeyi onayla",
+  "个服务器": "sunucular",
+  "（包含": "(Katmak",
+  "）": ")",
   "已移动到分组": "Gruba taşındı",
   "默认（不填则不分组）": "Varsayılan (boş bırakılırsa gruplandırma yapılmaz)",
   "清空列表": "Listeyi temizle",
@@ -98,17 +109,11 @@ export default {
   "保存中...": "Kaydediliyor...",
   "保存配置": "Yapılandırmayı kaydet",
   "取消": "İptal etmek",
-
   "取消选择": "Seçimi temizle",
-
-
-
   "选择模式": "Seçim modu",
   "退出选择": "Seçim modundan çık",
   "批量删除": "Toplu sil",
   "服务器已克隆": "Sunucular kopyalandı",
-
-
   "克隆失败": "Klonlama başarısız",
   "已选择服务器": "seçildi",
   "批量打开": "Toplu aç",
@@ -289,7 +294,6 @@ export default {
   "个 + 云端": "kişisel + bulut",
   "个 =": "=",
   "配置已保存，已上传": "Yapılandırma kaydedildi ve yüklendi",
-  "个服务器": "sunucular",
   "配置已保存，但同步失败，可稍后手动上传": "Yapılandırma kaydedildi ancak senkronizasyon başarısız oldu. Daha sonra manuel olarak yükleyebilirsiniz.",
   "配置已保存": "Yapılandırma kaydedildi",
   "恢复成功": "Kurtarma başarılı",
@@ -326,6 +330,9 @@ export default {
   "从云端恢复": "Buluttan kurtarma",
   "已开启自动云端备份：": "Otomatik bulut yedekleme açık:",
   "当您添加、编辑、删除服务器或修改配置时，后台将静默保存至云端。": "Sunucu eklediğinizde, düzenlediğinizde, sildiğinizde veya yapılandırmaları değiştirdiğinizde arka planda sessizce buluta kaydedilir.",
+  "同步将写入 .lumin2 加密备份": "Senkronizasyon, .lumin2 şifreli yedeklemelere yazacaktır",
+  "未开启同步加密时写入明文 .json 备份": "Senkronizasyon şifrelemesi açık olmadığında düz metin .json yedeğini yaz",
+  "添加、编辑、删除时自动同步": "Ekleme, düzenleme ve silme sırasında otomatik senkronizasyon",
   "恢复中...": "Kurtarılıyor...",
   "确定恢复": "Kurtarmayı onaylayın",
   "端点地址 (URL)": "Uç nokta adresi (URL)",
@@ -444,7 +451,6 @@ export default {
   "文件过大": "Dosya çok büyük",
   "最大支持 5MB 编辑": "Maksimum destek 5 MB düzenleme",
   "读取目录失败": "Dizin okunamadı",
-  "确定删除": "Silmeyi onayla",
   "此操作不可撤销": "Bu eylem geri alınamaz",
   "已删除": "Silindi",
   "新文件夹名称:": "Yeni klasör adı:",
@@ -1067,10 +1073,9 @@ export default {
   "密码错误或文件不兼容": "Yanlış şifre veya uyumsuz dosya",
   "导出全部节点": "Tüm düğümleri dışa aktar",
   "从文件导入": "dosyadan içe aktar",
-  "支持明文 JSON 与密文 .enc；密文会优先尝试恢复密码，兼容旧版云同步密钥，失败时提示输入密码": "Düz metin JSON ve şifreli metin .enc'yi destekler; Şifreli metin önce şifreyi kurtarmaya çalışacaktır ve eski bulut senkronizasyon anahtarlarıyla uyumludur. Başarısız olursa, şifreyi girmeniz istenecektir.",
+  "支持明文 JSON、密文 .lumin2 与旧 .enc；密文会优先尝试恢复密码，兼容旧版云同步密钥，失败时提示输入密码": "Düz metin JSON, şifreli metin .lumin2 ve eski .enc'yi destekler; şifreli metin önce şifreyi kurtarmaya çalışacaktır ve bulut senkronizasyon anahtarının eski sürümüyle uyumludur. Başarısız olursa, şifreyi girmeniz istenecektir.",
   "支持明文 JSON 与密文 .enc；密文会自动尝试本机云同步密钥，失败时提示输入密码": "Düz metin JSON ve şifreli metin .enc'yi destekler; şifreli metin otomatik olarak yerel bulut senkronizasyon anahtarını deneyecek ve başarısız olması durumunda sizden bir şifre girmenizi isteyecektir.",
   "选择文件并导入": "Dosyayı seçin ve içe aktarın",
-  "项": "öğe",
   "执行命令": "komutu yürütmek",
   "待批准": "Onay bekleniyor",
   "待审阅": "İnceleme bekleniyor",
@@ -1144,12 +1149,9 @@ export default {
   "请先安装 uv 运行环境后再初始化内置 Kimi": "Lütfen önce uv çalışma zamanı ortamını yükleyin ve ardından yerleşik Kimi'yi başlatın.",
   "Git 命令集": "Git komut seti",
   "Docker 命令集": "Docker komut seti",
-
   "导出选择": "Seçilenleri Dışa Aktar",
   "导出已选节点": "Seçilen Düğümleri Dışa Aktar",
-  "您已选择 {count} 个服务器节点进行导出。": "Dışa aktarmak için {count} sunucu düğümü seçtiniz."
-,
-  "已成功导出选择的 {count} 个节点到 {path}": "Seçilen {count} düğüm başarıyla {path} konumuna aktarıldı"
-,
-  "取消全选": "Seçimi kaldır"
+  "您已选择 {count} 个服务器节点进行导出。": "Dışa aktarmak için {count} sunucu düğümü seçtiniz.",
+  "已成功导出选择的 {count} 个节点到 {path}": "Seçilen {count} düğüm başarıyla {path} konumuna aktarıldı",
+  "取消全选": "Seçimi kaldır",
 };

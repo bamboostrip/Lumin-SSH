@@ -1,6 +1,9 @@
 export const LANGUAGE_LABEL = "Tiếng Việt";
 
 export default {
+  "正在恢复终端工作区…": "Đang khôi phục không gian làm việc của thiết bị đầu cuối...",
+  "SSH 已认证，但打开终端通道响应较慢，服务器可能正在恢复或负载较高。": "SSH được xác thực nhưng phản hồi chậm khi mở kênh đầu cuối. Máy chủ có thể đang khôi phục hoặc đang chịu tải nặng.",
+  "仍在继续等待，总等待时间达到 30 秒后会自动断开。": "Vẫn đang chờ, nó sẽ tự động ngắt kết nối sau khi tổng thời gian chờ đạt 30 giây.",
   "服务器别名（选填）": "Bí danh máy chủ (tùy chọn)",
   "例如：我的测试服": "Ví dụ: máy chủ thử nghiệm của tôi",
   "主机地址 *": "Địa chỉ máy chủ *",
@@ -44,6 +47,14 @@ export default {
   "未分组": "Không được nhóm",
   "移动到分组": "Di chuyển đến nhóm",
   "移出分组": "Di chuyển ra khỏi nhóm",
+  "收起分组": "Thu gọn nhóm",
+  "打开分组": "Mở nhóm",
+  "已选": "Đã chọn",
+  "项": "mục",
+  "确定删除": "Xác nhận xóa",
+  "个服务器": "máy chủ",
+  "（包含": "(Bao gồm",
+  "）": ")",
   "已移动到分组": "Đã chuyển sang nhóm",
   "默认（不填则不分组）": "Mặc định (nếu để trống, không nhóm)",
   "清空列表": "Xóa danh sách",
@@ -98,17 +109,11 @@ export default {
   "保存中...": "Đang lưu...",
   "保存配置": "Lưu cấu hình",
   "取消": "Hủy bỏ",
-
   "取消选择": "Bỏ chọn",
-
-
-
   "选择模式": "Chế độ chọn",
   "退出选择": "Thoát chọn",
   "批量删除": "Xóa hàng loạt",
   "服务器已克隆": "Máy chủ đã được nhân bản",
-
-
   "克隆失败": "Nhân bản thất bại",
   "已选择服务器": "Đã chọn",
   "批量打开": "Mở hàng loạt",
@@ -289,7 +294,6 @@ export default {
   "个 + 云端": "cá nhân + đám mây",
   "个 =": "=",
   "配置已保存，已上传": "Cấu hình đã được lưu và tải lên",
-  "个服务器": "máy chủ",
   "配置已保存，但同步失败，可稍后手动上传": "Cấu hình đã được lưu nhưng đồng bộ hóa không thành công. Bạn có thể tải nó lên theo cách thủ công sau.",
   "配置已保存": "Đã lưu cấu hình",
   "恢复成功": "Khôi phục thành công",
@@ -326,6 +330,9 @@ export default {
   "从云端恢复": "Khôi phục từ đám mây",
   "已开启自动云端备份：": "Sao lưu đám mây tự động được bật:",
   "当您添加、编辑、删除服务器或修改配置时，后台将静默保存至云端。": "Khi bạn thêm, chỉnh sửa, xóa máy chủ hoặc sửa đổi cấu hình, nó sẽ được lưu âm thầm vào đám mây ở chế độ nền.",
+  "同步将写入 .lumin2 加密备份": "Sync sẽ ghi vào bản sao lưu được mã hóa .lumin2",
+  "未开启同步加密时写入明文 .json 备份": "Viết bản sao lưu .json văn bản gốc khi chưa bật mã hóa đồng bộ hóa",
+  "添加、编辑、删除时自动同步": "Tự động đồng bộ khi thêm, sửa, xóa",
   "恢复中...": "Đang phục hồi...",
   "确定恢复": "Xác nhận khôi phục",
   "端点地址 (URL)": "Địa chỉ điểm cuối (URL)",
@@ -444,7 +451,6 @@ export default {
   "文件过大": "Tệp quá lớn",
   "最大支持 5MB 编辑": "Hỗ trợ chỉnh sửa tối đa 5 MB",
   "读取目录失败": "Không đọc được thư mục",
-  "确定删除": "Xác nhận xóa",
   "此操作不可撤销": "Hành động này không thể đảo ngược",
   "已删除": "Đã xóa",
   "新文件夹名称:": "Tên thư mục mới:",
@@ -1067,10 +1073,9 @@ export default {
   "密码错误或文件不兼容": "Mật khẩu sai hoặc tập tin không tương thích",
   "导出全部节点": "Xuất tất cả các nút",
   "从文件导入": "nhập từ tập tin",
-  "支持明文 JSON 与密文 .enc；密文会优先尝试恢复密码，兼容旧版云同步密钥，失败时提示输入密码": "Hỗ trợ JSON văn bản gốc và văn bản mã hóa .enc; ciphertext sẽ cố gắng khôi phục mật khẩu trước và tương thích với các khóa đồng bộ hóa đám mây cũ. Nếu thất bại, bạn sẽ được nhắc nhập mật khẩu.",
+  "支持明文 JSON、密文 .lumin2 与旧 .enc；密文会优先尝试恢复密码，兼容旧版云同步密钥，失败时提示输入密码": "Hỗ trợ JSON văn bản gốc, văn bản mã hóa .lumin2 và .enc cũ; ciphertext sẽ cố gắng khôi phục mật khẩu trước và tương thích với phiên bản cũ của khóa đồng bộ hóa đám mây. Nếu thất bại, bạn sẽ được nhắc nhập mật khẩu.",
   "支持明文 JSON 与密文 .enc；密文会自动尝试本机云同步密钥，失败时提示输入密码": "Hỗ trợ JSON văn bản gốc và văn bản mã hóa .enc; ciphertext sẽ tự động thử khóa đồng bộ hóa đám mây cục bộ và sẽ nhắc bạn nhập mật khẩu nếu không thành công.",
   "选择文件并导入": "Chọn tệp và nhập",
-  "项": "mục",
   "执行命令": "thực hiện lệnh",
   "待批准": "Đang chờ phê duyệt",
   "待审阅": "Đang chờ xem xét",
@@ -1144,12 +1149,9 @@ export default {
   "请先安装 uv 运行环境后再初始化内置 Kimi": "Vui lòng cài đặt môi trường thời gian chạy uv trước rồi khởi tạo Kimi tích hợp",
   "Git 命令集": "Bộ lệnh Git",
   "Docker 命令集": "Bộ lệnh Docker",
-
   "导出选择": "Xuất phần đã chọn",
   "导出已选节点": "Xuất các nút đã chọn",
-  "您已选择 {count} 个服务器节点进行导出。": "Bạn đã chọn {count} nút máy chủ để xuất."
-,
-  "已成功导出选择的 {count} 个节点到 {path}": "Đã xuất thành công {count} nút được chọn sang {path}"
-,
-  "取消全选": "Bỏ chọn tất cả"
+  "您已选择 {count} 个服务器节点进行导出。": "Bạn đã chọn {count} nút máy chủ để xuất.",
+  "已成功导出选择的 {count} 个节点到 {path}": "Đã xuất thành công {count} nút được chọn sang {path}",
+  "取消全选": "Bỏ chọn tất cả",
 };

@@ -1,6 +1,9 @@
 export const LANGUAGE_LABEL = "Bahasa Indonesia";
 
 export default {
+  "正在恢复终端工作区…": "Memulihkan ruang kerja terminal...",
+  "SSH 已认证，但打开终端通道响应较慢，服务器可能正在恢复或负载较高。": "SSH diautentikasi, tetapi responsnya lambat saat membuka saluran terminal. Server mungkin sedang dalam masa pemulihan atau sedang dalam beban berat.",
+  "仍在继续等待，总等待时间达到 30 秒后会自动断开。": "Masih menunggu, maka secara otomatis akan terputus setelah total waktu tunggu mencapai 30 detik.",
   "服务器别名（选填）": "Alias ​​server (opsional)",
   "例如：我的测试服": "Misalnya: server pengujian saya",
   "主机地址 *": "Alamat tuan rumah *",
@@ -44,6 +47,14 @@ export default {
   "未分组": "Tidak dikelompokkan",
   "移动到分组": "Pindah ke grup",
   "移出分组": "Keluar dari grup",
+  "收起分组": "Ciutkan grup",
+  "打开分组": "Grup terbuka",
+  "已选": "Terpilih",
+  "项": "barang",
+  "确定删除": "Konfirmasikan penghapusan",
+  "个服务器": "server",
+  "（包含": "(Termasuk",
+  "）": ")",
   "已移动到分组": "Dipindahkan ke grup",
   "默认（不填则不分组）": "Default (jika dibiarkan kosong, tidak ada pengelompokan)",
   "清空列表": "Hapus daftar",
@@ -98,17 +109,11 @@ export default {
   "保存中...": "Penghematan...",
   "保存配置": "Simpan konfigurasi",
   "取消": "Membatalkan",
-
   "取消选择": "Hapus Pilihan",
-
-
-
   "选择模式": "Mode Pilih",
   "退出选择": "Keluar dari Seleksi",
   "批量删除": "Hapus Sekaligus",
   "服务器已克隆": "Server berhasil dikloning",
-
-
   "克隆失败": "Kloning gagal",
   "已选择服务器": "Dipilih",
   "批量打开": "Buka Sekaligus",
@@ -289,7 +294,6 @@ export default {
   "个 + 云端": "pribadi + awan",
   "个 =": "=",
   "配置已保存，已上传": "Konfigurasi telah disimpan dan diunggah",
-  "个服务器": "server",
   "配置已保存，但同步失败，可稍后手动上传": "Konfigurasi telah disimpan, namun sinkronisasi gagal. Anda dapat mengunggahnya secara manual nanti.",
   "配置已保存": "Konfigurasi disimpan",
   "恢复成功": "Pemulihan berhasil",
@@ -326,6 +330,9 @@ export default {
   "从云端恢复": "Pulihkan dari cloud",
   "已开启自动云端备份：": "Pencadangan cloud otomatis diaktifkan:",
   "当您添加、编辑、删除服务器或修改配置时，后台将静默保存至云端。": "Saat Anda menambah, mengedit, menghapus server, atau mengubah konfigurasi, semuanya akan disimpan secara diam-diam ke cloud di latar belakang.",
+  "同步将写入 .lumin2 加密备份": "Sinkronisasi akan menulis ke cadangan terenkripsi .lumin2",
+  "未开启同步加密时写入明文 .json 备份": "Tulis cadangan .json teks biasa ketika enkripsi sinkronisasi tidak diaktifkan",
+  "添加、编辑、删除时自动同步": "Sinkronisasi otomatis saat menambah, mengedit, dan menghapus",
   "恢复中...": "Memulihkan...",
   "确定恢复": "Konfirmasikan pemulihan",
   "端点地址 (URL)": "Alamat titik akhir (URL)",
@@ -444,7 +451,6 @@ export default {
   "文件过大": "File terlalu besar",
   "最大支持 5MB 编辑": "Dukungan maksimal pengeditan 5MB",
   "读取目录失败": "Gagal membaca direktori",
-  "确定删除": "Konfirmasikan penghapusan",
   "此操作不可撤销": "Tindakan ini tidak dapat diubah",
   "已删除": "Dihapus",
   "新文件夹名称:": "Nama folder baru:",
@@ -1067,10 +1073,9 @@ export default {
   "密码错误或文件不兼容": "Kata sandi salah atau file tidak kompatibel",
   "导出全部节点": "Ekspor semua node",
   "从文件导入": "impor dari file",
-  "支持明文 JSON 与密文 .enc；密文会优先尝试恢复密码，兼容旧版云同步密钥，失败时提示输入密码": "Mendukung JSON teks biasa dan teks sandi .enc; ciphertext akan mencoba memulihkan kata sandi terlebih dahulu, dan kompatibel dengan kunci sinkronisasi cloud lama. Jika gagal, Anda akan diminta memasukkan kata sandi.",
+  "支持明文 JSON、密文 .lumin2 与旧 .enc；密文会优先尝试恢复密码，兼容旧版云同步密钥，失败时提示输入密码": "Mendukung JSON teks biasa, teks sandi .lumin2, dan .enc lama; ciphertext akan mencoba memulihkan kata sandi terlebih dahulu dan kompatibel dengan kunci sinkronisasi cloud versi lama. Jika gagal, Anda akan diminta memasukkan kata sandi.",
   "支持明文 JSON 与密文 .enc；密文会自动尝试本机云同步密钥，失败时提示输入密码": "Mendukung JSON teks biasa dan teks sandi .enc; ciphertext akan secara otomatis mencoba kunci sinkronisasi cloud lokal, dan akan meminta Anda memasukkan kata sandi jika gagal.",
   "选择文件并导入": "Pilih file dan impor",
-  "项": "barang",
   "执行命令": "jalankan perintah",
   "待批准": "Menunggu persetujuan",
   "待审阅": "Menunggu peninjauan",
@@ -1144,12 +1149,9 @@ export default {
   "请先安装 uv 运行环境后再初始化内置 Kimi": "Silakan instal lingkungan runtime uv terlebih dahulu dan kemudian inisialisasi Kimi bawaan",
   "Git 命令集": "Kumpulan perintah Git",
   "Docker 命令集": "Kumpulan perintah Docker",
-
   "导出选择": "Ekspor Terpilih",
   "导出已选节点": "Ekspor Node Terpilih",
-  "您已选择 {count} 个服务器节点进行导出。": "Anda telah memilih {count} node server untuk diekspor."
-,
-  "已成功导出选择的 {count} 个节点到 {path}": "Berhasil mengekspor {count} node terpilih ke {path}"
-,
-  "取消全选": "Batalkan semua pilihan"
+  "您已选择 {count} 个服务器节点进行导出。": "Anda telah memilih {count} node server untuk diekspor.",
+  "已成功导出选择的 {count} 个节点到 {path}": "Berhasil mengekspor {count} node terpilih ke {path}",
+  "取消全选": "Batalkan semua pilihan",
 };

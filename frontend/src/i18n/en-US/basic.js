@@ -50,9 +50,9 @@ export default {
   "收起分组": "Collapse Groups",
   "打开分组": "Expand Groups",
   "已选": "Selected",
-  "项": "items",
-  "确定删除": "Confirm Delete",
-  "个服务器": "servers",
+  "项": "",
+  "确定删除": "Are you sure to delete",
+  "个服务器": " servers",
   "（包含": "(including",
   "）": ")",
   "已移动到分组": "Moved to group",
@@ -110,12 +110,10 @@ export default {
   "保存配置": "Save Config",
   "取消": "Cancel",
   "取消选择": "Clear Selection",
-
   "选择模式": "Select Mode",
   "退出选择": "Exit Selection",
   "批量删除": "Batch Delete",
   "服务器已克隆": "Servers cloned",
-
   "克隆失败": "Clone failed",
   "已选择服务器": "selected",
   "批量打开": "Batch Open",
@@ -296,7 +294,6 @@ export default {
   "个 + 云端": " + Cloud",
   "个 =": " = ",
   "配置已保存，已上传": "Config saved and uploaded",
-  "个服务器": " servers",
   "配置已保存，但同步失败，可稍后手动上传": "Config saved, but sync failed. Upload manually later.",
   "配置已保存": "Config saved",
   "恢复成功": "Restore successful",
@@ -454,7 +451,6 @@ export default {
   "文件过大": "File too large",
   "最大支持 5MB 编辑": "Max 5MB for editing",
   "读取目录失败": "Failed to read directory",
-  "确定删除": "Are you sure to delete",
   "此操作不可撤销": "This cannot be undone",
   "已删除": "Deleted",
   "新文件夹名称:": "New folder name:",
@@ -1080,7 +1076,6 @@ export default {
   "支持明文 JSON、密文 .lumin2 与旧 .enc；密文会优先尝试恢复密码，兼容旧版云同步密钥，失败时提示输入密码": "Supports plaintext JSON, encrypted .lumin2, and legacy .enc imports; encrypted files try the recovery password first, then legacy cloud sync keys for compatibility, and prompt for a password if all attempts fail",
   "支持明文 JSON 与密文 .enc；密文会自动尝试本机云同步密钥，失败时提示输入密码": "Supports plaintext JSON and encrypted .enc; encrypted files auto-try cloud sync keys, prompting for password on failure",
   "选择文件并导入": "Select file and import",
-  "项": "",
   "执行命令": "Run Command",
   "待批准": "Pending Approval",
   "待审阅": "Pending Review",
@@ -1154,12 +1149,9 @@ export default {
   "请先安装 uv 运行环境后再初始化内置 Kimi": "Please install the uv runtime environment first and then initialize the built-in Kimi",
   "Git 命令集": "Git command set",
   "Docker 命令集": "Docker command set",
-
   "导出选择": "Export Selected",
   "导出已选节点": "Export Selected Nodes",
-  "您已选择 {count} 个服务器节点进行导出。": "You have selected {count} server nodes to export."
-,
-  "已成功导出选择的 {count} 个节点到 {path}": "Successfully exported {count} selected nodes to {path}"
-,
-  "取消全选": "Deselect All"
+  "您已选择 {count} 个服务器节点进行导出。": "You have selected {count} server nodes to export.",
+  "已成功导出选择的 {count} 个节点到 {path}": "Successfully exported {count} selected nodes to {path}",
+  "取消全选": "Deselect All",
 };

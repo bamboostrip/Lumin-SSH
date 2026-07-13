@@ -1,6 +1,9 @@
 export const LANGUAGE_LABEL = "Nederlands";
 
 export default {
+  "正在恢复终端工作区…": "Terminalwerkruimte herstellen...",
+  "SSH 已认证，但打开终端通道响应较慢，服务器可能正在恢复或负载较高。": "SSH is geverifieerd, maar de reactie is traag bij het openen van een terminalkanaal. De server is mogelijk bezig met herstellen of wordt zwaar belast.",
+  "仍在继续等待，总等待时间达到 30 秒后会自动断开。": "Er wordt nog steeds gewacht, maar de verbinding wordt automatisch verbroken nadat de totale wachttijd 30 seconden heeft bereikt.",
   "服务器别名（选填）": "Serveralias (optioneel)",
   "例如：我的测试服": "Bijvoorbeeld: mijn testserver",
   "主机地址 *": "Hostadres *",
@@ -44,6 +47,14 @@ export default {
   "未分组": "Niet gegroepeerd",
   "移动到分组": "Verplaats naar groep",
   "移出分组": "Ga uit de groep",
+  "收起分组": "Groep samenvouwen",
+  "打开分组": "Open groep",
+  "已选": "Gekozen",
+  "项": "item",
+  "确定删除": "Bevestig het verwijderen",
+  "个服务器": "servers",
+  "（包含": "(Erbij betrekken",
+  "）": ")",
   "已移动到分组": "Verplaatst naar groep",
   "默认（不填则不分组）": "Standaard (indien leeg gelaten, geen groepering)",
   "清空列表": "Duidelijke lijst",
@@ -98,17 +109,11 @@ export default {
   "保存中...": "Besparing...",
   "保存配置": "Configuratie opslaan",
   "取消": "Annuleren",
-
   "取消选择": "Selectie opheffen",
-
-
-
   "选择模式": "Selectiemodus",
   "退出选择": "Selectie beëindigen",
   "批量删除": "Batchverwijdering",
   "服务器已克隆": "Servers gekloond",
-
-
   "克隆失败": "Klonen mislukt",
   "已选择服务器": "Geselecteerd",
   "批量打开": "Batch openen",
@@ -289,7 +294,6 @@ export default {
   "个 + 云端": "persoonlijk + cloud",
   "个 =": "=",
   "配置已保存，已上传": "De configuratie is opgeslagen en geüpload",
-  "个服务器": "servers",
   "配置已保存，但同步失败，可稍后手动上传": "De configuratie is opgeslagen, maar de synchronisatie is mislukt. Je kunt het later handmatig uploaden.",
   "配置已保存": "Configuratie opgeslagen",
   "恢复成功": "Herstel succesvol",
@@ -326,6 +330,9 @@ export default {
   "从云端恢复": "Herstel uit de cloud",
   "已开启自动云端备份：": "Automatische cloudback-up is ingeschakeld:",
   "当您添加、编辑、删除服务器或修改配置时，后台将静默保存至云端。": "Wanneer u servers toevoegt, bewerkt, verwijdert of configuraties wijzigt, wordt dit stil op de achtergrond in de cloud opgeslagen.",
+  "同步将写入 .lumin2 加密备份": "Sync schrijft naar .lumin2-gecodeerde back-ups",
+  "未开启同步加密时写入明文 .json 备份": "Schrijf een .json-back-up in leesbare tekst wanneer synchronisatie-encryptie niet is ingeschakeld",
+  "添加、编辑、删除时自动同步": "Automatische synchronisatie bij toevoegen, bewerken en verwijderen",
   "恢复中...": "Herstellen...",
   "确定恢复": "Bevestig herstel",
   "端点地址 (URL)": "Eindpuntadres (URL)",
@@ -444,7 +451,6 @@ export default {
   "文件过大": "Bestand te groot",
   "最大支持 5MB 编辑": "Maximale ondersteuning voor bewerken van 5 MB",
   "读取目录失败": "Kan map niet lezen",
-  "确定删除": "Bevestig het verwijderen",
   "此操作不可撤销": "Deze actie is onomkeerbaar",
   "已删除": "Verwijderd",
   "新文件夹名称:": "Nieuwe mapnaam:",
@@ -1067,10 +1073,9 @@ export default {
   "密码错误或文件不兼容": "Verkeerd wachtwoord of incompatibel bestand",
   "导出全部节点": "Exporteer alle knooppunten",
   "从文件导入": "importeren uit bestand",
-  "支持明文 JSON 与密文 .enc；密文会优先尝试恢复密码，兼容旧版云同步密钥，失败时提示输入密码": "Ondersteunt platte tekst JSON en cijfertekst .enc; ciphertext zal eerst proberen het wachtwoord te herstellen en is compatibel met oude cloudsynchronisatiesleutels. Als dit mislukt, wordt u gevraagd het wachtwoord in te voeren.",
+  "支持明文 JSON、密文 .lumin2 与旧 .enc；密文会优先尝试恢复密码，兼容旧版云同步密钥，失败时提示输入密码": "Ondersteunt platte tekst JSON, cijfertekst .lumin2 en oude .enc; ciphertext zal eerst proberen het wachtwoord te herstellen en is compatibel met de oude versie van de cloudsynchronisatiesleutel. Als dit mislukt, wordt u gevraagd het wachtwoord in te voeren.",
   "支持明文 JSON 与密文 .enc；密文会自动尝试本机云同步密钥，失败时提示输入密码": "Ondersteunt platte tekst JSON en cijfertekst .enc; ciphertext zal automatisch de lokale cloudsynchronisatiesleutel proberen en zal u vragen een wachtwoord in te voeren als dit mislukt.",
   "选择文件并导入": "Bestand selecteren en importeren",
-  "项": "item",
   "执行命令": "opdracht uitvoeren",
   "待批准": "In afwachting van goedkeuring",
   "待审阅": "In afwachting van beoordeling",
@@ -1144,12 +1149,9 @@ export default {
   "请先安装 uv 运行环境后再初始化内置 Kimi": "Installeer eerst de uv runtime-omgeving en initialiseer vervolgens de ingebouwde Kimi",
   "Git 命令集": "Git-opdrachtenset",
   "Docker 命令集": "Docker-opdrachtenset",
-
   "导出选择": "Selectie exporteren",
   "导出已选节点": "Geselecteerde knooppunten exporteren",
-  "您已选择 {count} 个服务器节点进行导出。": "U hebt {count} serverknooppunten geselecteerd om te exporteren."
-,
-  "已成功导出选择的 {count} 个节点到 {path}": "Succesvol {count} geselecteerde knooppunten geëxporteerd naar {path}"
-,
-  "取消全选": "Alles deselecteren"
+  "您已选择 {count} 个服务器节点进行导出。": "U hebt {count} serverknooppunten geselecteerd om te exporteren.",
+  "已成功导出选择的 {count} 个节点到 {path}": "Succesvol {count} geselecteerde knooppunten geëxporteerd naar {path}",
+  "取消全选": "Alles deselecteren",
 };

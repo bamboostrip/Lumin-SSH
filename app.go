@@ -580,8 +580,6 @@ func (a *App) BatchSetConnectionGroup(ids []string, group string) error {
 	return a.configManager.BatchSetConnectionGroup(ids, group)
 }
 
-
-
 // SetConnectionOS 仅更新服务器操作系统
 func (a *App) SetConnectionOS(id string, os string) error {
 	return a.configManager.SetConnectionOS(id, os)
@@ -1775,42 +1773,15 @@ func (a *App) UpdateApp(downloadUrl string, filename string, proxyFirst bool) er
 
 	var lastErr error
 	for _, u := range tryUrls {
-		resp, err := client.Get(u)
-		if err != nil || resp.StatusCode != http.StatusOK {
-			if resp != nil {
-				resp.Body.Close()
-			}
+		err := downloadUpdatePackageWithFallback(client, a.ctx, u, targetPath, "app-update-progress")
+		if err != nil {
+			_ = os.Remove(targetPath)
 			fmt.Printf("[UpdateApp] download from %s failed: err=%v, trying next\n", u, err)
 			lastErr = err
 			continue
 		}
 
-		pr := &progressReader{
-			Reader:    resp.Body,
-			ctx:       a.ctx,
-			eventName: "app-update-progress",
-			total:     resp.ContentLength,
-			lastEmit:  time.Now(),
-		}
-
-		out, createErr := os.Create(targetPath)
-		if createErr != nil {
-			resp.Body.Close()
-			return fmt.Errorf("could not create update file: %w", createErr)
-		}
-
-		_, copyErr := io.Copy(out, pr)
-		out.Close()
-		resp.Body.Close()
-
-		if copyErr != nil {
-			os.Remove(targetPath)
-			fmt.Printf("[UpdateApp] save from %s failed: err=%v, trying next\n", u, copyErr)
-			lastErr = copyErr
-			continue
-		}
-
-		downloadUrl = u // 记录实际成功的 URL，后续 .sha256 也走同源
+		downloadUrl = u
 		lastErr = nil
 		break
 	}

@@ -1,6 +1,9 @@
 export const LANGUAGE_LABEL = "Français";
 
 export default {
+  "正在恢复终端工作区…": "Restauration de l'espace de travail du terminal...",
+  "SSH 已认证，但打开终端通道响应较慢，服务器可能正在恢复或负载较高。": "SSH est authentifié, mais la réponse est lente lors de l'ouverture d'un canal de terminal. Le serveur est peut-être en train de récupérer ou sous une charge importante.",
+  "仍在继续等待，总等待时间达到 30 秒后会自动断开。": "Toujours en attente, il se déconnectera automatiquement une fois que le temps d'attente total atteint 30 secondes.",
   "服务器别名（选填）": "Alias ​​du serveur (facultatif)",
   "例如：我的测试服": "Par exemple : mon serveur de test",
   "主机地址 *": "Adresse de l'hôte *",
@@ -44,6 +47,14 @@ export default {
   "未分组": "Non groupé",
   "移动到分组": "Passer au groupe",
   "移出分组": "Sortir du groupe",
+  "收起分组": "Réduire le groupe",
+  "打开分组": "Groupe ouvert",
+  "已选": "Choisi",
+  "项": "article",
+  "确定删除": "Confirmer la suppression",
+  "个服务器": "serveurs",
+  "（包含": "(Inclure",
+  "）": ")",
   "已移动到分组": "Déplacé vers le groupe",
   "默认（不填则不分组）": "Par défaut (si laissé vide, pas de regroupement)",
   "清空列表": "Effacer la liste",
@@ -98,17 +109,11 @@ export default {
   "保存中...": "Économie...",
   "保存配置": "Enregistrer la configuration",
   "取消": "Annuler",
-
   "取消选择": "Désélectionner",
-
-
-
   "选择模式": "Mode de sélection",
   "退出选择": "Quitter la sélection",
   "批量删除": "Supprimer en lot",
   "服务器已克隆": "Serveurs clonés",
-
-
   "克隆失败": "Échec du clonage",
   "已选择服务器": "sélectionné",
   "批量打开": "Ouvrir en lot",
@@ -289,7 +294,6 @@ export default {
   "个 + 云端": "personnel + cloud",
   "个 =": "=",
   "配置已保存，已上传": "La configuration a été enregistrée et téléchargée",
-  "个服务器": "serveurs",
   "配置已保存，但同步失败，可稍后手动上传": "La configuration a été enregistrée, mais la synchronisation a échoué. Vous pourrez le télécharger manuellement plus tard.",
   "配置已保存": "Configuration enregistrée",
   "恢复成功": "Récupération réussie",
@@ -326,6 +330,9 @@ export default {
   "从云端恢复": "Récupérer depuis le cloud",
   "已开启自动云端备份：": "La sauvegarde automatique dans le cloud est activée :",
   "当您添加、编辑、删除服务器或修改配置时，后台将静默保存至云端。": "Lorsque vous ajoutez, modifiez, supprimez des serveurs ou modifiez des configurations, cela sera enregistré silencieusement dans le cloud en arrière-plan.",
+  "同步将写入 .lumin2 加密备份": "La synchronisation écrira sur les sauvegardes chiffrées .lumin2",
+  "未开启同步加密时写入明文 .json 备份": "Écrivez une sauvegarde .json en texte brut lorsque le cryptage de synchronisation n'est pas activé",
+  "添加、编辑、删除时自动同步": "Synchronisation automatique lors de l'ajout, de la modification et de la suppression",
   "恢复中...": "Récupération...",
   "确定恢复": "Confirmer la récupération",
   "端点地址 (URL)": "Adresse du point de terminaison (URL)",
@@ -444,7 +451,6 @@ export default {
   "文件过大": "Fichier trop volumineux",
   "最大支持 5MB 编辑": "Prise en charge maximale de l'édition de 5 Mo",
   "读取目录失败": "Échec de la lecture du répertoire",
-  "确定删除": "Confirmer la suppression",
   "此操作不可撤销": "Cette action est irréversible",
   "已删除": "Supprimé",
   "新文件夹名称:": "Nouveau nom de dossier :",
@@ -1067,10 +1073,9 @@ export default {
   "密码错误或文件不兼容": "Mot de passe erroné ou fichier incompatible",
   "导出全部节点": "Exporter tous les nœuds",
   "从文件导入": "importer à partir d'un fichier",
-  "支持明文 JSON 与密文 .enc；密文会优先尝试恢复密码，兼容旧版云同步密钥，失败时提示输入密码": "Prend en charge le texte brut JSON et le texte chiffré .enc ; Le texte chiffré tentera d'abord de récupérer le mot de passe et est compatible avec les anciennes clés de synchronisation cloud. En cas d'échec, vous serez invité à saisir le mot de passe.",
+  "支持明文 JSON、密文 .lumin2 与旧 .enc；密文会优先尝试恢复密码，兼容旧版云同步密钥，失败时提示输入密码": "Prend en charge le texte brut JSON, le texte chiffré .lumin2 et l'ancien .enc ; Le texte chiffré tentera d'abord de récupérer le mot de passe et est compatible avec l'ancienne version de la clé de synchronisation cloud. En cas d'échec, vous serez invité à saisir le mot de passe.",
   "支持明文 JSON 与密文 .enc；密文会自动尝试本机云同步密钥，失败时提示输入密码": "Prend en charge le texte brut JSON et le texte chiffré .enc ; Le texte chiffré essaiera automatiquement la clé de synchronisation cloud locale et vous demandera de saisir un mot de passe en cas d'échec.",
   "选择文件并导入": "Sélectionnez le fichier et importez",
-  "项": "article",
   "执行命令": "exécuter la commande",
   "待批准": "En attente d'approbation",
   "待审阅": "En attente d'examen",
@@ -1144,12 +1149,9 @@ export default {
   "请先安装 uv 运行环境后再初始化内置 Kimi": "Veuillez d'abord installer l'environnement d'exécution uv, puis initialiser le Kimi intégré",
   "Git 命令集": "Ensemble de commandes Git",
   "Docker 命令集": "Ensemble de commandes Docker",
-
   "导出选择": "Exporter la sélection",
   "导出已选节点": "Exporter les nœuds sélectionnés",
-  "您已选择 {count} 个服务器节点进行导出。": "Vous avez sélectionné {count} nœuds de serveur à exporter."
-,
-  "已成功导出选择的 {count} 个节点到 {path}": "{count} nœuds sélectionnés exportés avec succès vers {path}"
-,
-  "取消全选": "Désélectionner tout"
+  "您已选择 {count} 个服务器节点进行导出。": "Vous avez sélectionné {count} nœuds de serveur à exporter.",
+  "已成功导出选择的 {count} 个节点到 {path}": "{count} nœuds sélectionnés exportés avec succès vers {path}",
+  "取消全选": "Désélectionner tout",
 };

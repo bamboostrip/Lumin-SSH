@@ -1,6 +1,9 @@
 export const LANGUAGE_LABEL = "Čeština";
 
 export default {
+  "正在恢复终端工作区…": "Obnovování pracovního prostoru terminálu...",
+  "SSH 已认证，但打开终端通道响应较慢，服务器可能正在恢复或负载较高。": "SSH je ověřeno, ale při otevírání terminálového kanálu je odezva pomalá. Server se možná zotavuje nebo je silně zatížen.",
+  "仍在继续等待，总等待时间达到 30 秒后会自动断开。": "Stále čeká, automaticky se odpojí, jakmile celková doba čekání dosáhne 30 sekund.",
   "服务器别名（选填）": "Alias ​​serveru (volitelné)",
   "例如：我的测试服": "Například: můj testovací server",
   "主机地址 *": "Adresa hostitele *",
@@ -44,6 +47,14 @@ export default {
   "未分组": "Není seskupeno",
   "移动到分组": "Přesunout do skupiny",
   "移出分组": "Přesuňte se ze skupiny",
+  "收起分组": "Sbalit skupinu",
+  "打开分组": "Otevřená skupina",
+  "已选": "Vybraný",
+  "项": "položka",
+  "确定删除": "Potvrďte smazání",
+  "个服务器": "servery",
+  "（包含": "(Zahrnout",
+  "）": ")",
   "已移动到分组": "Přesunuto do skupiny",
   "默认（不填则不分组）": "Výchozí (pokud ponecháte prázdné, žádné seskupování)",
   "清空列表": "Přehledný seznam",
@@ -98,17 +109,11 @@ export default {
   "保存中...": "Ukládání...",
   "保存配置": "Uložit konfiguraci",
   "取消": "Zrušit",
-
   "取消选择": "Zrušit výběr",
-
-
-
   "选择模式": "Režim výběru",
   "退出选择": "Ukončit výběr",
   "批量删除": "Dávkové smazání",
   "服务器已克隆": "Servery byly naklonovány",
-
-
   "克隆失败": "Klonování selhalo",
   "已选择服务器": "Vybráno",
   "批量打开": "Hromadné otevření",
@@ -289,7 +294,6 @@ export default {
   "个 + 云端": "osobní + cloud",
   "个 =": "=",
   "配置已保存，已上传": "Konfigurace byla uložena a nahrána",
-  "个服务器": "servery",
   "配置已保存，但同步失败，可稍后手动上传": "Konfigurace byla uložena, ale synchronizace se nezdařila. Později jej můžete nahrát ručně.",
   "配置已保存": "Konfigurace uložena",
   "恢复成功": "Obnova byla úspěšná",
@@ -326,6 +330,9 @@ export default {
   "从云端恢复": "Obnovte se z cloudu",
   "已开启自动云端备份：": "Automatické zálohování do cloudu je zapnuto:",
   "当您添加、编辑、删除服务器或修改配置时，后台将静默保存至云端。": "Když přidáte, upravíte, odstraníte servery nebo změníte konfigurace, bude to tiše uloženo do cloudu na pozadí.",
+  "同步将写入 .lumin2 加密备份": "Sync zapíše do šifrovaných záloh .lumin2",
+  "未开启同步加密时写入明文 .json 备份": "Zapište zálohu .json v prostém textu, když není zapnuto šifrování synchronizace",
+  "添加、编辑、删除时自动同步": "Automatická synchronizace při přidávání, úpravách a mazání",
   "恢复中...": "Obnovování...",
   "确定恢复": "Potvrďte obnovu",
   "端点地址 (URL)": "Adresa koncového bodu (URL)",
@@ -444,7 +451,6 @@ export default {
   "文件过大": "Soubor je příliš velký",
   "最大支持 5MB 编辑": "Maximální podpora úprav 5 MB",
   "读取目录失败": "Adresář se nepodařilo přečíst",
-  "确定删除": "Potvrďte smazání",
   "此操作不可撤销": "Tato akce je nevratná",
   "已删除": "Smazáno",
   "新文件夹名称:": "Název nové složky:",
@@ -1067,10 +1073,9 @@ export default {
   "密码错误或文件不兼容": "Nesprávné heslo nebo nekompatibilní soubor",
   "导出全部节点": "Exportovat všechny uzly",
   "从文件导入": "importovat ze souboru",
-  "支持明文 JSON 与密文 .enc；密文会优先尝试恢复密码，兼容旧版云同步密钥，失败时提示输入密码": "Podporuje prostý text JSON a šifrovaný text .enc; ciphertext se nejprve pokusí obnovit heslo a je kompatibilní se starými cloudovými synchronizačními klíči. Pokud selže, budete vyzváni k zadání hesla.",
+  "支持明文 JSON、密文 .lumin2 与旧 .enc；密文会优先尝试恢复密码，兼容旧版云同步密钥，失败时提示输入密码": "Podporuje prostý text JSON, šifrovaný text .lumin2 a starý .enc; ciphertext se nejprve pokusí obnovit heslo a je kompatibilní se starou verzí cloudového synchronizačního klíče. Pokud selže, budete vyzváni k zadání hesla.",
   "支持明文 JSON 与密文 .enc；密文会自动尝试本机云同步密钥，失败时提示输入密码": "Podporuje prostý text JSON a šifrovaný text .enc; ciphertext automaticky vyzkouší místní cloudový synchronizační klíč a pokud selže, vyzve vás k zadání hesla.",
   "选择文件并导入": "Vyberte soubor a importujte",
-  "项": "položka",
   "执行命令": "provést příkaz",
   "待批准": "Čeká na schválení",
   "待审阅": "Čeká se na recenzi",
@@ -1144,12 +1149,9 @@ export default {
   "请先安装 uv 运行环境后再初始化内置 Kimi": "Nejprve nainstalujte běhové prostředí uv a poté inicializujte vestavěný Kimi",
   "Git 命令集": "Sada příkazů Git",
   "Docker 命令集": "Sada příkazů Docker",
-
   "导出选择": "Exportovat vybrané",
   "导出已选节点": "Exportovat vybrané uzly",
-  "您已选择 {count} 个服务器节点进行导出。": "Vybrali jste {count} serverových uzlů k exportu."
-,
-  "已成功导出选择的 {count} 个节点到 {path}": "Úspěšně exportováno {count} vybraných uzlů do {path}"
-,
-  "取消全选": "Zrušit výběr všeho"
+  "您已选择 {count} 个服务器节点进行导出。": "Vybrali jste {count} serverových uzlů k exportu.",
+  "已成功导出选择的 {count} 个节点到 {path}": "Úspěšně exportováno {count} vybraných uzlů do {path}",
+  "取消全选": "Zrušit výběr všeho",
 };

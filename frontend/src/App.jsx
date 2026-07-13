@@ -4946,6 +4946,26 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                             );
                           }))
                         )}
+                        {restoringWorkspaceSessionIds.has(s.id) && (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              inset: 0,
+                              zIndex: Z.COMPONENT_OVERLAY,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: 10,
+                              background: 'var(--surface-base)',
+                              color: 'var(--text-secondary)',
+                              fontSize: 13,
+                              pointerEvents: 'none',
+                            }}
+                          >
+                            <RefreshCw size={16} className="spin" />
+                            <span>{t('正在恢复终端工作区…')}</span>
+                          </div>
+                        )}
                       </div>
                       {s.status === 'connected' && fileManagerPosition === 'tab' && mountedSessions.has(s.id) && (
                         <div style={{ display: contentTab === 'files' ? 'flex' : 'none', height: '100%', flex: 1, flexDirection: 'column' }}>

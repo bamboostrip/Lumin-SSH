@@ -216,6 +216,35 @@ export default function Dashboard({
               </div>
               <div style={{ flex: 1 }} />
               
+              <button
+                onClick={() => {
+                  const allSelected = servers.length > 0 && selectedIds.length === servers.length;
+                  if (allSelected) {
+                    onSelectChange([]);
+                  } else {
+                    onSelectChange(servers.map(s => s.id));
+                  }
+                }}
+                className="btn-batch-action"
+                disabled={servers.length === 0}
+              >
+                <CheckSquare size={14} />
+                {servers.length > 0 && selectedIds.length === servers.length ? t('取消全选') : t('全选')}
+              </button>
+
+              <button
+                onClick={() => {
+                  if (selectedIds.length > 0) {
+                    onSelectChange([]);
+                  } else if (onExitSelectionMode) {
+                    onExitSelectionMode();
+                  }
+                }}
+                className="btn-cancel"
+              >
+                {selectedIds.length > 0 ? t('取消选择') : t('退出选择')}
+              </button>
+
               {onBatchConnect && (
                 <button
                   onClick={() => onBatchConnect(selectedIds)}
@@ -351,35 +380,6 @@ export default function Dashboard({
                   {t('导出选择')}
                 </button>
               )}
-
-              <button
-                onClick={() => {
-                  const allSelected = servers.length > 0 && selectedIds.length === servers.length;
-                  if (allSelected) {
-                    onSelectChange([]);
-                  } else {
-                    onSelectChange(servers.map(s => s.id));
-                  }
-                }}
-                className="btn-batch-action"
-                disabled={servers.length === 0}
-              >
-                <CheckSquare size={14} />
-                {servers.length > 0 && selectedIds.length === servers.length ? t('取消全选') : t('全选')}
-              </button>
-
-              <button
-                onClick={() => {
-                  if (selectedIds.length > 0) {
-                    onSelectChange([]);
-                  } else if (onExitSelectionMode) {
-                    onExitSelectionMode();
-                  }
-                }}
-                className="btn-cancel"
-              >
-                {selectedIds.length > 0 ? t('取消选择') : t('退出选择')}
-              </button>
 
               <button
                 onClick={async () => {

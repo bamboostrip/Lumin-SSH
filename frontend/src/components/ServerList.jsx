@@ -114,13 +114,17 @@ export default function ServerList({
   onGroupDelete,
   onBatchExport,
   onExitSelectionMode,
+  collapsedGroups: controlledCollapsedGroups,
+  onCollapsedGroupsChange,
 }) {
   const { t } = useTranslation();
   const [menuServer, setMenuServer] = useState(null);
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
   const [hoveredId, setHoveredId] = useState(null);
   const [groupMenu, setGroupMenu] = useState(false);
-  const [collapsedGroups, setCollapsedGroups] = useState(new Set());
+  const [localCollapsedGroups, setLocalCollapsedGroups] = useState(new Set());
+  const collapsedGroups = controlledCollapsedGroups ?? localCollapsedGroups;
+  const setCollapsedGroups = onCollapsedGroupsChange ?? setLocalCollapsedGroups;
   const [groupOrder, setGroupOrder] = useState(() => {
     try { return JSON.parse(localStorage.getItem('serverGroupOrder') || '[]'); } catch { return []; }
   });

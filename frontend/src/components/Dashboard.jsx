@@ -30,6 +30,7 @@ export default function Dashboard({
 
   const [showMoveGroupDropdown, setShowMoveGroupDropdown] = useState(false);
   const [groupSearchQuery, setGroupSearchQuery] = useState('');
+  const [collapsedGroups, setCollapsedGroups] = useState(new Set());
   const moveGroupMenuRef = useRef(null);
 
   useEffect(() => {
@@ -55,6 +56,13 @@ export default function Dashboard({
     if (!query) return existingGroups;
     return existingGroups.filter(g => g.toLowerCase().includes(query));
   }, [existingGroups, groupSearchQuery]);
+
+  const visibleGroupNames = useMemo(() => {
+    const groups = new Set();
+    filteredServers.forEach(s => groups.add(s.group || ''));
+    return Array.from(groups);
+  }, [filteredServers]);
+  const hasVisibleGroupHeaders = visibleGroupNames.length > 1 || (visibleGroupNames.length === 1 && visibleGroupNames[0] !== '');
 
   return (
     <div className="dashboard-container">
@@ -164,6 +172,24 @@ export default function Dashboard({
                   {hideSensitive ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
               </Tiptop>
+              {hasVisibleGroupHeaders && (
+                <>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => setCollapsedGroups(new Set(visibleGroupNames))}
+                    style={{ height: 30, padding: '0 10px', fontSize: 12, border: '1px solid var(--border)' }}
+                  >
+                    {t('收起分组')}
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => setCollapsedGroups(new Set())}
+                    style={{ height: 30, padding: '0 10px', fontSize: 12, border: '1px solid var(--border)' }}
+                  >
+                    {t('打开分组')}
+                  </button>
+                </>
+              )}
               {/* 数据管理（导入/导出） */}
               <Tiptop text={t('数据管理')} placement="bottom">
                 <button
@@ -204,6 +230,8 @@ export default function Dashboard({
               onGroupDelete={onGroupDelete}
               onBatchExport={onBatchExport}
               onExitSelectionMode={onExitSelectionMode}
+              collapsedGroups={collapsedGroups}
+              onCollapsedGroupsChange={setCollapsedGroups}
             />
           </div>
 

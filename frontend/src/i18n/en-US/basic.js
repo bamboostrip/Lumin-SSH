@@ -47,6 +47,8 @@ export default {
   "未分组": "Ungrouped",
   "移动到分组": "Move to Group",
   "移出分组": "Remove from Group",
+  "收起分组": "Collapse Groups",
+  "打开分组": "Expand Groups",
   "已选": "Selected",
   "项": "items",
   "确定删除": "Confirm Delete",

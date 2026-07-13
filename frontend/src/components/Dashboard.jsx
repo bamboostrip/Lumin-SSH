@@ -280,7 +280,7 @@ export default function Dashboard({
                   disabled={selectedIds.length === 0}
                 >
                   <Monitor size={14} />
-                  {t('批量打开')}
+                  {t('批量链接')}
                 </button>
               )}
 

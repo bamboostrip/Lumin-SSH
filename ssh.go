@@ -486,11 +486,6 @@ func (m *SSHManager) Connect(sessionId string, conn Connection) error {
 	m.pendingMu.Lock()
 	m.pendingCancels[sessionId] = cancelPostAuth
 	m.pendingMu.Unlock()
-	defer func() {
-		m.pendingMu.Lock()
-		delete(m.pendingCancels, sessionId)
-		m.pendingMu.Unlock()
-	}()
 
 	var shellPath string
 	err := m.runPostAuthStep(postAuthCtx, cancelPostAuth, sessionId, client, clientCreated, func() error {

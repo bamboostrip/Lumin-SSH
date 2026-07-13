@@ -2170,7 +2170,9 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
       restoringWorkspaceRef.current = true;
       setRestoringWorkspaceSessionIds(new Set(savedSessions.map((session) => session.id)));
       setSessions(savedSessions);
+      sessionsRef.current = savedSessions;
       setTerminalPaneLayouts(savedLayouts);
+      terminalPaneLayoutsRef.current = savedLayouts;
       setMountedSessions(new Set(initialActiveSessionId ? [initialActiveSessionId] : []));
       setActiveSessionId(initialActiveSessionId);
       setActiveTerminalId(snapshot.activeTerminalId || initialActiveSessionId);
@@ -2178,7 +2180,6 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
 
       const idMap = {};
       let restoredLayouts = savedLayouts;
-      let restoredSessions = savedSessions;
       for (const savedSession of savedSessions) {
         const result = await reconnectSession(
           { ...savedSession, status: 'closed', terminals: savedSession.terminals },
@@ -2196,27 +2197,34 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
         if (result?.oldToNew) {
           Object.assign(idMap, result.oldToNew);
           restoredLayouts = remapTerminalPaneLayouts(restoredLayouts, result.oldToNew, savedSession.id);
-          restoredSessions = restoredSessions.map((session) => (
-            session.id === savedSession.id
-              ? { ...session, status: 'connected', terminals: result.newTerminals }
-              : session
+          const restoredSession = { ...savedSession, status: 'connected', terminals: result.newTerminals };
+          const restoredSessionLayouts = Object.fromEntries(
+            Object.entries(restoredLayouts).filter(([, layout]) => layout?.sessionId === savedSession.id)
+          );
+          // ponytail: 用函数式更新而非整体覆盖，避免恢复期间用户新建/关闭的 session 被丢失或复活
+          sessionsRef.current = sessionsRef.current.map((session) => (
+            session.id === savedSession.id ? restoredSession : session
           ));
-          terminalPaneLayoutsRef.current = restoredLayouts;
-          sessionsRef.current = restoredSessions;
-          setSessions(restoredSessions);
-          setTerminalPaneLayouts(restoredLayouts);
+          setSessions((prev) => prev.map((session) => (
+            session.id === savedSession.id ? restoredSession : session
+          )));
+          terminalPaneLayoutsRef.current = { ...terminalPaneLayoutsRef.current, ...restoredSessionLayouts };
+          setTerminalPaneLayouts((prev) => ({ ...prev, ...restoredSessionLayouts }));
         }
       }
 
       if (workspaceRestoreNavigationOverrideRef.current) {
         return;
       }
-      const finalSession = restoredSessions.find((session) => session.id === initialActiveSessionId) || restoredSessions[0];
+      // ponytail: 收尾时从当前 sessions 找，避免用户已关闭的 session 被复活为 active 导致空白
+      const finalSession = sessionsRef.current.find((session) => session.id === initialActiveSessionId) || sessionsRef.current[0];
       if (!finalSession) {
+        setActiveSessionId(null);
+        setActiveTerminalId(null);
         return;
       }
       const preferredTerminalId = idMap[snapshot.activeTerminalId] || snapshot.activeTerminalId;
-      const resolvedTerminalId = resolveSessionRootTerminalId(finalSession, preferredTerminalId, restoredLayouts);
+      const resolvedTerminalId = resolveSessionRootTerminalId(finalSession, preferredTerminalId, terminalPaneLayoutsRef.current);
       lastTerminalRef.current[finalSession.id] = resolvedTerminalId;
       setActiveSessionId(finalSession.id);
       setActiveTerminalId(resolvedTerminalId);
@@ -2549,6 +2557,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
 
   // ── Connect to server ──────────────────────────────────────
   const connectServer = useCallback(async (server) => {
+    markWorkspaceRestoreNavigationOverride();
     const existing = sessionsRef.current.find((s) => s.serverId === server.id && s.status !== 'closed' && s.status !== 'error');
     if (existing) {
       setActiveSessionId(existing.id);
@@ -2598,7 +2607,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     } catch (err) {
       handleConnectError(sessionId, err);
     }
-  }, [handleConnectError, reconnectSession]);
+  }, [handleConnectError, markWorkspaceRestoreNavigationOverride, reconnectSession]);
 
   // ── Close session ──────────────────────────────────────────
   // ponytail: 内部关闭逻辑，不带确认弹窗，供 closeSession 和右键菜单共用

@@ -308,7 +308,7 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
     return (
       <div style={{ flex: 1, minHeight: 0, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', padding: 20 }}>
         <div style={{ maxWidth: 260, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.8 }}>
-          {t('选择供应商并发送消息后，Ai助手会在这里按真实流式顺序输出内容。')}
+          {t('选择供应商并发送消息后，AI会在这里按真实流式顺序输出内容。')}
         </div>
       </div>
     )

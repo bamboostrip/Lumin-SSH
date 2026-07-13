@@ -1150,4 +1150,6 @@ export default {
   "您已选择 {count} 个服务器节点进行导出。": "Dışa aktarmak için {count} sunucu düğümü seçtiniz."
 ,
   "已成功导出选择的 {count} 个节点到 {path}": "Seçilen {count} düğüm başarıyla {path} konumuna aktarıldı"
+,
+  "取消全选": "Seçimi kaldır"
 };

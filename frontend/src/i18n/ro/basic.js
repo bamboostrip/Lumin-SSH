@@ -1150,4 +1150,6 @@ export default {
   "您已选择 {count} 个服务器节点进行导出。": "Ați selectat {count} noduri de server pentru export."
 ,
   "已成功导出选择的 {count} 个节点到 {path}": "S-au exportat cu succes {count} noduri selectate în {path}"
+,
+  "取消全选": "Deselectați toate"
 };

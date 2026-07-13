@@ -354,6 +354,22 @@ export default function Dashboard({
 
               <button
                 onClick={() => {
+                  const allSelected = servers.length > 0 && selectedIds.length === servers.length;
+                  if (allSelected) {
+                    onSelectChange([]);
+                  } else {
+                    onSelectChange(servers.map(s => s.id));
+                  }
+                }}
+                className="btn-batch-action"
+                disabled={servers.length === 0}
+              >
+                <CheckSquare size={14} />
+                {servers.length > 0 && selectedIds.length === servers.length ? t('取消全选') : t('全选')}
+              </button>
+
+              <button
+                onClick={() => {
                   if (selectedIds.length > 0) {
                     onSelectChange([]);
                   } else if (onExitSelectionMode) {

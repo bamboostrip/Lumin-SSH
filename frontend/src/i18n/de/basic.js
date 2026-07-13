@@ -1150,4 +1150,6 @@ export default {
   "您已选择 {count} 个服务器节点进行导出。": "Sie haben {count} Serverknoten zum Exportieren ausgewählt."
 ,
   "已成功导出选择的 {count} 个节点到 {path}": "{count} ausgewählte Knoten erfolgreich nach {path} exportiert"
+,
+  "取消全选": "Auswahl aufheben"
 };

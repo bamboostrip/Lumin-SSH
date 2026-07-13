@@ -1150,4 +1150,6 @@ export default {
   "您已选择 {count} 个服务器节点进行导出。": "Ha seleccionado {count} nodos de servidor para exportar."
 ,
   "已成功导出选择的 {count} 个节点到 {path}": "Se exportaron con éxito {count} nodos seleccionados a {path}"
+,
+  "取消全选": "Desmarcar todo"
 };

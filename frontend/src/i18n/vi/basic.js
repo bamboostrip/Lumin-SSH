@@ -1150,4 +1150,6 @@ export default {
   "您已选择 {count} 个服务器节点进行导出。": "Bạn đã chọn {count} nút máy chủ để xuất."
 ,
   "已成功导出选择的 {count} 个节点到 {path}": "Đã xuất thành công {count} nút được chọn sang {path}"
+,
+  "取消全选": "Bỏ chọn tất cả"
 };

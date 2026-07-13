@@ -1150,4 +1150,6 @@ export default {
   "您已选择 {count} 个服务器节点进行导出。": "Wybrano {count} węzłów serwera do eksportu."
 ,
   "已成功导出选择的 {count} 个节点到 {path}": "Pomyślnie wyeksportowano {count} zaznaczonych węzłów do {path}"
+,
+  "取消全选": "Odznacz wszystko"
 };

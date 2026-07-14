@@ -221,22 +221,7 @@ function translateTerminalAssignmentError(message, t) {
   if (!normalizedMessage) {
     return t('终端指派失败')
   }
-  switch (normalizedMessage) {
-    case '终端候选能力未就绪':
-    case '终端指派能力未就绪':
-    case '没有可指派的命令实例':
-    case '当前工具不支持指派终端':
-    case '当前工具缺少目标终端':
-    case '目标终端不能为空':
-    case '当前工具未处于可指派状态':
-    case '目标终端不可用':
-    case '当前工具无法切换目标终端':
-    case 'ssh manager unavailable':
-    case 'session not found':
-      return t(normalizedMessage)
-    default:
-      return normalizedMessage
-  }
+  return t(normalizedMessage)
 }
 
 export default function AIComposer({

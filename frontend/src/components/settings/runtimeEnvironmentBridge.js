@@ -1,4 +1,5 @@
 import * as AppGo from '../../../wailsjs/go/main/App.js'
+import { getLanguage } from '../../i18n.js'
 
 export const DEFAULT_RUNTIME_ENVIRONMENT_SETTINGS = {
   environmentType: 'uv',
@@ -86,5 +87,10 @@ export async function getRuntimeEnvironmentStatus() {
 }
 
 export async function installRuntimeEnvironment() {
-  return normalizeRuntimeEnvironmentStatus(await AppGo.InstallRuntimeEnvironment())
+  const installer = window?.go?.main?.App?.InstallRuntimeEnvironment
+  const language = getLanguage()
+  const result = typeof installer === 'function'
+    ? await installer(language)
+    : await AppGo.InstallRuntimeEnvironment()
+  return normalizeRuntimeEnvironmentStatus(result)
 }

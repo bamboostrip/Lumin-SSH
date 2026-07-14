@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { FolderOpen } from 'lucide-react'
+import { FolderOpen, Search } from 'lucide-react'
 import { EventsOn } from '../../wailsjs/runtime/runtime.js'
 import * as AppGo from '../../wailsjs/go/main/App.js'
 import { useTranslation, t as translate, getLanguage } from '../i18n.js'
@@ -8,7 +8,7 @@ import AIConversationBackupSettings from './ai/AIConversationBackupSettings.jsx'
 import AIPanelSettingsOverlay from './ai/AIPanelSettingsOverlay.jsx'
 import AIComposer from './ai/AIComposer.jsx'
 import { approveAIChatTools, assignAIChatToolTerminal, cancelAIChat, continueAIChatTool, listAIChatCommandTerminalCandidates, previewAIChatToolRestore, rejectAIChatTools, rejectAIChatToolsForQueuedSubmission, restoreAIChatTool, setAIChatSkipNextAutomaticRequest, startAIChat, terminateAIChatTool } from './ai/aiChatBridge.js'
-import { createAIConversation, deleteAIConversation, getAIConversation, listAIConversations, normalizeAIConversationSnapshot, normalizeAIConversationTaskSettings, openAIConversationFolder, preprocessAIConversationLongText, readAIConversationWrappedFile, saveAIConversation } from './ai/aiConversationBridge.js'
+import { createAIConversation, deleteAIConversation, getAIConversation, listAIConversations, normalizeAIConversationMessageSearchResult, normalizeAIConversationSnapshot, normalizeAIConversationTaskSettings, openAIConversationFolder, preprocessAIConversationLongText, readAIConversationWrappedFile, saveAIConversation, searchAIConversationMessages } from './ai/aiConversationBridge.js'
 import { buildExecutionContextDetails, getExecutionContextSnapshot } from './ai/aiExecutionContext.js'
 import { getAIGlobalSettings, normalizeAIGlobalSettings, saveAIGlobalSettings } from './ai/aiGlobalSettingsBridge.js'
 import { getMCPSettingsState, saveMCPGlobalServer, reloadMCPGlobalServers, deleteMCPGlobalServer, restartMCPClientServer, toggleMCPClientServer, toggleMCPClientServerDisabledForPrompts, updateMCPClientServerTimeout } from './ai/mcpClientBridge.js'
@@ -183,34 +183,7 @@ function createEmptyPanelState() {
 }
 
 function normalizeAIMessageStatus(value) {
-  const normalized = typeof value === 'string' ? value.trim() : ''
-  switch (normalized) {
-    case '待批准':
-      return '待批准'
-    case '待审阅':
-      return '待审阅'
-    case '执行中':
-    case '运行中':
-      return '执行中'
-    case '已执行':
-      return '已执行'
-    case '已完成':
-      return '已完成'
-    case '已终止':
-      return '已终止'
-    case '错误':
-      return '错误'
-    case '已拒绝':
-      return '已拒绝'
-    case '等待处理':
-      return '等待处理'
-    case '后台继续':
-      return '后台继续'
-    case '排队中, 等待终端空闲':
-      return '排队中, 等待终端空闲'
-    default:
-      return normalized
-  }
+  return typeof value === 'string' ? value.trim() : ''
 }
 
 function truncateConversationTitle(text) {
@@ -475,6 +448,80 @@ function extractAIConversationDiffPrimaryPath(copyContent, fallbackSummary) {
   return typeof fallbackSummary === 'string' ? fallbackSummary.trim() : ''
 }
 
+function normalizeAIConversationSearchQuery(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ')
+}
+
+function extractAIConversationSearchText(message) {
+  const kind = typeof message?.kind === 'string' ? message.kind.trim() : ''
+  if (kind === 'followup') {
+    const parts = []
+    const question = typeof message?.question === 'string' ? message.question.trim() : ''
+    if (question) {
+      parts.push(question)
+    }
+    const suggestions = Array.isArray(message?.suggestions)
+      ? message.suggestions.filter((item) => typeof item === 'string' && item.trim()).map((item) => item.trim())
+      : []
+    parts.push(...suggestions)
+    return parts.join('\n\n').trim()
+  }
+  if (kind === 'completion') {
+    const parts = []
+    const summary = typeof message?.summary === 'string' ? message.summary.trim() : ''
+    const result = typeof message?.result === 'string' ? message.result.trim() : ''
+    const title = typeof message?.title === 'string' ? message.title.trim() : ''
+    if (summary) {
+      parts.push(summary)
+    }
+    if (result) {
+      parts.push(result)
+    }
+    if (parts.length === 0 && title) {
+      parts.push(title)
+    }
+    return parts.join('\n\n').trim()
+  }
+  if (kind !== 'user' && kind !== 'assistant') {
+    return ''
+  }
+  const primary = typeof message?.text === 'string' ? message.text.replace(/▍$/u, '').trim() : ''
+  const fallback = typeof message?.summary === 'string' ? message.summary.trim() : ''
+  return primary || fallback
+}
+
+function buildAIConversationSearchSnippet(text, query) {
+  const normalizedText = String(text || '').trim()
+  const normalizedQuery = normalizeAIConversationSearchQuery(query)
+  if (!normalizedText) {
+    return ''
+  }
+  if (!normalizedQuery) {
+    const runes = Array.from(normalizedText)
+    return runes.length <= 72 ? normalizedText : `${runes.slice(0, 72).join('')}…`
+  }
+  const lowerText = normalizedText.toLowerCase()
+  const lowerQuery = normalizedQuery.toLowerCase()
+  const matchIndex = lowerText.indexOf(lowerQuery)
+  if (matchIndex < 0) {
+    const runes = Array.from(normalizedText)
+    return runes.length <= 72 ? normalizedText : `${runes.slice(0, 72).join('')}…`
+  }
+  const prefixRuneCount = Array.from(normalizedText.slice(0, matchIndex)).length
+  const queryRuneCount = Array.from(normalizedText.slice(matchIndex, matchIndex + normalizedQuery.length)).length
+  const runes = Array.from(normalizedText)
+  const start = Math.max(0, prefixRuneCount - 24)
+  const end = Math.min(runes.length, prefixRuneCount + queryRuneCount + 36)
+  let snippet = runes.slice(start, end).join('')
+  if (start > 0) {
+    snippet = `…${snippet}`
+  }
+  if (end < runes.length) {
+    snippet = `${snippet}…`
+  }
+  return snippet
+}
+
 export default function AIPanel({ width, side, terminalId = 'global', sessionId = '', sessionTerminals = [] }) {
   const { t } = useTranslation()
   const [mcpInfo, setMcpInfo] = useState({ url: '', transport: 'streamable-http', endpoint: '/mcp', instructions: '', logs: '', tools: [] })
@@ -494,9 +541,32 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   const [composerEditState, setComposerEditState] = useState({ mode: 'new', targetMessageId: '', targetMessageText: '' })
   const [conversationScrollSignal, setConversationScrollSignal] = useState(0)
   const [hoveredConversationActionKey, setHoveredConversationActionKey] = useState('')
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false)
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('')
+  const [globalSearchLoading, setGlobalSearchLoading] = useState(false)
+  const [globalSearchResults, setGlobalSearchResults] = useState([])
+  const [conversationSearchOpen, setConversationSearchOpen] = useState(false)
+  const [conversationSearchQuery, setConversationSearchQuery] = useState('')
+  const [conversationSearchIndex, setConversationSearchIndex] = useState(0)
   const terminalPanelsRef = useRef({})
   const panelMountedRef = useRef(true)
   const panelInstanceKey = `${sessionId || 'session'}::${terminalId || 'terminal'}`
+  const globalSearchRequestRef = useRef(0)
+  const globalSearchInputRef = useRef(null)
+  const conversationSearchInputRef = useRef(null)
+  const resetGlobalSearchState = useCallback(() => {
+    setGlobalSearchOpen(false)
+    setGlobalSearchQuery('')
+    setGlobalSearchLoading(false)
+    setGlobalSearchResults([])
+  }, [])
+
+  const resetConversationSearchState = useCallback(() => {
+    setConversationSearchOpen(false)
+    setConversationSearchQuery('')
+    setConversationSearchIndex(0)
+  }, [])
+
   const applyMCPInfo = useCallback((info) => {
     if (!panelMountedRef.current || !info) {
       return
@@ -673,6 +743,28 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   const approvalButtonOrder = normalizedGlobalAISettings.approvalButtonOrder
   const commandActionButtonOrder = normalizedGlobalAISettings.commandActionButtonOrder
   const messageActionBarAtBottom = Boolean(normalizedGlobalAISettings.messageActionBarAtBottom)
+  const normalizedGlobalSearchQuery = useMemo(() => normalizeAIConversationSearchQuery(globalSearchQuery), [globalSearchQuery])
+  const normalizedConversationSearchQuery = useMemo(() => normalizeAIConversationSearchQuery(conversationSearchQuery), [conversationSearchQuery])
+  const conversationSearchResults = useMemo(() => {
+    if (!activeConversation || !normalizedConversationSearchQuery) {
+      return []
+    }
+    const normalizedNeedle = normalizedConversationSearchQuery.toLowerCase()
+    return (Array.isArray(panelState.messages) ? panelState.messages : []).flatMap((message) => {
+      const body = extractAIConversationSearchText(message)
+      if (!body || !body.toLowerCase().includes(normalizedNeedle)) {
+        return []
+      }
+      return [normalizeAIConversationMessageSearchResult({
+        conversationId: activeConversation.id,
+        conversationTitle: activeConversation.title,
+        messageId: message.id,
+        role: message.kind === 'user' ? 'user' : 'assistant',
+        snippet: buildAIConversationSearchSnippet(body, normalizedConversationSearchQuery),
+        updatedAt: activeConversation.updatedAt,
+      })]
+    })
+  }, [activeConversation, normalizedConversationSearchQuery, panelState.messages])
   const requestConversationSmoothScrollToBottom = useCallback(() => {
     setConversationScrollSignal((current) => current + 1)
   }, [])
@@ -682,6 +774,88 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       setActiveSettingsTab('')
     }
   }, [activeConversation, activeSettingsTab])
+
+  useEffect(() => {
+    if (!globalSearchOpen || !globalSearchInputRef.current) {
+      return
+    }
+    globalSearchInputRef.current.focus()
+    globalSearchInputRef.current.select()
+  }, [globalSearchOpen])
+
+  useEffect(() => {
+    if (!conversationSearchOpen || !conversationSearchInputRef.current) {
+      return
+    }
+    conversationSearchInputRef.current.focus()
+    conversationSearchInputRef.current.select()
+  }, [conversationSearchOpen])
+
+  useEffect(() => {
+    if (!conversationSearchOpen) {
+      return
+    }
+    if (conversationSearchResults.length === 0) {
+      setConversationSearchIndex(0)
+      return
+    }
+    setConversationSearchIndex((current) => (current >= conversationSearchResults.length ? 0 : current))
+  }, [conversationSearchOpen, conversationSearchResults.length])
+
+  useEffect(() => {
+    if (!conversationSearchOpen || !normalizedConversationSearchQuery || conversationSearchResults.length === 0) {
+      return
+    }
+    const activeResult = conversationSearchResults[conversationSearchIndex] || conversationSearchResults[0]
+    if (!activeResult?.messageId || typeof window === 'undefined') {
+      return
+    }
+    window.dispatchEvent(new CustomEvent('ai-conversation-diff-locate', {
+      detail: {
+        sessionId: sessionId || '',
+        terminalId: terminalId || '',
+        messageId: activeResult.messageId,
+      },
+    }))
+  }, [conversationSearchIndex, conversationSearchOpen, conversationSearchResults, normalizedConversationSearchQuery, sessionId, terminalId])
+
+  useEffect(() => {
+    if (!globalSearchOpen) {
+      setGlobalSearchLoading(false)
+      setGlobalSearchResults([])
+      return
+    }
+    if (!normalizedGlobalSearchQuery) {
+      setGlobalSearchLoading(false)
+      setGlobalSearchResults([])
+      return
+    }
+    const requestId = globalSearchRequestRef.current + 1
+    globalSearchRequestRef.current = requestId
+    setGlobalSearchLoading(true)
+    const timer = window.setTimeout(() => {
+      searchAIConversationMessages(normalizedGlobalSearchQuery, '', 50)
+        .then((results) => {
+          if (!panelMountedRef.current || globalSearchRequestRef.current !== requestId) {
+            return
+          }
+          setGlobalSearchResults(results)
+        })
+        .catch(() => {
+          if (!panelMountedRef.current || globalSearchRequestRef.current !== requestId) {
+            return
+          }
+          setGlobalSearchResults([])
+        })
+        .finally(() => {
+          if (!panelMountedRef.current || globalSearchRequestRef.current !== requestId) {
+            return
+          }
+          setGlobalSearchLoading(false)
+        })
+    }, 180)
+    return () => window.clearTimeout(timer)
+  }, [globalSearchOpen, normalizedGlobalSearchQuery])
 
   const resetComposerEditState = useCallback(() => {
     setComposerEditState({ mode: 'new', targetMessageId: '', targetMessageText: '' })
@@ -1005,10 +1179,11 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       }
 
       if (payload.kind === 'followup_required' && payload.message) {
+        const nextMessage = payload.message
         let nextConversation = null
         setPanelState(matchedPanelKey, (current) => {
           const anchorAssistantMessageId = current.activeAssistantMessageId || requestId
-          const nextMessages = upsertMessageBeforeAssistant(current.messages, anchorAssistantMessageId, payload.message)
+          const nextMessages = upsertMessageBeforeAssistant(current.messages, anchorAssistantMessageId, nextMessage)
           nextConversation = current.conversation
             ? {
                 ...current.conversation,
@@ -1048,11 +1223,13 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       }
 
       if (payload.kind === 'tool_approval_required' && Array.isArray(payload.messages)) {
+        const toolMessages = payload.messages
+          .filter((message) => message && typeof message === 'object')
+          .map((message) => message)
         let nextConversation = null
         setPanelState(matchedPanelKey, (current) => {
           const anchorAssistantMessageId = current.activeAssistantMessageId || requestId
           let nextMessages = Array.isArray(current.messages) ? [...current.messages] : []
-          const toolMessages = payload.messages.filter((message) => message && typeof message === 'object')
           nextMessages = nextMessages.filter((message) => !toolMessages.some((toolMessage) => toolMessage.id && toolMessage.id === message.id))
           toolMessages.forEach((toolMessage) => {
             nextMessages = insertMessageBeforeAssistant(nextMessages, anchorAssistantMessageId, toolMessage)
@@ -1608,6 +1785,8 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     setShowSettingsPanel(false)
     setPopupDismissVersion((current) => current + 1)
     resetComposerEditState()
+    resetGlobalSearchState()
+    resetConversationSearchState()
     const previousRequestId = terminalPanelsRef.current[panelInstanceKey]?.activeRequestId
     setPanelState(panelInstanceKey, (current) => ({
       ...current,
@@ -1650,6 +1829,8 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   const handleOpenConversation = useCallback(async (conversationId) => {
     clearRestorePreview()
     resetComposerEditState()
+    resetGlobalSearchState()
+    resetConversationSearchState()
     const snapshot = await getAIConversation(conversationId)
     setConversationList((prev) => upsertConversationSummary(prev, snapshot))
     setPanelState(panelInstanceKey, {
@@ -1680,6 +1861,8 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     }
     clearRestorePreview()
     resetComposerEditState()
+    resetGlobalSearchState()
+    resetConversationSearchState()
     setConversationList((prev) => upsertConversationSummary(prev, snapshot))
     setPanelState(panelInstanceKey, {
       activeConversationId: snapshot.id,
@@ -1711,6 +1894,69 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       await showAlert(message)
     }
   }, [showAlert, t])
+
+  const locateConversationMessage = useCallback((messageId) => {
+    const normalizedMessageId = typeof messageId === 'string' ? messageId.trim() : ''
+    if (!normalizedMessageId || typeof window === 'undefined') {
+      return
+    }
+    window.dispatchEvent(new CustomEvent('ai-conversation-diff-locate', {
+      detail: {
+        sessionId: sessionId || '',
+        terminalId: terminalId || '',
+        messageId: normalizedMessageId,
+      },
+    }))
+  }, [sessionId, terminalId])
+
+  const handleOpenGlobalSearch = useCallback(() => {
+    setGlobalSearchOpen((current) => {
+      const next = !current
+      if (!next) {
+        setGlobalSearchQuery('')
+        setGlobalSearchLoading(false)
+        setGlobalSearchResults([])
+      }
+      return next
+    })
+  }, [])
+
+  const handleOpenConversationSearch = useCallback(() => {
+    setConversationSearchOpen((current) => {
+      const next = !current
+      if (!next) {
+        setConversationSearchQuery('')
+        setConversationSearchIndex(0)
+      }
+      return next
+    })
+  }, [])
+
+  const handleCycleConversationSearchResult = useCallback((direction) => {
+    if (conversationSearchResults.length === 0) {
+      return
+    }
+    setConversationSearchIndex((current) => {
+      const total = conversationSearchResults.length
+      return (current + direction + total) % total
+    })
+  }, [conversationSearchResults.length])
+
+  const handleSelectGlobalSearchResult = useCallback(async (result) => {
+    const conversationId = typeof result?.conversationId === 'string' ? result.conversationId.trim() : ''
+    const messageId = typeof result?.messageId === 'string' ? result.messageId.trim() : ''
+    if (!conversationId || !messageId) {
+      return
+    }
+    if (conversationId !== panelState.activeConversationId) {
+      await handleOpenConversation(conversationId)
+    } else {
+      resetGlobalSearchState()
+    }
+    window.setTimeout(() => {
+      locateConversationMessage(messageId)
+    }, 40)
+  }, [handleOpenConversation, locateConversationMessage, panelState.activeConversationId, resetGlobalSearchState])
 
   const handleDeleteConversation = useCallback(async (conversationId) => {
     clearRestorePreview()
@@ -2645,121 +2891,247 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   const configRows = Math.max(configText.split('\n').length, 1)
 
   const renderedConversationList = useMemo(() => {
-    if (conversationList.length === 0) {
-      return (
-        <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.8 }}>
+    let content = null
+
+    if (globalSearchOpen) {
+      content = (
+        <div style={{ display: 'grid', minHeight: 0 }}>
+          <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--surface-base)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'center' }}>
+              <input
+                ref={globalSearchInputRef}
+                value={globalSearchQuery}
+                onChange={(event) => setGlobalSearchQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    event.preventDefault()
+                    resetGlobalSearchState()
+                  }
+                }}
+                placeholder={t('输入关键词搜索全部对话')}
+                style={{
+                  height: 34,
+                  width: '100%',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface-sunken)',
+                  color: 'var(--text-primary)',
+                  padding: '0 10px',
+                  boxSizing: 'border-box',
+                  outline: 'none',
+                }}
+              />
+              <button
+                type="button"
+                title={t('关闭搜索')}
+                aria-label={t('关闭搜索')}
+                onClick={resetGlobalSearchState}
+                style={{
+                  width: 34,
+                  height: 34,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface-base)',
+                  color: 'var(--text-tertiary)',
+                  cursor: 'pointer',
+                }}
+              >
+                ×
+              </button>
+            </div>
+          </div>
+          {normalizedGlobalSearchQuery ? (
+            globalSearchLoading ? (
+              <div style={{ minHeight: 'calc(100% - 101px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.8 }}>
+                {t('加载中...')}
+              </div>
+            ) : globalSearchResults.length === 0 ? (
+              <div style={{ minHeight: 'calc(100% - 101px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.8 }}>
+                {t('没有找到匹配内容')}
+              </div>
+            ) : (
+              <div style={{ display: 'grid' }}>
+                {globalSearchResults.map((result) => (
+                  <button
+                    key={`${result.conversationId}:${result.messageId}`}
+                    type="button"
+                    onClick={() => {
+                      void handleSelectGlobalSearchResult(result)
+                    }}
+                    style={{
+                      width: '100%',
+                      display: 'grid',
+                      gap: 8,
+                      padding: '12px 14px',
+                      border: 'none',
+                      borderBottom: '1px solid var(--border)',
+                      background: 'transparent',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                      <div style={{ minWidth: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{result.conversationTitle}</div>
+                      <div style={{ flexShrink: 0, fontSize: 11, color: 'var(--text-tertiary)' }}>{result.role === 'user' ? t('用户') : t('AI')}</div>
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(result.updatedAt || 0).toLocaleString(getLanguage() || 'zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{result.snippet}</div>
+                  </button>
+                ))}
+              </div>
+            )
+          ) : (
+            <div style={{ minHeight: 'calc(100% - 101px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.8 }}>
+              {t('搜索全部对话中的消息')}
+            </div>
+          )}
+        </div>
+      )
+    } else if (conversationList.length === 0) {
+      content = (
+        <div style={{ minHeight: 'calc(100% - 53px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.8 }}>
           {t('当前还没有对话.点击下方发送消息后,将自动创建一条新对话.')}
         </div>
       )
+    } else {
+      content = conversationList.map((item) => {
+        const isFolderHovered = hoveredConversationActionKey === `${item.id}:folder`
+        const isDeleteHovered = hoveredConversationActionKey === `${item.id}:delete`
+        return (
+          <div
+            key={item.id}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              borderBottom: '1px solid var(--border)',
+              background: panelState.activeConversationId === item.id ? 'rgba(var(--accent-rgb), 0.08)' : 'transparent',
+              borderLeft: panelState.activeConversationId === item.id ? '2px solid var(--accent)' : '2px solid transparent',
+              transition: 'var(--transition)',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => void handleOpenConversation(item.id)}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '10px 16px',
+                border: 'none',
+                background: 'transparent',
+                textAlign: 'left',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: 4 }}>
+                <div style={{ fontSize: 15, fontWeight: panelState.activeConversationId === item.id ? 700 : 600, color: 'var(--text-primary)', lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{new Date(item.updatedAt).toLocaleString(getLanguage() || 'zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{item.messageCount} {t('消息')}</div>
+                </div>
+              </div>
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 16, flexShrink: 0 }}>
+              <button
+                type="button"
+                title={t('打开任务所在文件夹')}
+                aria-label={t('打开任务所在文件夹')}
+                onClick={() => void handleOpenConversationFolder(item.id)}
+                onMouseEnter={() => setHoveredConversationActionKey(`${item.id}:folder`)}
+                onMouseLeave={() => setHoveredConversationActionKey((current) => (current === `${item.id}:folder` ? '' : current))}
+                onFocus={() => setHoveredConversationActionKey(`${item.id}:folder`)}
+                onBlur={() => setHoveredConversationActionKey((current) => (current === `${item.id}:folder` ? '' : current))}
+                style={{
+                  width: 28,
+                  height: 28,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 8,
+                  color: isFolderHovered ? 'var(--accent)' : 'var(--text-muted)',
+                  background: isFolderHovered ? 'rgba(var(--accent-rgb), 0.12)' : 'transparent',
+                  border: isFolderHovered ? '1px solid rgba(var(--accent-rgb), 0.28)' : '1px solid transparent',
+                  boxShadow: isFolderHovered ? '0 0 0 1px rgba(var(--accent-rgb), 0.05)' : 'none',
+                  flexShrink: 0,
+                  cursor: 'pointer',
+                  transition: 'background 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease',
+                }}
+              >
+                <FolderOpen size={14} />
+              </button>
+              <button
+                type="button"
+                title={t('删除')}
+                aria-label={t('删除')}
+                onClick={() => {
+                  setHoveredConversationActionKey('')
+                  void handleDeleteConversation(item.id)
+                }}
+                onMouseEnter={() => setHoveredConversationActionKey(`${item.id}:delete`)}
+                onMouseLeave={() => setHoveredConversationActionKey((current) => (current === `${item.id}:delete` ? '' : current))}
+                onFocus={() => setHoveredConversationActionKey(`${item.id}:delete`)}
+                onBlur={() => setHoveredConversationActionKey((current) => (current === `${item.id}:delete` ? '' : current))}
+                style={{
+                  width: 28,
+                  height: 28,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 8,
+                  color: isDeleteHovered ? '#ff9b9b' : 'var(--text-muted)',
+                  background: isDeleteHovered ? 'rgba(255, 107, 107, 0.12)' : 'transparent',
+                  border: isDeleteHovered ? '1px solid rgba(255, 107, 107, 0.32)' : '1px solid transparent',
+                  boxShadow: isDeleteHovered ? '0 0 0 1px rgba(255, 107, 107, 0.05)' : 'none',
+                  flexShrink: 0,
+                  cursor: 'pointer',
+                  transition: 'background 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease',
+                }}
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )
+      })
     }
 
     return (
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: 'var(--surface-base)' }}>
-        {conversationList.map((item) => {
-          const isFolderHovered = hoveredConversationActionKey === `${item.id}:folder`
-          const isDeleteHovered = hoveredConversationActionKey === `${item.id}:delete`
-          return (
-            <div
-              key={item.id}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                borderBottom: '1px solid var(--border)',
-                background: panelState.activeConversationId === item.id ? 'rgba(var(--accent-rgb), 0.08)' : 'transparent',
-                borderLeft: panelState.activeConversationId === item.id ? '2px solid var(--accent)' : '2px solid transparent',
-                transition: 'var(--transition)',
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => void handleOpenConversation(item.id)}
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: '10px 16px',
-                  border: 'none',
-                  background: 'transparent',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                }}
-              >
-                <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: 4 }}>
-                  <div style={{ fontSize: 15, fontWeight: panelState.activeConversationId === item.id ? 700 : 600, color: 'var(--text-primary)', lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{new Date(item.updatedAt).toLocaleString(getLanguage() || 'zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{item.messageCount} {t('消息')}</div>
-                  </div>
-                </div>
-              </button>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 16, flexShrink: 0 }}>
-                <button
-                  type="button"
-                  title={t('打开任务所在文件夹')}
-                  aria-label={t('打开任务所在文件夹')}
-                  onClick={() => void handleOpenConversationFolder(item.id)}
-                  onMouseEnter={() => setHoveredConversationActionKey(`${item.id}:folder`)}
-                  onMouseLeave={() => setHoveredConversationActionKey((current) => (current === `${item.id}:folder` ? '' : current))}
-                  onFocus={() => setHoveredConversationActionKey(`${item.id}:folder`)}
-                  onBlur={() => setHoveredConversationActionKey((current) => (current === `${item.id}:folder` ? '' : current))}
-                  style={{
-                    width: 28,
-                    height: 28,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: 8,
-                    color: isFolderHovered ? 'var(--accent)' : 'var(--text-muted)',
-                    background: isFolderHovered ? 'rgba(var(--accent-rgb), 0.12)' : 'transparent',
-                    border: isFolderHovered ? '1px solid rgba(var(--accent-rgb), 0.28)' : '1px solid transparent',
-                    boxShadow: isFolderHovered ? '0 0 0 1px rgba(var(--accent-rgb), 0.05)' : 'none',
-                    flexShrink: 0,
-                    cursor: 'pointer',
-                    transition: 'background 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease',
-                  }}
-                >
-                  <FolderOpen size={14} />
-                </button>
-                <button
-                  type="button"
-                  title={t('删除')}
-                  aria-label={t('删除')}
-                  onClick={() => {
-                    setHoveredConversationActionKey('')
-                    void handleDeleteConversation(item.id)
-                  }}
-                  onMouseEnter={() => setHoveredConversationActionKey(`${item.id}:delete`)}
-                  onMouseLeave={() => setHoveredConversationActionKey((current) => (current === `${item.id}:delete` ? '' : current))}
-                  onFocus={() => setHoveredConversationActionKey(`${item.id}:delete`)}
-                  onBlur={() => setHoveredConversationActionKey((current) => (current === `${item.id}:delete` ? '' : current))}
-                  style={{
-                    width: 28,
-                    height: 28,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: 8,
-                    color: isDeleteHovered ? '#ff9b9b' : 'var(--text-muted)',
-                    background: isDeleteHovered ? 'rgba(255, 107, 107, 0.12)' : 'transparent',
-                    border: isDeleteHovered ? '1px solid rgba(255, 107, 107, 0.32)' : '1px solid transparent',
-                    boxShadow: isDeleteHovered ? '0 0 0 1px rgba(255, 107, 107, 0.05)' : 'none',
-                    flexShrink: 0,
-                    cursor: 'pointer',
-                    transition: 'background 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease',
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-          )
-        })}
+        <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', background: 'var(--surface-raised)', position: 'sticky', top: 0, zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: 0.2 }}>{t('对话历史')}</div>
+          <button
+            type="button"
+            title={t('全局搜索对话')}
+            aria-label={t('全局搜索对话')}
+            onClick={handleOpenGlobalSearch}
+            style={{
+              width: 32,
+              height: 32,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: 8,
+              border: globalSearchOpen ? '1px solid var(--accent-border)' : '1px solid var(--border)',
+              background: globalSearchOpen ? 'rgba(var(--accent-rgb), 0.12)' : 'var(--surface-base)',
+              color: globalSearchOpen ? 'var(--accent)' : 'var(--text-tertiary)',
+              cursor: 'pointer',
+              transition: 'var(--transition)',
+              flexShrink: 0,
+            }}
+          >
+            <Search size={15} />
+          </button>
+        </div>
+        {content}
       </div>
     )
-  }, [conversationList, handleDeleteConversation, handleOpenConversation, handleOpenConversationFolder, hoveredConversationActionKey, panelState.activeConversationId, t])
+  }, [conversationList, getLanguage, globalSearchLoading, globalSearchOpen, globalSearchQuery, globalSearchResults, handleDeleteConversation, handleOpenConversation, handleOpenConversationFolder, handleOpenGlobalSearch, handleSelectGlobalSearchResult, hoveredConversationActionKey, normalizedGlobalSearchQuery, panelState.activeConversationId, resetGlobalSearchState, t])
 
   return (
     <div
@@ -2785,8 +3157,11 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         showSettingsPanel={showSettingsPanel}
         onToggleSettings={handleToggleSettingsPanel}
         onGoHome={handleGoHome}
+        onOpenConversationSearch={handleOpenConversationSearch}
         onOpenConversationDiff={handleOpenConversationDiff}
+        showConversationSearchButton={Boolean(activeConversation)}
         showConversationDiffButton={Boolean(activeConversation)}
+        conversationSearchActive={conversationSearchOpen}
         showContextTokens={Boolean(activeConversation)}
         contextTokens={panelState.contextTokens}
         isCondensingContext={Boolean(panelState.isCondensingContext)}
@@ -2796,20 +3171,119 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div data-ai-chat-stage="true" style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {activeConversation ? (
-            <AIChatConversation
-              messages={panelState.messages}
-              sessionId={sessionId}
-              terminalId={terminalId}
-              onSendUserMessage={(text) => handleSendMessage(text, { images: [] })}
-              onRetryUserMessage={handleRetryUserMessage}
-              onRetryAssistantMessage={handleRetryAssistantMessage}
-              onEditUserMessage={handleEditUserMessage}
-              onDeleteMessage={handleDeleteMessage}
-              onPreviewRestore={handlePreviewRestore}
-              onApplyRestore={handleApplyRestore}
-              messageActionBarAtBottom={messageActionBarAtBottom}
-              scrollToBottomSignal={conversationScrollSignal}
-            />
+            <>
+              {conversationSearchOpen ? (
+                <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', background: 'var(--surface-raised)', display: 'grid', gridTemplateColumns: '1fr auto auto auto auto', gap: 8, alignItems: 'center' }}>
+                  <input
+                    ref={conversationSearchInputRef}
+                    value={conversationSearchQuery}
+                    onChange={(event) => setConversationSearchQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Escape') {
+                        event.preventDefault()
+                        resetConversationSearchState()
+                        return
+                      }
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        handleCycleConversationSearchResult(event.shiftKey ? -1 : 1)
+                      }
+                    }}
+                    placeholder={t('输入关键词搜索当前对话')}
+                    style={{
+                      height: 34,
+                      width: '100%',
+                      borderRadius: 8,
+                      border: '1px solid var(--border)',
+                      background: 'var(--surface-sunken)',
+                      color: 'var(--text-primary)',
+                      padding: '0 10px',
+                      boxSizing: 'border-box',
+                      outline: 'none',
+                    }}
+                  />
+                  <div style={{ minWidth: 48, textAlign: 'center', fontSize: 12, color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
+                    {conversationSearchResults.length > 0 ? `${conversationSearchIndex + 1}/${conversationSearchResults.length}` : '0/0'}
+                  </div>
+                  <button
+                    type="button"
+                    title={t('上一个搜索结果')}
+                    aria-label={t('上一个搜索结果')}
+                    onClick={() => handleCycleConversationSearchResult(-1)}
+                    disabled={conversationSearchResults.length === 0}
+                    style={{
+                      width: 34,
+                      height: 34,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: 8,
+                      border: '1px solid var(--border)',
+                      background: 'var(--surface-base)',
+                      color: conversationSearchResults.length > 0 ? 'var(--text-primary)' : 'var(--text-muted)',
+                      cursor: conversationSearchResults.length > 0 ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    ‹
+                  </button>
+                  <button
+                    type="button"
+                    title={t('下一个搜索结果')}
+                    aria-label={t('下一个搜索结果')}
+                    onClick={() => handleCycleConversationSearchResult(1)}
+                    disabled={conversationSearchResults.length === 0}
+                    style={{
+                      width: 34,
+                      height: 34,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: 8,
+                      border: '1px solid var(--border)',
+                      background: 'var(--surface-base)',
+                      color: conversationSearchResults.length > 0 ? 'var(--text-primary)' : 'var(--text-muted)',
+                      cursor: conversationSearchResults.length > 0 ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    ›
+                  </button>
+                  <button
+                    type="button"
+                    title={t('关闭搜索')}
+                    aria-label={t('关闭搜索')}
+                    onClick={resetConversationSearchState}
+                    style={{
+                      width: 34,
+                      height: 34,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: 8,
+                      border: '1px solid var(--border)',
+                      background: 'var(--surface-base)',
+                      color: 'var(--text-tertiary)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : null}
+              <AIChatConversation
+                messages={panelState.messages}
+                sessionId={sessionId}
+                terminalId={terminalId}
+                onSendUserMessage={(text) => handleSendMessage(text, { images: [] })}
+                onRetryUserMessage={handleRetryUserMessage}
+                onRetryAssistantMessage={handleRetryAssistantMessage}
+                onEditUserMessage={handleEditUserMessage}
+                onDeleteMessage={handleDeleteMessage}
+                onPreviewRestore={handlePreviewRestore}
+                onApplyRestore={handleApplyRestore}
+                messageActionBarAtBottom={messageActionBarAtBottom}
+                scrollToBottomSignal={conversationScrollSignal}
+              />
+            </>
           ) : renderedConversationList}
         </div>
         <AIComposer

@@ -38,7 +38,7 @@ func getAITokenEncoding() (*tiktoken.Tiktoken, error) {
 		return nil, aiTokenEncodingErr
 	}
 	if aiTokenEncoding == nil {
-		return nil, fmt.Errorf("token encoding unavailable")
+		return nil, fmt.Errorf("Token 编码不可用")
 	}
 	return aiTokenEncoding, nil
 }

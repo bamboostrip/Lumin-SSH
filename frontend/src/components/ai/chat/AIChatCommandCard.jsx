@@ -152,24 +152,7 @@ function getCommandMutationPalette(isMutating) {
 }
 
 function normalizeAICommandStatus(value) {
-  const normalized = typeof value === 'string' ? value.trim() : ''
-  switch (normalized) {
-    case '运行中':
-    case '执行中':
-      return '执行中'
-    case '等待处理':
-      return '等待处理'
-    case '后台继续':
-      return '后台继续'
-    case '已终止':
-      return '已终止'
-    case '已执行':
-      return '已执行'
-    case '错误':
-      return '错误'
-    default:
-      return normalized
-  }
+  return typeof value === 'string' ? value.trim() : ''
 }
 
 const runningStatusKey = '执行中'

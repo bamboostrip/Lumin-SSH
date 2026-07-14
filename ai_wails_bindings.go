@@ -128,6 +128,10 @@ func (b *AIBindings) DeleteAIConversation(conversationID string) error {
 	return b.runtime().DeleteAIConversation(conversationID)
 }
 
+func (b *AIBindings) SearchAIConversationMessages(query string, conversationID string, limit int) ([]ai.AIConversationMessageSearchResult, error) {
+	return b.runtime().SearchAIConversationMessages(query, conversationID, limit)
+}
+
 func (b *AIBindings) OpenAIConversationFolder(conversationID string) error {
 	trimmedConversationID := strings.TrimSpace(conversationID)
 	if trimmedConversationID == "" {

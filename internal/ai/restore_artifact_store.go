@@ -212,17 +212,17 @@ func normalizeAIRestoreArtifactState(state aiToolRestoreState) aiToolRestoreStat
 
 func (c *ConfigManager) WriteAIConversationRestoreArtifact(state *aiToolRestoreState) (string, error) {
 	if c == nil {
-		return "", fmt.Errorf("config manager unavailable")
+		return "", fmt.Errorf("配置管理器不可用")
 	}
 	if state == nil {
-		return "", fmt.Errorf("restore artifact is required")
+		return "", fmt.Errorf("还原产物不能为空")
 	}
 	normalized := normalizeAIRestoreArtifactState(*state)
 	if normalized.ConversationID == "" {
-		return "", fmt.Errorf("conversation id is required")
+		return "", fmt.Errorf("缺少对话 ID")
 	}
 	if normalized.ReviewID == "" {
-		return "", fmt.Errorf("review id is required")
+		return "", fmt.Errorf("缺少审阅 ID")
 	}
 	artifactPath := c.aiConversationRestoreArtifactPath(normalized.ConversationID, normalized.ReviewID)
 	patchPath := c.aiConversationRestorePatchPath(normalized.ConversationID, normalized.ReviewID)
@@ -251,15 +251,15 @@ func (c *ConfigManager) WriteAIConversationRestoreArtifact(state *aiToolRestoreS
 
 func (c *ConfigManager) ReadAIConversationRestoreArtifact(artifactPath string) (*aiToolRestoreState, error) {
 	if c == nil {
-		return nil, fmt.Errorf("config manager unavailable")
+		return nil, fmt.Errorf("配置管理器不可用")
 	}
 	normalizedPath := normalizeAIRestoreArtifactPath(artifactPath)
 	if normalizedPath == "" {
-		return nil, fmt.Errorf("restore artifact path is required")
+		return nil, fmt.Errorf("还原产物路径不能为空")
 	}
 	basePath := c.aiConversationsRootDir()
 	if !isAIRestoreArtifactPathWithinBase(basePath, normalizedPath) {
-		return nil, fmt.Errorf("restore artifact path is invalid")
+		return nil, fmt.Errorf("还原产物路径无效")
 	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()

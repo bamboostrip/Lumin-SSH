@@ -527,7 +527,7 @@ func (c *ConfigManager) ListAIConversations() []AIConversationSummary {
 
 func (c *ConfigManager) CreateAIConversation(title string) (AIConversationSnapshot, error) {
 	if c == nil {
-		return AIConversationSnapshot{}, fmt.Errorf("config manager unavailable")
+		return AIConversationSnapshot{}, fmt.Errorf("配置管理器不可用")
 	}
 
 	globalSettings := c.GetAIGlobalSettings()
@@ -554,11 +554,11 @@ func (c *ConfigManager) CreateAIConversation(title string) (AIConversationSnapsh
 
 func (c *ConfigManager) GetAIConversation(conversationID string) (AIConversationSnapshot, error) {
 	if c == nil {
-		return AIConversationSnapshot{}, fmt.Errorf("config manager unavailable")
+		return AIConversationSnapshot{}, fmt.Errorf("配置管理器不可用")
 	}
 	conversationID = strings.TrimSpace(conversationID)
 	if conversationID == "" {
-		return AIConversationSnapshot{}, fmt.Errorf("conversation id is required")
+		return AIConversationSnapshot{}, fmt.Errorf("缺少对话 ID")
 	}
 
 	fallbackSettings := defaultAIConversationTaskSettings(c.GetAIGlobalSettings())
@@ -589,7 +589,7 @@ func (c *ConfigManager) GetAIConversation(conversationID string) (AIConversation
 
 func (c *ConfigManager) SaveAIConversation(snapshot AIConversationSnapshot) (AIConversationSnapshot, error) {
 	if c == nil {
-		return AIConversationSnapshot{}, fmt.Errorf("config manager unavailable")
+		return AIConversationSnapshot{}, fmt.Errorf("配置管理器不可用")
 	}
 	fallbackSettings := defaultAIConversationTaskSettings(c.GetAIGlobalSettings())
 	if strings.TrimSpace(snapshot.PromptCacheBypassTimestamp) == "" && strings.TrimSpace(snapshot.ID) != "" {
@@ -604,20 +604,61 @@ func (c *ConfigManager) SaveAIConversation(snapshot AIConversationSnapshot) (AIC
 	if err := c.writeAIConversationSnapshot(normalized); err != nil {
 		return AIConversationSnapshot{}, err
 	}
+	_ = func() error {
+		db, err := c.getAIConversationSearchDB()
+		if err != nil {
+			return err
+		}
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		if err := c.ensureAIConversationSearchSchemaLocked(tx); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		if err := c.replaceAIConversationSearchRowsLocked(tx, normalized); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		return tx.Commit()
+	}()
 	return normalized, nil
 }
 
 func (c *ConfigManager) DeleteAIConversation(conversationID string) error {
 	if c == nil {
-		return fmt.Errorf("config manager unavailable")
+		return fmt.Errorf("配置管理器不可用")
 	}
 	conversationID = strings.TrimSpace(conversationID)
 	if conversationID == "" {
-		return fmt.Errorf("conversation id is required")
+		return fmt.Errorf("缺少对话 ID")
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return os.RemoveAll(c.aiConversationDir(conversationID))
+	if err := os.RemoveAll(c.aiConversationDir(conversationID)); err != nil {
+		return err
+	}
+	_ = func() error {
+		db, err := c.getAIConversationSearchDB()
+		if err != nil {
+			return err
+		}
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		if err := c.ensureAIConversationSearchSchemaLocked(tx); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		if err := c.deleteAIConversationSearchRowsLocked(tx, conversationID); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		return tx.Commit()
+	}()
+	return nil
 }
 
 func (a *App) ListAIConversations() []AIConversationSummary {
@@ -629,21 +670,21 @@ func (a *App) ListAIConversations() []AIConversationSummary {
 
 func (a *App) CreateAIConversation(title string) (AIConversationSnapshot, error) {
 	if a == nil || a.configManager == nil {
-		return AIConversationSnapshot{}, fmt.Errorf("config manager unavailable")
+		return AIConversationSnapshot{}, fmt.Errorf("配置管理器不可用")
 	}
 	return a.configManager.CreateAIConversation(title)
 }
 
 func (a *App) GetAIConversation(conversationID string) (AIConversationSnapshot, error) {
 	if a == nil || a.configManager == nil {
-		return AIConversationSnapshot{}, fmt.Errorf("config manager unavailable")
+		return AIConversationSnapshot{}, fmt.Errorf("配置管理器不可用")
 	}
 	return a.configManager.GetAIConversation(conversationID)
 }
 
 func (a *App) SaveAIConversation(jsonStr string) (AIConversationSnapshot, error) {
 	if a == nil || a.configManager == nil {
-		return AIConversationSnapshot{}, fmt.Errorf("config manager unavailable")
+		return AIConversationSnapshot{}, fmt.Errorf("配置管理器不可用")
 	}
 	var snapshot AIConversationSnapshot
 	if strings.TrimSpace(jsonStr) != "" {
@@ -656,7 +697,7 @@ func (a *App) SaveAIConversation(jsonStr string) (AIConversationSnapshot, error)
 
 func (a *App) DeleteAIConversation(conversationID string) error {
 	if a == nil || a.configManager == nil {
-		return fmt.Errorf("config manager unavailable")
+		return fmt.Errorf("配置管理器不可用")
 	}
 	return a.configManager.DeleteAIConversation(conversationID)
 }

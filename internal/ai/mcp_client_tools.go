@@ -237,16 +237,16 @@ func (a *App) runAIChatMCPClientToolExecution(execution *aiToolExecutionState) {
 	}
 	hub := mcp.ClientHubInstance()
 	if hub == nil {
-		a.failAIChatToolPreview(execution.RequestID, execution.Batch, execution.Tool, "mcp client hub unavailable")
+		a.failAIChatToolPreview(execution.RequestID, execution.Batch, execution.Tool, "MCP 客户端中心不可用")
 		return
 	}
 	serverName := strings.TrimSpace(execution.Tool.Params["server_name"])
 	if serverName == "" {
-		a.failAIChatToolPreview(execution.RequestID, execution.Batch, execution.Tool, "missing required argument: server_name")
+		a.failAIChatToolPreview(execution.RequestID, execution.Batch, execution.Tool, "缺少服务名")
 		return
 	}
 	source := resolveAIMCPServerSourceByName(serverName, execution.Tool.Params["source"])
-	statusText := "ai.status.executed"
+	statusText := "已执行"
 	uiResultText := ""
 	rawResultText := ""
 	argsText := "{}"
@@ -254,18 +254,18 @@ func (a *App) runAIChatMCPClientToolExecution(execution *aiToolExecutionState) {
 	switch execution.Tool.Name {
 	case aiUseMCPToolName:
 		if toolLabel == "" {
-			a.failAIChatToolPreview(execution.RequestID, execution.Batch, execution.Tool, "missing required argument: tool_name")
+			a.failAIChatToolPreview(execution.RequestID, execution.Batch, execution.Tool, "缺少工具名")
 			return
 		}
 		parsedArguments, err := parseAIMCPToolArguments(execution.Tool.Params["arguments"])
 		if err != nil {
-			a.failAIChatToolPreview(execution.RequestID, execution.Batch, execution.Tool, err.Error())
+			a.failAIChatToolPreview(execution.RequestID, execution.Batch, execution.Tool, "参数 JSON 无效")
 			return
 		}
 		source = resolveAIMCPToolSource(serverName, toolLabel, execution.Tool.Params["source"])
 		callResult, err := hub.CallTool(serverName, source, toolLabel, parsedArguments)
 		if err != nil {
-			statusText = "ai.status.error"
+			statusText = "错误"
 			uiResultText = err.Error()
 			rawResultText = err.Error()
 			argsText = marshalMCPToolArgs(parsedArguments)
@@ -274,20 +274,20 @@ func (a *App) runAIChatMCPClientToolExecution(execution *aiToolExecutionState) {
 			rawResultText = callResult.Response
 			argsText = callResult.Args
 			if callResult.IsError {
-				statusText = "ai.status.error"
+				statusText = "错误"
 			}
 		}
 	case aiAccessMCPResourceToolName:
 		uri := strings.TrimSpace(execution.Tool.Params["uri"])
 		if uri == "" {
-			a.failAIChatToolPreview(execution.RequestID, execution.Batch, execution.Tool, "missing required argument: uri")
+			a.failAIChatToolPreview(execution.RequestID, execution.Batch, execution.Tool, "缺少资源 URI")
 			return
 		}
 		toolLabel = "resource:" + uri
 		source = resolveAIMCPResourceSource(serverName, uri, execution.Tool.Params["source"])
 		readResult, err := hub.ReadResource(serverName, source, uri)
 		if err != nil {
-			statusText = "ai.status.error"
+			statusText = "错误"
 			uiResultText = err.Error()
 			rawResultText = err.Error()
 			argsText = marshalMCPAccessResourceArgs(uri)
@@ -297,7 +297,7 @@ func (a *App) runAIChatMCPClientToolExecution(execution *aiToolExecutionState) {
 			argsText = marshalMCPAccessResourceArgs(uri)
 		}
 	default:
-		a.failAIChatToolPreview(execution.RequestID, execution.Batch, execution.Tool, "unsupported mcp client tool")
+		a.failAIChatToolPreview(execution.RequestID, execution.Batch, execution.Tool, "当前工具不支持 MCP 客户端调用")
 		return
 	}
 	if !a.isAIChatToolExecutionCurrent(execution.RequestID, execution.ExecutionID) {
@@ -314,7 +314,7 @@ func (a *App) runAIChatMCPClientToolExecution(execution *aiToolExecutionState) {
 	})
 	a.emitAIMCPToolResultMessage(execution.RequestID, execution.ToolMessageID, serverName, toolLabel, rawResultText)
 	a.emitAIChatToolExecutionPersistRequested(execution.RequestID)
-	if statusText != "ai.status.executed" {
+	if statusText != "已执行" {
 		execution.Batch.NextToolIndex = len(execution.Batch.ParsedTools)
 		a.resumeAIChatAfterToolBatch(execution.RequestID, execution.Batch)
 		return

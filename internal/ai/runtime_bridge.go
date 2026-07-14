@@ -215,7 +215,7 @@ func (c *ConfigManager) PreprocessAIConversationLongText(conversationID string, 
 	}
 	trimmedConversationID := strings.TrimSpace(conversationID)
 	if trimmedConversationID == "" {
-		return text, fmt.Errorf("conversation id is required")
+		return text, fmt.Errorf("缺少对话 ID")
 	}
 	parts := splitAILongTextSegmentsPreserveSeparators(text)
 	externalizeFlags := make([]bool, len(parts))
@@ -250,26 +250,26 @@ func (c *ConfigManager) PreprocessAIConversationLongText(conversationID string, 
 
 func (c *ConfigManager) ReadAIConversationWrappedFile(conversationID string, localPath string) (string, error) {
 	if c == nil || strings.TrimSpace(c.configDir) == "" {
-		return "", fmt.Errorf("config manager unavailable")
+		return "", fmt.Errorf("配置管理器不可用")
 	}
 	trimmedConversationID := strings.TrimSpace(conversationID)
 	if trimmedConversationID == "" {
-		return "", fmt.Errorf("conversation id is required")
+		return "", fmt.Errorf("缺少对话 ID")
 	}
 	tempDir := filepath.Clean(c.aiConversationTempDir(trimmedConversationID))
 	normalizedPath := normalizeAILongTextWrapperLocalPath(localPath)
 	if normalizedPath == "" {
-		return "", fmt.Errorf("wrapped file path is required")
+		return "", fmt.Errorf("长文本包装文件路径不能为空")
 	}
 	if !strings.EqualFold(filepath.Ext(normalizedPath), aiLongTextWrapperExtension) {
-		return "", fmt.Errorf("unsupported wrapped file extension")
+		return "", fmt.Errorf("不支持的长文本包装文件扩展名")
 	}
 	if !filepath.IsAbs(normalizedPath) {
 		normalizedPath = filepath.Join(tempDir, normalizedPath)
 	}
 	normalizedPath = filepath.Clean(normalizedPath)
 	if !isAIPathWithinBase(tempDir, normalizedPath) {
-		return "", fmt.Errorf("wrapped file path is outside conversation temp directory")
+		return "", fmt.Errorf("长文本包装文件路径超出对话临时目录")
 	}
 	data, err := os.ReadFile(normalizedPath)
 	if err != nil {
@@ -280,14 +280,14 @@ func (c *ConfigManager) ReadAIConversationWrappedFile(conversationID string, loc
 
 func (a *App) PreprocessAIConversationLongText(conversationID string, text string) (string, error) {
 	if a == nil || a.configManager == nil {
-		return "", fmt.Errorf("config manager unavailable")
+		return "", fmt.Errorf("配置管理器不可用")
 	}
 	return a.configManager.PreprocessAIConversationLongText(conversationID, text)
 }
 
 func (a *App) ReadAIConversationWrappedFile(conversationID string, localPath string) (string, error) {
 	if a == nil || a.configManager == nil {
-		return "", fmt.Errorf("config manager unavailable")
+		return "", fmt.Errorf("配置管理器不可用")
 	}
 	return a.configManager.ReadAIConversationWrappedFile(conversationID, localPath)
 }
@@ -302,70 +302,70 @@ func (m *SSHManager) ExecuteCommandInTerminalControlled(sessionID string, comman
 			CWD:        cwd,
 			ShellType:  shellType,
 		}
-		return result, aiToolExecutionActionNone, fmt.Errorf("ssh manager bridge unavailable")
+		return result, aiToolExecutionActionNone, fmt.Errorf("SSH 管理器桥接不可用")
 	}
 	return m.delegate.ExecuteCommandInTerminalControlled(sessionID, command, purpose, isMutating, cwd, shellType, timeout, control, reassign, onCommandQueued, onCommandStarted, onCommandOutput)
 }
 
 func (m *SSHManager) ListSiblingTerminalCandidates(sessionID string) ([]AIChatCommandTerminalCandidate, error) {
 	if m == nil || m.delegate == nil {
-		return nil, fmt.Errorf("ssh manager bridge unavailable")
+		return nil, fmt.Errorf("SSH 管理器桥接不可用")
 	}
 	return m.delegate.ListSiblingTerminalCandidates(sessionID)
 }
 
 func (m *SSHManager) ListDirContext(ctx context.Context, sessionID string, remotePath string) ([]map[string]interface{}, error) {
 	if m == nil || m.delegate == nil {
-		return nil, fmt.Errorf("ssh manager bridge unavailable")
+		return nil, fmt.Errorf("SSH 管理器桥接不可用")
 	}
 	return m.delegate.ListDirContext(ctx, sessionID, remotePath)
 }
 
 func (m *SSHManager) ReadFileContext(ctx context.Context, sessionID string, remotePath string) (string, error) {
 	if m == nil || m.delegate == nil {
-		return "", fmt.Errorf("ssh manager bridge unavailable")
+		return "", fmt.Errorf("SSH 管理器桥接不可用")
 	}
 	return m.delegate.ReadFileContext(ctx, sessionID, remotePath)
 }
 
 func (m *SSHManager) WriteFileContext(ctx context.Context, sessionID string, remotePath string, content string) error {
 	if m == nil || m.delegate == nil {
-		return fmt.Errorf("ssh manager bridge unavailable")
+		return fmt.Errorf("SSH 管理器桥接不可用")
 	}
 	return m.delegate.WriteFileContext(ctx, sessionID, remotePath, content)
 }
 
 func (m *SSHManager) DeleteItemContext(ctx context.Context, sessionID string, remotePath string, isDir bool) error {
 	if m == nil || m.delegate == nil {
-		return fmt.Errorf("ssh manager bridge unavailable")
+		return fmt.Errorf("SSH 管理器桥接不可用")
 	}
 	return m.delegate.DeleteItemContext(ctx, sessionID, remotePath, isDir)
 }
 
 func (m *SSHManager) MkdirContext(ctx context.Context, sessionID string, remotePath string) error {
 	if m == nil || m.delegate == nil {
-		return fmt.Errorf("ssh manager bridge unavailable")
+		return fmt.Errorf("SSH 管理器桥接不可用")
 	}
 	return m.delegate.MkdirContext(ctx, sessionID, remotePath)
 }
 
 func (m *SSHManager) getClientEntry(sessionID string) (*ssh.Client, *sftp.Client, error) {
 	if m == nil || m.delegate == nil {
-		return nil, nil, fmt.Errorf("ssh manager bridge unavailable")
+		return nil, nil, fmt.Errorf("SSH 管理器桥接不可用")
 	}
 	return m.delegate.BridgeGetClientEntry(sessionID)
 }
 
 func (m *SSHManager) executeCmdWithClientContext(ctx context.Context, client *ssh.Client, command string) (string, error) {
 	if m == nil || m.delegate == nil {
-		return "", fmt.Errorf("ssh manager bridge unavailable")
+		return "", fmt.Errorf("SSH 管理器桥接不可用")
 	}
 	return m.delegate.BridgeExecuteCmdWithClientContext(ctx, client, command)
 }
 
 func (m *SSHManager) getSFTPClient(sessionID string) (*sftp.Client, error) {
 	if m == nil || m.delegate == nil {
-		return nil, fmt.Errorf("ssh manager bridge unavailable")
+		return nil, fmt.Errorf("SSH 管理器桥接不可用")
 	}
 	return m.delegate.BridgeGetSFTPClient(sessionID)
 }
@@ -391,7 +391,7 @@ func (p mcpCommandProvider) ExecuteCommand(sessionID string, command string, pur
 
 func (p mcpCommandProvider) ExecuteCommandContext(ctx context.Context, sessionID string, command string, purpose string, isMutating bool, cwd string, shellType string, timeout time.Duration) (mcpserver.CommandExecutionResult, error) {
 	if p.app == nil || p.app.sshManager == nil {
-		return mcpserver.CommandExecutionResult{}, fmt.Errorf("ssh manager unavailable")
+		return mcpserver.CommandExecutionResult{}, fmt.Errorf("SSH 管理器不可用")
 	}
 	result, _, err := p.app.sshManager.ExecuteCommandInTerminalControlled(sessionID, command, purpose, isMutating, cwd, shellType, timeout, nil, nil, nil, nil, nil)
 	return result, err
@@ -407,7 +407,7 @@ func (p mcpFileProvider) ListDirectory(sessionID string, remotePath string) ([]m
 
 func (p mcpFileProvider) ListDirectoryContext(ctx context.Context, sessionID string, remotePath string) ([]mcpserver.DirectoryEntry, error) {
 	if p.app == nil || p.app.sshManager == nil {
-		return nil, fmt.Errorf("ssh manager unavailable")
+		return nil, fmt.Errorf("SSH 管理器不可用")
 	}
 	items, err := p.app.sshManager.ListDirContext(ctx, sessionID, remotePath)
 	if err != nil {
@@ -435,7 +435,7 @@ func (p mcpFileProvider) ReadTextFile(sessionID string, remotePath string) (stri
 
 func (p mcpFileProvider) ReadTextFileContext(ctx context.Context, sessionID string, remotePath string) (string, error) {
 	if p.app == nil || p.app.sshManager == nil {
-		return "", fmt.Errorf("ssh manager unavailable")
+		return "", fmt.Errorf("SSH 管理器不可用")
 	}
 	return p.app.sshManager.ReadFileContext(ctx, sessionID, remotePath)
 }
@@ -446,7 +446,7 @@ func (p mcpFileProvider) WriteTextFile(sessionID string, remotePath string, cont
 
 func (p mcpFileProvider) WriteTextFileContext(ctx context.Context, sessionID string, remotePath string, content string) error {
 	if p.app == nil || p.app.sshManager == nil {
-		return fmt.Errorf("ssh manager unavailable")
+		return fmt.Errorf("SSH 管理器不可用")
 	}
 	parentDir := pathpkg.Dir(remotePath)
 	if parentDir != "" && parentDir != "." && parentDir != "/" {
@@ -463,7 +463,7 @@ func (p mcpFileProvider) DeleteFile(sessionID string, remotePath string) error {
 
 func (p mcpFileProvider) DeleteFileContext(ctx context.Context, sessionID string, remotePath string) error {
 	if p.app == nil || p.app.sshManager == nil {
-		return fmt.Errorf("ssh manager unavailable")
+		return fmt.Errorf("SSH 管理器不可用")
 	}
 	return p.app.sshManager.DeleteItemContext(ctx, sessionID, remotePath, false)
 }
@@ -751,7 +751,7 @@ func (e mcpRemoteEditExecutor) ApplyPatchAtomicContext(ctx context.Context, sess
 
 func (e mcpRemoteEditExecutor) runCommandContext(ctx context.Context, sessionID string, command string) (string, error) {
 	if e.app == nil || e.app.sshManager == nil {
-		return "", fmt.Errorf("ssh manager unavailable")
+		return "", fmt.Errorf("SSH 管理器不可用")
 	}
 	client, _, err := e.app.sshManager.getClientEntry(sessionID)
 	if err != nil {
@@ -762,7 +762,7 @@ func (e mcpRemoteEditExecutor) runCommandContext(ctx context.Context, sessionID 
 
 func (e mcpRemoteEditExecutor) uploadTempTextContext(ctx context.Context, sessionID string, suffix string, content string, mode os.FileMode) (string, error) {
 	if e.app == nil || e.app.sshManager == nil {
-		return "", fmt.Errorf("ssh manager unavailable")
+		return "", fmt.Errorf("SSH 管理器不可用")
 	}
 	sftpClient, err := e.app.sshManager.getSFTPClient(sessionID)
 	if err != nil {

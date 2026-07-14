@@ -79,14 +79,14 @@ type aiFollowupXMLSuggestion struct {
 func parseAIFollowupSuggestions(raw string) ([]string, error) {
 	payload := strings.TrimSpace(raw)
 	if payload == "" {
-		return nil, fmt.Errorf("ai.followup.empty")
+		return nil, fmt.Errorf("缺少追问建议")
 	}
 	if !strings.HasPrefix(payload, "<follow_up") {
 		payload = "<follow_up>" + payload + "</follow_up>"
 	}
 	var parsed aiFollowupXMLPayload
 	if err := xml.Unmarshal([]byte(payload), &parsed); err != nil {
-		return nil, fmt.Errorf("ai.followup.invalid_xml")
+		return nil, fmt.Errorf("追问建议格式无效")
 	}
 	suggestions := make([]string, 0, len(parsed.Suggestions))
 	for _, item := range parsed.Suggestions {
@@ -97,7 +97,7 @@ func parseAIFollowupSuggestions(raw string) ([]string, error) {
 		suggestions = append(suggestions, text)
 	}
 	if len(suggestions) < 2 || len(suggestions) > 4 {
-		return nil, fmt.Errorf("ai.followup.invalid_suggestion_count")
+		return nil, fmt.Errorf("追问建议数量无效")
 	}
 	return suggestions, nil
 }
@@ -117,7 +117,7 @@ func decodeAIFollowupImages(raw string) []string {
 func buildAIFollowupMessage(turnID string, requestID string, tool aiParsedToolUse, index int) (map[string]interface{}, error) {
 	question := strings.TrimSpace(tool.Params["question"])
 	if question == "" {
-		return nil, fmt.Errorf("ai.followup.missing_question")
+		return nil, fmt.Errorf("缺少追问问题")
 	}
 	suggestions, err := parseAIFollowupSuggestions(tool.Params["follow_up"])
 	if err != nil {
@@ -130,7 +130,7 @@ func buildAIFollowupMessage(turnID string, requestID string, tool aiParsedToolUs
 		"requestId":   requestID,
 		"question":    question,
 		"suggestions": suggestions,
-		"status":      "ai.followup.awaiting_reply",
+		"status":      "等待处理",
 	}, nil
 }
 
@@ -292,24 +292,24 @@ func (a *App) isAIChatToolExecutionCurrent(requestID string, executionID string)
 func (a *App) ListAIChatCommandTerminalCandidates(requestID string) ([]AIChatCommandTerminalCandidate, error) {
 	trimmedRequestID := strings.TrimSpace(requestID)
 	if a == nil || trimmedRequestID == "" {
-		return nil, fmt.Errorf("ai.command_assignment.no_assignable_instance")
+		return nil, fmt.Errorf("没有可指派的命令实例")
 	}
 	if a.sshManager == nil {
-		return nil, fmt.Errorf("ssh manager unavailable")
+		return nil, fmt.Errorf("SSH 管理器不可用")
 	}
 	execution := a.getAIChatToolExecution(trimmedRequestID)
 	if execution == nil || execution.Batch == nil {
-		return nil, fmt.Errorf("ai.command_assignment.no_assignable_instance")
+		return nil, fmt.Errorf("没有可指派的命令实例")
 	}
 	if strings.TrimSpace(execution.Tool.Name) != "execute_command" {
-		return nil, fmt.Errorf("ai.command_assignment.unsupported_tool")
+		return nil, fmt.Errorf("当前工具不支持指派终端")
 	}
 	targetSessionID := execution.targetSessionID()
 	if targetSessionID == "" {
 		targetSessionID = strings.TrimSpace(execution.Batch.Payload.SessionID)
 	}
 	if targetSessionID == "" {
-		return nil, fmt.Errorf("ai.command_assignment.missing_target_terminal")
+		return nil, fmt.Errorf("当前工具缺少目标终端")
 	}
 	return a.sshManager.ListSiblingTerminalCandidates(targetSessionID)
 }
@@ -318,23 +318,23 @@ func (a *App) AssignAIChatToolTerminal(requestID string, targetSessionID string)
 	trimmedRequestID := strings.TrimSpace(requestID)
 	trimmedTargetSessionID := strings.TrimSpace(targetSessionID)
 	if a == nil || trimmedRequestID == "" {
-		return fmt.Errorf("ai.command_assignment.no_assignable_instance")
+		return fmt.Errorf("没有可指派的命令实例")
 	}
 	if trimmedTargetSessionID == "" {
-		return fmt.Errorf("ai.command_assignment.empty_target_terminal")
+		return fmt.Errorf("目标终端不能为空")
 	}
 	if a.sshManager == nil {
-		return fmt.Errorf("ssh manager unavailable")
+		return fmt.Errorf("SSH 管理器不可用")
 	}
 	execution := a.getAIChatToolExecution(trimmedRequestID)
 	if execution == nil || execution.Batch == nil {
-		return fmt.Errorf("ai.command_assignment.no_assignable_instance")
+		return fmt.Errorf("没有可指派的命令实例")
 	}
 	if strings.TrimSpace(execution.Tool.Name) != "execute_command" {
-		return fmt.Errorf("ai.command_assignment.unsupported_tool")
+		return fmt.Errorf("当前工具不支持指派终端")
 	}
 	if !execution.allowTerminalAssignment() {
-		return fmt.Errorf("ai.command_assignment.not_assignable")
+		return fmt.Errorf("当前工具未处于可指派状态")
 	}
 	currentTargetSessionID := execution.targetSessionID()
 	if currentTargetSessionID == "" {
@@ -355,10 +355,10 @@ func (a *App) AssignAIChatToolTerminal(requestID string, targetSessionID string)
 		break
 	}
 	if !allowed {
-		return fmt.Errorf("ai.command_assignment.target_unavailable")
+		return fmt.Errorf("目标终端不可用")
 	}
 	if !execution.requestTerminalAssignment(trimmedTargetSessionID) {
-		return fmt.Errorf("ai.command_assignment.cannot_switch_target")
+		return fmt.Errorf("当前工具无法切换目标终端")
 	}
 	a.emitAIChatToolExecutionTerminalAssignmentRequired(
 		trimmedRequestID,
@@ -368,7 +368,7 @@ func (a *App) AssignAIChatToolTerminal(requestID string, targetSessionID string)
 			execution.Tool.Params["purpose"],
 			execution.Tool.Params["command"],
 			"",
-			"ai.status.queued_waiting_terminal",
+			"排队中, 等待终端空闲",
 			buildAIChatCommandMessageExtra(trimmedTargetSessionID, targetCwd, isAIChatMutatingCommandTool(execution.Tool)),
 		),
 	)
@@ -396,8 +396,8 @@ func buildToolPreviewMessage(turnID string, tool aiParsedToolUse, index int) map
 			"kind":    "command",
 			"purpose": tool.Params["purpose"],
 			"command": tool.Params["command"],
-			"output":  "ai.command.waiting_for_approval",
-			"status":  "ai.status.pending_approval",
+			"output":  "待批准",
+			"status":  "待批准",
 			"extra":   buildAIChatCommandMessageExtra("", "", isAIChatMutatingCommandTool(tool)),
 		}
 	}
@@ -415,7 +415,7 @@ func buildToolPreviewMessage(turnID string, tool aiParsedToolUse, index int) map
 			"title":   titleForParsedToolUse(tool),
 			"summary": "",
 			"result":  strings.TrimSpace(tool.Params["result"]),
-			"status":  "ai.completion.pending",
+			"status":  "等待处理",
 		}
 	}
 	if isAIMCPClientToolName(tool.Name) {
@@ -443,7 +443,7 @@ func buildToolPreviewMessage(turnID string, tool aiParsedToolUse, index int) map
 			"toolName":   toolName,
 			"args":       argsText,
 			"response":   "",
-			"status":     "ai.status.pending_approval",
+			"status":     "待批准",
 			"extra": map[string]interface{}{
 				"source": strings.TrimSpace(tool.Params["source"]),
 			},
@@ -457,7 +457,7 @@ func buildToolPreviewMessage(turnID string, tool aiParsedToolUse, index int) map
 		"title":              titleForParsedToolUse(tool),
 		"summary":            summarizeParsedToolUse(tool),
 		"code":               tool.RawXML,
-		"status":             "ai.status.pending_approval",
+		"status":             "待批准",
 		"remainingFileEdits": getAIToolRemainingFileEdits(tool),
 	}
 }
@@ -473,21 +473,21 @@ func isChangeReviewTool(tool aiParsedToolUse) bool {
 
 func formatChangeReviewFailure(failure *mcpserver.EditMatchFailure, startLine int) string {
 	if failure == nil {
-		return "ai.change_review.preview_unavailable"
+		return "暂无可预览差异"
 	}
 	var builder strings.Builder
 	builder.WriteString(strings.TrimSpace(failure.Reason))
 	if startLine > 0 {
-		builder.WriteString(fmt.Sprintf("\nai.change_review.start_line:%d", startLine))
+		builder.WriteString(fmt.Sprintf("\n起始行: %d", startLine))
 	}
 	if failure.Occurrences > 0 {
-		builder.WriteString(fmt.Sprintf("\nai.change_review.match_count:%d", failure.Occurrences))
+		builder.WriteString(fmt.Sprintf("\n匹配次数: %d", failure.Occurrences))
 	}
 	if failure.Similarity > 0 || failure.RequiredSimilarity > 0 {
-		builder.WriteString(fmt.Sprintf("\nai.change_review.similarity:%.0f:%.0f", failure.Similarity*100, failure.RequiredSimilarity*100))
+		builder.WriteString(fmt.Sprintf("\n相似度: %.0f%% / 需要 %.0f%%", failure.Similarity*100, failure.RequiredSimilarity*100))
 	}
 	if strings.TrimSpace(failure.BestMatch) != "" {
-		builder.WriteString("\n\nai.change_review.best_match:\n")
+		builder.WriteString("\n\n最佳匹配片段:\n")
 		builder.WriteString(strings.TrimSpace(failure.BestMatch))
 	}
 	return builder.String()
@@ -495,15 +495,15 @@ func formatChangeReviewFailure(failure *mcpserver.EditMatchFailure, startLine in
 
 func buildChangeReviewMessage(turnID string, tool aiParsedToolUse, index int) map[string]interface{} {
 	message := buildToolPreviewMessage(turnID, tool, index)
-	message["status"] = "ai.status.pending_review"
-	message["result"] = "ai.change_review.waiting_for_write_approval"
+	message["status"] = "待审阅"
+	message["result"] = "待审阅"
 	return message
 }
 
 func buildChangeReviewEnvelope(turnID string, index int, sessionID string, remotePath string, tool aiParsedToolUse, rawPayload string, pathParams map[string]interface{}, blocks []map[string]interface{}) map[string]interface{} {
 	envelope := map[string]interface{}{
 		"reviewId":      buildToolMessageID(turnID, index),
-		"title":         "ai.change_review.title",
+		"title":         "修改",
 		"requestId":     "",
 		"toolMessageId": buildToolMessageID(turnID, index),
 		"sessionId":     sessionID,
@@ -521,19 +521,19 @@ func buildChangeReviewEnvelope(turnID string, index int, sessionID string, remot
 
 func (a *App) buildApplyDiffChangeReview(tool aiParsedToolUse, payload AIChatRequestPayload, turnID string, index int) (map[string]interface{}, map[string]interface{}, error) {
 	if a == nil {
-		return nil, nil, fmt.Errorf("app unavailable")
+		return nil, nil, fmt.Errorf("应用不可用")
 	}
 	sessionID := strings.TrimSpace(payload.SessionID)
 	if sessionID == "" {
-		return nil, nil, fmt.Errorf("ai.tool.apply_diff.missing_session_id")
+		return nil, nil, fmt.Errorf("缺少终端会话")
 	}
 	remotePath := strings.TrimSpace(tool.Params["path"])
 	if remotePath == "" {
-		return nil, nil, fmt.Errorf("ai.tool.apply_diff.missing_path")
+		return nil, nil, fmt.Errorf("缺少路径")
 	}
 	diffPayload := tool.Params["diff"]
 	if strings.TrimSpace(diffPayload) == "" {
-		return nil, nil, fmt.Errorf("ai.tool.apply_diff.missing_diff")
+		return nil, nil, fmt.Errorf("缺少 diff 内容")
 	}
 	fileProvider := mcpFileProvider{app: a}
 	originalContent, err := fileProvider.ReadTextFileContext(context.Background(), sessionID, remotePath)
@@ -547,7 +547,7 @@ func (a *App) buildApplyDiffChangeReview(tool aiParsedToolUse, payload AIChatReq
 	if preview.Failure != nil && !preview.CanApply {
 		return nil, nil, errors.New(formatChangeReviewFailure(preview.Failure, preview.FailureBlockStartLine))
 	}
-	label := "ai.preview.full_file_search_replace"
+	label := "整文件预览（共 {count} 个 SEARCH/REPLACE）"
 	reviewBlocks := []map[string]interface{}{
 		{
 			"index":       0,
@@ -562,15 +562,15 @@ func (a *App) buildApplyDiffChangeReview(tool aiParsedToolUse, payload AIChatReq
 
 func (a *App) buildWriteToFileChangeReview(tool aiParsedToolUse, payload AIChatRequestPayload, turnID string, index int) (map[string]interface{}, map[string]interface{}, error) {
 	if a == nil {
-		return nil, nil, fmt.Errorf("app unavailable")
+		return nil, nil, fmt.Errorf("应用不可用")
 	}
 	sessionID := strings.TrimSpace(payload.SessionID)
 	if sessionID == "" {
-		return nil, nil, fmt.Errorf("ai.tool.write_to_file.missing_session_id")
+		return nil, nil, fmt.Errorf("缺少终端会话")
 	}
 	remotePath := strings.TrimSpace(tool.Params["path"])
 	if remotePath == "" {
-		return nil, nil, fmt.Errorf("ai.tool.write_to_file.missing_path")
+		return nil, nil, fmt.Errorf("缺少路径")
 	}
 	finalContent := tool.Params["content"]
 	fileProvider := mcpFileProvider{app: a}
@@ -580,9 +580,9 @@ func (a *App) buildWriteToFileChangeReview(tool aiParsedToolUse, payload AIChatR
 		originalContent = ""
 		isNewFile = true
 	}
-	label := "ai.preview.full_file_overwrite"
+	label := "整文件覆盖预览"
 	if isNewFile {
-		label = "ai.preview.create_file"
+		label = "新建文件预览"
 	}
 	blocks := []map[string]interface{}{
 		{
@@ -598,29 +598,29 @@ func (a *App) buildWriteToFileChangeReview(tool aiParsedToolUse, payload AIChatR
 func parseSearchReplaceOperations(raw string) ([]mcpserver.SearchReplaceOperation, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
-		return nil, fmt.Errorf("ai.tool.search_replace.missing_operations")
+		return nil, fmt.Errorf("缺少操作列表")
 	}
 	var operations []mcpserver.SearchReplaceOperation
 	if err := json.Unmarshal([]byte(trimmed), &operations); err != nil {
-		return nil, fmt.Errorf("ai.tool.search_replace.invalid_operations_json")
+		return nil, fmt.Errorf("操作列表 JSON 无效")
 	}
 	if len(operations) == 0 {
-		return nil, fmt.Errorf("ai.tool.search_replace.empty_operations")
+		return nil, fmt.Errorf("操作列表为空")
 	}
 	return operations, nil
 }
 
 func (a *App) buildSearchReplaceChangeReview(tool aiParsedToolUse, payload AIChatRequestPayload, turnID string, index int) (map[string]interface{}, map[string]interface{}, error) {
 	if a == nil {
-		return nil, nil, fmt.Errorf("app unavailable")
+		return nil, nil, fmt.Errorf("应用不可用")
 	}
 	sessionID := strings.TrimSpace(payload.SessionID)
 	if sessionID == "" {
-		return nil, nil, fmt.Errorf("ai.tool.search_replace.missing_session_id")
+		return nil, nil, fmt.Errorf("缺少终端会话")
 	}
 	remotePath := strings.TrimSpace(tool.Params["path"])
 	if remotePath == "" {
-		return nil, nil, fmt.Errorf("ai.tool.search_replace.missing_path")
+		return nil, nil, fmt.Errorf("缺少路径")
 	}
 	operationsRaw := tool.Params["operations"]
 	operations, err := parseSearchReplaceOperations(operationsRaw)
@@ -639,7 +639,7 @@ func (a *App) buildSearchReplaceChangeReview(tool aiParsedToolUse, payload AICha
 	if preview.Failure != nil {
 		return nil, nil, errors.New(formatChangeReviewFailure(preview.Failure, 0))
 	}
-	label := "ai.preview.full_file_search_replace_ops"
+	label := "整文件预览（共 {count} 个 Search/Replace）"
 	blocks := []map[string]interface{}{
 		{
 			"index":       0,
@@ -654,21 +654,21 @@ func (a *App) buildSearchReplaceChangeReview(tool aiParsedToolUse, payload AICha
 
 func (a *App) buildEditFileChangeReview(tool aiParsedToolUse, payload AIChatRequestPayload, turnID string, index int) (map[string]interface{}, map[string]interface{}, error) {
 	if a == nil {
-		return nil, nil, fmt.Errorf("app unavailable")
+		return nil, nil, fmt.Errorf("应用不可用")
 	}
 	sessionID := strings.TrimSpace(payload.SessionID)
 	if sessionID == "" {
-		return nil, nil, fmt.Errorf("ai.tool.edit_file.missing_session_id")
+		return nil, nil, fmt.Errorf("缺少终端会话")
 	}
 	remotePath := strings.TrimSpace(tool.Params["path"])
 	if remotePath == "" {
-		return nil, nil, fmt.Errorf("ai.tool.edit_file.missing_path")
+		return nil, nil, fmt.Errorf("缺少路径")
 	}
 	expectedReplacements := 1
 	if rawExpected := strings.TrimSpace(tool.Params["expected_replacements"]); rawExpected != "" {
 		parsedExpected, err := strconv.Atoi(rawExpected)
 		if err != nil || parsedExpected < 1 {
-			return nil, nil, fmt.Errorf("ai.tool.edit_file.invalid_expected_replacements")
+			return nil, nil, fmt.Errorf("expected_replacements 无效")
 		}
 		expectedReplacements = parsedExpected
 	}
@@ -684,7 +684,7 @@ func (a *App) buildEditFileChangeReview(tool aiParsedToolUse, payload AIChatRequ
 	if preview.Failure != nil {
 		return nil, nil, errors.New(formatChangeReviewFailure(preview.Failure, 0))
 	}
-	label := "ai.preview.full_file_replacements"
+	label := "整文件预览（共 {count} 处替换）"
 	blocks := []map[string]interface{}{
 		{
 			"index":       0,
@@ -700,15 +700,15 @@ func (a *App) buildEditFileChangeReview(tool aiParsedToolUse, payload AIChatRequ
 
 func (a *App) buildApplyPatchChangeReview(tool aiParsedToolUse, payload AIChatRequestPayload, turnID string, index int) (map[string]interface{}, map[string]interface{}, error) {
 	if a == nil {
-		return nil, nil, fmt.Errorf("app unavailable")
+		return nil, nil, fmt.Errorf("应用不可用")
 	}
 	sessionID := strings.TrimSpace(payload.SessionID)
 	if sessionID == "" {
-		return nil, nil, fmt.Errorf("ai.tool.apply_patch.missing_session_id")
+		return nil, nil, fmt.Errorf("缺少终端会话")
 	}
 	patchPayload := tool.Params["patch"]
 	if strings.TrimSpace(patchPayload) == "" {
-		return nil, nil, fmt.Errorf("ai.tool.apply_patch.missing_patch")
+		return nil, nil, fmt.Errorf("缺少 patch 内容")
 	}
 	preview, err := mcpserver.BuildApplyPatchReviewPreview(patchPayload, func(remotePath string) (string, error) {
 		content, exists, readErr := a.readAIRestoreTargetState(context.Background(), sessionID, remotePath)
@@ -731,7 +731,7 @@ func (a *App) buildApplyPatchChangeReview(tool aiParsedToolUse, payload AIChatRe
 		label := strings.TrimSpace(file.Path)
 		labelParams := map[string]interface{}(nil)
 		if label == "" {
-			label = "ai.file.index"
+			label = "文件 #{count}"
 			labelParams = map[string]interface{}{"count": file.Index + 1}
 		}
 		block := map[string]interface{}{
@@ -750,7 +750,7 @@ func (a *App) buildApplyPatchChangeReview(tool aiParsedToolUse, payload AIChatRe
 	if len(preview.Files) == 1 {
 		reviewPath = preview.Files[0].Path
 	} else {
-		reviewPath = "ai.files.count"
+		reviewPath = "{count} 个文件"
 		pathParams = map[string]interface{}{"count": len(preview.Files)}
 	}
 	return buildChangeReviewMessage(turnID, tool, index), buildChangeReviewEnvelope(turnID, index, sessionID, reviewPath, tool, patchPayload, pathParams, reviewBlocks), nil
@@ -769,7 +769,7 @@ func (a *App) buildToolChangeReview(tool aiParsedToolUse, payload AIChatRequestP
 	case "apply_patch":
 		return a.buildApplyPatchChangeReview(tool, payload, turnID, index)
 	default:
-		return nil, nil, fmt.Errorf("ai.change_review.unsupported_tool")
+		return nil, nil, fmt.Errorf("当前状态不支持重新应用")
 	}
 }
 
@@ -777,12 +777,16 @@ func (a *App) failAIChatToolPreview(requestID string, batch *aiPendingToolBatch,
 	if a == nil || batch == nil {
 		return
 	}
+	resolvedResultText := strings.TrimSpace(resultText)
+	if resolvedResultText == "" {
+		resolvedResultText = "错误"
+	}
 	message := buildToolPreviewMessage(batch.AssistantMessageID, tool, batch.NextToolIndex)
-	message["status"] = "ai.status.error"
+	message["status"] = "错误"
 	if tool.Name == "execute_command" {
-		message["output"] = resultText
+		message["output"] = resolvedResultText
 	} else {
-		message["result"] = resultText
+		message["result"] = resolvedResultText
 	}
 	a.emitAIChatEvent(map[string]interface{}{
 		"kind":      "upsert_message",
@@ -797,7 +801,7 @@ func (a *App) failAIChatToolPreview(requestID string, batch *aiPendingToolBatch,
 		Tool:               tool,
 		Batch:              batch,
 	}
-	a.emitAIChatToolResultMessage(requestID, execution, resultText)
+	a.emitAIChatToolResultMessage(requestID, execution, resolvedResultText)
 	a.emitAIChatToolExecutionPersistRequested(requestID)
 	batch.NextToolIndex = len(batch.ParsedTools)
 	a.resumeAIChatAfterToolBatch(requestID, batch)
@@ -998,11 +1002,11 @@ func (a *App) advanceAIChatToolBatch(requestID string, batch *aiPendingToolBatch
 	if decision == aiApprovalDecisionAutoDeny {
 		message := buildToolPreviewMessage(batch.AssistantMessageID, tool, batch.NextToolIndex)
 		if tool.Name == "execute_command" {
-			message["status"] = "ai.status.rejected"
-			message["output"] = "ai.command.auto_denied_by_rule"
+			message["status"] = "已拒绝"
+			message["output"] = "已拒绝执行工具调用"
 		} else {
-			message["status"] = "ai.status.rejected"
-			message["result"] = "ai.command.auto_denied_by_rule"
+			message["status"] = "已拒绝"
+			message["result"] = "已拒绝执行工具调用"
 		}
 		a.emitAIChatEvent(map[string]interface{}{
 			"kind":      "upsert_message",
@@ -1017,7 +1021,7 @@ func (a *App) advanceAIChatToolBatch(requestID string, batch *aiPendingToolBatch
 			Tool:               tool,
 			Batch:              batch,
 		}
-		a.emitAIChatToolResultMessage(requestID, execution, "ai.command.auto_denied_by_rule")
+		a.emitAIChatToolResultMessage(requestID, execution, "已拒绝执行工具调用")
 		a.emitAIChatToolExecutionPersistRequested(requestID)
 		batch.NextToolIndex++
 		a.advanceAIChatToolBatch(requestID, batch)
@@ -1129,14 +1133,14 @@ func (a *App) startAIChatToolExecution(requestID string, batch *aiPendingToolBat
 	}
 	a.setAIChatToolExecution(requestID, execution)
 	message := buildToolPreviewMessage(batch.AssistantMessageID, tool, batch.NextToolIndex)
-	message["status"] = "ai.status.running"
+	message["status"] = "执行中"
 	if tool.Name == "execute_command" {
 		message = buildAIChatCommandToolMessage(
 			execution,
 			tool.Params["purpose"],
 			tool.Params["command"],
 			"",
-			"ai.status.running",
+			"执行中",
 			buildAIChatCommandMessageExtra(execution.TargetSessionID, "", isAIChatMutatingCommandTool(tool)),
 		)
 	} else {
@@ -1228,24 +1232,24 @@ func (a *App) runAIChatGenericToolExecution(execution *aiToolExecutionState) {
 		execution.Cancel()
 	}
 
-	statusText := "ai.status.executed"
+	statusText := "已执行"
 	uiResultText := ""
 	rawResultText := ""
 	stopAfterThisTool := false
 
 	if callErr != nil {
 		if execution.isTerminated() || errors.Is(callErr, context.Canceled) {
-			statusText = "ai.status.terminated"
+			statusText = "已终止"
 			uiResultText = execution.snapshotOutput()
 			rawResultText = execution.snapshotOutput()
 			if strings.TrimSpace(uiResultText) == "" {
-				uiResultText = "ai.tool.terminated"
+				uiResultText = "已终止"
 			}
 			if strings.TrimSpace(rawResultText) == "" {
-				rawResultText = "ai.tool.terminated"
+				rawResultText = "已终止"
 			}
 		} else {
-			statusText = "ai.status.error"
+			statusText = "错误"
 			uiResultText = callErr.Error()
 			rawResultText = callErr.Error()
 		}
@@ -1279,10 +1283,10 @@ func (a *App) runAIChatGenericToolExecution(execution *aiToolExecutionState) {
 
 	if execution.isTerminated() {
 		if strings.TrimSpace(uiResultText) == "" {
-			uiResultText = "ai.tool.terminated"
+			uiResultText = "已终止"
 		}
 		if strings.TrimSpace(rawResultText) == "" {
-			rawResultText = "ai.tool.terminated"
+			rawResultText = "已终止"
 		}
 		stopAfterThisTool = true
 	}
@@ -1306,14 +1310,14 @@ func (a *App) runAIChatLiveSearchToolExecution(execution *aiToolExecutionState) 
 	}
 
 	query := strings.TrimSpace(execution.Tool.Params["query"])
-	statusText := "ai.status.executed"
+	statusText := "已执行"
 	uiResultText := ""
 	rawResultText := ""
 	stopAfterThisTool := false
 
 	if query == "" {
-		statusText = "ai.status.error"
-		uiResultText = "ai.live_search.missing_query"
+		statusText = "错误"
+		uiResultText = "缺少搜索内容"
 		rawResultText = uiResultText
 		stopAfterThisTool = true
 	} else {
@@ -1337,7 +1341,7 @@ func (a *App) runAIChatLiveSearchToolExecution(execution *aiToolExecutionState) 
 					"title":              titleForParsedToolUse(execution.Tool),
 					"summary":            summarizeParsedToolUse(execution.Tool),
 					"code":               execution.Tool.RawXML,
-					"status":             "ai.status.running",
+					"status":             "执行中",
 					"result":             safeContent,
 					"remainingFileEdits": getAIToolRemainingFileEdits(execution.Tool),
 				},
@@ -1345,14 +1349,14 @@ func (a *App) runAIChatLiveSearchToolExecution(execution *aiToolExecutionState) 
 		})
 		if err != nil {
 			if execution.isTerminated() || errors.Is(err, context.Canceled) {
-				statusText = "ai.status.terminated"
+				statusText = "已终止"
 				uiResultText = execution.snapshotOutput()
 				if strings.TrimSpace(uiResultText) == "" {
-					uiResultText = "ai.live_search.terminated"
+					uiResultText = "已终止"
 				}
 				rawResultText = uiResultText
 			} else {
-				statusText = "ai.status.error"
+				statusText = "错误"
 				uiResultText = err.Error()
 				rawResultText = err.Error()
 			}
@@ -1361,7 +1365,7 @@ func (a *App) runAIChatLiveSearchToolExecution(execution *aiToolExecutionState) 
 			uiResultText = sanitizeAIToolResultText(resultText)
 			rawResultText = resultText
 			if strings.TrimSpace(uiResultText) == "" {
-				uiResultText = "ai.tool.no_content"
+				uiResultText = "无内容"
 				rawResultText = uiResultText
 			}
 		}
@@ -1447,7 +1451,7 @@ func (a *App) runAIChatCommandToolExecution(execution *aiToolExecutionState) {
 					purpose,
 					command,
 					"",
-					"ai.status.queued_waiting_terminal",
+					"排队中, 等待终端空闲",
 					buildAIChatCommandMessageExtra(execution.targetSessionID(), "", isMutating),
 				),
 			)
@@ -1465,7 +1469,7 @@ func (a *App) runAIChatCommandToolExecution(execution *aiToolExecutionState) {
 					purpose,
 					command,
 					"",
-					"ai.status.running",
+					"执行中",
 					buildAIChatCommandMessageExtra(execution.targetSessionID(), "", isMutating),
 				),
 			)
@@ -1486,7 +1490,7 @@ func (a *App) runAIChatCommandToolExecution(execution *aiToolExecutionState) {
 					purpose,
 					command,
 					safeSnapshot,
-					"ai.status.awaiting_action",
+					"等待处理",
 					buildAIChatCommandMessageExtra(execution.targetSessionID(), "", isMutating),
 				),
 			)
@@ -1502,30 +1506,30 @@ func (a *App) runAIChatCommandToolExecution(execution *aiToolExecutionState) {
 		execution.Cancel()
 	}
 
-	statusText := "ai.status.executed"
+	statusText := "已执行"
 	rawResultText := result.Output
 	uiResultText := sanitizeAIToolResultText(strings.TrimSpace(result.Output))
 	stopAfterThisTool := false
 
 	if execErr != nil {
-		statusText = "ai.status.error"
+		statusText = "错误"
 		rawResultText = execErr.Error()
 		uiResultText = execErr.Error()
 		stopAfterThisTool = true
 	} else if outcome == aiToolExecutionActionContinue {
-		statusText = "ai.status.background"
+		statusText = "后台继续"
 		stopAfterThisTool = true
 	} else if outcome == aiToolExecutionActionTerminate || execution.isTerminated() {
-		statusText = "ai.status.terminated"
+		statusText = "已终止"
 		if uiResultText == "" {
-			uiResultText = "ai.command.aborted"
+			uiResultText = "已终止"
 		}
 		if strings.TrimSpace(rawResultText) == "" {
-			rawResultText = "ai.command.aborted"
+			rawResultText = "已终止"
 		}
 		stopAfterThisTool = true
 	} else if result.ExitCode != nil && *result.ExitCode != 0 {
-		statusText = "ai.status.error"
+		statusText = "错误"
 		stopAfterThisTool = true
 	}
 
@@ -1541,12 +1545,12 @@ func (a *App) runAIChatCommandToolExecution(execution *aiToolExecutionState) {
 
 	if strings.TrimSpace(uiResultText) == "" {
 		switch statusText {
-		case "ai.status.background":
-			uiResultText = "ai.command.continues_in_background"
-		case "ai.status.terminated":
-			uiResultText = "ai.command.aborted"
+		case "后台继续":
+			uiResultText = "后台继续"
+		case "已终止":
+			uiResultText = "已终止"
 		default:
-			uiResultText = "ai.command.finished_without_output"
+			uiResultText = "已执行"
 		}
 	}
 	if strings.TrimSpace(rawResultText) == "" {
@@ -1571,21 +1575,21 @@ func (a *App) ResolveAIChatFollowup(requestID string, answer string, imagesJSON 
 	answerText := strings.TrimSpace(answer)
 	followupImages := decodeAIFollowupImages(imagesJSON)
 	if trimmedRequestID == "" {
-		return fmt.Errorf("request id is required")
+		return fmt.Errorf("缺少请求 ID")
 	}
 	if answerText == "" && len(followupImages) == 0 {
-		return fmt.Errorf("followup answer is required")
+		return fmt.Errorf("缺少追问回复")
 	}
 	batch := a.popAIChatPendingFollowupBatch(trimmedRequestID)
 	if batch == nil {
-		return fmt.Errorf("ai.followup.no_pending_reply")
+		return fmt.Errorf("没有待处理的追问回复")
 	}
 	if batch.NextToolIndex >= len(batch.ParsedTools) {
-		return fmt.Errorf("ai.followup.invalid_batch_state")
+		return fmt.Errorf("追问批次状态无效")
 	}
 	tool := batch.ParsedTools[batch.NextToolIndex]
 	if tool.Name != "ask_followup_question" {
-		return fmt.Errorf("ai.followup.unexpected_pending_tool")
+		return fmt.Errorf("当前待处理工具不是追问")
 	}
 	now := time.Now()
 	userMessageID := fmt.Sprintf("%s-followup-answer-%d", buildToolMessageID(batch.AssistantMessageID, batch.NextToolIndex), now.UnixNano())
@@ -1628,10 +1632,10 @@ func (a *App) ResolveAIChatFollowup(requestID string, answer string, imagesJSON 
 func (a *App) ContinueAIChatTool(requestID string) error {
 	execution := a.getAIChatToolExecution(requestID)
 	if execution == nil {
-		return fmt.Errorf("ai.tool_continue.no_instance")
+		return fmt.Errorf("没有可继续的工具实例")
 	}
 	if !execution.AllowContinue {
-		return fmt.Errorf("ai.tool_continue.unsupported")
+		return fmt.Errorf("当前工具不支持继续")
 	}
 	a.emitAIChatEvent(map[string]interface{}{
 		"kind":      "tool_execution_action_resolved",
@@ -1642,13 +1646,13 @@ func (a *App) ContinueAIChatTool(requestID string) error {
 	case execution.DecisionCh <- aiToolExecutionActionContinue:
 		return nil
 	default:
-		return fmt.Errorf("ai.tool_continue.not_waiting")
+		return fmt.Errorf("当前工具不在等待继续状态")
 	}
 }
 
 func (a *App) terminateAIChatToolExecutionImmediately(execution *aiToolExecutionState, fallbackResult string) error {
 	if a == nil || execution == nil || execution.Batch == nil {
-		return fmt.Errorf("ai.tool_terminate.no_instance")
+		return fmt.Errorf("没有可终止的工具实例")
 	}
 	if !execution.markTerminated() {
 		return nil
@@ -1665,11 +1669,11 @@ func (a *App) terminateAIChatToolExecutionImmediately(execution *aiToolExecution
 		resultText = sanitizeAIToolResultText(strings.TrimSpace(fallbackResult))
 	}
 	if resultText == "" {
-		resultText = "ai.tool.terminated"
+		resultText = "已终止"
 	}
 
 	message := buildToolPreviewMessage(execution.AssistantMessageID, execution.Tool, execution.ToolIndex)
-	message["status"] = "ai.status.terminated"
+	message["status"] = "已终止"
 	if execution.Tool.Name == "execute_command" {
 		message["output"] = resultText
 	} else {
@@ -1694,10 +1698,10 @@ func (a *App) terminateAIChatToolExecutionImmediately(execution *aiToolExecution
 func (a *App) TerminateAIChatTool(requestID string) error {
 	execution := a.getAIChatToolExecution(requestID)
 	if execution == nil {
-		return fmt.Errorf("ai.tool_terminate.no_instance")
+		return fmt.Errorf("没有可终止的工具实例")
 	}
 	if !execution.AllowTerminate {
-		return fmt.Errorf("ai.tool_terminate.unsupported")
+		return fmt.Errorf("当前工具不支持终止")
 	}
 	a.emitAIChatEvent(map[string]interface{}{
 		"kind":      "tool_execution_action_resolved",
@@ -1710,8 +1714,8 @@ func (a *App) TerminateAIChatTool(requestID string) error {
 		case execution.DecisionCh <- aiToolExecutionActionTerminate:
 			return nil
 		default:
-			return a.terminateAIChatToolExecutionImmediately(execution, "ai.command.aborted")
+			return a.terminateAIChatToolExecutionImmediately(execution, "已终止")
 		}
 	}
-	return a.terminateAIChatToolExecutionImmediately(execution, "ai.tool.terminated")
+	return a.terminateAIChatToolExecutionImmediately(execution, "已终止")
 }

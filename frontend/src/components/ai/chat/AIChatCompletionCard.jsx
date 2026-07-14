@@ -6,13 +6,7 @@ const completionTitleKey = '任务完成'
 const completionStatusKey = '已完成'
 
 function normalizeAICompletionStatus(value) {
-  const normalized = typeof value === 'string' ? value.trim() : ''
-  switch (normalized) {
-    case 'completed':
-      return '已完成'
-    default:
-      return normalized
-  }
+  return typeof value === 'string' ? value.trim() : ''
 }
 
 export default function AIChatCompletionCard({ title = completionTitleKey, summary = '', result = '', status = completionStatusKey }) {
@@ -51,7 +45,7 @@ export default function AIChatCompletionCard({ title = completionTitleKey, summa
             </div>
           ) : null}
           <div style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.75, wordBreak: 'break-word' }}>
-            <AIChatMarkdown text={normalizedResult || t('任务已完成')} />
+            <AIChatMarkdown text={normalizedResult ? t(normalizedResult) : t('任务已完成')} />
           </div>
         </div>
       </div>

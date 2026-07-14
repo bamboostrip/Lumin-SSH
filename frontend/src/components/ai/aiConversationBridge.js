@@ -159,6 +159,17 @@ export function normalizeAIConversationSnapshot(snapshot) {
   }
 }
 
+export function normalizeAIConversationMessageSearchResult(result) {
+  return {
+    conversationId: typeof result?.conversationId === 'string' ? result.conversationId.trim() : '',
+    conversationTitle: typeof result?.conversationTitle === 'string' && result.conversationTitle.trim() ? result.conversationTitle.trim() : t('新对话'),
+    messageId: typeof result?.messageId === 'string' ? result.messageId.trim() : '',
+    role: result?.role === 'user' ? 'user' : 'assistant',
+    snippet: typeof result?.snippet === 'string' ? result.snippet : '',
+    updatedAt: typeof result?.updatedAt === 'number' ? result.updatedAt : 0,
+  }
+}
+
 export async function listAIConversations() {
   const bridge = getAppBridge()
   if (!bridge?.ListAIConversations) {
@@ -184,6 +195,20 @@ export async function getAIConversation(conversationId) {
   }
   const snapshot = await bridge.GetAIConversation(conversationId)
   return normalizeAIConversationSnapshot(snapshot)
+}
+
+export async function searchAIConversationMessages(query, conversationId = '', limit = 20) {
+  const bridge = getAppBridge()
+  if (!bridge?.SearchAIConversationMessages) {
+    return []
+  }
+  const normalizedLimit = Number.isFinite(Number(limit)) ? Math.max(1, Math.min(100, Math.trunc(Number(limit)))) : 20
+  const result = await bridge.SearchAIConversationMessages(
+    typeof query === 'string' ? query : '',
+    typeof conversationId === 'string' ? conversationId : '',
+    normalizedLimit,
+  )
+  return Array.isArray(result) ? result.map(normalizeAIConversationMessageSearchResult) : []
 }
 
 export async function saveAIConversation(snapshot) {

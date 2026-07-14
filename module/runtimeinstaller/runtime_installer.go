@@ -21,6 +21,12 @@ import (
 
 const uvLatestReleaseAPIURL = "https://api.github.com/repos/astral-sh/uv/releases/latest"
 
+var uvGitHubMirrorPrefixes = []string{
+	"https://ghproxy.net/",
+	"https://gh-proxy.com/",
+	"https://proxy.gitwarp.top/",
+}
+
 type gitHubRelease struct {
 	TagName string               `json:"tag_name"`
 	Assets  []gitHubReleaseAsset `json:"assets"`
@@ -31,17 +37,17 @@ type gitHubReleaseAsset struct {
 	BrowserDownloadURL string `json:"browser_download_url"`
 }
 
-func InstallRuntimeEnvironment(programDirectory string, settings runtimeenv.Settings) (runtimeenv.Status, error) {
+func InstallRuntimeEnvironment(programDirectory string, settings runtimeenv.Settings, language string) (runtimeenv.Status, error) {
 	normalized := runtimeenv.NormalizeSettings(settings)
 	switch normalized.EnvironmentType {
 	case runtimeenv.DefaultEnvironmentType:
-		return installUV(programDirectory, normalized)
+		return installUV(programDirectory, normalized, language)
 	default:
 		return runtimeenv.Status{}, fmt.Errorf("unsupported runtime environment: %s", normalized.EnvironmentType)
 	}
 }
 
-func installUV(programDirectory string, settings runtimeenv.Settings) (runtimeenv.Status, error) {
+func installUV(programDirectory string, settings runtimeenv.Settings, language string) (runtimeenv.Status, error) {
 	installRoot := runtimeenv.ResolveTargetPath(programDirectory, settings)
 	if strings.TrimSpace(installRoot) == "" {
 		return runtimeenv.Status{}, fmt.Errorf("runtime environment install root is empty")
@@ -55,7 +61,7 @@ func installUV(programDirectory string, settings runtimeenv.Settings) (runtimeen
 	}
 
 	client := &http.Client{Timeout: 2 * time.Minute}
-	release, version, err := fetchLatestUVRelease(client)
+	release, version, err := fetchLatestUVRelease(client, language)
 	if err != nil {
 		return runtimeenv.Status{}, err
 	}
@@ -85,11 +91,11 @@ func installUV(programDirectory string, settings runtimeenv.Settings) (runtimeen
 	defer os.RemoveAll(workDir)
 
 	archivePath := filepath.Join(workDir, asset.Name)
-	if err := downloadFile(client, asset.BrowserDownloadURL, archivePath); err != nil {
+	if err := downloadFile(client, asset.BrowserDownloadURL, archivePath, language); err != nil {
 		return runtimeenv.Status{}, err
 	}
 	if checksumAsset != nil {
-		if err := verifyDownloadedFile(client, checksumAsset.BrowserDownloadURL, archivePath); err != nil {
+		if err := verifyDownloadedFile(client, checksumAsset.BrowserDownloadURL, archivePath, language); err != nil {
 			return runtimeenv.Status{}, err
 		}
 	}
@@ -130,30 +136,77 @@ func installUV(programDirectory string, settings runtimeenv.Settings) (runtimeen
 	return finalStatus, nil
 }
 
-func fetchLatestUVRelease(client *http.Client) (gitHubRelease, string, error) {
-	request, err := http.NewRequest(http.MethodGet, uvLatestReleaseAPIURL, nil)
-	if err != nil {
-		return gitHubRelease{}, "", err
+func uvInstallerUsesChineseMirror(language string) bool {
+	normalizedLanguage := strings.ToLower(strings.TrimSpace(language))
+	return strings.HasPrefix(normalizedLanguage, "zh")
+}
+
+func buildUVCandidateURLs(sourceURL string, language string) []string {
+	trimmedSourceURL := strings.TrimSpace(sourceURL)
+	if trimmedSourceURL == "" {
+		return nil
 	}
-	request.Header.Set("Accept", "application/vnd.github+json")
-	request.Header.Set("User-Agent", "Lumin-SSH")
-	response, err := client.Do(request)
-	if err != nil {
-		return gitHubRelease{}, "", err
+	candidates := make([]string, 0, len(uvGitHubMirrorPrefixes)+1)
+	seen := make(map[string]struct{}, len(uvGitHubMirrorPrefixes)+1)
+	appendCandidate := func(value string) {
+		trimmedValue := strings.TrimSpace(value)
+		if trimmedValue == "" {
+			return
+		}
+		if _, ok := seen[trimmedValue]; ok {
+			return
+		}
+		seen[trimmedValue] = struct{}{}
+		candidates = append(candidates, trimmedValue)
 	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return gitHubRelease{}, "", fmt.Errorf("failed to fetch uv latest release: %s", response.Status)
+	if uvInstallerUsesChineseMirror(language) && (strings.Contains(trimmedSourceURL, "github.com") || strings.Contains(trimmedSourceURL, "api.github.com")) {
+		for _, prefix := range uvGitHubMirrorPrefixes {
+			appendCandidate(prefix + trimmedSourceURL)
+		}
 	}
-	var release gitHubRelease
-	if err := json.NewDecoder(response.Body).Decode(&release); err != nil {
-		return gitHubRelease{}, "", err
+	appendCandidate(trimmedSourceURL)
+	return candidates
+}
+
+func fetchLatestUVRelease(client *http.Client, language string) (gitHubRelease, string, error) {
+	candidateURLs := buildUVCandidateURLs(uvLatestReleaseAPIURL, language)
+	var lastErr error
+	for _, candidateURL := range candidateURLs {
+		request, err := http.NewRequest(http.MethodGet, candidateURL, nil)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		request.Header.Set("Accept", "application/vnd.github+json")
+		request.Header.Set("User-Agent", "Lumin-SSH")
+		response, err := client.Do(request)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if response.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("failed to fetch uv latest release: %s", response.Status)
+			response.Body.Close()
+			continue
+		}
+		var release gitHubRelease
+		if err := json.NewDecoder(response.Body).Decode(&release); err != nil {
+			lastErr = err
+			response.Body.Close()
+			continue
+		}
+		response.Body.Close()
+		version := strings.TrimSpace(strings.TrimPrefix(release.TagName, "v"))
+		if version == "" {
+			lastErr = fmt.Errorf("uv latest release version is empty")
+			continue
+		}
+		return release, version, nil
 	}
-	version := strings.TrimSpace(strings.TrimPrefix(release.TagName, "v"))
-	if version == "" {
-		return gitHubRelease{}, "", fmt.Errorf("uv latest release version is empty")
+	if lastErr != nil {
+		return gitHubRelease{}, "", lastErr
 	}
-	return release, version, nil
+	return gitHubRelease{}, "", fmt.Errorf("failed to fetch uv latest release")
 }
 
 func findReleaseAsset(assets []gitHubReleaseAsset, name string) (*gitHubReleaseAsset, error) {
@@ -237,7 +290,24 @@ func uvBinaryFileName() string {
 	return "uv"
 }
 
-func downloadFile(client *http.Client, sourceURL string, destinationPath string) error {
+func downloadFile(client *http.Client, sourceURL string, destinationPath string, language string) error {
+	candidateURLs := buildUVCandidateURLs(sourceURL, language)
+	var lastErr error
+	for _, candidateURL := range candidateURLs {
+		if err := downloadFileOnce(client, candidateURL, destinationPath); err == nil {
+			return nil
+		} else {
+			lastErr = err
+			_ = os.Remove(destinationPath)
+		}
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return fmt.Errorf("failed to download %s", sourceURL)
+}
+
+func downloadFileOnce(client *http.Client, sourceURL string, destinationPath string) error {
 	response, err := client.Get(sourceURL)
 	if err != nil {
 		return err
@@ -257,22 +327,10 @@ func downloadFile(client *http.Client, sourceURL string, destinationPath string)
 	return file.Close()
 }
 
-func verifyDownloadedFile(client *http.Client, checksumURL string, filePath string) error {
-	response, err := client.Get(checksumURL)
+func verifyDownloadedFile(client *http.Client, checksumURL string, filePath string, language string) error {
+	checksumFields, err := downloadChecksumFields(client, checksumURL, language)
 	if err != nil {
 		return err
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to download checksum %s: %s", checksumURL, response.Status)
-	}
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		return err
-	}
-	checksumFields := strings.Fields(strings.TrimSpace(string(body)))
-	if len(checksumFields) == 0 {
-		return fmt.Errorf("checksum file is empty")
 	}
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -288,6 +346,42 @@ func verifyDownloadedFile(client *http.Client, checksumURL string, filePath stri
 		return fmt.Errorf("checksum mismatch: expected %s, got %s", checksumFields[0], actualChecksum)
 	}
 	return nil
+}
+
+func downloadChecksumFields(client *http.Client, checksumURL string, language string) ([]string, error) {
+	candidateURLs := buildUVCandidateURLs(checksumURL, language)
+	var lastErr error
+	for _, candidateURL := range candidateURLs {
+		checksumFields, err := downloadChecksumFieldsOnce(client, candidateURL)
+		if err == nil {
+			return checksumFields, nil
+		}
+		lastErr = err
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("failed to download checksum %s", checksumURL)
+}
+
+func downloadChecksumFieldsOnce(client *http.Client, checksumURL string) ([]string, error) {
+	response, err := client.Get(checksumURL)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to download checksum %s: %s", checksumURL, response.Status)
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+	checksumFields := strings.Fields(strings.TrimSpace(string(body)))
+	if len(checksumFields) == 0 {
+		return nil, fmt.Errorf("checksum file is empty")
+	}
+	return checksumFields, nil
 }
 
 func extractZipArchive(archivePath string, destinationDir string) error {

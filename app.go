@@ -1814,9 +1814,9 @@ func (a *App) GetRuntimeEnvironmentStatus() runtimeenv.Status {
 	return runtimeenv.DetectStatus(getProgramDirectory(), settings)
 }
 
-func (a *App) InstallRuntimeEnvironment() (runtimeenv.Status, error) {
+func (a *App) InstallRuntimeEnvironment(language string) (runtimeenv.Status, error) {
 	settings := a.GetRuntimeEnvironmentSettings()
-	return runtimeinstaller.InstallRuntimeEnvironment(getProgramDirectory(), settings)
+	return runtimeinstaller.InstallRuntimeEnvironment(getProgramDirectory(), settings, language)
 }
 
 func (a *App) InjectAIBuiltinLoginBridge(jsonStr string) error {

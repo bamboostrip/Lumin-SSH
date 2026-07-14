@@ -604,6 +604,25 @@ func (c *ConfigManager) SaveAIConversation(snapshot AIConversationSnapshot) (AIC
 	if err := c.writeAIConversationSnapshot(normalized); err != nil {
 		return AIConversationSnapshot{}, err
 	}
+	_ = func() error {
+		db, err := c.getAIConversationSearchDB()
+		if err != nil {
+			return err
+		}
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		if err := c.ensureAIConversationSearchSchemaLocked(tx); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		if err := c.replaceAIConversationSearchRowsLocked(tx, normalized); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		return tx.Commit()
+	}()
 	return normalized, nil
 }
 
@@ -617,7 +636,29 @@ func (c *ConfigManager) DeleteAIConversation(conversationID string) error {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return os.RemoveAll(c.aiConversationDir(conversationID))
+	if err := os.RemoveAll(c.aiConversationDir(conversationID)); err != nil {
+		return err
+	}
+	_ = func() error {
+		db, err := c.getAIConversationSearchDB()
+		if err != nil {
+			return err
+		}
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		if err := c.ensureAIConversationSearchSchemaLocked(tx); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		if err := c.deleteAIConversationSearchRowsLocked(tx, conversationID); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		return tx.Commit()
+	}()
+	return nil
 }
 
 func (a *App) ListAIConversations() []AIConversationSummary {

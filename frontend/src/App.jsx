@@ -1272,6 +1272,10 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
   const [isRefreshingPing, setIsRefreshingPing] = useState(false);
   const [pingInterval, setPingInterval] = useState(parseInt(localStorage.getItem('pingInterval') || '2', 10));
   const [pingEnabled, setPingEnabled] = useState(localStorage.getItem('pingEnabled') !== 'false');
+  const [pingMode, setPingMode] = useState(localStorage.getItem('pingMode') || 'auto');
+  // pingModeRef：让 pingAll（依赖数组为空的 useCallback）始终读到最新 pingMode，而不必把 pingMode 加进依赖、重建定时器。
+  const pingModeRef = useRef(pingMode);
+  useEffect(() => { pingModeRef.current = pingMode; }, [pingMode]);
 
   useEffect(() => {
     const handler = () => {
@@ -1287,6 +1291,14 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     };
     window.addEventListener('pingEnabledChanged', handler);
     return () => window.removeEventListener('pingEnabledChanged', handler);
+  }, []);
+
+  useEffect(() => {
+    const handler = () => {
+      setPingMode(localStorage.getItem('pingMode') || 'auto');
+    };
+    window.addEventListener('pingModeChanged', handler);
+    return () => window.removeEventListener('pingModeChanged', handler);
   }, []);
 
   // ── 初始化全局主题 ──────────────────────────────────────
@@ -1975,7 +1987,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
       const results = await Promise.all(
         list.map(async (s) => {
           try {
-            const res = await AppGo.PingServer(s.id);
+            const res = await AppGo.PingServer(s.id, pingModeRef.current);
             return { id: s.id, ...res };
           } catch {
             return { id: s.id, online: false, latency: null };

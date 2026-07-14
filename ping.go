@@ -33,6 +33,20 @@ func isLoopbackHost(host string) bool {
 	return ip.IsLoopback()
 }
 
+// normalizePingMode 归一化延迟检测模式。合法值：auto / banner / tcp；非法值统一回退 auto（保持兼容）。
+//
+//	auto   智能检测：根据连接类型自动选择（直连看 TCP 拨号、TUN/代理读 SSH Banner），默认。
+//	banner 强制读 SSH Banner：最准确，能识别 TUN/代理下的不可达服务器，但不可达时要等超时。
+//	tcp    强制只看 TCP 端口连通：最快，但在 TUN/代理下可能把不可达服务器误判为在线。
+func normalizePingMode(mode string) string {
+	switch mode {
+	case "auto", "banner", "tcp":
+		return mode
+	default:
+		return "auto"
+	}
+}
+
 // isTUNLocalAddr 判断"出站拨号所用的本地地址"是否落在常见 TUN/代理虚拟网卡网段。
 // 这是识别 TUN 模式最可靠的信号：TUN 网卡会把出站流量劫持到自己的网段（如 Mihomo 默认 198.18.0.0/16），
 // 不受网络抖动影响。配合 dialMs<50 兜底，能覆盖各种 TUN 配置。
@@ -65,7 +79,13 @@ func isTUNLocalAddr(local net.Addr) bool {
 //
 // IMPORTANT: TUN/代理模式下本地拨号总是瞬间成功，目标不可达时 dialMs 仍是 ~0；此时必须靠 Banner 校验，
 // 否则 TUN 黑洞会被误判成在线，前端表现为永远显示 "0毫秒" 而非 "离线"。
-func measureLatency(connConfig Connection) (int64, bool) {
+//
+// mode（见 normalizePingMode）：
+//   - auto：根据 usesProxy/isTUN 自动选择探测方式。
+//   - tcp：强制只看 TCP 端口连通（dial 成功即在线），最快，但 TUN/代理下不可达会被误判为在线。
+//   - banner：强制所有连接都读真实 SSH Banner 才算在线，最准确，但不可达时要等超时。
+func measureLatency(connConfig Connection, mode string) (int64, bool) {
+	mode = normalizePingMode(mode)
 	target := dialAddr(connConfig.Host, connConfig.Port)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
@@ -80,6 +100,11 @@ func measureLatency(connConfig Connection) (int64, bool) {
 	dialMs := connectedAt.Sub(start).Milliseconds()
 	defer conn.Close()
 
+	// tcp 模式：强制只看端口连通，直接返回拨号耗时，不做 Banner 校验。
+	if mode == "tcp" {
+		return dialMs, true
+	}
+
 	usesProxy := connectionUsesProxy(connConfig)
 	// TUN 检测优先看"拨号所用的本地地址"是否落在 TUN 虚拟网段（最可靠），
 	// 兜底用 dialMs<50（覆盖未知网段的 TUN 配置）。
@@ -88,12 +113,13 @@ func measureLatency(connConfig Connection) (int64, bool) {
 	isTUN := !usesProxy && !isLoopbackHost(connConfig.Host) &&
 		(isTUNLocalAddr(conn.LocalAddr()) || dialMs < 50)
 
-	// 直连模式（非代理、非 TUN）：TCP 端口能连上即代表 SSH 端口可达，dialMs 就是真实 RTT。
-	if !usesProxy && !isTUN {
+	// banner 模式：强制所有连接都走 Banner 校验，跳过"直连快速返回"分支。
+	// auto 模式下的纯直连（非代理、非 TUN）：TCP 端口能连上即代表 SSH 端口可达，dialMs 就是真实 RTT。
+	if mode == "auto" && !usesProxy && !isTUN {
 		return dialMs, true
 	}
 
-	// 代理 / TUN 模式：必须读到真实 SSH Banner 才能确认在线。
+	// 代理 / TUN / banner 模式：必须读到真实 SSH Banner 才能确认在线。
 	// 主动写客户端 Banner 激活代理链路的延迟探测；纯代理下服务器也会先发 Banner，写不写都行，写了更稳。
 	conn.SetDeadline(time.Now().Add(3 * time.Second))
 	_, writeErr := conn.Write([]byte("SSH-2.0-LuminPing\r\n"))
@@ -109,14 +135,14 @@ func measureLatency(connConfig Connection) (int64, bool) {
 	return bannerMs, true
 }
 
-// PingServer returns the latency to the SSH port.
-func PingServer(connConfig Connection) map[string]interface{} {
+// PingServer returns the latency to the SSH port. mode 见 normalizePingMode。
+func PingServer(connConfig Connection, mode string) map[string]interface{} {
 	const samples = 2
 	var best int64 = -1
 	var anyOnline bool
 
 	for i := 0; i < samples; i++ {
-		rtt, online := measureLatency(connConfig)
+		rtt, online := measureLatency(connConfig, mode)
 		if !online {
 			continue
 		}

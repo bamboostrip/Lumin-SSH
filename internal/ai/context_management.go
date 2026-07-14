@@ -212,7 +212,7 @@ func buildAIConversationCompressionSummary(
 
 func (a *App) CountAIConversationContextTokens(sessionID string, snapshotJSON string) (AIConversationContextMetrics, error) {
 	if a == nil || a.configManager == nil {
-		return AIConversationContextMetrics{}, fmt.Errorf("config manager unavailable")
+		return AIConversationContextMetrics{}, fmt.Errorf("配置管理器不可用")
 	}
 	var snapshot AIConversationSnapshot
 	if err := json.Unmarshal([]byte(snapshotJSON), &snapshot); err != nil {
@@ -234,7 +234,7 @@ func (a *App) CountAIConversationContextTokens(sessionID string, snapshotJSON st
 
 func (a *App) CondenseAIConversationContext(conversationID string, sessionID string) (AIConversationContextCondenseResult, error) {
 	if a == nil || a.configManager == nil {
-		return AIConversationContextCondenseResult{}, fmt.Errorf("config manager unavailable")
+		return AIConversationContextCondenseResult{}, fmt.Errorf("配置管理器不可用")
 	}
 	snapshot, err := a.configManager.GetAIConversation(strings.TrimSpace(conversationID))
 	if err != nil {

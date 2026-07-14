@@ -183,34 +183,7 @@ function createEmptyPanelState() {
 }
 
 function normalizeAIMessageStatus(value) {
-  const normalized = typeof value === 'string' ? value.trim() : ''
-  switch (normalized) {
-    case '待批准':
-      return '待批准'
-    case '待审阅':
-      return '待审阅'
-    case '执行中':
-    case '运行中':
-      return '执行中'
-    case '已执行':
-      return '已执行'
-    case '已完成':
-      return '已完成'
-    case '已终止':
-      return '已终止'
-    case '错误':
-      return '错误'
-    case '已拒绝':
-      return '已拒绝'
-    case '等待处理':
-      return '等待处理'
-    case '后台继续':
-      return '后台继续'
-    case '排队中, 等待终端空闲':
-      return '排队中, 等待终端空闲'
-    default:
-      return normalized
-  }
+  return typeof value === 'string' ? value.trim() : ''
 }
 
 function truncateConversationTitle(text) {
@@ -1005,10 +978,11 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       }
 
       if (payload.kind === 'followup_required' && payload.message) {
+        const nextMessage = payload.message
         let nextConversation = null
         setPanelState(matchedPanelKey, (current) => {
           const anchorAssistantMessageId = current.activeAssistantMessageId || requestId
-          const nextMessages = upsertMessageBeforeAssistant(current.messages, anchorAssistantMessageId, payload.message)
+          const nextMessages = upsertMessageBeforeAssistant(current.messages, anchorAssistantMessageId, nextMessage)
           nextConversation = current.conversation
             ? {
                 ...current.conversation,
@@ -1048,11 +1022,13 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       }
 
       if (payload.kind === 'tool_approval_required' && Array.isArray(payload.messages)) {
+        const toolMessages = payload.messages
+          .filter((message) => message && typeof message === 'object')
+          .map((message) => message)
         let nextConversation = null
         setPanelState(matchedPanelKey, (current) => {
           const anchorAssistantMessageId = current.activeAssistantMessageId || requestId
           let nextMessages = Array.isArray(current.messages) ? [...current.messages] : []
-          const toolMessages = payload.messages.filter((message) => message && typeof message === 'object')
           nextMessages = nextMessages.filter((message) => !toolMessages.some((toolMessage) => toolMessage.id && toolMessage.id === message.id))
           toolMessages.forEach((toolMessage) => {
             nextMessages = insertMessageBeforeAssistant(nextMessages, anchorAssistantMessageId, toolMessage)

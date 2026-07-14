@@ -1639,7 +1639,7 @@ func normalizeAIAssistantRoundResultForToolProtocol(roundResult aiChatRoundResul
 
 func (a *App) getAIProviderProfileByID(providerID string) (AIProviderProfile, error) {
 	if a == nil || a.configManager == nil {
-		return AIProviderProfile{}, fmt.Errorf("provider state unavailable")
+		return AIProviderProfile{}, fmt.Errorf("供应商状态不可用")
 	}
 	state := a.configManager.GetAIProviderState()
 	if len(state.Providers) == 0 {
@@ -1665,7 +1665,7 @@ func (a *App) getAIProviderProfileByID(providerID string) (AIProviderProfile, er
 
 func (a *App) getAIProviderProfileForConversation(conversationID string) (AIProviderProfile, error) {
 	if a == nil || a.configManager == nil {
-		return AIProviderProfile{}, fmt.Errorf("provider state unavailable")
+		return AIProviderProfile{}, fmt.Errorf("供应商状态不可用")
 	}
 	trimmedConversationID := strings.TrimSpace(conversationID)
 	if trimmedConversationID != "" {
@@ -1848,7 +1848,7 @@ func decodeAIChatRequestPayload(raw string) (AIChatRequestPayload, error) {
 func (a *App) StartAIChat(requestID string, messagesJSON string) error {
 	requestID = strings.TrimSpace(requestID)
 	if requestID == "" {
-		return fmt.Errorf("request id is required")
+		return fmt.Errorf("缺少请求 ID")
 	}
 
 	payload, err := decodeAIChatRequestPayload(messagesJSON)
@@ -1869,7 +1869,7 @@ func (a *App) StartAIChat(requestID string, messagesJSON string) error {
 		return fmt.Errorf("当前阶段暂不支持该供应商协议: %s", profile.Provider)
 	}
 	if strings.TrimSpace(profile.BaseURL) == "" {
-		return fmt.Errorf("当前供应商缺少 Base URL")
+		return fmt.Errorf("当前供应商缺少基础 URL")
 	}
 	if strings.TrimSpace(profile.Model) == "" {
 		return fmt.Errorf("当前供应商缺少模型")

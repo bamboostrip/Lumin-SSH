@@ -5,24 +5,7 @@ import { useTranslation } from '../../../i18n.js'
 import AIChatMarkdown from './AIChatMarkdown.jsx'
 
 function normalizeAIMessageStatus(value) {
-  const normalized = typeof value === 'string' ? value.trim() : ''
-  switch (normalized) {
-    case '待审阅':
-      return '待审阅'
-    case '待批准':
-      return '待批准'
-    case '执行中':
-    case '运行中':
-      return '执行中'
-    case '错误':
-      return '错误'
-    case '已终止':
-      return '已终止'
-    case '已拒绝':
-      return '已拒绝'
-    default:
-      return normalized
-  }
+  return typeof value === 'string' ? value.trim() : ''
 }
 
 export default function AIChatToolCard({ restoreArtifactPath = '', copyContent = '', actionLabel, title, summary, code, result = '', status, remainingFileEdits = 0, isLast = false, hasSubsequentAssistantMessage = false, onPreviewRestore, onApplyRestore }) {

@@ -125,7 +125,7 @@ func attachAIConversationDiffMeta(message map[string]interface{}, primaryPath st
 
 func (a *App) readAIRestoreTargetState(ctx context.Context, sessionID string, remotePath string) (string, bool, error) {
 	if a == nil || a.sshManager == nil {
-		return "", false, fmt.Errorf("ssh manager unavailable")
+		return "", false, fmt.Errorf("SSH 管理器不可用")
 	}
 	sftpClient, err := a.sshManager.getSFTPClient(sessionID)
 	if err != nil {
@@ -151,7 +151,7 @@ func buildAIRestoreReviewPathLabel(files []aiToolRestoreFileSnapshot) string {
 	if len(files) == 1 {
 		return files[0].Path
 	}
-	return "ai.files.count"
+	return "{count} 个文件"
 }
 
 func buildAIRestoreReviewPathParams(files []aiToolRestoreFileSnapshot) map[string]interface{} {
@@ -181,7 +181,7 @@ func buildAIConversationDiffPreviewState(state *aiToolRestoreState) *aiToolDiffP
 		label := file.Path
 		labelParams := map[string]interface{}(nil)
 		if strings.TrimSpace(label) == "" {
-			label = "ai.file.index"
+			label = "文件 #{count}"
 			labelParams = map[string]interface{}{
 				"count": index + 1,
 			}
@@ -195,7 +195,7 @@ func buildAIConversationDiffPreviewState(state *aiToolRestoreState) *aiToolDiffP
 		})
 	}
 	return &aiToolDiffPreviewState{
-		Title:      "ai.conversation_diff.title",
+		Title:      "当前对话文件变更",
 		Path:       buildAIRestoreReviewPathLabel(state.Files),
 		PathParams: buildAIRestoreReviewPathParams(state.Files),
 		ToolName:   strings.TrimSpace(state.ToolName),
@@ -211,7 +211,7 @@ func (a *App) buildAIRestoreReviewPayload(state *aiToolRestoreState) map[string]
 		label := file.Path
 		labelParams := map[string]interface{}(nil)
 		if strings.TrimSpace(label) == "" {
-			label = "ai.file.index"
+			label = "文件 #{count}"
 			labelParams = map[string]interface{}{
 				"count": index + 1,
 			}
@@ -230,7 +230,7 @@ func (a *App) buildAIRestoreReviewPayload(state *aiToolRestoreState) map[string]
 	pathLabel := buildAIRestoreReviewPathLabel(state.Files)
 	payload := map[string]interface{}{
 		"reviewId":            state.ReviewID,
-		"title":               "ai.change_review.title",
+		"title":               "修改",
 		"requestId":           state.RequestID,
 		"toolMessageId":       state.ReviewID,
 		"sessionId":           state.SessionID,
@@ -271,7 +271,7 @@ func (a *App) buildAIConversationDiffPayload(state *aiToolRestoreState) map[stri
 	}
 	payload := map[string]interface{}{
 		"reviewId":            state.ReviewID,
-		"title":               "ai.conversation_diff.title",
+		"title":               "当前对话文件变更",
 		"requestId":           state.RequestID,
 		"toolMessageId":       state.ReviewID,
 		"sessionId":           state.SessionID,
@@ -308,7 +308,7 @@ func (a *App) buildAIConversationDiffPayload(state *aiToolRestoreState) map[stri
 
 func (a *App) verifyAIRestoreState(ctx context.Context, state *aiToolRestoreState) error {
 	if state == nil || len(state.Files) == 0 {
-		return fmt.Errorf("ai.restore.unsupported")
+		return fmt.Errorf("当前状态不支持还原")
 	}
 	for _, file := range state.Files {
 		currentContent, exists, err := a.readAIRestoreTargetState(ctx, state.SessionID, file.Path)
@@ -316,10 +316,10 @@ func (a *App) verifyAIRestoreState(ctx context.Context, state *aiToolRestoreStat
 			return err
 		}
 		if exists != file.ExistsAfter {
-			return fmt.Errorf("ai.restore.unsupported")
+			return fmt.Errorf("当前状态不支持还原")
 		}
 		if exists && currentContent != file.AppliedContent {
-			return fmt.Errorf("ai.restore.unsupported")
+			return fmt.Errorf("当前状态不支持还原")
 		}
 	}
 	return nil
@@ -327,7 +327,7 @@ func (a *App) verifyAIRestoreState(ctx context.Context, state *aiToolRestoreStat
 
 func (a *App) verifyAIReapplyState(ctx context.Context, state *aiToolRestoreState) error {
 	if state == nil || len(state.Files) == 0 {
-		return fmt.Errorf("ai.reapply.unsupported")
+		return fmt.Errorf("当前状态不支持重新应用")
 	}
 	for _, file := range state.Files {
 		currentContent, exists, err := a.readAIRestoreTargetState(ctx, state.SessionID, file.Path)
@@ -335,10 +335,10 @@ func (a *App) verifyAIReapplyState(ctx context.Context, state *aiToolRestoreStat
 			return err
 		}
 		if exists != file.ExistedBefore {
-			return fmt.Errorf("ai.reapply.unsupported")
+			return fmt.Errorf("当前状态不支持重新应用")
 		}
 		if exists && currentContent != file.BeforeContent {
-			return fmt.Errorf("ai.reapply.unsupported")
+			return fmt.Errorf("当前状态不支持重新应用")
 		}
 	}
 	return nil
@@ -347,15 +347,15 @@ func (a *App) verifyAIReapplyState(ctx context.Context, state *aiToolRestoreStat
 func (a *App) buildApplyDiffRestoreState(tool aiParsedToolUse, payload AIChatRequestPayload, reviewID string) (*aiToolRestoreState, error) {
 	sessionID := strings.TrimSpace(payload.SessionID)
 	if sessionID == "" {
-		return nil, fmt.Errorf("ai.tool.apply_diff.missing_session_id")
+		return nil, fmt.Errorf("缺少终端会话")
 	}
 	remotePath := strings.TrimSpace(tool.Params["path"])
 	if remotePath == "" {
-		return nil, fmt.Errorf("ai.tool.apply_diff.missing_path")
+		return nil, fmt.Errorf("缺少路径")
 	}
 	diffPayload := tool.Params["diff"]
 	if strings.TrimSpace(diffPayload) == "" {
-		return nil, fmt.Errorf("ai.tool.apply_diff.missing_diff")
+		return nil, fmt.Errorf("缺少 diff 内容")
 	}
 	fileProvider := mcpFileProvider{app: a}
 	originalContent, err := fileProvider.ReadTextFileContext(context.Background(), sessionID, remotePath)
@@ -391,11 +391,11 @@ func (a *App) buildApplyDiffRestoreState(tool aiParsedToolUse, payload AIChatReq
 func (a *App) buildWriteToFileRestoreState(tool aiParsedToolUse, payload AIChatRequestPayload, reviewID string) (*aiToolRestoreState, error) {
 	sessionID := strings.TrimSpace(payload.SessionID)
 	if sessionID == "" {
-		return nil, fmt.Errorf("ai.tool.write_to_file.missing_session_id")
+		return nil, fmt.Errorf("缺少终端会话")
 	}
 	remotePath := strings.TrimSpace(tool.Params["path"])
 	if remotePath == "" {
-		return nil, fmt.Errorf("ai.tool.write_to_file.missing_path")
+		return nil, fmt.Errorf("缺少路径")
 	}
 	finalContent := tool.Params["content"]
 	originalContent, existedBefore, err := a.readAIRestoreTargetState(context.Background(), sessionID, remotePath)
@@ -424,11 +424,11 @@ func (a *App) buildWriteToFileRestoreState(tool aiParsedToolUse, payload AIChatR
 func (a *App) buildSearchReplaceRestoreState(tool aiParsedToolUse, payload AIChatRequestPayload, reviewID string) (*aiToolRestoreState, error) {
 	sessionID := strings.TrimSpace(payload.SessionID)
 	if sessionID == "" {
-		return nil, fmt.Errorf("ai.tool.search_replace.missing_session_id")
+		return nil, fmt.Errorf("缺少终端会话")
 	}
 	remotePath := strings.TrimSpace(tool.Params["path"])
 	if remotePath == "" {
-		return nil, fmt.Errorf("ai.tool.search_replace.missing_path")
+		return nil, fmt.Errorf("缺少路径")
 	}
 	operationsRaw := tool.Params["operations"]
 	operations, err := parseSearchReplaceOperations(operationsRaw)
@@ -469,17 +469,17 @@ func (a *App) buildSearchReplaceRestoreState(tool aiParsedToolUse, payload AICha
 func (a *App) buildEditFileRestoreState(tool aiParsedToolUse, payload AIChatRequestPayload, reviewID string) (*aiToolRestoreState, error) {
 	sessionID := strings.TrimSpace(payload.SessionID)
 	if sessionID == "" {
-		return nil, fmt.Errorf("ai.tool.edit_file.missing_session_id")
+		return nil, fmt.Errorf("缺少终端会话")
 	}
 	remotePath := strings.TrimSpace(tool.Params["path"])
 	if remotePath == "" {
-		return nil, fmt.Errorf("ai.tool.edit_file.missing_path")
+		return nil, fmt.Errorf("缺少路径")
 	}
 	expectedReplacements := 1
 	if rawExpected := strings.TrimSpace(tool.Params["expected_replacements"]); rawExpected != "" {
 		parsedExpected, err := strconv.Atoi(rawExpected)
 		if err != nil || parsedExpected < 1 {
-			return nil, fmt.Errorf("ai.tool.edit_file.invalid_expected_replacements")
+			return nil, fmt.Errorf("expected_replacements 无效")
 		}
 		expectedReplacements = parsedExpected
 	}
@@ -517,11 +517,11 @@ func (a *App) buildEditFileRestoreState(tool aiParsedToolUse, payload AIChatRequ
 func (a *App) buildApplyPatchRestoreState(tool aiParsedToolUse, payload AIChatRequestPayload, reviewID string) (*aiToolRestoreState, error) {
 	sessionID := strings.TrimSpace(payload.SessionID)
 	if sessionID == "" {
-		return nil, fmt.Errorf("ai.tool.apply_patch.missing_session_id")
+		return nil, fmt.Errorf("缺少终端会话")
 	}
 	patchPayload := tool.Params["patch"]
 	if strings.TrimSpace(patchPayload) == "" {
-		return nil, fmt.Errorf("ai.tool.apply_patch.missing_patch")
+		return nil, fmt.Errorf("缺少 patch 内容")
 	}
 	preview, err := mcpserver.BuildApplyPatchReviewPreview(patchPayload, func(remotePath string) (string, error) {
 		content, exists, readErr := a.readAIRestoreTargetState(context.Background(), sessionID, remotePath)
@@ -563,7 +563,7 @@ func (a *App) buildApplyPatchRestoreState(tool aiParsedToolUse, payload AIChatRe
 func (a *App) buildAIChatToolRestoreState(tool aiParsedToolUse, payload AIChatRequestPayload, reviewID string) (*aiToolRestoreState, error) {
 	conversationID := strings.TrimSpace(payload.ConversationID)
 	if conversationID == "" {
-		return nil, fmt.Errorf("ai.conversation.missing_conversation_id")
+		return nil, fmt.Errorf("缺少对话 ID")
 	}
 	var state *aiToolRestoreState
 	var err error
@@ -579,7 +579,7 @@ func (a *App) buildAIChatToolRestoreState(tool aiParsedToolUse, payload AIChatRe
 	case "apply_patch":
 		state, err = a.buildApplyPatchRestoreState(tool, payload, reviewID)
 	default:
-		return nil, fmt.Errorf("ai.restore.unsupported")
+		return nil, fmt.Errorf("当前状态不支持还原")
 	}
 	if err != nil {
 		return nil, err
@@ -602,7 +602,7 @@ type aiToolRestoreArtifactResult struct {
 
 func (a *App) persistAIChatToolRestoreArtifact(tool aiParsedToolUse, payload AIChatRequestPayload, reviewID string, requestID string) (aiToolRestoreArtifactResult, error) {
 	if a == nil || a.configManager == nil {
-		return aiToolRestoreArtifactResult{}, fmt.Errorf("config manager unavailable")
+		return aiToolRestoreArtifactResult{}, fmt.Errorf("配置管理器不可用")
 	}
 	state, err := a.buildAIChatToolRestoreState(tool, payload, reviewID)
 	if err != nil {
@@ -627,17 +627,17 @@ func (a *App) PreviewAIChatToolRestore(artifactPath string, sessionID string) (m
 	trimmedArtifactPath := strings.TrimSpace(artifactPath)
 	trimmedSessionID := strings.TrimSpace(sessionID)
 	if a == nil || a.configManager == nil || trimmedArtifactPath == "" {
-		return nil, fmt.Errorf("ai.restore.unsupported")
+		return nil, fmt.Errorf("当前状态不支持还原")
 	}
 	state, err := a.configManager.ReadAIConversationRestoreArtifact(trimmedArtifactPath)
 	if err != nil || state == nil {
-		return nil, fmt.Errorf("ai.restore.unsupported")
+		return nil, fmt.Errorf("当前状态不支持还原")
 	}
 	if trimmedSessionID != "" && strings.TrimSpace(state.SessionID) != "" && trimmedSessionID != strings.TrimSpace(state.SessionID) {
-		return nil, fmt.Errorf("ai.restore.unsupported")
+		return nil, fmt.Errorf("当前状态不支持还原")
 	}
 	if err := a.verifyAIRestoreState(context.Background(), state); err != nil {
-		return nil, fmt.Errorf("ai.restore.unsupported")
+		return nil, fmt.Errorf("当前状态不支持还原")
 	}
 	return a.buildAIRestoreReviewPayload(state), nil
 }
@@ -646,14 +646,14 @@ func (a *App) PreviewAIChatToolDiff(artifactPath string, sessionID string) (map[
 	trimmedArtifactPath := strings.TrimSpace(artifactPath)
 	trimmedSessionID := strings.TrimSpace(sessionID)
 	if a == nil || a.configManager == nil || trimmedArtifactPath == "" {
-		return nil, fmt.Errorf("ai.preview.unsupported")
+		return nil, fmt.Errorf("差异预览失败")
 	}
 	state, err := a.configManager.ReadAIConversationRestoreArtifact(trimmedArtifactPath)
 	if err != nil || state == nil {
-		return nil, fmt.Errorf("ai.preview.unsupported")
+		return nil, fmt.Errorf("差异预览失败")
 	}
 	if trimmedSessionID != "" && strings.TrimSpace(state.SessionID) != "" && trimmedSessionID != strings.TrimSpace(state.SessionID) {
-		return nil, fmt.Errorf("ai.preview.unsupported")
+		return nil, fmt.Errorf("差异预览失败")
 	}
 	if state.ConversationDiffPreview == nil {
 		state.ConversationDiffPreview = buildAIConversationDiffPreviewState(state)
@@ -665,17 +665,17 @@ func (a *App) ReapplyAIChatTool(artifactPath string, sessionID string) error {
 	trimmedArtifactPath := strings.TrimSpace(artifactPath)
 	trimmedSessionID := strings.TrimSpace(sessionID)
 	if a == nil || a.configManager == nil || trimmedArtifactPath == "" {
-		return fmt.Errorf("ai.reapply.unsupported")
+		return fmt.Errorf("当前状态不支持重新应用")
 	}
 	state, err := a.configManager.ReadAIConversationRestoreArtifact(trimmedArtifactPath)
 	if err != nil || state == nil {
-		return fmt.Errorf("ai.reapply.unsupported")
+		return fmt.Errorf("当前状态不支持重新应用")
 	}
 	if trimmedSessionID != "" && strings.TrimSpace(state.SessionID) != "" && trimmedSessionID != strings.TrimSpace(state.SessionID) {
-		return fmt.Errorf("ai.reapply.unsupported")
+		return fmt.Errorf("当前状态不支持重新应用")
 	}
 	if err := a.verifyAIReapplyState(context.Background(), state); err != nil {
-		return fmt.Errorf("ai.reapply.unsupported")
+		return fmt.Errorf("当前状态不支持重新应用")
 	}
 	fileProvider := mcpFileProvider{app: a}
 	for _, file := range state.Files {
@@ -696,17 +696,17 @@ func (a *App) RestoreAIChatTool(artifactPath string, sessionID string) error {
 	trimmedArtifactPath := strings.TrimSpace(artifactPath)
 	trimmedSessionID := strings.TrimSpace(sessionID)
 	if a == nil || a.configManager == nil || trimmedArtifactPath == "" {
-		return fmt.Errorf("ai.restore.unsupported")
+		return fmt.Errorf("当前状态不支持还原")
 	}
 	state, err := a.configManager.ReadAIConversationRestoreArtifact(trimmedArtifactPath)
 	if err != nil || state == nil {
-		return fmt.Errorf("ai.restore.unsupported")
+		return fmt.Errorf("当前状态不支持还原")
 	}
 	if trimmedSessionID != "" && strings.TrimSpace(state.SessionID) != "" && trimmedSessionID != strings.TrimSpace(state.SessionID) {
-		return fmt.Errorf("ai.restore.unsupported")
+		return fmt.Errorf("当前状态不支持还原")
 	}
 	if err := a.verifyAIRestoreState(context.Background(), state); err != nil {
-		return fmt.Errorf("ai.restore.unsupported")
+		return fmt.Errorf("当前状态不支持还原")
 	}
 	fileProvider := mcpFileProvider{app: a}
 	for _, file := range state.Files {

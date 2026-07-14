@@ -376,7 +376,7 @@ func trimAIConversationBackupDirectoriesLocked(backupRootDir string, maxCount in
 func (c *ConfigManager) createAIConversationAutoBackupLocked(conversationID string) (AIConversationBackup, error) {
 	trimmedConversationID := strings.TrimSpace(conversationID)
 	if trimmedConversationID == "" {
-		return AIConversationBackup{}, fmt.Errorf("conversation id is required")
+		return AIConversationBackup{}, fmt.Errorf("缺少对话 ID")
 	}
 	sourceDir := c.aiConversationDir(trimmedConversationID)
 	if _, err := os.Stat(sourceDir); err != nil {
@@ -505,15 +505,15 @@ func (c *ConfigManager) GetAIConversationBackupHistory(conversationID string, ba
 
 func (c *ConfigManager) RestoreAIConversationBackup(conversationID string, backupID string) (AIConversationSnapshot, error) {
 	if c == nil {
-		return AIConversationSnapshot{}, fmt.Errorf("config manager unavailable")
+		return AIConversationSnapshot{}, fmt.Errorf("配置管理器不可用")
 	}
 	trimmedConversationID := strings.TrimSpace(conversationID)
 	trimmedBackupID := strings.TrimSpace(backupID)
 	if trimmedConversationID == "" {
-		return AIConversationSnapshot{}, fmt.Errorf("conversation id is required")
+		return AIConversationSnapshot{}, fmt.Errorf("缺少对话 ID")
 	}
 	if trimmedBackupID == "" {
-		return AIConversationSnapshot{}, fmt.Errorf("backup id is required")
+		return AIConversationSnapshot{}, fmt.Errorf("缺少备份 ID")
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -536,15 +536,15 @@ func (c *ConfigManager) RestoreAIConversationBackup(conversationID string, backu
 
 func (c *ConfigManager) DeleteAIConversationBackup(conversationID string, backupID string) error {
 	if c == nil {
-		return fmt.Errorf("config manager unavailable")
+		return fmt.Errorf("配置管理器不可用")
 	}
 	trimmedConversationID := strings.TrimSpace(conversationID)
 	trimmedBackupID := strings.TrimSpace(backupID)
 	if trimmedConversationID == "" {
-		return fmt.Errorf("conversation id is required")
+		return fmt.Errorf("缺少对话 ID")
 	}
 	if trimmedBackupID == "" {
-		return fmt.Errorf("backup id is required")
+		return fmt.Errorf("缺少备份 ID")
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -553,14 +553,14 @@ func (c *ConfigManager) DeleteAIConversationBackup(conversationID string, backup
 
 func (a *App) CreateAIConversationAutoBackup(conversationID string) (AIConversationBackup, error) {
 	if a == nil || a.configManager == nil {
-		return AIConversationBackup{}, fmt.Errorf("config manager unavailable")
+		return AIConversationBackup{}, fmt.Errorf("配置管理器不可用")
 	}
 	return a.configManager.CreateAIConversationAutoBackup(conversationID)
 }
 
 func (c *ConfigManager) CreateAIConversationAutoBackup(conversationID string) (AIConversationBackup, error) {
 	if c == nil {
-		return AIConversationBackup{}, fmt.Errorf("config manager unavailable")
+		return AIConversationBackup{}, fmt.Errorf("配置管理器不可用")
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -583,14 +583,14 @@ func (a *App) GetAIConversationBackupHistory(conversationID string, backupID str
 
 func (a *App) RestoreAIConversationBackup(conversationID string, backupID string) (AIConversationSnapshot, error) {
 	if a == nil || a.configManager == nil {
-		return AIConversationSnapshot{}, fmt.Errorf("config manager unavailable")
+		return AIConversationSnapshot{}, fmt.Errorf("配置管理器不可用")
 	}
 	return a.configManager.RestoreAIConversationBackup(conversationID, backupID)
 }
 
 func (a *App) DeleteAIConversationBackup(conversationID string, backupID string) error {
 	if a == nil || a.configManager == nil {
-		return fmt.Errorf("config manager unavailable")
+		return fmt.Errorf("配置管理器不可用")
 	}
 	return a.configManager.DeleteAIConversationBackup(conversationID, backupID)
 }

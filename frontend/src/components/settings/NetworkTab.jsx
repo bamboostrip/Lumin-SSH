@@ -275,7 +275,7 @@ export default function NetworkTab({ pingEnabled, onTogglePingEnabled, pingMode,
             <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{editingProxyId ? $t('编辑') : $t('添加')}</div>
             <div className="form-group" style={{ margin: 0 }}>
               <label className="form-label">{$t('代理名称（备注）')}</label>
-              <input className="input" value={proxyForm.name} onChange={setProxyField('name')} placeholder="HK Relay" />
+              <input className="input" value={proxyForm.name} onChange={setProxyField('name')} placeholder={$t('代理名称（备注）')} />
               <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-tertiary)' }}>{$t('仅用于区分代理节点，不参与连接逻辑')}</div>
             </div>
             <div className="form-group" style={{ margin: 0 }}>
@@ -295,11 +295,11 @@ export default function NetworkTab({ pingEnabled, onTogglePingEnabled, pingMode,
             </div>
             <div className="form-group" style={{ margin: 0 }}>
               <label className="form-label">{$t('用户名')}</label>
-              <input className="input" value={proxyForm.username} onChange={setProxyField('username')} placeholder="user" />
+              <input className="input" value={proxyForm.username} onChange={setProxyField('username')} placeholder={$t('用户名')} />
             </div>
             <div className="form-group" style={{ margin: 0 }}>
               <label className="form-label">{$t('密码')}</label>
-              <input className="input" type="password" value={proxyForm.password} onChange={setProxyField('password')} placeholder="password" />
+              <input className="input" type="password" value={proxyForm.password} onChange={setProxyField('password')} placeholder={$t('密码')} />
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4, flexWrap: 'wrap' }}>
               {editingProxyId ? <button type="button" className="btn btn-secondary" onClick={resetProxyForm}>{$t('取消编辑')}</button> : null}

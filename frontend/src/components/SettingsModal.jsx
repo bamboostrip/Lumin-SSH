@@ -118,7 +118,7 @@ const PROVIDERS = {
     isConfigured: (f) => !!(f.bucket && f.endpoint),
     applyConfig: (data) => ({ accessKeyId: data.accessKeyId || '', secretAccessKey: data.secretAccessKey || '', bucket: data.bucket || '', endpoint: data.endpoint || '', region: data.region || 'auto', prefix: data.prefix || 'Lumin/', maxBackups: data.maxBackups || '' }),
     summaryFields: (f) => [
-      { label: 'Bucket', value: f.bucket, primary: true },
+      { label: $t('存储桶'), value: f.bucket, primary: true },
       { label: $t('前缀目录'), value: f.prefix },
       { label: $t('端点地址'), value: f.endpoint, fullWidth: true },
       { label: $t('保留份数'), value: f.maxBackups || $t('不限') },

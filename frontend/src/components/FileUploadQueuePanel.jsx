@@ -51,6 +51,7 @@ function getUploadPhaseLabel(phase, direction, t) {
   if (phase === 'uploading') return direction === 'download' ? t('下载压缩包') : t('上传压缩包');
   if (phase === 'uploading-file') return t('上传文件');
   if (phase === 'downloading') return t('下载中');
+  if (phase === 'verifying') return t('修复中');
   if (phase === 'extracting') return direction === 'download' ? t('本地解压中') : t('远端解压中');
   if (phase === 'cleanup-local' || phase === 'cleanup-remote') return t('清理中');
   if (phase === 'completed') return t('已完成');
@@ -74,6 +75,7 @@ function getCompressedPhaseDetail(item, t) {
   if (item.phase === 'uploading') return item.phaseDetail || (direction === 'download' ? t('正在下载压缩包到本地') : t('正在上传压缩包到远端'));
   if (item.phase === 'uploading-file') return '';
   if (item.phase === 'downloading') return item.phaseDetail || t('下载中');
+  if (item.phase === 'verifying') return item.phaseDetail || t('正在自动修复远端目录和已有文件权限');
   if (item.phase === 'cleanup-local') return t('正在删除本机临时压缩包');
   if (item.phase === 'extracting') return direction === 'download' ? t('正在解压到本地目录') : t('正在远端解压压缩包');
   if (item.phase === 'cleanup-remote') return t('正在清理远端压缩包');
@@ -118,6 +120,15 @@ function buildCompressedPhaseChunks(item) {
     chunksFailed: chunks.filter((chunk) => chunk.status === 'failed').length,
     chunksActive: chunks.filter((chunk) => chunk.status === 'uploading').length,
   };
+}
+
+function getTransferErrorSummary(message, t) {
+  const normalized = String(message || '').trim();
+  if (!normalized) {
+    return t('查看详情');
+  }
+  const firstLine = normalized.split(/\r?\n/)[0] || '';
+  return firstLine.trim() || t('查看详情');
 }
 
 function AutoFollowChunkGrid({ chunks, titleBuilder }) {
@@ -247,6 +258,19 @@ export default function FileUploadQueuePanel({
     } catch (err) {
       window.luminDialog?.alert?.(`${t('打开所在目录失败')}: ${err}`);
     }
+  };
+
+  const openTransferErrorDetails = async (item, explicitMessage = '') => {
+    const message = String(explicitMessage || item?.error || '').trim();
+    if (!message) {
+      return;
+    }
+    const title = item?.direction === 'download' ? t('下载失败详情') : t('上传失败详情');
+    if (window?.luminDialog?.alert) {
+      await window.luminDialog.alert(message, title, { copyable: true });
+      return;
+    }
+    window.alert(message);
   };
 
   const orderedItems = useMemo(
@@ -389,9 +413,34 @@ export default function FileUploadQueuePanel({
                           </div>
                         ) : null}
                         {phaseDetail ? (
-                          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.45, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {phaseDetail}
-                          </div>
+                          item.status === 'failed' ? (
+                            <button
+                              type="button"
+                              onClick={() => { void openTransferErrorDetails(item, phaseDetail); }}
+                              title={phaseDetail}
+                              style={{
+                                border: 'none',
+                                background: 'transparent',
+                                padding: 0,
+                                textAlign: 'left',
+                                fontSize: 11,
+                                color: 'var(--danger)',
+                                lineHeight: 1.45,
+                                cursor: 'pointer',
+                                textDecoration: 'underline',
+                                textDecorationStyle: 'dotted',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {getTransferErrorSummary(phaseDetail, t)}
+                            </button>
+                          ) : (
+                            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.45, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {phaseDetail}
+                            </div>
+                          )
                         ) : null}
                         {compressedPhaseChunks && compressedPhaseChunks.chunks.length > 0 ? (
                           <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 8, padding: 8, background: 'color-mix(in srgb, var(--surface-sunken) 72%, transparent)', display: 'flex', flexDirection: 'column', gap: 7 }}>
@@ -433,7 +482,26 @@ export default function FileUploadQueuePanel({
                   )}
 
                   {item.error && (!isCompressed || String(item.error).trim() !== String(phaseDetail || '').trim()) ? (
-                    <div style={{ fontSize: 11, color: 'var(--danger)', lineHeight: 1.5, wordBreak: 'break-all' }}>{item.error}</div>
+                    <button
+                      type="button"
+                      onClick={() => { void openTransferErrorDetails(item); }}
+                      title={item.error}
+                      style={{
+                        border: 'none',
+                        background: 'transparent',
+                        padding: 0,
+                        textAlign: 'left',
+                        fontSize: 11,
+                        color: 'var(--danger)',
+                        lineHeight: 1.5,
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                        textDecorationStyle: 'dotted',
+                        wordBreak: 'break-all',
+                      }}
+                    >
+                      {getTransferErrorSummary(item.error, t)}
+                    </button>
                   ) : null}
                 </div>
               );

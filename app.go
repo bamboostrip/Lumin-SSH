@@ -1615,6 +1615,13 @@ func (a *App) GetAutoSyncEnabled() bool {
 	return a.configManager.GetAutoSyncEnabled()
 }
 
+func (a *App) GetLastSyncTime() int64 {
+	if a == nil || a.configManager == nil {
+		return 0
+	}
+	return a.configManager.loadLastSyncTime()
+}
+
 func (a *App) SetAutoSyncEnabled(enabled bool) error {
 	return a.configManager.SetAutoSyncEnabled(enabled)
 }
@@ -1626,6 +1633,18 @@ func (a *App) GetRecoveryPassword() string {
 
 func (a *App) SetRecoveryPassword(password string) error {
 	return a.configManager.SetRecoveryPassword(password)
+}
+
+func (a *App) ChangeRecoveryPassword(newPassword string) error {
+	return a.configManager.ChangeRecoveryPassword(newPassword)
+}
+
+func (a *App) ResetRecoveryPassword(newPassword string) error {
+	return a.configManager.ResetRecoveryPassword(newPassword)
+}
+
+func (a *App) SyncWithRecoveryPassword(password string) (map[string]interface{}, error) {
+	return a.configManager.SyncWithRecoveryPassword(password)
 }
 
 func (a *App) GetProxyNodes() []ai.AIProxyNode {

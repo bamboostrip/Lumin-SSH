@@ -5,6 +5,14 @@ import { Save, Cloud, Database, Folder, FolderOpen, Lock, RefreshCw, Sparkles, P
 
 const PROVIDER_ICON_CMP = { webdav: Cloud, r2: Database, ftp: Folder, sftp: Lock };
 
+function formatSyncTime(timestamp) {
+  if (!Number.isSafeInteger(timestamp) || timestamp <= 0) return '';
+  const date = new Date(timestamp);
+  if (!Number.isFinite(date.getTime())) return '';
+  const pad = (value, length = 2) => String(value).padStart(length, '0');
+  return `${pad(date.getFullYear(), 4)}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
 function ProviderCard({ provider, providerKey, form, configured, editing, onEdit, onCancelEdit, testing, testResult, onTest, loading, onSave, children }) {
   const accent = provider.accent;
   const accentRgb = provider.accentRgb;
@@ -100,9 +108,10 @@ export default function SyncTab({
   r2Form, setR2Field, r2Configured, r2Editing, setR2Editing, r2Loading, r2Testing, r2TestResult, onR2Test, onR2Save,
   ftpForm, setFTPField, ftpConfigured, ftpEditing, setFtpEditing, ftpLoading, ftpTesting, ftpTestResult, onTestFTP, onSaveFTP,
   sftpForm, setSFTPField, sftpConfigured, sftpEditing, setSftpEditing, sftpLoading, sftpTesting, sftpTestResult, onTestSFTP, onSaveSFTP, setSftpForm,
-  lastBackup, syncing, onSync, loadingBackups, restoring, onRestore, isAnyConfigured, addToast,
-  recoveryPassword, recoveryPasswordEditing, setRecoveryPasswordEditing, recoveryPasswordInput, setRecoveryPasswordInput, onSaveRecoveryPassword, onClearRecoveryPassword
+  lastSyncTime, syncing, onSync, loadingBackups, restoring, onRestore, isAnyConfigured, addToast,
+  hasRecoveryPassword, recoveryPasswordEditing, setRecoveryPasswordEditing, recoveryPasswordInput, setRecoveryPasswordInput, recoveryPasswordChanging, onSaveRecoveryPassword, onClearRecoveryPassword
 }) {
+  const formattedLastSyncTime = formatSyncTime(lastSyncTime);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
@@ -134,15 +143,15 @@ export default function SyncTab({
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginRight: 4 }}>{$t('同步加密')}</span>
-          {recoveryPassword ? (
+          {hasRecoveryPassword ? (
             <>
               <button className="btn btn-primary" disabled>
                 <Lock size={14} /> {$t('已加密')}
               </button>
-              <button className="btn btn-secondary" onClick={() => { setRecoveryPasswordEditing(true); setRecoveryPasswordInput(''); }}>
+              <button className="btn btn-secondary" onClick={() => { setRecoveryPasswordEditing(true); setRecoveryPasswordInput(''); }} disabled={recoveryPasswordChanging}>
                 {$t('修改密码')}
               </button>
-              <button className="btn btn-ghost" onClick={onClearRecoveryPassword} style={{ color: 'var(--danger)' }}>
+              <button className="btn btn-ghost" onClick={onClearRecoveryPassword} disabled={recoveryPasswordChanging} style={{ color: 'var(--danger)' }}>
                 {$t('关闭加密')}
               </button>
             </>
@@ -153,14 +162,15 @@ export default function SyncTab({
                 type="password"
                 placeholder={$t('请输入恢复密码')}
                 value={recoveryPasswordInput}
+                disabled={recoveryPasswordChanging}
                 onChange={(e) => setRecoveryPasswordInput(e.target.value)}
                 autoFocus
                 style={{ width: 200, height: 34, fontSize: 13 }}
               />
-              <button className="btn btn-primary" onClick={onSaveRecoveryPassword} disabled={!recoveryPasswordInput.trim()}>
+              <button className="btn btn-primary" onClick={onSaveRecoveryPassword} disabled={!recoveryPasswordInput.trim() || recoveryPasswordChanging}>
                 {$t('开启加密')}
               </button>
-              <button className="btn btn-ghost" onClick={() => { setRecoveryPasswordEditing(false); setRecoveryPasswordInput(''); }}>
+              <button className="btn btn-ghost" onClick={() => { setRecoveryPasswordEditing(false); setRecoveryPasswordInput(''); }} disabled={recoveryPasswordChanging}>
                 {$t('取消')}
               </button>
             </>
@@ -175,21 +185,22 @@ export default function SyncTab({
             </>
           )}
         </div>
-        {recoveryPassword && recoveryPasswordEditing && (
+        {hasRecoveryPassword && recoveryPasswordEditing && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <input
               className="input"
               type="password"
               placeholder={$t('请输入新恢复密码')}
               value={recoveryPasswordInput}
+              disabled={recoveryPasswordChanging}
               onChange={(e) => setRecoveryPasswordInput(e.target.value)}
               autoFocus
               style={{ width: 200, height: 34, fontSize: 13 }}
             />
-            <button className="btn btn-primary" onClick={onSaveRecoveryPassword} disabled={!recoveryPasswordInput.trim()}>
+            <button className="btn btn-primary" onClick={onSaveRecoveryPassword} disabled={!recoveryPasswordInput.trim() || recoveryPasswordChanging}>
               {$t('保存')}
             </button>
-            <button className="btn btn-ghost" onClick={() => { setRecoveryPasswordEditing(false); setRecoveryPasswordInput(''); }}>
+            <button className="btn btn-ghost" onClick={() => { setRecoveryPasswordEditing(false); setRecoveryPasswordInput(''); }} disabled={recoveryPasswordChanging}>
               {$t('取消')}
             </button>
           </div>
@@ -197,7 +208,7 @@ export default function SyncTab({
         <div style={{ fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
           {$t('默认明文同步，选择加密后需设置恢复密码。系统重装或云端凭据变更后，用恢复密码即可恢复备份。')}
           <div style={{ marginTop: 4, color: 'var(--warning)' }}>{$t('注意：多设备同步时，所有设备需使用相同的加密密码，否则其他设备无法解密同步数据。')}</div>
-          {!recoveryPassword && (
+          {!hasRecoveryPassword && (
             <div style={{ marginTop: 4, color: 'var(--warning)' }}>{$t('未开启加密同步时会以明文保存到云端；如需保护云端备份，请选择加密并设置恢复密码。')}</div>
           )}
           <div style={{ marginTop: 4, color: 'var(--text-tertiary)', opacity: 0.7 }}>
@@ -443,7 +454,7 @@ export default function SyncTab({
       <div style={{ background: 'var(--surface-overlay)', padding: 24, borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
         <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>{$t('云端同步')}</div>
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 20 }}>
-          {recoveryPassword ? $t('同步将写入 .lumin2 加密备份') : $t('未开启同步加密时写入明文 .json 备份')}
+          {hasRecoveryPassword ? $t('同步将写入 .lumin2 加密备份') : $t('未开启同步加密时写入明文 .json 备份')}
         </div>
 
         {autoSyncEnabled && isAnyConfigured && (
@@ -452,7 +463,7 @@ export default function SyncTab({
           </div>
         )}
 
-        {lastBackup && <div style={{ fontSize: 12, color: 'var(--success)', marginBottom: 12 }}>{$t('上次同步')}: {lastBackup}</div>}
+        {formattedLastSyncTime && <div style={{ fontSize: 12, color: 'var(--success)', marginBottom: 12 }}>{$t('上次同步')}: {formattedLastSyncTime}</div>}
 
         <div style={{ display: 'flex', gap: 12 }}>
           <button className="btn btn-secondary" onClick={onSync} disabled={syncing || loadingBackups || restoring}>

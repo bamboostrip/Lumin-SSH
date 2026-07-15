@@ -4,6 +4,8 @@ function getAppBridge() {
   return window?.go?.main?.AIBindings || window?.go?.main?.App
 }
 
+const AI_CONVERSATION_CHANGED_EVENT = 'lumin:ai-conversations-changed'
+
 const DEFAULT_TASK_SETTINGS = {
   currentProviderId: '',
   autoApprovalEnabled: false,
@@ -170,6 +172,48 @@ export function normalizeAIConversationMessageSearchResult(result) {
   }
 }
 
+function buildAIConversationSummary(snapshot) {
+  return normalizeAIConversationSummary({
+    ...snapshot,
+    messageCount: Array.isArray(snapshot?.messages) ? snapshot.messages.length : snapshot?.messageCount,
+  })
+}
+
+export function publishAIConversationUpsert(snapshot) {
+  if (typeof window === 'undefined') {
+    return
+  }
+  const summary = buildAIConversationSummary(snapshot)
+  if (!summary.id) {
+    return
+  }
+  window.dispatchEvent(new CustomEvent(AI_CONVERSATION_CHANGED_EVENT, {
+    detail: { type: 'upsert', summary },
+  }))
+}
+
+function publishAIConversationDelete(conversationId) {
+  if (typeof window === 'undefined') {
+    return
+  }
+  const id = typeof conversationId === 'string' ? conversationId.trim() : ''
+  if (!id) {
+    return
+  }
+  window.dispatchEvent(new CustomEvent(AI_CONVERSATION_CHANGED_EVENT, {
+    detail: { type: 'delete', conversationId: id },
+  }))
+}
+
+export function subscribeAIConversationChanges(callback) {
+  if (typeof window === 'undefined' || typeof callback !== 'function') {
+    return () => {}
+  }
+  const handler = (event) => callback(event?.detail)
+  window.addEventListener(AI_CONVERSATION_CHANGED_EVENT, handler)
+  return () => window.removeEventListener(AI_CONVERSATION_CHANGED_EVENT, handler)
+}
+
 export async function listAIConversations() {
   const bridge = getAppBridge()
   if (!bridge?.ListAIConversations) {
@@ -184,8 +228,9 @@ export async function createAIConversation(title) {
   if (!bridge?.CreateAIConversation) {
     throw new Error(t('创建对话能力未就绪'))
   }
-  const snapshot = await bridge.CreateAIConversation(title)
-  return normalizeAIConversationSnapshot(snapshot)
+  const snapshot = normalizeAIConversationSnapshot(await bridge.CreateAIConversation(title))
+  publishAIConversationUpsert(snapshot)
+  return snapshot
 }
 
 export async function getAIConversation(conversationId) {
@@ -217,8 +262,9 @@ export async function saveAIConversation(snapshot) {
     return normalizeAIConversationSnapshot(snapshot)
   }
   const outgoingSnapshot = normalizeAIConversationSnapshot(snapshot)
-  const saved = await bridge.SaveAIConversation(JSON.stringify(outgoingSnapshot))
-  return normalizeAIConversationSnapshot(saved)
+  const saved = normalizeAIConversationSnapshot(await bridge.SaveAIConversation(JSON.stringify(outgoingSnapshot)))
+  publishAIConversationUpsert(saved)
+  return saved
 }
 
 export async function deleteAIConversation(conversationId) {
@@ -227,6 +273,18 @@ export async function deleteAIConversation(conversationId) {
     return
   }
   await bridge.DeleteAIConversation(conversationId)
+  publishAIConversationDelete(conversationId)
+}
+
+export async function condenseAIConversationContext(conversationId, sessionId) {
+  const bridge = getAppBridge()
+  if (!bridge?.CondenseAIConversationContext) {
+    throw new Error(t('上下文压缩能力未就绪'))
+  }
+  const result = await bridge.CondenseAIConversationContext(conversationId, sessionId)
+  const snapshot = normalizeAIConversationSnapshot(result?.snapshot || result)
+  publishAIConversationUpsert(snapshot)
+  return result?.snapshot ? { ...result, snapshot } : snapshot
 }
 
 export async function openAIConversationFolder(conversationId) {

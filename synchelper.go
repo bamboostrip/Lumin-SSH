@@ -719,7 +719,7 @@ func (c *ConfigManager) syncFromProvider(s RemoteStorage, maxBackups int, passwo
 			return nil, fmt.Errorf("清理旧备份失败: %w", err)
 		}
 	}
-	c.saveLastSyncTime(time.Now().UnixMilli())
+	c.recordSyncCompleted()
 
 	return map[string]interface{}{
 		"success":     true,
@@ -1027,7 +1027,7 @@ func (c *ConfigManager) syncAllProviders(entries []providerEntry, password strin
 	}
 	cloudChanged := len(uploadTargets) > 0
 	if !localChanged && !cloudChanged {
-		c.saveLastSyncTime(time.Now().UnixMilli())
+		c.recordSyncCompleted()
 		return map[string]interface{}{"success": true, "action": "skip", "localCount": len(localConns), "remoteCount": downloaded, "mergedCount": len(mergedConns), "uploaded": 0, "skipped": true}, nil
 	}
 
@@ -1061,7 +1061,7 @@ func (c *ConfigManager) syncAllProviders(entries []providerEntry, password strin
 		}
 	}
 	c.CleanupOrphanedHistory()
-	c.saveLastSyncTime(time.Now().UnixMilli())
+	c.recordSyncCompleted()
 	action := "merge"
 	if !localChanged {
 		action = "upload"
@@ -1080,9 +1080,20 @@ func (c *ConfigManager) syncAllProviders(entries []providerEntry, password strin
 
 // emitSyncEvent 向前端发送同步状态事件（ponytail: wailsCtx 可能为 nil，静默跳过）
 func (c *ConfigManager) emitSyncEvent(event string, data map[string]interface{}) {
+	if c.syncEventForTest != nil {
+		c.syncEventForTest(event, data)
+		return
+	}
 	if c.wailsCtx != nil {
 		runtime.EventsEmit(c.wailsCtx, event, data)
 	}
+}
+
+func (c *ConfigManager) recordSyncCompleted() int64 {
+	timestamp := time.Now().UnixMilli()
+	c.saveLastSyncTime(timestamp)
+	c.emitSyncEvent("sync-completed", map[string]interface{}{"timestamp": timestamp})
+	return timestamp
 }
 
 // autoSyncProvider 自动同步：
@@ -1097,6 +1108,7 @@ func (c *ConfigManager) autoSyncProvider(s RemoteStorage, maxBackups int) error 
 		if _, berr := c.backupConnections(s, maxBackups); berr != nil {
 			return fmt.Errorf("云端访问失败: %w", berr)
 		}
+		c.recordSyncCompleted()
 		c.emitSyncEvent("sync-status", map[string]interface{}{
 			"action": "upload",
 			"reason": "no_remote_backup",
@@ -1173,7 +1185,7 @@ func (c *ConfigManager) autoSyncProvider(s RemoteStorage, maxBackups int) error 
 
 	// 无变化 → 静默跳过
 	if !localChanged && !cloudChanged {
-		c.saveLastSyncTime(time.Now().UnixMilli())
+		c.recordSyncCompleted()
 		return nil
 	}
 
@@ -1242,11 +1254,7 @@ func (c *ConfigManager) autoSyncProvider(s RemoteStorage, maxBackups int) error 
 	if !syncTimeUpdated && remoteSnapTime > localSnapTime {
 		atomicWriteFile(c.syncTimeFile, []byte(fmt.Sprintf("%d", remoteSnapTime)), 0600)
 	}
-	c.saveLastSyncTime(time.Now().UnixMilli())
-
-	if action == "upload" && !localChanged {
-		return nil
-	}
+	c.recordSyncCompleted()
 
 	c.emitSyncEvent("sync-status", map[string]interface{}{
 		"action":       action,
@@ -1665,7 +1673,7 @@ func (c *ConfigManager) uploadRecoveryPasswordSnapshot(providers []providerEntry
 		rollbackUploadedSnapshots(uploaded)
 		return fmt.Errorf("保存恢复密码失败：%w", err)
 	}
-	c.saveLastSyncTime(time.Now().UnixMilli())
+	c.recordSyncCompleted()
 	return nil
 }
 
@@ -2194,7 +2202,7 @@ func (c *ConfigManager) restoreFromProvider(s RemoteStorage, filename string, ma
 	if _, err := c.backupConnections(s, maxBackups); err != nil {
 		return err
 	}
-	c.saveLastSyncTime(time.Now().UnixMilli())
+	c.recordSyncCompleted()
 	return nil
 }
 
@@ -2220,7 +2228,12 @@ func (c *ConfigManager) backupTo(storageFn func() (RemoteStorage, int, error)) (
 	if cl, ok := s.(storageCloser); ok {
 		defer cl.Close()
 	}
-	return c.backupConnections(s, max)
+	result, err := c.backupConnections(s, max)
+	if err != nil {
+		return nil, err
+	}
+	c.recordSyncCompleted()
+	return result, nil
 }
 
 // listBackupsFrom 创建存储、列出备份、关闭连接

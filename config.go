@@ -119,6 +119,7 @@ type ConfigManager struct {
 	credCacheDirty          bool         // 凭据缓存是否需要刷新
 	syncRunning             atomic.Bool  // AutoSync 并发去重
 	wailsCtx                context.Context
+	syncEventForTest        func(string, map[string]interface{})
 	syncProvidersForTest    func() ([]providerEntry, []providerFailure)
 	allSyncProvidersForTest func() ([]providerEntry, []providerFailure)
 }

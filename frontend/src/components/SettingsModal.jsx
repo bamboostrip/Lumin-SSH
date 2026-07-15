@@ -7,7 +7,7 @@ import { APP_BUILD_TIME, APP_VERSION } from '../config.js';
 import { useUpdateChecker } from '../hooks/useUpdateChecker.js';
 import { Sun, Monitor, Moon, Keyboard, Cloud, Info, Database, Folder, X, RefreshCw, Globe, Palette, Lock, SlidersHorizontal } from 'lucide-react';
 import { Z } from '../constants/zIndex';
-import { WindowSetSize, WindowUnmaximise } from '../../wailsjs/runtime/runtime.js';
+import { EventsOn, WindowSetSize, WindowUnmaximise } from '../../wailsjs/runtime/runtime.js';
 import { hexToRgb } from '../utils/theme.js';
 import { getProgramFontAssignmentSnapshot, listProgramFonts, selectAndImportProgramFontFiles, setProgramFontPreference } from '../utils/programFonts.js';
 import { syncWithRecoveryPassword } from '../utils/recoveryPasswordSync.js';
@@ -281,7 +281,7 @@ export default function SettingsModal({
   const [failedRestoreProviders, setFailedRestoreProviders] = useState([]);
   const [loadingBackups, setLoadingBackups] = useState(false);
   const [testResult, setTestResult] = useState(null); // null | 'ok' | 'fail'
-  const [lastBackup, setLastBackup] = useState(null);
+  const [lastSyncTime, setLastSyncTime] = useState(0);
 
   // Recovery password (for cloud backup restore fallback)
   const [hasRecoveryPassword, setHasRecoveryPassword] = useState(false);
@@ -299,6 +299,13 @@ export default function SettingsModal({
     setRestoreWithPassword(false);
     onClose();
   }, [onClose]);
+
+  const refreshLastSyncTime = useCallback(async () => {
+    try {
+      const value = Number(await AppGo.GetLastSyncTime());
+      if (Number.isSafeInteger(value) && value > 0) setLastSyncTime(value);
+    } catch (_) {}
+  }, []);
 
   // Sync provider selection
   const [syncProvider, setSyncProvider] = useState('webdav');
@@ -843,6 +850,8 @@ export default function SettingsModal({
       }
     });
 
+    void refreshLastSyncTime();
+
     // Load sync mode
     AppGo.GetSyncMode()
       .then((mode) => {
@@ -909,7 +918,12 @@ export default function SettingsModal({
     ]);
 
     return () => { cancelled = true; };
-  }, []);
+  }, [refreshLastSyncTime]);
+
+  useEffect(() => {
+    const unbind = EventsOn('sync-completed', () => { void refreshLastSyncTime(); });
+    return () => { if (unbind) unbind(); };
+  }, [refreshLastSyncTime]);
 
   useEffect(() => {
     let cancelled = false;
@@ -979,13 +993,13 @@ export default function SettingsModal({
         s.setEditing(false);
         try {
           const res = await p.sync();
-          setLastBackup(res.backup?.time);
+          await refreshLastSyncTime();
           addToast(`${p.name} ${$t('同步成功！本地')} ${res.localCount} ${$t('个 + 云端')} ${res.remoteCount} ${$t('个 =')} ${res.mergedCount} ${$t('个')}`, 'success');
           onRestored?.();
         } catch (_) {
           try {
             const data = await p.backup();
-            setLastBackup(data.time);
+            await refreshLastSyncTime();
             addToast(`${p.name} ${$t('配置已保存，已上传')} ${data.count} ${$t('个服务器')}`, 'success');
           } catch (e) {
             addToast(`${p.name} ${$t('配置已保存，但同步失败，可稍后手动上传')}`, 'warning');
@@ -1160,6 +1174,7 @@ export default function SettingsModal({
       } else {
         await p.sync();
       }
+      await refreshLastSyncTime();
       addToast($t('恢复成功'), 'success');
       onRestored?.();
       setConfirmRestore(false);
@@ -1201,6 +1216,7 @@ export default function SettingsModal({
         t: $t,
       });
       if (cancelled) return;
+      await refreshLastSyncTime();
       addToast(`${$t('合并同步成功！本地')} ${res.localCount} ${$t('个 + 云端')} ${res.remoteCount} ${$t('个 =')} ${res.mergedCount} ${$t('个')}`, 'success');
       onRestored?.();
     } catch (err) {
@@ -1242,6 +1258,7 @@ export default function SettingsModal({
         if (action !== 'reset') return;
         await AppGo.ResetRecoveryPassword(password);
       }
+      await refreshLastSyncTime();
       setHasRecoveryPassword(!!password.trim());
       setRecoveryPasswordEditing(false);
       setRecoveryPasswordInput('');
@@ -1475,7 +1492,7 @@ export default function SettingsModal({
                 onTestSFTP={handleTestSFTP}
                 onSaveSFTP={handleSaveSFTP}
                 setSftpForm={setSftpForm}
-                lastBackup={lastBackup}
+                lastSyncTime={lastSyncTime}
                 syncing={syncing}
                 onSync={handleSync}
                 loadingBackups={loadingBackups}

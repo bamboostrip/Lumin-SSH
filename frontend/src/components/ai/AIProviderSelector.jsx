@@ -251,13 +251,13 @@ export default function AIProviderSelector({
     }
   }, [selectedProvider])
 
-  const providerSummaryRows = useMemo(() => ([
+  const providerSummaryRows = [
     { label: t('供应商'), value: selectedProvider?.name || t('选择供应商') },
     { label: t('模型'), value: selectedProvider?.model || t('未选择模型') },
     { label: t('API兼容方式'), value: selectedProvider?.provider || 'Compatible' },
     { label: t('缓存策略'), value: getCacheStrategyLabel(t, selectedProvider?.cacheStrategy) },
     { label: 'Key', value: getApiKeyPreview(selectedProvider?.apiKey) || '-' },
-  ]), [selectedProvider, t])
+  ]
 
   const closeTooltip = useCallback(() => {
     if (tooltipTimerRef.current) {

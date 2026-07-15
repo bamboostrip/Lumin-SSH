@@ -345,6 +345,115 @@ func TestSnapshotEqualIgnoresTimeListOrderAndQuickJSONFormatting(t *testing.T) {
 	}
 }
 
+func TestAutoSyncProviderEmitsStatusAfterUploadingLocalChanges(t *testing.T) {
+	cm := testSyncManager(t)
+	if err := cm.persistSyncSnapshot(&SyncSnapshot{
+		Connections:   []Connection{{ID: "server", Host: "new", LastModified: 20}},
+		QuickCommands: "[]",
+		SnapshotTime:  20,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cm.saveLastSyncTime(15)
+	remote := cm.localSyncSnapshot()
+	remote.Connections = []Connection{{ID: "server", Host: "old", ProxyMode: "direct", LastModified: 10}}
+	if err := cm.SetRecoveryPassword("密码"); err != nil {
+		t.Fatal(err)
+	}
+	storage := &memoryStorage{files: map[string][]byte{
+		"connections_backup_20260101_000000.000_+0000.lumin2": encryptedSyncSnapshot(t, "密码", remote),
+	}}
+	var statusEvents, completedEvents []map[string]interface{}
+	cm.syncEventForTest = func(event string, data map[string]interface{}) {
+		switch event {
+		case "sync-status":
+			statusEvents = append(statusEvents, data)
+		case "sync-completed":
+			completedEvents = append(completedEvents, data)
+		}
+	}
+
+	if err := cm.autoSyncProvider(storage, 0); err != nil {
+		t.Fatal(err)
+	}
+	if len(statusEvents) != 1 || statusEvents[0]["action"] != "upload" {
+		t.Fatalf("本地变更上传成功后必须发送一次状态事件：%v", statusEvents)
+	}
+	if len(completedEvents) != 1 || completedEvents[0]["timestamp"] != cm.loadLastSyncTime() {
+		t.Fatalf("同步完成时间必须持久化并广播：events=%v persisted=%d", completedEvents, cm.loadLastSyncTime())
+	}
+}
+
+func TestAutoSyncProviderKeepsNoChangeSilent(t *testing.T) {
+	cm := testSyncManager(t)
+	if err := cm.persistSyncSnapshot(&SyncSnapshot{
+		Connections:   []Connection{{ID: "server", Host: "same", LastModified: 20}},
+		QuickCommands: "[]",
+		SnapshotTime:  20,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	remote := cm.localSyncSnapshot()
+	if err := cm.SetRecoveryPassword("密码"); err != nil {
+		t.Fatal(err)
+	}
+	storage := &memoryStorage{files: map[string][]byte{
+		"connections_backup_20260101_000000.000_+0000.lumin2": encryptedSyncSnapshot(t, "密码", remote),
+	}}
+	statusCount, completedCount := 0, 0
+	cm.syncEventForTest = func(event string, _ map[string]interface{}) {
+		switch event {
+		case "sync-status":
+			statusCount++
+		case "sync-completed":
+			completedCount++
+		}
+	}
+
+	if err := cm.autoSyncProvider(storage, 0); err != nil {
+		t.Fatal(err)
+	}
+	if statusCount != 0 {
+		t.Fatalf("两端一致时不应发送完成提示，得到 %d 次", statusCount)
+	}
+	if completedCount != 1 || cm.loadLastSyncTime() <= 0 {
+		t.Fatalf("两端一致也应记录一次同步完成：events=%d persisted=%d", completedCount, cm.loadLastSyncTime())
+	}
+}
+
+func TestAutoSyncProviderRecordsFirstEmptyRemoteUpload(t *testing.T) {
+	cm := testSyncManager(t)
+	storage := &memoryStorage{files: map[string][]byte{}}
+	statusCount, completedCount := 0, 0
+	cm.syncEventForTest = func(event string, _ map[string]interface{}) {
+		switch event {
+		case "sync-status":
+			statusCount++
+		case "sync-completed":
+			completedCount++
+		}
+	}
+
+	if err := cm.autoSyncProvider(storage, 0); err != nil {
+		t.Fatal(err)
+	}
+	if len(storage.writes) != 1 || statusCount != 1 || completedCount != 1 || cm.loadLastSyncTime() <= 0 {
+		t.Fatalf("首次上传应记录并通知同步完成：writes=%v status=%d completed=%d persisted=%d", storage.writes, statusCount, completedCount, cm.loadLastSyncTime())
+	}
+}
+
+func TestGetLastSyncTimeReturnsPersistedValue(t *testing.T) {
+	cm := testSyncManager(t)
+	app := &App{configManager: cm}
+	if got := app.GetLastSyncTime(); got != 0 {
+		t.Fatalf("未同步时应返回 0，得到 %d", got)
+	}
+	cm.saveLastSyncTime(123456789)
+	if got := app.GetLastSyncTime(); got != 123456789 {
+		t.Fatalf("应返回持久化时间，得到 %d", got)
+	}
+}
+
 func TestSyncAllProvidersUploadsOnlyDifferentAndNoBackup(t *testing.T) {
 	cm := testSyncManager(t)
 	local := &SyncSnapshot{

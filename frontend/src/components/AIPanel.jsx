@@ -8,7 +8,7 @@ import AIConversationBackupSettings from './ai/AIConversationBackupSettings.jsx'
 import AIPanelSettingsOverlay from './ai/AIPanelSettingsOverlay.jsx'
 import AIComposer from './ai/AIComposer.jsx'
 import { approveAIChatTools, assignAIChatToolTerminal, cancelAIChat, continueAIChatTool, listAIChatCommandTerminalCandidates, previewAIChatToolRestore, rejectAIChatTools, rejectAIChatToolsForQueuedSubmission, restoreAIChatTool, setAIChatSkipNextAutomaticRequest, startAIChat, terminateAIChatTool } from './ai/aiChatBridge.js'
-import { createAIConversation, deleteAIConversation, getAIConversation, listAIConversations, normalizeAIConversationMessageSearchResult, normalizeAIConversationSnapshot, normalizeAIConversationTaskSettings, openAIConversationFolder, preprocessAIConversationLongText, readAIConversationWrappedFile, saveAIConversation, searchAIConversationMessages } from './ai/aiConversationBridge.js'
+import { condenseAIConversationContext, createAIConversation, deleteAIConversation, getAIConversation, listAIConversations, normalizeAIConversationMessageSearchResult, normalizeAIConversationSnapshot, normalizeAIConversationTaskSettings, openAIConversationFolder, preprocessAIConversationLongText, readAIConversationWrappedFile, saveAIConversation, searchAIConversationMessages, subscribeAIConversationChanges } from './ai/aiConversationBridge.js'
 import { buildExecutionContextDetails, getExecutionContextSnapshot } from './ai/aiExecutionContext.js'
 import { getAIGlobalSettings, normalizeAIGlobalSettings, saveAIGlobalSettings } from './ai/aiGlobalSettingsBridge.js'
 import { getMCPSettingsState, saveMCPGlobalServer, reloadMCPGlobalServers, deleteMCPGlobalServer, restartMCPClientServer, toggleMCPClientServer, toggleMCPClientServerDisabledForPrompts, updateMCPClientServerTimeout } from './ai/mcpClientBridge.js'
@@ -374,7 +374,10 @@ function upsertConversationSummary(list, snapshot) {
     updatedAt: snapshot.updatedAt,
     status: snapshot.status,
     toolProtocol: snapshot.toolProtocol,
-    messageCount: Array.isArray(snapshot.messages) ? snapshot.messages.length : 0,
+    messageCount: typeof snapshot.messageCount === 'number'
+      ? snapshot.messageCount
+      : Array.isArray(snapshot.messages) ? snapshot.messages.length : 0,
+    promptCacheBypassTimestamp: snapshot.promptCacheBypassTimestamp || '',
   }
 
   const nextList = Array.isArray(list) ? [...list] : []
@@ -985,6 +988,30 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   useEffect(() => {
     void refreshAIHomeData()
   }, [refreshAIHomeData])
+
+  useEffect(() => subscribeAIConversationChanges((change) => {
+    if (change?.type === 'upsert' && change.summary?.id) {
+      setConversationList((current) => upsertConversationSummary(current, change.summary))
+      return
+    }
+    if (change?.type !== 'delete' || !change.conversationId) {
+      return
+    }
+    setConversationList((current) => current.filter((item) => item.id !== change.conversationId))
+    const panel = terminalPanelsRef.current[panelInstanceKey]
+    if (panel?.activeConversationId !== change.conversationId) {
+      return
+    }
+    const requestId = panel.activeRequestId
+    setPanelState(panelInstanceKey, createEmptyPanelState())
+    clearRestorePreview()
+    resetComposerEditState()
+    resetGlobalSearchState()
+    resetConversationSearchState()
+    if (requestId) {
+      void cancelAIChat(requestId)
+    }
+  }), [clearRestorePreview, panelInstanceKey, resetComposerEditState, resetConversationSearchState, resetGlobalSearchState, setPanelState])
 
   useEffect(() => {
     if (!showSettingsPanel) {
@@ -2556,8 +2583,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   }, [activeConversation, composerEditState.targetMessageId, panelInstanceKey, requestConversationSmoothScrollToBottom, requestDeleteConfirmation, resetComposerEditState, saveConversationSnapshot, setPanelState, t, truncateConversationAfterMessage])
 
   const handleCondenseContext = useCallback(async () => {
-    const bridge = window?.go?.main?.AIBindings || window?.go?.main?.App
-    if (!activeConversation || runtimePhase !== 'ready' || panelState.isCondensingContext || !bridge?.CondenseAIConversationContext) {
+    if (!activeConversation || runtimePhase !== 'ready' || panelState.isCondensingContext) {
       return
     }
     setPanelState(panelInstanceKey, (current) => ({
@@ -2565,7 +2591,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       isCondensingContext: true,
     }))
     try {
-      const result = await bridge.CondenseAIConversationContext(activeConversation.id, terminalId)
+      const result = await condenseAIConversationContext(activeConversation.id, terminalId)
       const nextSnapshot = normalizeAIConversationSnapshot(result?.snapshot || result)
       setConversationList((prev) => upsertConversationSummary(prev, nextSnapshot))
       setPanelState(panelInstanceKey, (current) => ({

@@ -207,7 +207,24 @@ func (b *AIBindings) GetAIProviderState() ai.AIProviderState {
 }
 
 func (b *AIBindings) SaveAIProviderState(jsonStr string) error {
-	return b.runtime().SaveAIProviderState(jsonStr)
+	previous := b.runtime().GetAIProviderState()
+	if err := b.runtime().SaveAIProviderState(jsonStr); err != nil {
+		return err
+	}
+	current := b.runtime().GetAIProviderState()
+	previousProviders := append([]ai.AIProviderProfile(nil), previous.Providers...)
+	currentProviders := append([]ai.AIProviderProfile(nil), current.Providers...)
+	for i := range previousProviders {
+		previousProviders[i].UpdatedAt = 0
+	}
+	for i := range currentProviders {
+		currentProviders[i].UpdatedAt = 0
+	}
+	if b != nil && b.app != nil && b.app.configManager != nil && !aiProvidersEqual(previousProviders, currentProviders) {
+		b.app.configManager.bumpSnapshotTime()
+		go b.app.configManager.AutoSync()
+	}
+	return nil
 }
 
 func (b *AIBindings) ValidateAIProviderWebSearch(jsonStr string) ai.AIProviderWebSearchValidationResult {

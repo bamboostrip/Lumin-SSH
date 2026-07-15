@@ -1,4 +1,4 @@
-import { normalizeAIConversationSnapshot } from './aiConversationBridge.js'
+import { normalizeAIConversationSnapshot, publishAIConversationUpsert } from './aiConversationBridge.js'
 
 function getAppBridge() {
   return window?.go?.main?.AIBindings || window?.go?.main?.App
@@ -48,8 +48,9 @@ export async function restoreAIConversationBackup(conversationId, backupId) {
   if (!bridge?.RestoreAIConversationBackup) {
     return null
   }
-  const snapshot = await bridge.RestoreAIConversationBackup(conversationId, backupId)
-  return normalizeAIConversationSnapshot(snapshot)
+  const snapshot = normalizeAIConversationSnapshot(await bridge.RestoreAIConversationBackup(conversationId, backupId))
+  publishAIConversationUpsert(snapshot)
+  return snapshot
 }
 
 export async function deleteAIConversationBackup(conversationId, backupId) {

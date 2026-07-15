@@ -5,6 +5,14 @@ import { Save, Cloud, Database, Folder, FolderOpen, Lock, RefreshCw, Sparkles, P
 
 const PROVIDER_ICON_CMP = { webdav: Cloud, r2: Database, ftp: Folder, sftp: Lock };
 
+function formatSyncTime(timestamp) {
+  if (!Number.isSafeInteger(timestamp) || timestamp <= 0) return '';
+  const date = new Date(timestamp);
+  if (!Number.isFinite(date.getTime())) return '';
+  const pad = (value, length = 2) => String(value).padStart(length, '0');
+  return `${pad(date.getFullYear(), 4)}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
 function ProviderCard({ provider, providerKey, form, configured, editing, onEdit, onCancelEdit, testing, testResult, onTest, loading, onSave, children }) {
   const accent = provider.accent;
   const accentRgb = provider.accentRgb;
@@ -100,9 +108,10 @@ export default function SyncTab({
   r2Form, setR2Field, r2Configured, r2Editing, setR2Editing, r2Loading, r2Testing, r2TestResult, onR2Test, onR2Save,
   ftpForm, setFTPField, ftpConfigured, ftpEditing, setFtpEditing, ftpLoading, ftpTesting, ftpTestResult, onTestFTP, onSaveFTP,
   sftpForm, setSFTPField, sftpConfigured, sftpEditing, setSftpEditing, sftpLoading, sftpTesting, sftpTestResult, onTestSFTP, onSaveSFTP, setSftpForm,
-  lastBackup, syncing, onSync, loadingBackups, restoring, onRestore, isAnyConfigured, addToast,
+  lastSyncTime, syncing, onSync, loadingBackups, restoring, onRestore, isAnyConfigured, addToast,
   hasRecoveryPassword, recoveryPasswordEditing, setRecoveryPasswordEditing, recoveryPasswordInput, setRecoveryPasswordInput, recoveryPasswordChanging, onSaveRecoveryPassword, onClearRecoveryPassword
 }) {
+  const formattedLastSyncTime = formatSyncTime(lastSyncTime);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
@@ -454,7 +463,7 @@ export default function SyncTab({
           </div>
         )}
 
-        {lastBackup && <div style={{ fontSize: 12, color: 'var(--success)', marginBottom: 12 }}>{$t('上次同步')}: {lastBackup}</div>}
+        {formattedLastSyncTime && <div style={{ fontSize: 12, color: 'var(--success)', marginBottom: 12 }}>{$t('上次同步')}: {formattedLastSyncTime}</div>}
 
         <div style={{ display: 'flex', gap: 12 }}>
           <button className="btn btn-secondary" onClick={onSync} disabled={syncing || loadingBackups || restoring}>

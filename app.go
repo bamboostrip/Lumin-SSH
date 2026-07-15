@@ -1611,6 +1611,13 @@ func (a *App) GetAutoSyncEnabled() bool {
 	return a.configManager.GetAutoSyncEnabled()
 }
 
+func (a *App) GetLastSyncTime() int64 {
+	if a == nil || a.configManager == nil {
+		return 0
+	}
+	return a.configManager.loadLastSyncTime()
+}
+
 func (a *App) SetAutoSyncEnabled(enabled bool) error {
 	return a.configManager.SetAutoSyncEnabled(enabled)
 }

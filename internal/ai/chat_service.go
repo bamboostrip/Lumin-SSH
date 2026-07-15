@@ -83,6 +83,8 @@ var aiSupportedToolNames = []string{
 	"list_files",
 	"read_file",
 	"write_to_file",
+	"transfer_batch",
+	"transfer_list",
 	"execute_command",
 	"ask_followup_question",
 	"attempt_completion",
@@ -105,8 +107,15 @@ var aiSupportedToolParamNames = []string{
 	"remaining_file_edits",
 	"args",
 	"files",
+	"items",
 	"start_line",
 	"end_line",
+	"local_parent",
+	"remote_parent",
+	"local_path",
+	"remote_path",
+	"operation",
+	"wait",
 	"command",
 	"purpose",
 	"is_mutating",
@@ -401,9 +410,9 @@ func (a *App) persistAIUserNodeCompensation(requestID string, conversationID str
 
 func getAIAutoApprovalCategoryForTool(toolName string) string {
 	switch strings.TrimSpace(toolName) {
-	case "list_connected_sessions", "list_files", "read_file", "live_search":
+	case "list_connected_sessions", "list_files", "read_file", "transfer_list", "live_search":
 		return "read"
-	case "write_to_file", "search_replace", "apply_diff", "apply_patch":
+	case "write_to_file", "transfer_batch", "search_replace", "apply_diff", "apply_patch":
 		return "write"
 	case "execute_command":
 		return "execute"
@@ -2018,7 +2027,7 @@ func convertToolArguments(tool aiParsedToolUse, sessionID string) map[string]any
 			} else {
 				arguments[key] = strings.TrimSpace(value)
 			}
-		case "operations":
+		case "operations", "items":
 			trimmedValue := strings.TrimSpace(value)
 			if trimmedValue == "" {
 				arguments[key] = []map[string]any{}
@@ -2030,7 +2039,7 @@ func convertToolArguments(tool aiParsedToolUse, sessionID string) map[string]any
 			} else {
 				arguments[key] = trimmedValue
 			}
-		case "recursive":
+		case "recursive", "wait":
 			lowerValue := strings.ToLower(strings.TrimSpace(value))
 			if lowerValue == "true" || lowerValue == "false" {
 				arguments[key] = lowerValue == "true"
@@ -2062,6 +2071,10 @@ func titleForParsedToolUse(tool aiParsedToolUse) string {
 		return "读取文件"
 	case "write_to_file":
 		return "写入文件"
+	case "transfer_batch":
+		return "批量传输"
+	case "transfer_list":
+		return "列出传输任务"
 	case "apply_diff":
 		return "应用差异"
 	case "execute_command":
@@ -2151,7 +2164,7 @@ func (a *App) executeParsedToolUses(requestID string, assistantMessageID string,
 		return nil
 	}
 	service := mcpserver.NewService(mcpSessionProvider{app: a})
-	catalog := mcpserver.NewCatalog(service, mcpFileProvider{app: a}, mcpCommandProvider{app: a}, mcpRemoteEditExecutor{app: a})
+	catalog := mcpserver.NewCatalog(service, mcpFileProvider{app: a}, mcpCommandProvider{app: a}, mcpRemoteEditExecutor{app: a}, mcpTransferProvider{app: a})
 	results := make([]AIChatRequestMessage, 0, len(tools))
 
 	for index, tool := range tools {

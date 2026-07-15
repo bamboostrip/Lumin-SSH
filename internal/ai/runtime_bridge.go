@@ -33,6 +33,8 @@ type SSHDelegate interface {
 	WriteFileContext(ctx context.Context, sessionID string, remotePath string, content string) error
 	DeleteItemContext(ctx context.Context, sessionID string, remotePath string, isDir bool) error
 	MkdirContext(ctx context.Context, sessionID string, remotePath string) error
+	TransferFileContext(ctx context.Context, sessionID string, request mcpserver.TransferFileRequest) (mcpserver.TransferTaskSnapshot, error)
+	ListTransfersContext(ctx context.Context, sessionID string) ([]mcpserver.TransferTaskSnapshot, error)
 	BridgeGetClientEntry(sessionID string) (*ssh.Client, *sftp.Client, error)
 	BridgeExecuteCmdWithClientContext(ctx context.Context, client *ssh.Client, command string) (string, error)
 	BridgeGetSFTPClient(sessionID string) (*sftp.Client, error)
@@ -395,6 +397,32 @@ func (p mcpCommandProvider) ExecuteCommandContext(ctx context.Context, sessionID
 	}
 	result, _, err := p.app.sshManager.ExecuteCommandInTerminalControlled(sessionID, command, purpose, isMutating, cwd, shellType, timeout, nil, nil, nil, nil, nil)
 	return result, err
+}
+
+type mcpTransferProvider struct {
+	app *App
+}
+
+func (p mcpTransferProvider) TransferFile(sessionID string, request mcpserver.TransferFileRequest) (mcpserver.TransferTaskSnapshot, error) {
+	return p.TransferFileContext(context.Background(), sessionID, request)
+}
+
+func (p mcpTransferProvider) TransferFileContext(ctx context.Context, sessionID string, request mcpserver.TransferFileRequest) (mcpserver.TransferTaskSnapshot, error) {
+	if p.app == nil || p.app.sshManager == nil || p.app.sshManager.delegate == nil {
+		return mcpserver.TransferTaskSnapshot{}, fmt.Errorf("SSH 管理器不可用")
+	}
+	return p.app.sshManager.delegate.TransferFileContext(ctx, sessionID, request)
+}
+
+func (p mcpTransferProvider) ListTransfers(sessionID string) ([]mcpserver.TransferTaskSnapshot, error) {
+	return p.ListTransfersContext(context.Background(), sessionID)
+}
+
+func (p mcpTransferProvider) ListTransfersContext(ctx context.Context, sessionID string) ([]mcpserver.TransferTaskSnapshot, error) {
+	if p.app == nil || p.app.sshManager == nil || p.app.sshManager.delegate == nil {
+		return nil, fmt.Errorf("SSH 管理器不可用")
+	}
+	return p.app.sshManager.delegate.ListTransfersContext(ctx, sessionID)
 }
 
 type mcpFileProvider struct {

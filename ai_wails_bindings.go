@@ -288,6 +288,20 @@ func (d aiSSHDelegate) MkdirContext(ctx context.Context, sessionID string, remot
 	return d.manager.MkdirContext(ctx, sessionID, remotePath)
 }
 
+func (d aiSSHDelegate) TransferFileContext(ctx context.Context, sessionID string, request mcpserver.TransferFileRequest) (mcpserver.TransferTaskSnapshot, error) {
+	if d.manager == nil {
+		return mcpserver.TransferTaskSnapshot{}, fmt.Errorf("ssh manager unavailable")
+	}
+	return d.manager.TransferFileContext(ctx, sessionID, request)
+}
+
+func (d aiSSHDelegate) ListTransfersContext(ctx context.Context, sessionID string) ([]mcpserver.TransferTaskSnapshot, error) {
+	if d.manager == nil {
+		return nil, fmt.Errorf("ssh manager unavailable")
+	}
+	return d.manager.ListTransfersContext(ctx, sessionID)
+}
+
 func (d aiSSHDelegate) BridgeGetClientEntry(sessionID string) (*ssh.Client, *sftp.Client, error) {
 	if d.manager == nil {
 		return nil, nil, fmt.Errorf("ssh manager unavailable")

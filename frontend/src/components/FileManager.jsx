@@ -1028,7 +1028,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       return item.status === 'queued' || item.status === 'uploading';
     }
     if (item.mode === 'compressed') {
-      return ['preparing', 'scanning', 'compressing', 'uploading', 'uploading-file', 'extracting'].includes(item.phase);
+      return ['preparing', 'scanning', 'compressing', 'uploading', 'uploading-file', 'verifying', 'extracting'].includes(item.phase);
     }
     return item.status === 'queued' || item.status === 'uploading';
   }, []);

@@ -17,6 +17,8 @@ type Host interface {
 	WriteTextFileContext(ctx context.Context, sessionID string, remotePath string, content string) error
 	DeleteItemContext(ctx context.Context, sessionID string, remotePath string, isDir bool) error
 	MkdirContext(ctx context.Context, sessionID string, remotePath string) error
+	TransferFileContext(ctx context.Context, sessionID string, request mcpserver.TransferFileRequest) (mcpserver.TransferTaskSnapshot, error)
+	ListTransfersContext(ctx context.Context, sessionID string) ([]mcpserver.TransferTaskSnapshot, error)
 	RunCommandContext(ctx context.Context, sessionID string, command string) (string, error)
 	UploadTempTextContext(ctx context.Context, sessionID string, suffix string, content string, mode os.FileMode) (string, error)
 	RemoveFile(sessionID string, remotePath string)

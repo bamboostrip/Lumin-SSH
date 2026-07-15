@@ -1,10 +1,13 @@
-import { MessageCircleQuestionMark } from 'lucide-react'
-import { useState } from 'react'
+import { ChevronLeft, ChevronRight, MessageCircleQuestionMark } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeSanitize from 'rehype-sanitize'
 import remarkGfm from 'remark-gfm'
 import { useTranslation } from '../../../i18n.js'
 import AIChatMarkdown from './AIChatMarkdown.jsx'
+
+const FREEZE_AFTER_SUBMIT_MS = 1000
+const FREEZE_AFTER_MULTI_NEXT_MS = 500
 
 const suggestionMarkdownComponents = {
   p: ({ children }) => <span>{children}</span>,
@@ -65,62 +68,453 @@ function FollowUpSuggestionMarkdown({ text }) {
   )
 }
 
-export default function AIChatFollowUpCard({ question, suggestions, onSelectSuggestion }) {
-  const { t } = useTranslation()
-  const [submittingValue, setSubmittingValue] = useState('')
-  const suggestionList = Array.isArray(suggestions) ? suggestions : []
+function normalizeLegacySuggestions(question, suggestions) {
+  const suggestionList = Array.isArray(suggestions) ? suggestions.filter((item) => typeof item === 'string' && item.trim()) : []
+  if (suggestionList.length === 0) {
+    return []
+  }
+  return [{
+    id: 'question-1',
+    text: typeof question === 'string' && question.trim() ? question.trim() : 'Question 1',
+    type: 'single',
+    options: suggestionList.map((item, index) => ({
+      id: `question-1-option-${index + 1}`,
+      answer: item.trim(),
+      mode: '',
+      disabled: false,
+    })),
+  }]
+}
 
-  const handleSelectSuggestion = async (value) => {
-    const nextValue = typeof value === 'string' ? value.trim() : ''
-    if (!nextValue || submittingValue || typeof onSelectSuggestion !== 'function') {
-      return
+function normalizeFollowUpQuestions(question, questions, suggestions) {
+  if (Array.isArray(questions) && questions.length > 0) {
+    return questions
+      .map((item, questionIndex) => {
+        const id = typeof item?.id === 'string' && item.id.trim() ? item.id.trim() : `question-${questionIndex + 1}`
+        const text = typeof item?.text === 'string' && item.text.trim()
+          ? item.text.trim()
+          : questionIndex === 0 && typeof question === 'string' && question.trim()
+            ? question.trim()
+            : `Question ${questionIndex + 1}`
+        const type = String(item?.type || '').trim().toLowerCase() === 'multiple' ? 'multiple' : 'single'
+        const options = Array.isArray(item?.options)
+          ? item.options
+            .map((option, optionIndex) => {
+              const answer = typeof option?.answer === 'string' ? option.answer.trim() : ''
+              if (!answer) {
+                return null
+              }
+              return {
+                id: typeof option?.id === 'string' && option.id.trim() ? option.id.trim() : `${id}-option-${optionIndex + 1}`,
+                answer,
+                mode: typeof option?.mode === 'string' ? option.mode.trim() : '',
+                disabled: option?.disabled === true,
+              }
+            })
+            .filter(Boolean)
+          : []
+        if (options.length === 0) {
+          return null
+        }
+        return { id, text, type, options }
+      })
+      .filter(Boolean)
+  }
+  return normalizeLegacySuggestions(question, suggestions)
+}
+
+function buildFollowUpReadableText(questions, answers) {
+  return questions
+    .map((question) => {
+      const selectedIds = answers[question.id] || []
+      const selectedAnswers = question.options.filter((option) => selectedIds.includes(option.id)).map((option) => option.answer)
+      return selectedAnswers.length > 0 ? `${question.text}: ${selectedAnswers.join(', ')}` : ''
+    })
+    .filter(Boolean)
+    .join('\n')
+}
+
+function buildFollowUpResponse(questions, answers) {
+  const formattedAnswers = questions.map((question) => {
+    const selectedOptionIds = answers[question.id] || []
+    const selectedAnswers = question.options.filter((option) => selectedOptionIds.includes(option.id)).map((option) => option.answer)
+    return {
+      questionId: question.id,
+      question: question.text,
+      type: question.type,
+      selectedOptionIds,
+      selectedAnswers,
     }
-    setSubmittingValue(nextValue)
-    try {
-      const accepted = await onSelectSuggestion(nextValue)
-      if (accepted === false) {
-        setSubmittingValue('')
-      }
-    } catch {
-      setSubmittingValue('')
-    }
+  })
+  const mode = questions
+    .filter((question) => question.type === 'single')
+    .flatMap((question) => question.options.filter((option) => (answers[question.id] || []).includes(option.id) && option.mode))[0]?.mode
+  return {
+    readableText: buildFollowUpReadableText(questions, answers),
+    answers: formattedAnswers,
+    ...(mode ? { mode } : {}),
+  }
+}
+
+function buildOptionButtonStyle(selected, disabled) {
+  return {
+    width: '100%',
+    minHeight: 44,
+    display: 'grid',
+    gridTemplateColumns: '34px minmax(0, 1fr)',
+    alignItems: 'center',
+    gap: 10,
+    padding: '9px 12px',
+    borderRadius: 12,
+    border: selected ? '1px solid var(--accent)' : '1px solid var(--border)',
+    background: selected ? 'rgba(var(--accent-rgb), 0.08)' : 'var(--surface-overlay)',
+    color: 'var(--text-primary)',
+    textAlign: 'left',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.6 : 1,
+    transition: 'var(--transition)',
+  }
+}
+
+function OptionIndicator({ type, checked }) {
+  if (type === 'multiple') {
+    return (
+      <span
+        style={{
+          width: 18,
+          height: 18,
+          borderRadius: 5,
+          border: `1.5px solid ${checked ? 'var(--accent)' : 'var(--text-tertiary)'}`,
+          background: checked ? 'rgba(var(--accent-rgb), 0.18)' : 'transparent',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxSizing: 'border-box',
+        }}
+      >
+        <span
+          style={{
+            width: 9,
+            height: 9,
+            borderRadius: 3,
+            background: checked ? 'var(--accent)' : 'transparent',
+            display: 'block',
+          }}
+        />
+      </span>
+    )
   }
 
   return (
-    <div style={{ display: 'grid', gap: 8 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-        <MessageCircleQuestionMark size={14} color="var(--text-secondary)" />
-        <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{t('追问建议')}</span>
+    <span
+      style={{
+        width: 18,
+        height: 18,
+        borderRadius: '50%',
+        border: `1.5px solid ${checked ? 'var(--accent)' : 'var(--text-tertiary)'}`,
+        background: checked ? 'rgba(var(--accent-rgb), 0.12)' : 'transparent',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        boxSizing: 'border-box',
+      }}
+    >
+      <span
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: '50%',
+          background: checked ? 'var(--accent)' : 'transparent',
+          display: 'block',
+        }}
+      />
+    </span>
+  )
+}
+
+export default function AIChatFollowUpCard({ question, questions, suggestions, requestId, onSelectSuggestion }) {
+  const { t } = useTranslation()
+  const normalizedQuestions = useMemo(
+    () => normalizeFollowUpQuestions(question, questions, suggestions),
+    [question, questions, suggestions],
+  )
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
+  const [answers, setAnswers] = useState({})
+  const [submitting, setSubmitting] = useState(false)
+  const [isFrozen, setIsFrozen] = useState(false)
+  const [transitionDirection, setTransitionDirection] = useState('next')
+  const [transitionTick, setTransitionTick] = useState(0)
+  const submittingRef = useRef(false)
+  const freezeTimeoutRef = useRef(0)
+
+  const clearFreezeTimeout = useCallback(() => {
+    if (freezeTimeoutRef.current) {
+      window.clearTimeout(freezeTimeoutRef.current)
+      freezeTimeoutRef.current = 0
+    }
+  }, [])
+
+  const startFreeze = useCallback((durationMs) => {
+    clearFreezeTimeout()
+    setIsFrozen(true)
+    freezeTimeoutRef.current = window.setTimeout(() => {
+      setIsFrozen(false)
+      setSubmitting(false)
+      submittingRef.current = false
+      freezeTimeoutRef.current = 0
+    }, durationMs)
+  }, [clearFreezeTimeout])
+
+  useEffect(() => {
+    setCurrentQuestionIndex(0)
+    setAnswers({})
+    setSubmitting(false)
+    setIsFrozen(false)
+    submittingRef.current = false
+    clearFreezeTimeout()
+    setTransitionDirection('next')
+    setTransitionTick(0)
+  }, [clearFreezeTimeout, question, questions, requestId, suggestions])
+
+  useEffect(() => () => clearFreezeTimeout(), [clearFreezeTimeout])
+
+  const currentQuestion = normalizedQuestions[currentQuestionIndex] || null
+  const totalQuestions = normalizedQuestions.length
+  const currentLabel = String(currentQuestionIndex + 1).padStart(2, '0')
+  const totalLabel = String(totalQuestions).padStart(2, '0')
+  const canGoPrevious = currentQuestionIndex > 0
+  const selectedIds = currentQuestion ? (answers[currentQuestion.id] || []) : []
+  const canGoNext = selectedIds.length > 0
+  const isLastQuestion = currentQuestionIndex === totalQuestions - 1
+
+  const submitResponse = useCallback(async (nextAnswers) => {
+    if (!requestId || typeof onSelectSuggestion !== 'function' || submittingRef.current || isFrozen) {
+      return false
+    }
+    if (!normalizedQuestions.every((item) => Array.isArray(nextAnswers[item.id]) && nextAnswers[item.id].length > 0)) {
+      return false
+    }
+    const payload = buildFollowUpResponse(normalizedQuestions, nextAnswers)
+    submittingRef.current = true
+    setSubmitting(true)
+    try {
+      const accepted = await onSelectSuggestion({
+        kind: 'followup-response',
+        requestId,
+        answer: payload,
+      })
+      if (accepted === false) {
+        submittingRef.current = false
+        setSubmitting(false)
+        return false
+      }
+      setAnswers({})
+      setCurrentQuestionIndex(0)
+      setTransitionDirection('next')
+      setTransitionTick((current) => current + 1)
+      startFreeze(FREEZE_AFTER_SUBMIT_MS)
+      return true
+    } catch {
+      submittingRef.current = false
+      setSubmitting(false)
+      return false
+    }
+  }, [isFrozen, normalizedQuestions, onSelectSuggestion, requestId, startFreeze])
+
+  const handleSingleSelect = useCallback(async (questionItem, optionId) => {
+    if (!questionItem || submitting || isFrozen) {
+      return
+    }
+    const nextAnswers = {
+      ...answers,
+      [questionItem.id]: [optionId],
+    }
+    setAnswers(nextAnswers)
+    if (currentQuestionIndex === normalizedQuestions.length - 1) {
+      await submitResponse(nextAnswers)
+      return
+    }
+    setTransitionDirection('next')
+    setTransitionTick((current) => current + 1)
+    setCurrentQuestionIndex((current) => Math.min(normalizedQuestions.length - 1, current + 1))
+  }, [answers, currentQuestionIndex, isFrozen, normalizedQuestions.length, submitResponse, submitting])
+
+  const handleMultipleToggle = useCallback((questionItem, optionId) => {
+    if (!questionItem || submitting || isFrozen) {
+      return
+    }
+    setAnswers((current) => {
+      const existing = current[questionItem.id] || []
+      const checked = existing.includes(optionId)
+      return {
+        ...current,
+        [questionItem.id]: checked ? existing.filter((item) => item !== optionId) : [...existing, optionId],
+      }
+    })
+  }, [isFrozen, submitting])
+
+  const handleGoPrevious = useCallback(() => {
+    if (!canGoPrevious || submitting || isFrozen) {
+      return
+    }
+    setTransitionDirection('prev')
+    setTransitionTick((current) => current + 1)
+    setCurrentQuestionIndex((current) => Math.max(0, current - 1))
+  }, [canGoPrevious, isFrozen, submitting])
+
+  const handleGoNext = useCallback(async () => {
+    if (!currentQuestion || !canGoNext || submitting || isFrozen) {
+      return
+    }
+    if (isLastQuestion) {
+      await submitResponse(answers)
+      return
+    }
+    setTransitionDirection('next')
+    setTransitionTick((current) => current + 1)
+    setCurrentQuestionIndex((current) => Math.min(normalizedQuestions.length - 1, current + 1))
+    if (currentQuestion.type === 'multiple') {
+      startFreeze(FREEZE_AFTER_MULTI_NEXT_MS)
+    }
+  }, [answers, canGoNext, currentQuestion, isFrozen, isLastQuestion, normalizedQuestions.length, startFreeze, submitResponse, submitting])
+
+  if (!currentQuestion) {
+    return null
+  }
+
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gap: 10,
+        padding: 12,
+        borderRadius: 14,
+        border: '1px solid var(--border)',
+        background: 'var(--surface-overlay)',
+      }}
+    >
+      <style>{`
+        @keyframes ai-followup-slide-next {
+          0% {
+            opacity: 0;
+            transform: translateX(18px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+        @keyframes ai-followup-slide-prev {
+          0% {
+            opacity: 0;
+            transform: translateX(-18px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+      `}</style>
+      <div style={{ display: 'grid', gap: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--accent)', fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase' }}>
+          <MessageCircleQuestionMark size={13} />
+          <span>{`Question ${currentLabel}/${totalLabel}`}</span>
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>{t('追问建议')}</div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.4 }}>
+          <AIChatMarkdown text={currentQuestion.text || ''} />
+        </div>
       </div>
-      <div style={{ width: '100%', display: 'grid', gap: 10 }}>
-        <div style={{ padding: '10px 12px', borderRadius: 12, background: 'var(--surface-overlay)', border: '1px solid var(--border)' }}>
-          <AIChatMarkdown text={question || ''} />
-        </div>
-        <div style={{ display: 'grid', gap: 8 }}>
-          {suggestionList.map((item) => (
+
+      <div
+        key={`${currentQuestion.id}-${transitionTick}`}
+        style={{
+          display: 'grid',
+          gap: 8,
+          animation: `${transitionDirection === 'next' ? 'ai-followup-slide-next' : 'ai-followup-slide-prev'} 180ms ease`,
+        }}
+      >
+        {currentQuestion.options.map((option) => {
+          const checked = selectedIds.includes(option.id)
+          const disabled = submitting || isFrozen || option.disabled === true
+          const optionType = currentQuestion.type === 'multiple' ? 'multiple' : 'single'
+          return (
             <button
-              key={item}
+              key={option.id}
               type="button"
-              disabled={typeof onSelectSuggestion !== 'function' || Boolean(submittingValue)}
-              onClick={() => void handleSelectSuggestion(item)}
-              style={{
-                minHeight: 38,
-                padding: '8px 12px',
-                borderRadius: 12,
-                border: '1px solid var(--border)',
-                background: 'transparent',
-                color: 'var(--text-secondary)',
-                fontSize: 13,
-                textAlign: 'left',
-                transition: 'var(--transition)',
-                cursor: typeof onSelectSuggestion !== 'function' || submittingValue ? 'not-allowed' : 'pointer',
-                opacity: typeof onSelectSuggestion !== 'function' || submittingValue ? 0.6 : 1,
+              disabled={disabled}
+              onClick={() => {
+                if (optionType === 'single') {
+                  void handleSingleSelect(currentQuestion, option.id)
+                  return
+                }
+                handleMultipleToggle(currentQuestion, option.id)
               }}
+              style={buildOptionButtonStyle(checked, disabled)}
             >
-              <FollowUpSuggestionMarkdown text={item} />
+              <OptionIndicator type={optionType} checked={checked} />
+              <div style={{ minWidth: 0, display: 'grid', gap: option.mode ? 4 : 0 }}>
+                <div style={{ fontSize: 14, color: 'var(--text-primary)', lineHeight: 1.5 }}>
+                  <FollowUpSuggestionMarkdown text={option.answer} />
+                </div>
+                {option.mode ? (
+                  <div style={{ fontSize: 10, color: 'var(--text-tertiary)', letterSpacing: 0.4, textTransform: 'uppercase' }}>
+                    {option.mode}
+                  </div>
+                ) : null}
+              </div>
             </button>
-          ))}
+          )
+        })}
+      </div>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '56px 1fr 56px',
+          alignItems: 'center',
+          gap: 10,
+          paddingTop: 8,
+          borderTop: '1px solid var(--border-subtle)',
+        }}
+      >
+        <button
+          type="button"
+          disabled={!canGoPrevious || submitting || isFrozen}
+          onClick={handleGoPrevious}
+          style={{
+            height: 34,
+            borderRadius: 10,
+            border: '1px solid var(--border)',
+            background: 'transparent',
+            color: !canGoPrevious || submitting || isFrozen ? 'var(--text-muted)' : 'var(--text-primary)',
+            cursor: !canGoPrevious || submitting || isFrozen ? 'not-allowed' : 'pointer',
+            opacity: !canGoPrevious || submitting || isFrozen ? 0.5 : 1,
+          }}
+        >
+          <ChevronLeft size={16} />
+        </button>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--text-secondary)' }}>
+          <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--accent)', display: 'inline-block' }} />
+          <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>{`${currentLabel} / ${totalLabel}`}</span>
+          <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--accent)', display: 'inline-block' }} />
         </div>
+        <button
+          type="button"
+          disabled={!canGoNext || submitting || isFrozen}
+          onClick={() => void handleGoNext()}
+          style={{
+            height: 34,
+            borderRadius: 10,
+            border: '1px solid var(--border)',
+            background: canGoNext && !submitting && !isFrozen ? 'var(--accent)' : 'transparent',
+            color: canGoNext && !submitting && !isFrozen ? '#fff' : 'var(--text-muted)',
+            cursor: !canGoNext || submitting || isFrozen ? 'not-allowed' : 'pointer',
+            opacity: !canGoNext || submitting || isFrozen ? 0.5 : 1,
+          }}
+        >
+          <ChevronRight size={16} />
+        </button>
       </div>
     </div>
   )

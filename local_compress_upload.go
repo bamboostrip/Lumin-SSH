@@ -22,6 +22,119 @@ type localArchiveStats struct {
 	DirCount   int64
 }
 
+type compressedUploadArchiveEntry struct {
+	ArchivePath string
+	LocalPath   string
+	IsDir       bool
+}
+
+type compressedUploadPreflightIssue struct {
+	Kind        string
+	RemotePath  string
+	ArchivePath string
+	LocalPath   string
+	Detail      string
+	Suggestion  string
+}
+
+type compressedUploadPreflightReport struct {
+	RemoteDir    string
+	Issues       []compressedUploadPreflightIssue
+	OmittedCount int
+}
+
+type compressedUploadRepairSnapshot struct {
+	RemotePath   string
+	IsDir        bool
+	Existed      bool
+	OriginalMode os.FileMode
+	HadImmutable bool
+}
+
+type compressedUploadRepairState struct {
+	sessionId string
+	order     []string
+	items     map[string]compressedUploadRepairSnapshot
+}
+
+func newCompressedUploadRepairState(sessionId string) *compressedUploadRepairState {
+	return &compressedUploadRepairState{
+		sessionId: sessionId,
+		order:     make([]string, 0),
+		items:     make(map[string]compressedUploadRepairSnapshot),
+	}
+}
+
+func (state *compressedUploadRepairState) remember(snapshot compressedUploadRepairSnapshot) {
+	if state == nil {
+		return
+	}
+	if _, exists := state.items[snapshot.RemotePath]; exists {
+		return
+	}
+	state.order = append(state.order, snapshot.RemotePath)
+	state.items[snapshot.RemotePath] = snapshot
+}
+
+func (state *compressedUploadRepairState) restore(m *SSHManager) {
+	if state == nil || m == nil || state.sessionId == "" {
+		return
+	}
+	sftpClient, err := m.getSFTPClient(state.sessionId)
+	if err != nil {
+		return
+	}
+	for index := len(state.order) - 1; index >= 0; index-- {
+		remotePath := state.order[index]
+		snapshot, ok := state.items[remotePath]
+		if !ok || !snapshot.Existed {
+			continue
+		}
+		info, err := sftpClient.Stat(remotePath)
+		if err != nil || info == nil || info.IsDir() != snapshot.IsDir {
+			continue
+		}
+		_ = m.clearRemoteImmutableAttribute(state.sessionId, remotePath)
+		_ = sftpClient.Chmod(remotePath, snapshot.OriginalMode)
+		if snapshot.HadImmutable {
+			_ = m.setRemoteImmutableAttribute(state.sessionId, remotePath, true)
+		}
+	}
+}
+
+func (report *compressedUploadPreflightReport) Error() string {
+	if report == nil {
+		return "compressed upload preflight failed"
+	}
+	var builder strings.Builder
+	builder.WriteString("compressed upload preflight failed\n")
+	if report.RemoteDir != "" {
+		builder.WriteString("remote target: ")
+		builder.WriteString(report.RemoteDir)
+		builder.WriteByte('\n')
+	}
+	builder.WriteString("the remote server is unlikely to extract the uploaded archive successfully.\n")
+	for index, issue := range report.Issues {
+		fmt.Fprintf(&builder, "%d. [%s] %s\n", index+1, issue.Kind, issue.RemotePath)
+		if issue.ArchivePath != "" {
+			fmt.Fprintf(&builder, "   archive entry: %s\n", issue.ArchivePath)
+		}
+		if issue.LocalPath != "" {
+			fmt.Fprintf(&builder, "   local source: %s\n", issue.LocalPath)
+		}
+		if issue.Detail != "" {
+			fmt.Fprintf(&builder, "   reason: %s\n", issue.Detail)
+		}
+		if issue.Suggestion != "" {
+			fmt.Fprintf(&builder, "   suggestion: %s\n", issue.Suggestion)
+		}
+	}
+	if report.OmittedCount > 0 {
+		fmt.Fprintf(&builder, "%d more issue(s) omitted.\n", report.OmittedCount)
+	}
+	return strings.TrimSpace(builder.String())
+}
+
 type compressedUploadTask struct {
 	id        string
 	sessionId string
@@ -186,6 +299,7 @@ func (m *SSHManager) AbortCompressedUpload(identifier string) error {
 }
 
 func (m *SSHManager) emitCompressedUploadProgress(sessionId string, uploadID string, phase string, progress float64, phaseProgress float64, bytesDone int64, bytesTotal int64, current string, detail string) {
+	updateMCPTransferFromCompressedUploadEvent(sessionId, uploadID, phase, progress, phaseProgress, bytesDone, bytesTotal, current, detail)
 	if m.ctx == nil {
 		return
 	}
@@ -220,6 +334,69 @@ func collectLocalArchiveStats(localPaths []string) (localArchiveStats, error) {
 		}
 	}
 	return stats, nil
+}
+
+func collectLocalArchiveEntries(localPaths []string) ([]compressedUploadArchiveEntry, error) {
+	entries := make([]compressedUploadArchiveEntry, 0)
+	for _, localPath := range localPaths {
+		cleanPath := strings.TrimSpace(localPath)
+		if cleanPath == "" {
+			continue
+		}
+		absPath, rootRealPath, _, err := resolveArchiveSourcePath(cleanPath)
+		if err != nil {
+			return nil, err
+		}
+		if err := collectLocalArchiveEntriesForPath(absPath, filepath.Base(filepath.Clean(cleanPath)), rootRealPath, make(map[string]struct{}), &entries); err != nil {
+			return nil, err
+		}
+	}
+	return entries, nil
+}
+
+func collectLocalArchiveEntriesForPath(localPath string, archiveRoot string, rootRealPath string, stack map[string]struct{}, entries *[]compressedUploadArchiveEntry) error {
+	_, realPath, info, err := resolveArchiveSourcePath(localPath)
+	if err != nil {
+		return err
+	}
+	if !isPathWithinRoot(rootRealPath, realPath) {
+		return fmt.Errorf("link target escapes selected root: %s -> %s", localPath, realPath)
+	}
+
+	archiveRoot = cleanArchiveName(archiveRoot)
+	if info.IsDir() {
+		if _, exists := stack[realPath]; exists {
+			return fmt.Errorf("cyclic link detected: %s -> %s", localPath, realPath)
+		}
+		stack[realPath] = struct{}{}
+		defer delete(stack, realPath)
+
+		*entries = append(*entries, compressedUploadArchiveEntry{
+			ArchivePath: archiveRoot,
+			LocalPath:   realPath,
+			IsDir:       true,
+		})
+
+		dirEntries, err := os.ReadDir(realPath)
+		if err != nil {
+			return err
+		}
+		for _, dirEntry := range dirEntries {
+			childPath := filepath.Join(realPath, dirEntry.Name())
+			childArchiveName := filepath.ToSlash(filepath.Join(archiveRoot, dirEntry.Name()))
+			if err := collectLocalArchiveEntriesForPath(childPath, childArchiveName, rootRealPath, stack, entries); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	*entries = append(*entries, compressedUploadArchiveEntry{
+		ArchivePath: archiveRoot,
+		LocalPath:   realPath,
+		IsDir:       false,
+	})
+	return nil
 }
 
 func cleanArchiveName(name string) string {
@@ -512,6 +689,358 @@ func createLocalTarGz(ctx context.Context, localPaths []string, stats localArchi
 	return archivePath, tempDir, nil
 }
 
+func normalizeRemotePathForCompare(remotePath string) string {
+	normalized := filepath.ToSlash(filepath.Clean(strings.ReplaceAll(strings.TrimSpace(remotePath), "\\", "/")))
+	if normalized == "." {
+		return "/"
+	}
+	if strings.HasPrefix(strings.TrimSpace(remotePath), "/") && !strings.HasPrefix(normalized, "/") {
+		return "/" + strings.TrimPrefix(normalized, "/")
+	}
+	return normalized
+}
+
+func joinRemoteUploadPath(remoteDir string, archivePath string) string {
+	base := strings.ReplaceAll(strings.TrimSpace(remoteDir), "\\", "/")
+	if base == "" {
+		base = "/"
+	}
+	joined := filepath.ToSlash(filepath.Clean(filepath.Join(base, filepath.FromSlash(cleanArchiveName(archivePath)))))
+	if strings.HasPrefix(base, "/") && !strings.HasPrefix(joined, "/") {
+		return "/" + strings.TrimPrefix(joined, "/")
+	}
+	return joined
+}
+
+func hasFailedRemoteAncestor(failedDirs map[string]struct{}, remotePath string) bool {
+	normalizedPath := normalizeRemotePathForCompare(remotePath)
+	for dirPath := range failedDirs {
+		if normalizedPath == dirPath || strings.HasPrefix(normalizedPath, dirPath+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func isRemotePathNotExist(err error) bool {
+	if err == nil {
+		return false
+	}
+	if os.IsNotExist(err) {
+		return true
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "no such file") || strings.Contains(message, "does not exist") || strings.Contains(message, "not found")
+}
+
+func bestEffortRemoteChmod(sftpClient *sftp.Client, remotePath string, mode os.FileMode) {
+	if sftpClient == nil {
+		return
+	}
+	_ = sftpClient.Chmod(remotePath, mode)
+}
+
+func probeRemoteDirectoryWritable(sftpClient *sftp.Client, remotePath string) error {
+	probeName := fmt.Sprintf(".lumin_write_probe_%d", time.Now().UnixNano())
+	probePath := joinRemoteUploadPath(remotePath, probeName)
+	probeFile, err := sftpClient.Create(probePath)
+	if err != nil {
+		return err
+	}
+	if err := probeFile.Close(); err != nil {
+		_ = sftpClient.Remove(probePath)
+		return err
+	}
+	return sftpClient.Remove(probePath)
+}
+
+func probeRemoteFileOverwriteable(sftpClient *sftp.Client, remotePath string) error {
+	probeFile, err := sftpClient.OpenFile(remotePath, os.O_WRONLY)
+	if err != nil {
+		return err
+	}
+	return probeFile.Close()
+}
+
+func (m *SSHManager) readRemoteAttrOutput(sessionId string, remotePath string) string {
+	client, _, err := m.getClientEntry(sessionId)
+	if err != nil {
+		return ""
+	}
+	output, err := m.executeCmdWithClient(client, "lsattr -d -- "+shellQuotePath(remotePath)+" 2>/dev/null || true")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(output)
+}
+
+func remoteAttrOutputHasImmutable(output string) bool {
+	fields := strings.Fields(strings.TrimSpace(output))
+	return len(fields) > 0 && strings.Contains(fields[0], "i")
+}
+
+func (m *SSHManager) bestEffortDescribeRemoteMutationFailure(sessionId string, remotePath string) string {
+	output := m.readRemoteAttrOutput(sessionId, remotePath)
+	if output == "" {
+		return ""
+	}
+	if remoteAttrOutputHasImmutable(output) {
+		return "immutable attribute detected: " + output
+	}
+	return "remote attributes: " + output
+}
+
+func (m *SSHManager) setRemoteImmutableAttribute(sessionId string, remotePath string, immutable bool) error {
+	client, _, err := m.getClientEntry(sessionId)
+	if err != nil {
+		return err
+	}
+	flag := "-i"
+	if immutable {
+		flag = "+i"
+	}
+	_, err = m.executeCmdWithClient(client, "chattr "+flag+" -- "+shellQuotePath(remotePath))
+	return err
+}
+
+func (m *SSHManager) clearRemoteImmutableAttribute(sessionId string, remotePath string) error {
+	return m.setRemoteImmutableAttribute(sessionId, remotePath, false)
+}
+
+func (m *SSHManager) snapshotCompressedUploadRepairState(sessionId string, sftpClient *sftp.Client, remotePath string, isDir bool) compressedUploadRepairSnapshot {
+	snapshot := compressedUploadRepairSnapshot{
+		RemotePath:   remotePath,
+		IsDir:        isDir,
+		Existed:      false,
+		OriginalMode: 0,
+		HadImmutable: remoteAttrOutputHasImmutable(m.readRemoteAttrOutput(sessionId, remotePath)),
+	}
+	info, err := sftpClient.Stat(remotePath)
+	if err == nil && info != nil && info.IsDir() == isDir {
+		snapshot.Existed = true
+		snapshot.OriginalMode = info.Mode()
+	}
+	return snapshot
+}
+
+func (m *SSHManager) bestEffortRepairRemoteDirectory(sessionId string, sftpClient *sftp.Client, remotePath string) {
+	normalizedPath := normalizeRemotePathForCompare(remotePath)
+	if normalizedPath == "" {
+		return
+	}
+	info, err := sftpClient.Stat(normalizedPath)
+	if err != nil && isRemotePathNotExist(err) {
+		parentPath := normalizeRemotePathForCompare(filepath.Dir(normalizedPath))
+		if parentPath != "" && parentPath != "." && parentPath != normalizedPath {
+			_ = m.clearRemoteImmutableAttribute(sessionId, parentPath)
+			bestEffortRemoteChmod(sftpClient, parentPath, 0o755)
+		}
+		_ = sftpClient.MkdirAll(normalizedPath)
+		info, err = sftpClient.Stat(normalizedPath)
+	}
+	if err != nil || info == nil || !info.IsDir() {
+		return
+	}
+	_ = m.clearRemoteImmutableAttribute(sessionId, normalizedPath)
+	bestEffortRemoteChmod(sftpClient, normalizedPath, 0o755)
+	_ = probeRemoteDirectoryWritable(sftpClient, normalizedPath)
+}
+
+func (m *SSHManager) bestEffortRepairRemoteFile(sessionId string, sftpClient *sftp.Client, remotePath string) {
+	normalizedPath := normalizeRemotePathForCompare(remotePath)
+	if normalizedPath == "" {
+		return
+	}
+	info, err := sftpClient.Stat(normalizedPath)
+	if err != nil || info == nil || info.IsDir() {
+		return
+	}
+	_ = m.clearRemoteImmutableAttribute(sessionId, normalizedPath)
+	bestEffortRemoteChmod(sftpClient, normalizedPath, 0o644)
+	_ = probeRemoteFileOverwriteable(sftpClient, normalizedPath)
+}
+
+func (m *SSHManager) autoRepairCompressedUploadTargets(sessionId string, remoteDir string, entries []compressedUploadArchiveEntry) (*compressedUploadRepairState, error) {
+	if len(entries) == 0 {
+		return nil, nil
+	}
+	sftpClient, err := m.getSFTPClient(sessionId)
+	if err != nil {
+		return nil, err
+	}
+
+	repairState := newCompressedUploadRepairState(sessionId)
+	checkedPaths := make(map[string]struct{})
+	for _, entry := range entries {
+		remotePath := joinRemoteUploadPath(remoteDir, entry.ArchivePath)
+		if _, exists := checkedPaths[remotePath]; exists {
+			continue
+		}
+		checkedPaths[remotePath] = struct{}{}
+		repairState.remember(m.snapshotCompressedUploadRepairState(sessionId, sftpClient, remotePath, entry.IsDir))
+		if entry.IsDir {
+			m.bestEffortRepairRemoteDirectory(sessionId, sftpClient, remotePath)
+			continue
+		}
+		m.bestEffortRepairRemoteFile(sessionId, sftpClient, remotePath)
+	}
+
+	ctx := context.WithValue(context.Background(), "compressedUploadSessionId", sessionId)
+	if err := m.preflightCompressedUploadTargets(ctx, sessionId, remoteDir, entries, nil); err != nil {
+		repairState.restore(m)
+		return nil, err
+	}
+	return repairState, nil
+}
+
+func (m *SSHManager) AutoRepairCompressedUploadTargets(sessionId string, localPaths []string, remoteDir string) error {
+	paths := make([]string, 0, len(localPaths))
+	for _, localPath := range localPaths {
+		localPath = strings.TrimSpace(localPath)
+		if localPath != "" {
+			paths = append(paths, localPath)
+		}
+	}
+	if len(paths) == 0 {
+		return fmt.Errorf("no local paths")
+	}
+
+	entries, err := collectLocalArchiveEntries(paths)
+	if err != nil {
+		return err
+	}
+	repairState, err := m.autoRepairCompressedUploadTargets(sessionId, remoteDir, entries)
+	if repairState != nil {
+		repairState.restore(m)
+	}
+	return err
+}
+
+func (m *SSHManager) preflightCompressedUploadTargets(ctx context.Context, sessionId string, remoteDir string, entries []compressedUploadArchiveEntry, onProgress func(int, int, string, string)) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	sftpClient, err := m.getSFTPClient(sessionId)
+	if err != nil {
+		return err
+	}
+
+	report := &compressedUploadPreflightReport{
+		RemoteDir: normalizeRemotePathForCompare(remoteDir),
+	}
+	const maxIssues = 25
+	failedDirs := make(map[string]struct{})
+	checkedPaths := make(map[string]struct{})
+	addIssue := func(entry compressedUploadArchiveEntry, remotePath string, kind string, cause error, suggestion string) {
+		detail := ""
+		if cause != nil {
+			detail = cause.Error()
+		}
+		if diagnosis := m.bestEffortDescribeRemoteMutationFailure(sessionId, remotePath); diagnosis != "" {
+			if detail != "" {
+				detail += "; "
+			}
+			detail += diagnosis
+		}
+		issue := compressedUploadPreflightIssue{
+			Kind:        kind,
+			RemotePath:  remotePath,
+			ArchivePath: cleanArchiveName(entry.ArchivePath),
+			LocalPath:   entry.LocalPath,
+			Detail:      detail,
+			Suggestion:  suggestion,
+		}
+		if len(report.Issues) < maxIssues {
+			report.Issues = append(report.Issues, issue)
+			return
+		}
+		report.OmittedCount++
+	}
+
+	totalEntries := len(entries)
+	for index, entry := range entries {
+		if err := ensureCompressedUploadContext(ctx); err != nil {
+			return err
+		}
+		remotePath := joinRemoteUploadPath(remoteDir, entry.ArchivePath)
+		if _, exists := checkedPaths[remotePath]; exists {
+			continue
+		}
+		checkedPaths[remotePath] = struct{}{}
+		if hasFailedRemoteAncestor(failedDirs, remotePath) {
+			continue
+		}
+
+		progressDetail := "checking directory writability"
+		if !entry.IsDir {
+			progressDetail = "checking existing file overwriteability"
+		}
+		if onProgress != nil {
+			onProgress(index, totalEntries, remotePath, progressDetail)
+		}
+
+		if entry.IsDir {
+			info, statErr := sftpClient.Stat(remotePath)
+			if statErr != nil {
+				if isRemotePathNotExist(statErr) {
+					if mkdirErr := sftpClient.MkdirAll(remotePath); mkdirErr != nil {
+						addIssue(entry, remotePath, "directory-create", mkdirErr, "ensure the current SSH user can create this directory before retrying.")
+						failedDirs[remotePath] = struct{}{}
+						continue
+					}
+					info, statErr = sftpClient.Stat(remotePath)
+				}
+				if statErr != nil {
+					addIssue(entry, remotePath, "directory-stat", statErr, "check whether the directory exists and is accessible to the current SSH user.")
+					failedDirs[remotePath] = struct{}{}
+					continue
+				}
+			}
+			if !info.IsDir() {
+				addIssue(entry, remotePath, "directory-type-conflict", fmt.Errorf("remote path already exists as a file"), "rename or remove the conflicting remote file before retrying.")
+				failedDirs[remotePath] = struct{}{}
+				continue
+			}
+			bestEffortRemoteChmod(sftpClient, remotePath, 0o755)
+			if probeErr := probeRemoteDirectoryWritable(sftpClient, remotePath); probeErr != nil {
+				addIssue(entry, remotePath, "directory-write-probe", probeErr, "ensure the current SSH user can create and remove files in this directory, and remove immutable or readonly protection if present.")
+				failedDirs[remotePath] = struct{}{}
+			}
+			continue
+		}
+
+		parentDir := normalizeRemotePathForCompare(filepath.Dir(remotePath))
+		if hasFailedRemoteAncestor(failedDirs, parentDir) {
+			continue
+		}
+
+		info, statErr := sftpClient.Stat(remotePath)
+		if statErr != nil {
+			if isRemotePathNotExist(statErr) {
+				continue
+			}
+			addIssue(entry, remotePath, "file-stat", statErr, "check whether the existing remote file is accessible to the current SSH user.")
+			continue
+		}
+		if info.IsDir() {
+			addIssue(entry, remotePath, "file-type-conflict", fmt.Errorf("remote path already exists as a directory"), "rename or remove the conflicting remote directory before retrying.")
+			continue
+		}
+		bestEffortRemoteChmod(sftpClient, remotePath, 0o644)
+		if probeErr := probeRemoteFileOverwriteable(sftpClient, remotePath); probeErr != nil {
+			addIssue(entry, remotePath, "file-overwrite-probe", probeErr, "ensure the current SSH user can reopen and overwrite this file, and remove immutable or readonly protection if present.")
+		}
+	}
+
+	if onProgress != nil {
+		onProgress(totalEntries, totalEntries, "", "remote preflight completed")
+	}
+	if len(report.Issues) > 0 {
+		return report
+	}
+	return nil
+}
+
 func (m *SSHManager) uploadLocalFileWithContext(ctx context.Context, localPath string, remoteDir string, onProgress func(int64, int64)) error {
 	sftpClient, err := m.getSFTPClientFromRemoteDirSession(ctx, remoteDir)
 	if err != nil {
@@ -599,6 +1128,7 @@ func (m *SSHManager) UploadLocalPathsCompressed(sessionId string, uploadID strin
 		sessionId: sessionId,
 		cancel:    cancel,
 	}
+	var repairState *compressedUploadRepairState
 	if err := registerCompressedUploadTask(uploadID, task); err != nil {
 		cancel()
 		return err
@@ -606,6 +1136,9 @@ func (m *SSHManager) UploadLocalPathsCompressed(sessionId string, uploadID strin
 	defer func() {
 		cancel()
 		task.cleanup(m)
+		if repairState != nil {
+			repairState.restore(m)
+		}
 		unregisterCompressedUploadTask(uploadID, task)
 	}()
 
@@ -640,6 +1173,10 @@ func (m *SSHManager) UploadLocalPathsCompressed(sessionId string, uploadID strin
 	}
 
 	stats, err := collectLocalArchiveStats(paths)
+	if err != nil {
+		return err
+	}
+	archiveEntries, err := collectLocalArchiveEntries(paths)
 	if err != nil {
 		return err
 	}
@@ -694,11 +1231,27 @@ func (m *SSHManager) UploadLocalPathsCompressed(sessionId string, uploadID strin
 	if err := ensureCompressedUploadContext(ctx); err != nil {
 		return err
 	}
+	m.emitCompressedUploadProgress(sessionId, uploadID, "verifying", 99, 0, 0, 0, "", "checking remote directories and existing files before extract")
+	if err := m.preflightCompressedUploadTargets(ctx, sessionId, remoteDir, archiveEntries, func(done int, total int, current string, detail string) {
+		phaseProgress := float64(0)
+		if total > 0 {
+			phaseProgress = float64(done) / float64(total) * 100
+		}
+		m.emitCompressedUploadProgress(sessionId, uploadID, "verifying", 99, phaseProgress, 0, 0, current, detail)
+	}); err != nil {
+		m.emitCompressedUploadProgress(sessionId, uploadID, "verifying", 99, 0, 0, 0, "", "preflight blocked extract, attempting automatic remote repair")
+		repairedState, repairErr := m.autoRepairCompressedUploadTargets(sessionId, remoteDir, archiveEntries)
+		if repairErr != nil {
+			return fmt.Errorf("automatic remote repair failed\n%w", repairErr)
+		}
+		repairState = repairedState
+		m.emitCompressedUploadProgress(sessionId, uploadID, "verifying", 99, 100, 0, 0, "", "automatic remote repair completed, continuing extract")
+	}
 	m.emitCompressedUploadProgress(sessionId, uploadID, "extracting", 99, 0, 0, 0, fileName, "extracting archive on remote server")
 	if err := m.UncompressItem(sessionId, remoteArchive); err != nil {
 		_ = m.DeleteItem(sessionId, remoteArchive, false)
 		task.clearRemoteArchive()
-		return err
+		return fmt.Errorf("remote extract failed after automatic repair\narchive: %s\nremote target: %s\nreason: %w", remoteArchive, remoteDir, err)
 	}
 
 	if err := ensureCompressedUploadContext(ctx); err != nil {

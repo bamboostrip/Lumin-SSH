@@ -865,6 +865,10 @@ func (a *App) UploadLocalPathsCompressed(sessionId string, uploadID string, maxC
 	return a.sshManager.UploadLocalPathsCompressed(sessionId, uploadID, maxConcurrent, localPaths, remoteDir)
 }
 
+func (a *App) AutoRepairCompressedUploadTargets(sessionId string, localPaths []string, remoteDir string) error {
+	return a.sshManager.AutoRepairCompressedUploadTargets(sessionId, localPaths, remoteDir)
+}
+
 func (a *App) AbortCompressedUpload(sessionId string) error {
 	return a.sshManager.AbortCompressedUpload(sessionId)
 }

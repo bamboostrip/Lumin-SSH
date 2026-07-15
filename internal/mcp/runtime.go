@@ -86,7 +86,7 @@ func StartServer(host Host, settings ServiceSettings) {
 	}
 	appendMCPLog("starting MCP server")
 	service := mcpserver.NewService(NewSessionProvider(host))
-	catalog := mcpserver.NewCatalog(service, NewFileProvider(host), NewCommandProvider(host), NewRemoteEditExecutor(host))
+	catalog := mcpserver.NewCatalog(service, NewFileProvider(host), NewCommandProvider(host), NewRemoteEditExecutor(host), NewTransferProvider(host))
 	allowedOrigins := []string{mcpserver.BrowserCallsDisabledOriginSentinel}
 	if settings.AllowBrowserCalls {
 		allowedOrigins = nil
@@ -200,7 +200,7 @@ func buildMCPToolDefinitions(host Host) []map[string]interface{} {
 		return []map[string]interface{}{}
 	}
 	service := mcpserver.NewService(NewSessionProvider(host))
-	catalog := mcpserver.NewCatalog(service, NewFileProvider(host), NewCommandProvider(host), NewRemoteEditExecutor(host))
+	catalog := mcpserver.NewCatalog(service, NewFileProvider(host), NewCommandProvider(host), NewRemoteEditExecutor(host), NewTransferProvider(host))
 	definitions := catalog.List()
 	result := make([]map[string]interface{}, 0, len(definitions))
 	for _, definition := range definitions {

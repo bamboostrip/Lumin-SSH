@@ -299,6 +299,7 @@ func (m *SSHManager) AbortCompressedUpload(identifier string) error {
 }
 
 func (m *SSHManager) emitCompressedUploadProgress(sessionId string, uploadID string, phase string, progress float64, phaseProgress float64, bytesDone int64, bytesTotal int64, current string, detail string) {
+	updateMCPTransferFromCompressedUploadEvent(sessionId, uploadID, phase, progress, phaseProgress, bytesDone, bytesTotal, current, detail)
 	if m.ctx == nil {
 		return
 	}

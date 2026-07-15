@@ -238,7 +238,7 @@ export default function AIChatCommandCard({ purpose, command, output, status = r
           </div>
         </div>
         <div style={{ padding: '12px 12px 10px', display: 'grid', gap: 10 }}>
-          <pre style={{ margin: 0, padding: '10px 12px', borderRadius: 10, border: riskState.severity === 'danger' ? '1px solid rgba(var(--danger-rgb), 0.24)' : riskState.severity === 'warning' ? '1px solid rgba(var(--warning-rgb), 0.24)' : mutationPalette.commandBorder, background: riskState.severity ? 'var(--surface-base)' : mutationPalette.commandBackground, color: 'var(--text-primary)', fontSize: 12, lineHeight: 1.65, fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{highlightedCommand}</pre>
+          <pre style={{ margin: 0, padding: '10px 12px', borderRadius: 10, border: riskState.severity === 'danger' ? '1px solid rgba(var(--danger-rgb), 0.24)' : riskState.severity === 'warning' ? '1px solid rgba(var(--warning-rgb), 0.24)' : mutationPalette.commandBorder, background: riskState.severity ? 'var(--surface-base)' : mutationPalette.commandBackground, color: 'var(--text-primary)', fontSize: 12, lineHeight: 1.65, fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 260, overflowY: 'auto', overflowX: 'auto' }}>{highlightedCommand}</pre>
           {expanded && output ? (
             <pre style={{ margin: 0, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border-subtle)', background: 'var(--surface-base)', color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.65, fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{t(output)}</pre>
           ) : null}

@@ -50,10 +50,11 @@ export async function resolveAIChatFollowup(requestId, answer, images = []) {
   if (!bridge?.ResolveAIChatFollowup) {
     throw new Error(t('追问回复能力未就绪'))
   }
+  const normalizedAnswer = typeof answer === 'string' ? answer : JSON.stringify(answer || {})
   const normalizedImages = Array.isArray(images)
     ? images.filter((item) => typeof item === 'string' && item.trim())
     : []
-  await bridge.ResolveAIChatFollowup(requestId, answer, JSON.stringify(normalizedImages))
+  await bridge.ResolveAIChatFollowup(requestId, normalizedAnswer, JSON.stringify(normalizedImages))
 }
 
 export async function setAIChatSkipNextAutomaticRequest(requestId, enabled) {

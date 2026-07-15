@@ -16,15 +16,21 @@ type Catalog struct {
 	fileProvider       FileProvider
 	commandProvider    CommandProvider
 	remoteEditExecutor RemoteEditExecutor
+	transferProvider   TransferProvider
 	callCtx            context.Context
 }
 
-func NewCatalog(service *Service, fileProvider FileProvider, commandProvider CommandProvider, remoteEditExecutor RemoteEditExecutor) *Catalog {
+func NewCatalog(service *Service, fileProvider FileProvider, commandProvider CommandProvider, remoteEditExecutor RemoteEditExecutor, transferProviders ...TransferProvider) *Catalog {
+	var transferProvider TransferProvider
+	if len(transferProviders) > 0 {
+		transferProvider = transferProviders[0]
+	}
 	return &Catalog{
 		service:            service,
 		fileProvider:       fileProvider,
 		commandProvider:    commandProvider,
 		remoteEditExecutor: remoteEditExecutor,
+		transferProvider:   transferProvider,
 		callCtx:            context.Background(),
 	}
 }
@@ -35,6 +41,8 @@ func (c *Catalog) List() []ToolDefinition {
 		listFilesToolDefinition(),
 		readFileToolDefinition(),
 		writeToFileToolDefinition(),
+		transferBatchToolDefinition(),
+		transferListToolDefinition(),
 		executeCommandToolDefinition(),
 		askFollowupQuestionToolDefinition(),
 		attemptCompletionToolDefinition(),
@@ -63,6 +71,10 @@ func (c *Catalog) CallWithContext(ctx context.Context, name string, arguments ma
 		return clone.callReadFile(arguments)
 	case "write_to_file":
 		return clone.callWriteToFile(arguments)
+	case "transfer_batch":
+		return clone.callTransferBatch(arguments)
+	case "transfer_list":
+		return clone.callTransferList(arguments)
 	case "execute_command":
 		return clone.callExecuteCommand(arguments)
 	case "ask_followup_question":

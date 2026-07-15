@@ -136,6 +136,7 @@ func (m *SSHManager) AbortDownloadTransfer(identifier string) error {
 }
 
 func (m *SSHManager) emitDownloadTransferProgress(sessionId string, downloadID string, mode string, phase string, status string, progress float64, bytesDone int64, bytesTotal int64, current string, detail string) {
+	updateMCPTransferFromDownloadEvent(sessionId, downloadID, mode, phase, status, progress, bytesDone, bytesTotal, current, detail)
 	if m.ctx == nil || strings.TrimSpace(downloadID) == "" {
 		return
 	}

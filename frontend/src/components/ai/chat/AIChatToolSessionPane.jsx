@@ -16,7 +16,7 @@ function renderToolItem(item, options) {
     case 'mcp':
       return <AIChatMCPCard key={item.id} serverName={item.serverName} toolName={item.toolName} args={item.args} response={item.response} isLast={isLastAssistantTurn} hasSubsequentAssistantMessage={hasSubsequentAssistantMessage} />
     case 'followup':
-      return <AIChatFollowUpCard key={item.id} question={item.question} suggestions={item.suggestions || []} onSelectSuggestion={onSendUserMessage} />
+      return <AIChatFollowUpCard key={item.id} question={item.question} questions={item.questions || []} suggestions={item.suggestions || []} requestId={item.requestId} onSelectSuggestion={onSendUserMessage} />
     default:
       return null
   }

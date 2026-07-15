@@ -321,6 +321,20 @@ func (h mcpHost) MkdirContext(ctx context.Context, sessionID string, remotePath 
 	return h.app.sshManager.MkdirContext(ctx, sessionID, remotePath)
 }
 
+func (h mcpHost) TransferFileContext(ctx context.Context, sessionID string, request mcpserver.TransferFileRequest) (mcpserver.TransferTaskSnapshot, error) {
+	if h.app == nil || h.app.sshManager == nil {
+		return mcpserver.TransferTaskSnapshot{}, fmt.Errorf("ssh manager unavailable")
+	}
+	return h.app.sshManager.TransferFileContext(ctx, sessionID, request)
+}
+
+func (h mcpHost) ListTransfersContext(ctx context.Context, sessionID string) ([]mcpserver.TransferTaskSnapshot, error) {
+	if h.app == nil || h.app.sshManager == nil {
+		return nil, fmt.Errorf("ssh manager unavailable")
+	}
+	return h.app.sshManager.ListTransfersContext(ctx, sessionID)
+}
+
 func (h mcpHost) RunCommandContext(ctx context.Context, sessionID string, command string) (string, error) {
 	if h.app == nil || h.app.sshManager == nil {
 		return "", fmt.Errorf("ssh manager unavailable")

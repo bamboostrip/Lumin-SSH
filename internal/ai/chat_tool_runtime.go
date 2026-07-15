@@ -69,24 +69,111 @@ type AIChatCommandTerminalCandidate struct {
 type aiToolExecutionState = ToolExecutionState
 
 type aiFollowupXMLPayload struct {
+	Questions   []aiFollowupXMLQuestion   `xml:"question"`
 	Suggestions []aiFollowupXMLSuggestion `xml:"suggest"`
+}
+
+type aiFollowupXMLQuestion struct {
+	ID       string                `xml:"id,attr"`
+	Type     string                `xml:"type,attr"`
+	TypeNode string                `xml:"type"`
+	Label    string                `xml:"label"`
+	Title    string                `xml:"title"`
+	Options  []aiFollowupXMLOption `xml:"option"`
+}
+
+type aiFollowupXMLOption struct {
+	ID       string `xml:"id,attr"`
+	Mode     string `xml:"mode,attr"`
+	Disabled string `xml:"disabled,attr"`
+	Text     string `xml:",chardata"`
 }
 
 type aiFollowupXMLSuggestion struct {
 	Text string `xml:",chardata"`
 }
 
-func parseAIFollowupSuggestions(raw string) ([]string, error) {
+func normalizeAIFollowupQuestionType(value string) string {
+	if strings.EqualFold(strings.TrimSpace(value), "multiple") {
+		return "multiple"
+	}
+	return "single"
+}
+
+func parseAIFollowupDisabled(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes":
+		return true
+	default:
+		return false
+	}
+}
+
+func parseAIFollowupPayload(raw string, fallbackQuestion string) ([]AIConversationFollowUpQuestion, []string, error) {
 	payload := strings.TrimSpace(raw)
 	if payload == "" {
-		return nil, fmt.Errorf("缺少追问建议")
+		return nil, nil, fmt.Errorf("缺少追问建议")
 	}
 	if !strings.HasPrefix(payload, "<follow_up") {
 		payload = "<follow_up>" + payload + "</follow_up>"
 	}
 	var parsed aiFollowupXMLPayload
 	if err := xml.Unmarshal([]byte(payload), &parsed); err != nil {
-		return nil, fmt.Errorf("追问建议格式无效")
+		return nil, nil, fmt.Errorf("追问建议格式无效")
+	}
+	if len(parsed.Questions) > 0 {
+		questions := make([]AIConversationFollowUpQuestion, 0, len(parsed.Questions))
+		for questionIndex, item := range parsed.Questions {
+			questionID := strings.TrimSpace(item.ID)
+			if questionID == "" {
+				questionID = fmt.Sprintf("question-%d", questionIndex+1)
+			}
+			rawQuestionType := strings.TrimSpace(item.Type)
+			if rawQuestionType == "" {
+				rawQuestionType = strings.TrimSpace(item.TypeNode)
+			}
+			questionText := strings.TrimSpace(item.Label)
+			if questionText == "" {
+				questionText = strings.TrimSpace(item.Title)
+			}
+			if questionText == "" {
+				if questionIndex == 0 && strings.TrimSpace(fallbackQuestion) != "" {
+					questionText = strings.TrimSpace(fallbackQuestion)
+				} else {
+					questionText = fmt.Sprintf("Question %d", questionIndex+1)
+				}
+			}
+			options := make([]AIConversationFollowUpOption, 0, len(item.Options))
+			for optionIndex, option := range item.Options {
+				answer := strings.TrimSpace(option.Text)
+				if answer == "" {
+					continue
+				}
+				optionID := strings.TrimSpace(option.ID)
+				if optionID == "" {
+					optionID = fmt.Sprintf("%s-option-%d", questionID, optionIndex+1)
+				}
+				options = append(options, AIConversationFollowUpOption{
+					ID:       optionID,
+					Answer:   answer,
+					Mode:     strings.TrimSpace(option.Mode),
+					Disabled: parseAIFollowupDisabled(option.Disabled),
+				})
+			}
+			if len(options) == 0 {
+				continue
+			}
+			questions = append(questions, AIConversationFollowUpQuestion{
+				ID:      questionID,
+				Text:    questionText,
+				Type:    normalizeAIFollowupQuestionType(rawQuestionType),
+				Options: options,
+			})
+		}
+		if len(questions) == 0 {
+			return nil, nil, fmt.Errorf("缺少追问问题")
+		}
+		return questions, nil, nil
 	}
 	suggestions := make([]string, 0, len(parsed.Suggestions))
 	for _, item := range parsed.Suggestions {
@@ -97,9 +184,9 @@ func parseAIFollowupSuggestions(raw string) ([]string, error) {
 		suggestions = append(suggestions, text)
 	}
 	if len(suggestions) < 2 || len(suggestions) > 4 {
-		return nil, fmt.Errorf("追问建议数量无效")
+		return nil, nil, fmt.Errorf("追问建议数量无效")
 	}
-	return suggestions, nil
+	return nil, suggestions, nil
 }
 
 func decodeAIFollowupImages(raw string) []string {
@@ -114,24 +201,53 @@ func decodeAIFollowupImages(raw string) []string {
 	return normalizeAIStringList(images)
 }
 
+func parseAIResolvedFollowupAnswer(raw string) (string, string) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", ""
+	}
+	if strings.HasPrefix(trimmed, "{") {
+		var parsed map[string]interface{}
+		if err := json.Unmarshal([]byte(trimmed), &parsed); err == nil {
+			readableText, _ := parsed["readableText"].(string)
+			readableText = strings.TrimSpace(readableText)
+			if readableText == "" {
+				readableText = trimmed
+			}
+			prettyBytes, marshalErr := json.MarshalIndent(parsed, "", "  ")
+			if marshalErr == nil && len(prettyBytes) > 0 {
+				return readableText, fmt.Sprintf("<survey_response>\n%s\n</survey_response>", string(prettyBytes))
+			}
+			return readableText, ""
+		}
+	}
+	return trimmed, ""
+}
+
 func buildAIFollowupMessage(turnID string, requestID string, tool aiParsedToolUse, index int) (map[string]interface{}, error) {
 	question := strings.TrimSpace(tool.Params["question"])
 	if question == "" {
 		return nil, fmt.Errorf("缺少追问问题")
 	}
-	suggestions, err := parseAIFollowupSuggestions(tool.Params["follow_up"])
+	questions, suggestions, err := parseAIFollowupPayload(tool.Params["follow_up"], question)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]interface{}{
-		"id":          buildToolMessageID(turnID, index),
-		"turnId":      turnID,
-		"kind":        "followup",
-		"requestId":   requestID,
-		"question":    question,
-		"suggestions": suggestions,
-		"status":      "等待处理",
-	}, nil
+	message := map[string]interface{}{
+		"id":        buildToolMessageID(turnID, index),
+		"turnId":    turnID,
+		"kind":      "followup",
+		"requestId": requestID,
+		"question":  question,
+		"status":    "等待处理",
+	}
+	if len(questions) > 0 {
+		message["questions"] = questions
+	}
+	if len(suggestions) > 0 {
+		message["suggestions"] = suggestions
+	}
+	return message, nil
 }
 
 func (e *aiToolExecutionState) setSnapshotOutput(value string) {
@@ -1083,13 +1199,13 @@ func (a *App) startAIChatFollowup(requestID string, batch *aiPendingToolBatch) {
 		a.failAIChatToolPreview(requestID, batch, tool, err.Error())
 		return
 	}
+	a.setAIChatPendingFollowupBatch(requestID, batch)
 	a.emitAIChatRuntimePhase(requestID, "ready")
 	a.emitAIChatEvent(map[string]interface{}{
 		"kind":      "followup_required",
 		"requestId": requestID,
 		"message":   message,
 	})
-	a.finishAIChatRequest(requestID)
 }
 
 func (a *App) startAIChatToolExecution(requestID string, batch *aiPendingToolBatch) {
@@ -1219,7 +1335,7 @@ func (a *App) runAIChatGenericToolExecution(execution *aiToolExecutionState) {
 		return
 	}
 	service := mcpserver.NewService(mcpSessionProvider{app: a})
-	catalog := mcpserver.NewCatalog(service, mcpFileProvider{app: a}, mcpCommandProvider{app: a}, mcpRemoteEditExecutor{app: a})
+	catalog := mcpserver.NewCatalog(service, mcpFileProvider{app: a}, mcpCommandProvider{app: a}, mcpRemoteEditExecutor{app: a}, mcpTransferProvider{app: a})
 	arguments := convertToolArguments(execution.Tool, execution.Batch.Payload.SessionID)
 	callResult, callErr := catalog.CallWithContext(execution.ExecutionCtx, execution.Tool.Name, arguments)
 
@@ -1592,15 +1708,31 @@ func (a *App) ResolveAIChatFollowup(requestID string, answer string, imagesJSON 
 		return fmt.Errorf("当前待处理工具不是追问")
 	}
 	now := time.Now()
+	readableText, surveyResponseBlock := parseAIResolvedFollowupAnswer(answerText)
+	if readableText == "" && len(followupImages) == 0 {
+		return fmt.Errorf("缺少追问回复")
+	}
 	userMessageID := fmt.Sprintf("%s-followup-answer-%d", buildToolMessageID(batch.AssistantMessageID, batch.NextToolIndex), now.UnixNano())
-	followupContent := fmt.Sprintf("<user_message>\n%s\n</user_message>", answerText)
+	followupContent := fmt.Sprintf("<user_message>\n%s\n</user_message>", readableText)
+	if strings.TrimSpace(surveyResponseBlock) != "" {
+		followupContent += "\n" + surveyResponseBlock
+	}
+	resolvedMessage, err := buildAIFollowupMessage(batch.AssistantMessageID, trimmedRequestID, tool, batch.NextToolIndex)
+	if err == nil {
+		resolvedMessage["status"] = "已完成"
+		a.emitAIChatEvent(map[string]interface{}{
+			"kind":      "upsert_message",
+			"requestId": trimmedRequestID,
+			"message":   resolvedMessage,
+		})
+	}
 	a.emitAIChatEvent(map[string]interface{}{
 		"kind":      "append_message",
 		"requestId": trimmedRequestID,
 		"message": map[string]interface{}{
 			"id":     userMessageID,
 			"kind":   "user",
-			"text":   answerText,
+			"text":   readableText,
 			"time":   now.Format("15:04"),
 			"turnId": "",
 			"images": followupImages,

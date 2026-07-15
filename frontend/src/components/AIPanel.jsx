@@ -7,7 +7,7 @@ import AIPanelHeader from './ai/AIPanelHeader.jsx'
 import AIConversationBackupSettings from './ai/AIConversationBackupSettings.jsx'
 import AIPanelSettingsOverlay from './ai/AIPanelSettingsOverlay.jsx'
 import AIComposer from './ai/AIComposer.jsx'
-import { approveAIChatTools, assignAIChatToolTerminal, cancelAIChat, continueAIChatTool, listAIChatCommandTerminalCandidates, previewAIChatToolRestore, rejectAIChatTools, rejectAIChatToolsForQueuedSubmission, restoreAIChatTool, setAIChatSkipNextAutomaticRequest, startAIChat, terminateAIChatTool } from './ai/aiChatBridge.js'
+import { approveAIChatTools, assignAIChatToolTerminal, cancelAIChat, continueAIChatTool, listAIChatCommandTerminalCandidates, previewAIChatToolRestore, rejectAIChatTools, rejectAIChatToolsForQueuedSubmission, resolveAIChatFollowup, restoreAIChatTool, setAIChatSkipNextAutomaticRequest, startAIChat, terminateAIChatTool } from './ai/aiChatBridge.js'
 import { createAIConversation, deleteAIConversation, getAIConversation, listAIConversations, normalizeAIConversationMessageSearchResult, normalizeAIConversationSnapshot, normalizeAIConversationTaskSettings, openAIConversationFolder, preprocessAIConversationLongText, readAIConversationWrappedFile, saveAIConversation, searchAIConversationMessages } from './ai/aiConversationBridge.js'
 import { buildExecutionContextDetails, getExecutionContextSnapshot } from './ai/aiExecutionContext.js'
 import { getAIGlobalSettings, normalizeAIGlobalSettings, saveAIGlobalSettings } from './ai/aiGlobalSettingsBridge.js'
@@ -460,6 +460,20 @@ function extractAIConversationSearchText(message) {
     if (question) {
       parts.push(question)
     }
+    const questions = Array.isArray(message?.questions) ? message.questions : []
+    questions.forEach((item) => {
+      const title = typeof item?.text === 'string' ? item.text.trim() : ''
+      if (title) {
+        parts.push(title)
+      }
+      const options = Array.isArray(item?.options) ? item.options : []
+      options.forEach((option) => {
+        const answer = typeof option?.answer === 'string' ? option.answer.trim() : ''
+        if (answer) {
+          parts.push(answer)
+        }
+      })
+    })
     const suggestions = Array.isArray(message?.suggestions)
       ? message.suggestions.filter((item) => typeof item === 'string' && item.trim()).map((item) => item.trim())
       : []
@@ -1195,8 +1209,8 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
             : null
           return {
             ...current,
-            activeRequestId: '',
-            activeAssistantMessageId: '',
+            activeRequestId: requestId,
+            activeAssistantMessageId: anchorAssistantMessageId,
             activeToolExecution: null,
             requestPhase: 'idle',
             toolApprovalMode: '',
@@ -2345,6 +2359,30 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     }
   }, [activeConversation, composerEditState, composerImages, effectiveAutoApprovalEnabled, effectiveProviderId, isQueueBlocked, normalizedGlobalAISettings.slashCommands, panelInstanceKey, panelState.activeRequestId, panelState.requestPhase, requestConversationSmoothScrollToBottom, resetComposerEditState, saveConversationSnapshot, setPanelState, terminalId, terminalOutputCharacterLimit, terminalOutputLineLimit, truncateConversationAfterMessage])
 
+  const handleFollowupResponse = useCallback(async (payload) => {
+    if (!payload || typeof payload !== 'object') {
+      return false
+    }
+    const requestId = typeof payload.requestId === 'string' ? payload.requestId.trim() : ''
+    if (!requestId) {
+      return false
+    }
+    try {
+      await resolveAIChatFollowup(requestId, payload.answer, [])
+      return true
+    } catch {
+      return false
+    }
+  }, [])
+
+  const handleConversationUserMessage = useCallback(async (payload) => {
+    if (payload && typeof payload === 'object' && payload.kind === 'followup-response') {
+      return handleFollowupResponse(payload)
+    }
+    const text = typeof payload === 'string' ? payload : ''
+    return handleSendMessage(text, { images: [] })
+  }, [handleFollowupResponse, handleSendMessage])
+
   const handleRetryUserMessage = useCallback(async (messageId, text, images = []) => {
     if (!activeConversation) {
       return
@@ -3273,7 +3311,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
                 messages={panelState.messages}
                 sessionId={sessionId}
                 terminalId={terminalId}
-                onSendUserMessage={(text) => handleSendMessage(text, { images: [] })}
+                onSendUserMessage={handleConversationUserMessage}
                 onRetryUserMessage={handleRetryUserMessage}
                 onRetryAssistantMessage={handleRetryAssistantMessage}
                 onEditUserMessage={handleEditUserMessage}

@@ -31,34 +31,49 @@ type AIConversationTaskSettings struct {
 	AlwaysAllowFollowupQuestions        bool     `json:"alwaysAllowFollowupQuestions"`
 }
 
+type AIConversationFollowUpOption struct {
+	ID       string `json:"id,omitempty"`
+	Answer   string `json:"answer,omitempty"`
+	Mode     string `json:"mode,omitempty"`
+	Disabled bool   `json:"disabled,omitempty"`
+}
+
+type AIConversationFollowUpQuestion struct {
+	ID      string                       `json:"id,omitempty"`
+	Text    string                       `json:"text,omitempty"`
+	Type    string                       `json:"type,omitempty"`
+	Options []AIConversationFollowUpOption `json:"options,omitempty"`
+}
+
 type AIConversationMessage struct {
-	ID                 string                 `json:"id,omitempty"`
-	TurnID             string                 `json:"turnId,omitempty"`
-	Kind               string                 `json:"kind"`
-	Text               string                 `json:"text,omitempty"`
-	Time               string                 `json:"time,omitempty"`
-	Metrics            []string               `json:"metrics,omitempty"`
-	Streaming          bool                   `json:"streaming,omitempty"`
-	Duration           string                 `json:"duration,omitempty"`
-	ActionLabel        string                 `json:"actionLabel,omitempty"`
-	Title              string                 `json:"title,omitempty"`
-	Summary            string                 `json:"summary,omitempty"`
-	Code               string                 `json:"code,omitempty"`
-	Status             string                 `json:"status,omitempty"`
-	Result             string                 `json:"result,omitempty"`
-	RemainingFileEdits int                    `json:"remainingFileEdits,omitempty"`
-	Purpose            string                 `json:"purpose,omitempty"`
-	Command            string                 `json:"command,omitempty"`
-	Output             string                 `json:"output,omitempty"`
-	Images             []string               `json:"images,omitempty"`
-	ServerName         string                 `json:"serverName,omitempty"`
-	ToolName           string                 `json:"toolName,omitempty"`
-	Args               string                 `json:"args,omitempty"`
-	Response           string                 `json:"response,omitempty"`
-	RequestID          string                 `json:"requestId,omitempty"`
-	Question           string                 `json:"question,omitempty"`
-	Suggestions        []string               `json:"suggestions,omitempty"`
-	Extra              map[string]interface{} `json:"extra,omitempty"`
+	ID                 string                       `json:"id,omitempty"`
+	TurnID             string                       `json:"turnId,omitempty"`
+	Kind               string                       `json:"kind"`
+	Text               string                       `json:"text,omitempty"`
+	Time               string                       `json:"time,omitempty"`
+	Metrics            []string                     `json:"metrics,omitempty"`
+	Streaming          bool                         `json:"streaming,omitempty"`
+	Duration           string                       `json:"duration,omitempty"`
+	ActionLabel        string                       `json:"actionLabel,omitempty"`
+	Title              string                       `json:"title,omitempty"`
+	Summary            string                       `json:"summary,omitempty"`
+	Code               string                       `json:"code,omitempty"`
+	Status             string                       `json:"status,omitempty"`
+	Result             string                       `json:"result,omitempty"`
+	RemainingFileEdits int                          `json:"remainingFileEdits,omitempty"`
+	Purpose            string                       `json:"purpose,omitempty"`
+	Command            string                       `json:"command,omitempty"`
+	Output             string                       `json:"output,omitempty"`
+	Images             []string                     `json:"images,omitempty"`
+	ServerName         string                       `json:"serverName,omitempty"`
+	ToolName           string                       `json:"toolName,omitempty"`
+	Args               string                       `json:"args,omitempty"`
+	Response           string                       `json:"response,omitempty"`
+	RequestID          string                       `json:"requestId,omitempty"`
+	Question           string                       `json:"question,omitempty"`
+	Questions          []AIConversationFollowUpQuestion `json:"questions,omitempty"`
+	Suggestions        []string                     `json:"suggestions,omitempty"`
+	Extra              map[string]interface{}       `json:"extra,omitempty"`
 }
 
 type AIConversationOpenAIResponsesCacheObject struct {
@@ -135,6 +150,66 @@ func normalizeAIConversationTaskSettings(settings AIConversationTaskSettings) AI
 	return settings
 }
 
+func normalizeAIConversationFollowUpOptions(options []AIConversationFollowUpOption, questionID string) []AIConversationFollowUpOption {
+	if options == nil {
+		return []AIConversationFollowUpOption{}
+	}
+	normalized := make([]AIConversationFollowUpOption, 0, len(options))
+	for index, option := range options {
+		answer := strings.TrimSpace(option.Answer)
+		if answer == "" {
+			continue
+		}
+		optionID := strings.TrimSpace(option.ID)
+		if optionID == "" {
+			optionID = fmt.Sprintf("%s-option-%d", questionID, index+1)
+		}
+		normalized = append(normalized, AIConversationFollowUpOption{
+			ID:       optionID,
+			Answer:   answer,
+			Mode:     strings.TrimSpace(option.Mode),
+			Disabled: option.Disabled,
+		})
+	}
+	return normalized
+}
+
+func normalizeAIConversationFollowUpQuestions(questions []AIConversationFollowUpQuestion, fallbackQuestion string) []AIConversationFollowUpQuestion {
+	if questions == nil {
+		return []AIConversationFollowUpQuestion{}
+	}
+	normalized := make([]AIConversationFollowUpQuestion, 0, len(questions))
+	for index, question := range questions {
+		questionID := strings.TrimSpace(question.ID)
+		if questionID == "" {
+			questionID = fmt.Sprintf("question-%d", index+1)
+		}
+		questionText := strings.TrimSpace(question.Text)
+		if questionText == "" {
+			if index == 0 && strings.TrimSpace(fallbackQuestion) != "" {
+				questionText = strings.TrimSpace(fallbackQuestion)
+			} else {
+				questionText = fmt.Sprintf("Question %d", index+1)
+			}
+		}
+		questionType := strings.ToLower(strings.TrimSpace(question.Type))
+		if questionType != "multiple" {
+			questionType = "single"
+		}
+		options := normalizeAIConversationFollowUpOptions(question.Options, questionID)
+		if len(options) == 0 {
+			continue
+		}
+		normalized = append(normalized, AIConversationFollowUpQuestion{
+			ID:      questionID,
+			Text:    questionText,
+			Type:    questionType,
+			Options: options,
+		})
+	}
+	return normalized
+}
+
 func normalizeAIConversationMessages(messages []AIConversationMessage) []AIConversationMessage {
 	if messages == nil {
 		return []AIConversationMessage{}
@@ -169,6 +244,7 @@ func normalizeAIConversationMessages(messages []AIConversationMessage) []AIConve
 		message.Response = strings.TrimSpace(message.Response)
 		message.RequestID = strings.TrimSpace(message.RequestID)
 		message.Question = strings.TrimSpace(message.Question)
+		message.Questions = normalizeAIConversationFollowUpQuestions(message.Questions, message.Question)
 		if message.Suggestions == nil {
 			message.Suggestions = []string{}
 		} else {

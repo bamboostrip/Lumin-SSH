@@ -25,6 +25,44 @@ function normalizeAIPromptCacheBypassTimestamp(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : ''
 }
 
+function normalizeAIFollowUpOption(option, index = 0, questionId = 'question-1') {
+  const answer = typeof option?.answer === 'string' ? option.answer.trim() : ''
+  if (!answer) {
+    return null
+  }
+  const id = typeof option?.id === 'string' && option.id.trim() ? option.id.trim() : `${questionId}-option-${index + 1}`
+  return {
+    id,
+    answer,
+    mode: typeof option?.mode === 'string' && option.mode.trim() ? option.mode.trim() : '',
+    disabled: option?.disabled === true,
+  }
+}
+
+function normalizeAIFollowUpQuestion(question, index = 0, fallbackQuestion = '') {
+  const id = typeof question?.id === 'string' && question.id.trim() ? question.id.trim() : `question-${index + 1}`
+  const text = typeof question?.text === 'string' && question.text.trim()
+    ? question.text.trim()
+    : index === 0 && typeof fallbackQuestion === 'string' && fallbackQuestion.trim()
+      ? fallbackQuestion.trim()
+      : `Question ${index + 1}`
+  const type = String(question?.type || '').trim().toLowerCase() === 'multiple' ? 'multiple' : 'single'
+  const options = Array.isArray(question?.options)
+    ? question.options
+      .map((item, optionIndex) => normalizeAIFollowUpOption(item, optionIndex, id))
+      .filter(Boolean)
+    : []
+  if (options.length === 0) {
+    return null
+  }
+  return {
+    id,
+    text,
+    type,
+    options,
+  }
+}
+
 export function normalizeAIConversationSummary(summary) {
   return {
     id: typeof summary?.id === 'string' ? summary.id.trim() : '',
@@ -63,6 +101,12 @@ export function normalizeAIConversationTaskSettings(settings) {
 }
 
 export function normalizeAIConversationMessage(message) {
+  const question = typeof message?.question === 'string' ? message.question : ''
+  const questions = Array.isArray(message?.questions)
+    ? message.questions
+      .map((item, questionIndex) => normalizeAIFollowUpQuestion(item, questionIndex, question))
+      .filter(Boolean)
+    : []
   return {
     id: typeof message?.id === 'string' ? message.id : '',
     turnId: typeof message?.turnId === 'string' ? message.turnId : '',
@@ -88,7 +132,8 @@ export function normalizeAIConversationMessage(message) {
     args: typeof message?.args === 'string' ? message.args : '',
     response: typeof message?.response === 'string' ? message.response : '',
     requestId: typeof message?.requestId === 'string' ? message.requestId : '',
-    question: typeof message?.question === 'string' ? message.question : '',
+    question,
+    questions,
     suggestions: Array.isArray(message?.suggestions) ? message.suggestions.filter((item) => typeof item === 'string') : [],
     extra: message?.extra && typeof message.extra === 'object' ? message.extra : {},
   }

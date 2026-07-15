@@ -287,6 +287,18 @@ func buildAIChatToolParameterPlaceholder(name string, schema map[string]any, ses
 		return "session_id from list_connected_sessions"
 	case "path", "file_path":
 		return "/path/to/file"
+	case "local_parent":
+		return "C:\\\\absolute\\\\local\\\\parent"
+	case "remote_parent":
+		return "/absolute/remote/parent"
+	case "local_path":
+		return "relative/local/path.txt"
+	case "remote_path":
+		return "relative/remote/path.txt"
+	case "operation":
+		return "upload"
+	case "items":
+		return "[{\"local_path\":\"dist\",\"remote_path\":\"dist\"},{\"local_path\":\"package.json\",\"remote_path\":\"package.json\"}]"
 	case "content":
 		return "complete file content here"
 	case "command":
@@ -310,6 +322,8 @@ func buildAIChatToolParameterPlaceholder(name string, schema map[string]any, ses
 	case "patch":
 		return "*** Begin Patch\n*** Update File: /path/to/file\n@@\n-old\n+new\n*** End Patch"
 	case "recursive":
+		return "true"
+	case "wait":
 		return "true"
 	case "args":
 		return "<args>\n  <file>\n    <path>/path/to/file</path>\n  </file>\n</args>"

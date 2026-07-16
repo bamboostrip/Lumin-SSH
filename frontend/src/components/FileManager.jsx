@@ -1715,12 +1715,18 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   const handleDelete = async (item) => {
     const remotePath = joinPath(currentPath, item.name);
     const needConfirm = localStorage.getItem('skipFileDeleteConfirm') !== 'true';
-    if (needConfirm && !(await window.luminDialog?.confirm(`${t('确定删除')}${item.name}？${t('此操作不可撤销')}`))) return;
+    if (needConfirm) {
+      const ok = await window.luminDialog?.confirm(`${t('确定删除')}${item.name}？${t('此操作不可撤销')}`);
+      fileListRef.current?.focus();
+      if (!ok) return;
+    }
     try {
       await AppGo.DeleteItem(sessionId, remotePath, item.isDirectory);
       await loadDir(currentPath);
     } catch (err) {
       addToast(`${t('删除失败')}: ${err}`, 'error');
+    } finally {
+      fileListRef.current?.focus();
     }
   };
 
@@ -1728,12 +1734,18 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   const handleDeleteShell = async (item) => {
     const remotePath = joinPath(currentPath, item.name);
     const needConfirm = localStorage.getItem('skipFileDeleteConfirm') !== 'true';
-    if (needConfirm && !(await window.luminDialog?.confirm(`${t('确定删除')}${item.name}？(rm -rf) ${t('此操作不可撤销')}`))) return;
+    if (needConfirm) {
+      const ok = await window.luminDialog?.confirm(`${t('确定删除')}${item.name}？(rm -rf) ${t('此操作不可撤销')}`);
+      fileListRef.current?.focus();
+      if (!ok) return;
+    }
     try {
       await AppGo.DeleteItemShell(sessionId, remotePath);
       await loadDir(currentPath);
     } catch (err) {
       addToast(`${t('删除失败')}: ${err}`, 'error');
+    } finally {
+      fileListRef.current?.focus();
     }
   };
 
@@ -1742,7 +1754,11 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     if (selectedPaths.length === 0) return;
     const dirSet = new Set(items.filter(i => i.isDirectory).map(i => joinPath(currentPath, i.name)));
     const needConfirm = localStorage.getItem('skipFileDeleteConfirm') !== 'true';
-    if (needConfirm && !(await window.luminDialog?.confirm(`${t('确定删除所选')} (${selectedPaths.length}${t('项')})？${t('此操作不可撤销')}`))) return;
+    if (needConfirm) {
+      const ok = await window.luminDialog?.confirm(`${t('确定删除所选')} (${selectedPaths.length}${t('项')})？${t('此操作不可撤销')}`);
+      fileListRef.current?.focus();
+      if (!ok) return;
+    }
     let successCount = 0;
     let failCount = 0;
     for (const path of selectedPaths) {
@@ -1758,6 +1774,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     if (failCount > 0) addToast(`${t('删除失败')}: ${failCount} ${t('项')}`, 'error');
     setSelectedPaths([]);
     await loadDir(currentPath);
+    fileListRef.current?.focus();
   };
 
   // Keyboard shortcuts for file list
@@ -1900,9 +1917,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     setRenameValue(item.name);
   };
 
-  const confirmRename = async () => {
+  const confirmRename = async (refocus = false) => {
     if (!renamingItem || !renameValue.trim() || renameValue === renamingItem.name) {
       setRenamingItem(null);
+      if (refocus) fileListRef.current?.focus();
       return;
     }
     const oldPath = joinPath(currentPath, renamingItem.name);
@@ -1915,6 +1933,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       addToast(`${t('重命名失败')}: ${err}`, 'error');
     } finally {
       setRenamingItem(null);
+      if (refocus) fileListRef.current?.focus();
     }
   };
 
@@ -2345,10 +2364,14 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
                       className="rename-input"
                       value={renameValue}
                       onChange={(e) => setRenameValue(e.target.value)}
-                      onBlur={confirmRename}
+                      onBlur={() => confirmRename(false)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') confirmRename();
-                        if (e.key === 'Escape') setRenamingItem(null);
+                        e.stopPropagation();
+                        if (e.key === 'Enter') confirmRename(true);
+                        if (e.key === 'Escape') {
+                          setRenamingItem(null);
+                          fileListRef.current?.focus();
+                        }
                       }}
                       autoFocus
                       onClick={(e) => e.stopPropagation()}

@@ -52,14 +52,15 @@ type aiToolTagCandidate struct {
 }
 
 type PendingToolBatch struct {
-	RequestID            string
-	AssistantMessageID   string
-	Payload              AIChatRequestPayload
-	Profile              AIProviderProfile
-	RequestMessages      []AIChatRequestMessage
-	ParsedTools          []aiParsedToolUse
-	NextToolIndex        int
-	AutoApprovalSettings AIConversationTaskSettings
+	RequestID                      string
+	AssistantMessageID             string
+	Payload                        AIChatRequestPayload
+	Profile                        AIProviderProfile
+	RequestMessages                []AIChatRequestMessage
+	ParsedTools                    []aiParsedToolUse
+	NextToolIndex                  int
+	SuppressNextCommandActionSound bool
+	AutoApprovalSettings           AIConversationTaskSettings
 }
 
 type aiPendingToolBatch = PendingToolBatch
@@ -1929,6 +1930,7 @@ func (a *App) ApproveAIChatTools(requestID string) error {
 	if pendingBatch == nil {
 		return fmt.Errorf("没有待批准的工具调用")
 	}
+	pendingBatch.SuppressNextCommandActionSound = true
 	a.emitAIChatEvent(map[string]interface{}{
 		"kind":      "tool_approval_resolved",
 		"requestId": trimmedRequestID,

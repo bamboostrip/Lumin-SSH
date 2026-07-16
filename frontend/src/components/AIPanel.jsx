@@ -600,6 +600,13 @@ function buildAIConversationSearchSnippet(text, query) {
   return snippet
 }
 
+function resolveAIEventSound(payload, fallbackSound = '') {
+  if (payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'sound')) {
+    return typeof payload.sound === 'string' ? payload.sound.trim() : ''
+  }
+  return typeof fallbackSound === 'string' ? fallbackSound.trim() : ''
+}
+
 export default function AIPanel({ width, side, terminalId = 'global', sessionId = '', sessionTerminals = [] }) {
   const { t } = useTranslation()
   const audioPlayersRef = useRef(new Map())
@@ -1307,8 +1314,12 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       }
 
       if (payload.kind === 'upsert_message' && payload.message) {
-        if (payload.message.kind === 'completion' && String(payload.message.status || '').trim() === '已完成') {
-          playAISound('completion')
+        const completionSound = resolveAIEventSound(
+          payload,
+          payload.message.kind === 'completion' && String(payload.message.status || '').trim() === '已完成' ? 'completion' : '',
+        )
+        if (completionSound) {
+          playAISound(completionSound)
         }
         const nextMessage = (() => {
           const normalizedMessage = enrichAIChatCommandMessage(payload.message)
@@ -1336,7 +1347,10 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       }
 
       if (payload.kind === 'followup_required' && payload.message) {
-        playAISound('notification')
+        const followupSound = resolveAIEventSound(payload, 'notification')
+        if (followupSound) {
+          playAISound(followupSound)
+        }
         const nextMessage = payload.message
         let nextConversation = null
         setPanelState(matchedPanelKey, (current) => {
@@ -1381,7 +1395,10 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       }
 
       if (payload.kind === 'tool_approval_required' && Array.isArray(payload.messages)) {
-        playAISound('progress')
+        const toolApprovalSound = resolveAIEventSound(payload, 'progress')
+        if (toolApprovalSound) {
+          playAISound(toolApprovalSound)
+        }
         const toolMessages = payload.messages
           .filter((message) => message && typeof message === 'object')
           .map((message) => message)
@@ -1450,7 +1467,10 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       }
 
       if (payload.kind === 'tool_execution_terminal_assignment_required' && payload.message) {
-        playAISound('progress')
+        const terminalAssignmentSound = resolveAIEventSound(payload, 'progress')
+        if (terminalAssignmentSound) {
+          playAISound(terminalAssignmentSound)
+        }
         const nextMessage = enrichAIChatCommandMessage(payload.message)
         setPanelState(matchedPanelKey, (current) => {
           const anchorAssistantMessageId = current.activeAssistantMessageId || requestId
@@ -1472,7 +1492,10 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       }
 
       if (payload.kind === 'tool_execution_action_required' && payload.message) {
-        playAISound('progress')
+        const commandActionSound = resolveAIEventSound(payload, 'progress')
+        if (commandActionSound) {
+          playAISound(commandActionSound)
+        }
         const nextMessage = enrichAIChatCommandMessage(payload.message)
         setPanelState(matchedPanelKey, (current) => {
           const anchorAssistantMessageId = current.activeAssistantMessageId || requestId

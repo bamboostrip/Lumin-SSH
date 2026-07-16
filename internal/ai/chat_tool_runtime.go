@@ -32,30 +32,31 @@ const (
 type aiToolExecutionAction = ToolExecutionAction
 
 type ToolExecutionState struct {
-	ExecutionID             string
-	RequestID               string
-	AssistantMessageID      string
-	ToolIndex               int
-	ToolMessageID           string
-	RestoreArtifactPath      string
-	CopyContent              string
-	ConversationDiffPrimaryPath string
-	ConversationDiffFileCount   int
-	ConversationDiffToolName    string
-	ConversationDiffHasPreview  bool
-	Tool                     aiParsedToolUse
-	Batch                   *aiPendingToolBatch
-	TargetSessionID         string
-	AllowContinue           bool
-	AllowTerminate          bool
-	AllowTerminalAssignment bool
-	DecisionCh              chan aiToolExecutionAction
-	ReassignCh              chan string
-	ExecutionCtx            context.Context
-	Cancel                  context.CancelFunc
-	mu                      sync.Mutex
-	terminated              bool
-	snapshotOutputValue     string
+	ExecutionID                     string
+	RequestID                       string
+	AssistantMessageID              string
+	ToolIndex                       int
+	ToolMessageID                   string
+	RestoreArtifactPath             string
+	CopyContent                     string
+	ConversationDiffPrimaryPath     string
+	ConversationDiffFileCount       int
+	ConversationDiffToolName        string
+	ConversationDiffHasPreview      bool
+	Tool                            aiParsedToolUse
+	Batch                           *aiPendingToolBatch
+	TargetSessionID                 string
+	AllowContinue                   bool
+	AllowTerminate                  bool
+	AllowTerminalAssignment         bool
+	SuppressNextActionRequiredSound bool
+	DecisionCh                      chan aiToolExecutionAction
+	ReassignCh                      chan string
+	ExecutionCtx                    context.Context
+	Cancel                          context.CancelFunc
+	mu                              sync.Mutex
+	terminated                      bool
+	snapshotOutputValue             string
 }
 
 type AIChatCommandTerminalCandidate struct {
@@ -313,6 +314,17 @@ func (e *aiToolExecutionState) allowTerminalAssignment() bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.AllowTerminalAssignment
+}
+
+func (e *aiToolExecutionState) consumeSuppressNextActionRequiredSound() bool {
+	if e == nil {
+		return false
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	suppressed := e.SuppressNextActionRequiredSound
+	e.SuppressNextActionRequiredSound = false
+	return suppressed
 }
 
 func (e *aiToolExecutionState) requestTerminalAssignment(sessionID string) bool {
@@ -989,14 +1001,19 @@ func (a *App) emitAIChatToolExecutionActionRequired(requestID string, execution 
 	if a == nil || execution == nil {
 		return
 	}
-	a.emitAIChatEvent(map[string]interface{}{
+	payload := map[string]interface{}{
 		"kind":           "tool_execution_action_required",
 		"requestId":      requestID,
 		"executionId":    execution.ExecutionID,
-		"allowContinue":  true,
+		"allowContinue":  execution.AllowContinue,
 		"allowTerminate": execution.AllowTerminate,
 		"message":        message,
-	})
+		"sound":          "progress",
+	}
+	if execution.consumeSuppressNextActionRequiredSound() {
+		payload["sound"] = ""
+	}
+	a.emitAIChatEvent(payload)
 }
 
 func (a *App) emitAIChatToolExecutionPersistRequested(requestID string) {
@@ -1062,6 +1079,7 @@ func (a *App) emitAIChatToolExecutionTerminalAssignmentRequired(requestID string
 		"executionId":    execution.ExecutionID,
 		"allowTerminate": execution.AllowTerminate,
 		"message":        message,
+		"sound":          "progress",
 	})
 }
 
@@ -1179,6 +1197,7 @@ func (a *App) advanceAIChatToolBatch(requestID string, batch *aiPendingToolBatch
 				"requestId":    requestID,
 				"approvalMode": "change_review",
 				"messages":     []map[string]interface{}{message},
+				"sound":        "progress",
 			})
 			a.emitAIChatEvent(map[string]interface{}{
 				"kind":      "change_review_required",
@@ -1193,6 +1212,7 @@ func (a *App) advanceAIChatToolBatch(requestID string, batch *aiPendingToolBatch
 			"requestId":    requestID,
 			"approvalMode": "inline",
 			"messages":     []map[string]interface{}{buildToolPreviewMessage(batch.AssistantMessageID, tool, batch.NextToolIndex)},
+			"sound":        "progress",
 		})
 		return
 	}
@@ -1216,6 +1236,7 @@ func (a *App) startAIChatFollowup(requestID string, batch *aiPendingToolBatch) {
 		"kind":      "followup_required",
 		"requestId": requestID,
 		"message":   message,
+		"sound":     "notification",
 	})
 }
 
@@ -1224,6 +1245,8 @@ func (a *App) startAIChatToolExecution(requestID string, batch *aiPendingToolBat
 		return
 	}
 	tool := batch.ParsedTools[batch.NextToolIndex]
+	suppressNextCommandActionSound := batch.SuppressNextCommandActionSound && strings.TrimSpace(tool.Name) == "execute_command"
+	batch.SuppressNextCommandActionSound = false
 	restoreArtifact := aiToolRestoreArtifactResult{}
 	if isAIRestoreSupportedTool(tool) {
 		var err error
@@ -1249,11 +1272,12 @@ func (a *App) startAIChatToolExecution(requestID string, batch *aiPendingToolBat
 		ConversationDiffHasPreview:  restoreArtifact.ConversationDiffHasPreview,
 		Tool:                      tool,
 		Batch:                   batch,
-		TargetSessionID:         strings.TrimSpace(batch.Payload.SessionID),
-		AllowContinue:           false,
-		AllowTerminate:          true,
-		AllowTerminalAssignment: false,
-		DecisionCh:              make(chan aiToolExecutionAction, 1),
+		TargetSessionID:                 strings.TrimSpace(batch.Payload.SessionID),
+		AllowContinue:                   false,
+		AllowTerminate:                  true,
+		AllowTerminalAssignment:         false,
+		SuppressNextActionRequiredSound: suppressNextCommandActionSound,
+		DecisionCh:                      make(chan aiToolExecutionAction, 1),
 		ReassignCh:              make(chan string, 1),
 		ExecutionCtx:            executionCtx,
 		Cancel:                  cancel,
@@ -1321,6 +1345,7 @@ func (a *App) runAIChatAttemptCompletionExecution(execution *aiToolExecutionStat
 	a.emitAIChatEvent(map[string]interface{}{
 		"kind":      "upsert_message",
 		"requestId": execution.RequestID,
+		"sound":     "completion",
 		"message": map[string]interface{}{
 			"id":      execution.ToolMessageID,
 			"turnId":  execution.AssistantMessageID,

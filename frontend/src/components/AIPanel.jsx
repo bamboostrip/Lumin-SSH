@@ -1401,7 +1401,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       }
 
       if (payload.kind === 'tool_approval_required' && Array.isArray(payload.messages)) {
-        const toolApprovalSound = resolveAIEventSound(payload, 'progress')
+        const toolApprovalSound = resolveAIEventSound(payload, 'notification')
         if (toolApprovalSound) {
           playAISound(toolApprovalSound)
         }

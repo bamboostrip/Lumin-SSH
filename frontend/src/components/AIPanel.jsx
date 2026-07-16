@@ -1473,7 +1473,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       }
 
       if (payload.kind === 'tool_execution_terminal_assignment_required' && payload.message) {
-        const terminalAssignmentSound = resolveAIEventSound(payload, 'progress')
+        const terminalAssignmentSound = resolveAIEventSound(payload, 'notification')
         if (terminalAssignmentSound) {
           playAISound(terminalAssignmentSound)
         }
@@ -1498,7 +1498,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       }
 
       if (payload.kind === 'tool_execution_action_required' && payload.message) {
-        const commandActionSound = resolveAIEventSound(payload, 'progress')
+        const commandActionSound = resolveAIEventSound(payload, 'notification')
         if (commandActionSound) {
           playAISound(commandActionSound)
         }

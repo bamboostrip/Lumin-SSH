@@ -1722,6 +1722,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
     try {
       await AppGo.DeleteItem(sessionId, remotePath, item.isDirectory);
+      setSelectedPaths(prev => prev.filter(p => p !== remotePath));
       await loadDir(currentPath);
     } catch (err) {
       addToast(`${t('删除失败')}: ${err}`, 'error');
@@ -1741,6 +1742,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
     try {
       await AppGo.DeleteItemShell(sessionId, remotePath);
+      setSelectedPaths(prev => prev.filter(p => p !== remotePath));
       await loadDir(currentPath);
     } catch (err) {
       addToast(`${t('删除失败')}: ${err}`, 'error');

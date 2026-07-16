@@ -600,8 +600,8 @@ function buildAIConversationSearchSnippet(text, query) {
   return snippet
 }
 
-function resolveAIEventSound(payload, fallbackSound = '') {
-  if (payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'sound')) {
+function resolveAIEventSound(payload, fallbackSound = '', allowPayloadOverride = true) { 
+  if (allowPayloadOverride && payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'sound')) {
     return typeof payload.sound === 'string' ? payload.sound.trim() : ''
   }
   return typeof fallbackSound === 'string' ? fallbackSound.trim() : ''
@@ -1401,7 +1401,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       }
 
       if (payload.kind === 'tool_approval_required' && Array.isArray(payload.messages)) {
-        const toolApprovalSound = resolveAIEventSound(payload, 'notification')
+        const toolApprovalSound = resolveAIEventSound(payload, 'notification', false)
         if (toolApprovalSound) {
           playAISound(toolApprovalSound)
         }

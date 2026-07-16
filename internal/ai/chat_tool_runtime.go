@@ -1073,14 +1073,18 @@ func (a *App) emitAIChatToolExecutionTerminalAssignmentRequired(requestID string
 	if a == nil || execution == nil || strings.TrimSpace(requestID) == "" {
 		return
 	}
-	a.emitAIChatEvent(map[string]interface{}{
+	payload := map[string]interface{}{
 		"kind":           "tool_execution_terminal_assignment_required",
 		"requestId":      strings.TrimSpace(requestID),
 		"executionId":    execution.ExecutionID,
 		"allowTerminate": execution.AllowTerminate,
 		"message":        message,
 		"sound":          "progress",
-	})
+	}
+	if execution.consumeSuppressNextActionRequiredSound() {
+		payload["sound"] = ""
+	}
+	a.emitAIChatEvent(payload)
 }
 
 func (a *App) skipCompatibleAIChatAfterResolvedTools(requestID string) {
@@ -1217,6 +1221,9 @@ func (a *App) advanceAIChatToolBatch(requestID string, batch *aiPendingToolBatch
 		return
 	}
 
+	if decision == aiApprovalDecisionAutoApprove && strings.TrimSpace(tool.Name) == "execute_command" {
+		batch.SuppressNextCommandActionSound = true
+	}
 	a.startAIChatToolExecution(requestID, batch)
 }
 

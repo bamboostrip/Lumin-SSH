@@ -108,14 +108,18 @@ jobs:
           name: "Lumin SSH Client ${{ github.ref_name }}"
           body: |
             ## 功能增强
-            - 支持服务器批量多选管理、选择性导出
-            - 首页分组展开收起操作
-            - 自动更新支持多线程并发
-            - 备份加密格式升级 LUMIN2
-            - 完善云端备份恢复与同步显示
-            - 修复工作区恢复竞态、异步 SFTP 初始化
-            - 保留终端连接阶段输出与粘贴命令记录
-            - 更新语言包，清理 i18n 与 UI 文案
+            - 文件管理器多选与复制/剪切/粘贴
+            - 高性能并发上传（持久 Worker 句柄）
+            - MCP 批量文件传输工具
+            - AI 追问自动批准与任务提示音
+            - AI 助手搜索、工具调用改进
+            - 全局弹窗 Enter 确认 / Esc 取消
+            - 延迟检测优化：防闪烁、多方式（智能/SSH Banner RTT/TCP Dial）
+            - 修复 TUN 模式下不可达服务器误判为在线
+            - 多语言补充与重构
+            - 修复 CWD 容器隔离、ssh-rsa 兼容
+            - 压缩上传预检、同步收敛优化
+            - 修复同步反馈与 AI 状态刷新
 
             ## 产物下载
             - Linux 便携版 ([Lumin-V${{ steps.version.outputs.version }}-linux-amd64](https://github.com/wmwlwmwl/Lumin-SSH/releases/download/v${{ steps.version.outputs.version }}/Lumin-V${{ steps.version.outputs.version }}-linux-amd64))：即下即用

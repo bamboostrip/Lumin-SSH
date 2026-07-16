@@ -611,6 +611,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   const [contextMenu, setContextMenu] = useState(null); // { pos, item }
   const [selectedPaths, setSelectedPaths] = useState([]);
   const lastClickedPathRef = useRef(null);
+  useEffect(() => {
+    setSelectedPaths([]);
+    lastClickedPathRef.current = null;
+  }, [currentPath]);
   const [clipboard, setClipboard] = useState(null); // { paths: string[], mode: 'copy'|'cut', srcDir: string }
   const [renamingItem, setRenamingItem] = useState(null);
   const [renameValue, setRenameValue] = useState('');
@@ -1758,6 +1762,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
 
   // Keyboard shortcuts for file list
   const handleFileListKeyDown = (e) => {
+    if (renamingItem) return;
     const isCtrl = e.ctrlKey || e.metaKey;
     if (e.key === 'Delete' || e.key === 'Del') {
       e.preventDefault();
@@ -2297,6 +2302,8 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
                 );
                 lastClickedPathRef.current = itemPath;
               } else if (e.shiftKey && lastClickedPathRef.current) {
+                // Clear browser selection when shift-clicking to prevent text range highlighting
+                window.getSelection()?.removeAllRanges();
                 const lastIdx = sortedItems.findIndex(i => joinPath(currentPath, i.name) === lastClickedPathRef.current);
                 const currentIdx = sortedItems.findIndex(i => i.name === item.name);
                 if (lastIdx >= 0 && currentIdx >= 0) {

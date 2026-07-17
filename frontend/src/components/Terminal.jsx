@@ -27,6 +27,11 @@ import { getResolvedProgramFontPreferences } from '../utils/programFonts.js';
 const textDecoder = new TextDecoder();
 const textEncoder = new TextEncoder();
 
+function formatTerminalTimestamp(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, '0');
+  return `[${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}]`;
+}
+
 function getTerminalBufferSnapshotText(term) {
   if (!term?.buffer?.active) {
     return ''
@@ -221,7 +226,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
   };
   const tsEnsureLine = (term, line) => {
     const currentLine = term.buffer.active.baseY + term.buffer.active.cursorY;
-    const ts = new Date().toLocaleTimeString();
+    const ts = formatTerminalTimestamp();
     tsSet(term.registerMarker(line - currentLine), ts);
     return ts;
   };
@@ -283,7 +288,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
       if (!isEmptyLine && !isWrapped && tsIdx >= 0) {
         ts = tsGet(tsIdx) || (tsIdx === buf.baseY + buf.cursorY ? tsEnsureLine(term, tsIdx) : '');
       }
-      html += `<div style="height:${lineH}px;line-height:${lineH}px;font-size:11px;color:var(--text-tertiary);font-family:var(--font-mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px;box-sizing:border-box">${ts}</div>`;
+      html += `<div style="height:${lineH}px;line-height:${lineH}px;font-size:11px;color:var(--text-tertiary);font-family:var(--font-mono);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;overflow:hidden;padding:0 4px;box-sizing:border-box">${ts}</div>`;
     }
     gutter.innerHTML = html;
   }
@@ -370,7 +375,7 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
         if (line && line.isWrapped) { pos--; } else { break; }
       }
       if (pos >= 0) {
-        tsSet(term.registerMarker(pos - cursorLine), new Date().toLocaleTimeString());
+        tsSet(term.registerMarker(pos - cursorLine), formatTerminalTimestamp());
       }
       requestAnimationFrame(() => syncGutter());
     });

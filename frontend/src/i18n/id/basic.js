@@ -1108,6 +1108,8 @@ export default {
   "终端 cd 切换目录时自动同步文件管理器路径": "Terminal cd secara otomatis menyinkronkan jalur pengelola file saat berpindah direktori",
   "压缩传输": "Transmisi terkompresi",
   "多文件或文件夹上传时先在本机打包为 tar.gz，上传后远端自动解压": "Saat mengunggah beberapa file atau folder, kemas terlebih dahulu ke dalam tar.gz secara lokal, lalu dekompresi secara otomatis dari jarak jauh setelah diunggah.",
+  "发起传输任务时自动打开传输队列": "Membuka antrian transmisi secara otomatis saat memulai tugas transmisi",
+  "上传或下载新建传输任务后自动展开传输队列面板": "Secara otomatis memperluas panel antrian transmisi setelah mengunggah atau mengunduh tugas transmisi baru",
   "下载保存": "Unduh dan simpan",
   "每次下载都询问": "Tanyakan setiap kali Anda mengunduh",
   "开启后，每次下载文件或文件夹前都先询问保存位置；关闭后直接保存到默认位置": "Saat dihidupkan, setiap kali Anda mendownload file atau folder, Anda akan dimintai lokasi penyimpanan; ketika dimatikan, itu akan langsung disimpan ke lokasi default.",

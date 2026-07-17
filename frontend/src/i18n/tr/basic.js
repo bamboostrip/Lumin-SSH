@@ -1108,6 +1108,8 @@ export default {
   "终端 cd 切换目录时自动同步文件管理器路径": "Terminal cd, dizinleri değiştirirken dosya yöneticisi yolunu otomatik olarak senkronize eder",
   "压缩传输": "Sıkıştırılmış iletim",
   "多文件或文件夹上传时先在本机打包为 tar.gz，上传后远端自动解压": "Birden fazla dosya veya klasör yüklerken, önce bunları yerel olarak tar.gz'ye paketleyin ve yükleme sonrasında otomatik olarak uzaktan sıkıştırılmış dosyaları açın.",
+  "发起传输任务时自动打开传输队列": "Bir iletim görevini başlatırken iletim kuyruğunu otomatik olarak aç",
+  "上传或下载新建传输任务后自动展开传输队列面板": "Yeni bir iletim görevi yükledikten veya indirdikten sonra iletim kuyruğu panelini otomatik olarak genişletin",
   "下载保存": "İndirin ve kaydedin",
   "每次下载都询问": "Her indirdiğinizde sorun",
   "开启后，每次下载文件或文件夹前都先询问保存位置；关闭后直接保存到默认位置": "Açıldığında, her dosya veya klasör indirdiğinizde kaydetme konumu sorulacaktır; kapatıldığında doğrudan varsayılan konuma kaydedilecektir.",

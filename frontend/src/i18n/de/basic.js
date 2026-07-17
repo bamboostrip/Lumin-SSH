@@ -1108,6 +1108,8 @@ export default {
   "终端 cd 切换目录时自动同步文件管理器路径": "Die Terminal-CD synchronisiert den Dateimanagerpfad automatisch, wenn das Verzeichnis gewechselt wird",
   "压缩传输": "Komprimierte Übertragung",
   "多文件或文件夹上传时先在本机打包为 tar.gz，上传后远端自动解压": "Wenn Sie mehrere Dateien oder Ordner hochladen, packen Sie diese zunächst lokal in tar.gz und dekomprimieren Sie sie nach dem Hochladen automatisch remote.",
+  "发起传输任务时自动打开传输队列": "Öffnen Sie die Übertragungswarteschlange automatisch, wenn Sie eine Übertragungsaufgabe initiieren",
+  "上传或下载新建传输任务后自动展开传输队列面板": "Erweitern Sie das Übertragungswarteschlangenfeld automatisch, nachdem Sie eine neue Übertragungsaufgabe hoch- oder heruntergeladen haben",
   "下载保存": "Herunterladen und speichern",
   "每次下载都询问": "Fragen Sie bei jedem Download nach",
   "开启后，每次下载文件或文件夹前都先询问保存位置；关闭后直接保存到默认位置": "Wenn diese Option aktiviert ist, werden Sie jedes Mal, wenn Sie eine Datei oder einen Ordner herunterladen, nach dem Speicherort gefragt. Wenn es deaktiviert ist, wird es direkt am Standardspeicherort gespeichert.",

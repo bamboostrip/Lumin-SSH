@@ -1108,6 +1108,8 @@ export default {
   "终端 cd 切换目录时自动同步文件管理器路径": "Terminal cd tự động đồng bộ hóa đường dẫn quản lý tệp khi chuyển đổi thư mục",
   "压缩传输": "Truyền nén",
   "多文件或文件夹上传时先在本机打包为 tar.gz，上传后远端自动解压": "Khi tải lên nhiều tệp hoặc thư mục, trước tiên hãy đóng gói chúng vào tar.gz cục bộ, sau đó tự động giải nén chúng từ xa sau khi tải lên.",
+  "发起传输任务时自动打开传输队列": "Tự động mở hàng đợi truyền khi bắt đầu tác vụ truyền",
+  "上传或下载新建传输任务后自动展开传输队列面板": "Tự động mở rộng bảng xếp hàng truyền sau khi tải lên hoặc tải xuống tác vụ truyền mới",
   "下载保存": "Tải xuống và lưu",
   "每次下载都询问": "Hỏi mỗi khi bạn tải xuống",
   "开启后，每次下载文件或文件夹前都先询问保存位置；关闭后直接保存到默认位置": "Khi được bật, mỗi khi bạn tải xuống một tệp hoặc thư mục, bạn sẽ được yêu cầu vị trí lưu; khi tắt sẽ được lưu thẳng vào vị trí mặc định.",

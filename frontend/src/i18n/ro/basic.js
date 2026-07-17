@@ -1108,6 +1108,8 @@ export default {
   "终端 cd 切换目录时自动同步文件管理器路径": "Terminal CD-ul sincronizează automat calea managerului de fișiere la schimbarea directoarelor",
   "压缩传输": "Transmisie comprimată",
   "多文件或文件夹上传时先在本机打包为 tar.gz，上传后远端自动解压": "Când încărcați mai multe fișiere sau foldere, mai întâi împachetați-le în tar.gz local, apoi decomprimați-le automat de la distanță după încărcare.",
+  "发起传输任务时自动打开传输队列": "Deschideți automat coada de transmisie la inițierea unei sarcini de transmisie",
+  "上传或下载新建传输任务后自动展开传输队列面板": "Extindeți automat panoul cozii de transmisie după încărcarea sau descărcarea unei noi sarcini de transmisie",
   "下载保存": "Descărcați și salvați",
   "每次下载都询问": "Întrebați de fiecare dată când descărcați",
   "开启后，每次下载文件或文件夹前都先询问保存位置；关闭后直接保存到默认位置": "Când este pornit, de fiecare dată când descărcați un fișier sau un folder, vi se va cere locația de salvare; când este dezactivat, va fi salvat direct în locația implicită.",

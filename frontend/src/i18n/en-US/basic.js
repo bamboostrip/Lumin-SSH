@@ -1108,6 +1108,8 @@ export default {
   "终端 cd 切换目录时自动同步文件管理器路径": "Automatically sync the file manager path when cd changes the terminal directory",
   "压缩传输": "Compressed Transfer",
   "多文件或文件夹上传时先在本机打包为 tar.gz，上传后远端自动解压": "Package multiple files or folders locally as tar.gz before upload, then auto-extract on the remote server",
+  "发起传输任务时自动打开传输队列": "Automatically open the transmission queue when initiating a transmission task",
+  "上传或下载新建传输任务后自动展开传输队列面板": "Automatically expand the transmission queue panel after uploading or downloading a new transmission task",
   "下载保存": "Download Destination",
   "每次下载都询问": "Ask Before Every Download",
   "开启后，每次下载文件或文件夹前都先询问保存位置；关闭后直接保存到默认位置": "When enabled, ask for the save location before each file or folder download. When disabled, save directly to the default location.",

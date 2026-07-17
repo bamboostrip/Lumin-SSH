@@ -13,6 +13,7 @@ import {
   FileArchive, Settings, ClipboardList, Wrench, Image, Code, Globe,
   Palette, Database, Terminal, Film, Music, Archive, HardDrive, BookOpen,
   Pencil, PenLine, Download, Upload, Trash2, RefreshCw, Lock, FolderUp, SquarePen, Copy,
+  X, ClipboardPaste,
 } from 'lucide-react';
 
 // 格式化文件大小
@@ -616,6 +617,50 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     lastClickedPathRef.current = null;
   }, [currentPath]);
   const [clipboard, setClipboard] = useState(null); // { paths: string[], mode: 'copy'|'cut', srcDir: string }
+  const [operationProgress, setOperationProgress] = useState(null);
+  // 并发互斥闸门：用 ref 在同步阶段立即生效，避免两个快速事件都读到 stale 的 state 而双双放行
+  const operationInProgressRef = useRef(false);
+
+  const updateClipboard = (newClipboard) => {
+    if (!window.__luminClipboards) {
+      window.__luminClipboards = {};
+    }
+    if (newClipboard) {
+      window.__luminClipboards[sessionGroupId] = newClipboard;
+    } else {
+      delete window.__luminClipboards[sessionGroupId];
+    }
+    setClipboard(newClipboard);
+    window.dispatchEvent(new CustomEvent('lumin-clipboard-changed', {
+      detail: { sessionGroupId, clipboard: newClipboard }
+    }));
+  };
+
+  useEffect(() => {
+    const cached = (window.__luminClipboards && window.__luminClipboards[sessionGroupId]) || null;
+    setClipboard(cached);
+
+    const handleClipboardChange = (e) => {
+      if (e.detail && e.detail.sessionGroupId === sessionGroupId) {
+        setClipboard(e.detail.clipboard);
+      }
+    };
+
+    window.addEventListener('lumin-clipboard-changed', handleClipboardChange);
+    return () => {
+      window.removeEventListener('lumin-clipboard-changed', handleClipboardChange);
+    };
+  }, [sessionGroupId]);
+
+  // 卸载或切换 sessionGroup 时清理全局剪贴板缓存，防止内存泄漏与 sessionGroupId 复用时复活幽灵剪贴板
+  useEffect(() => {
+    return () => {
+      if (window.__luminClipboards) {
+        delete window.__luminClipboards[sessionGroupId];
+      }
+    };
+  }, [sessionGroupId]);
+
   const [renamingItem, setRenamingItem] = useState(null);
   const [renameValue, setRenameValue] = useState('');
   const [chmodTarget, setChmodTarget] = useState(null); // { item, path, mode, includeSubdirectories, showIncludeSubdirectories }
@@ -1727,64 +1772,86 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
 
   // Delete
   const handleDelete = async (item) => {
+    if (operationInProgressRef.current) return;
+    operationInProgressRef.current = true;
     const remotePath = joinPath(currentPath, item.name);
     const needConfirm = localStorage.getItem('skipFileDeleteConfirm') !== 'true';
     if (needConfirm) {
       const ok = await window.luminDialog?.confirm(`${t('确定删除')}${item.name}？${t('此操作不可撤销')}`);
       fileListRef.current?.focus();
-      if (!ok) return;
+      if (!ok) { operationInProgressRef.current = false; return; }
     }
     try {
+      setOperationProgress({ message: `${t('正在删除')} ${item.name}` });
       await AppGo.DeleteItem(sessionId, remotePath, item.isDirectory);
       setSelectedPaths(prev => prev.filter(p => p !== remotePath));
       await loadDir(currentPath);
     } catch (err) {
       addToast(`${t('删除失败')}: ${err}`, 'error');
     } finally {
+      setOperationProgress(null);
+      operationInProgressRef.current = false;
       fileListRef.current?.focus();
     }
   };
 
   // Delete via rm -rf
   const handleDeleteShell = async (item) => {
+    if (operationInProgressRef.current) return;
+    operationInProgressRef.current = true;
     const remotePath = joinPath(currentPath, item.name);
     const needConfirm = localStorage.getItem('skipFileDeleteConfirm') !== 'true';
     if (needConfirm) {
       const ok = await window.luminDialog?.confirm(`${t('确定删除')}${item.name}？(rm -rf) ${t('此操作不可撤销')}`);
       fileListRef.current?.focus();
-      if (!ok) return;
+      if (!ok) { operationInProgressRef.current = false; return; }
     }
     try {
+      setOperationProgress({ message: `${t('正在删除')} ${item.name}` });
       await AppGo.DeleteItemShell(sessionId, remotePath);
       setSelectedPaths(prev => prev.filter(p => p !== remotePath));
       await loadDir(currentPath);
     } catch (err) {
       addToast(`${t('删除失败')}: ${err}`, 'error');
     } finally {
+      setOperationProgress(null);
+      operationInProgressRef.current = false;
       fileListRef.current?.focus();
     }
   };
 
   // Delete multiple selected items
   const handleDeleteItems = async () => {
+    if (operationInProgressRef.current) return;
     if (selectedPaths.length === 0) return;
+    operationInProgressRef.current = true;
     const dirSet = new Set(items.filter(i => i.isDirectory).map(i => joinPath(currentPath, i.name)));
     const needConfirm = localStorage.getItem('skipFileDeleteConfirm') !== 'true';
     if (needConfirm) {
       const ok = await window.luminDialog?.confirm(`${t('确定删除所选')} (${selectedPaths.length}${t('项')})？${t('此操作不可撤销')}`);
       fileListRef.current?.focus();
-      if (!ok) return;
+      if (!ok) { operationInProgressRef.current = false; return; }
     }
     let successCount = 0;
     let failCount = 0;
-    for (const path of selectedPaths) {
-      try {
-        await AppGo.DeleteItem(sessionId, path, dirSet.has(path));
-        successCount++;
-      } catch (err) {
-        failCount++;
-        console.error('delete item failed:', path, err);
+    const total = selectedPaths.length;
+    setOperationProgress({ message: t('正在删除中...'), current: 0, total });
+    try {
+      for (let i = 0; i < total; i++) {
+        const path = selectedPaths[i];
+        const name = path.split('/').pop();
+        setOperationProgress({ message: `${t('正在删除')} ${name}`, current: i + 1, total });
+        try {
+          await AppGo.DeleteItem(sessionId, path, dirSet.has(path));
+          successCount++;
+        } catch (err) {
+          failCount++;
+          console.error('delete item failed:', path, err);
+        }
       }
+    } finally {
+      setOperationProgress(null);
+      operationInProgressRef.current = false;
     }
     if (successCount > 0) addToast(`${t('已删除')} ${successCount} ${t('项')}`, 'success');
     if (failCount > 0) addToast(`${t('删除失败')}: ${failCount} ${t('项')}`, 'error');
@@ -1795,6 +1862,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
 
   // Keyboard shortcuts for file list
   const handleFileListKeyDown = (e) => {
+    if (operationInProgressRef.current) return;
     if (renamingItem) return;
     const isCtrl = e.ctrlKey || e.metaKey;
     if (e.key === 'Delete' || e.key === 'Del') {
@@ -1810,14 +1878,14 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     if (isCtrl && e.key === 'c') {
       e.preventDefault();
       if (selectedPaths.length === 0) return;
-      setClipboard({ paths: [...selectedPaths], mode: 'copy', srcDir: currentPath });
+      updateClipboard({ paths: [...selectedPaths], mode: 'copy', srcDir: currentPath });
       addToast(t('已复制'), 'info');
       return;
     }
     if (isCtrl && e.key === 'x') {
       e.preventDefault();
       if (selectedPaths.length === 0) return;
-      setClipboard({ paths: [...selectedPaths], mode: 'cut', srcDir: currentPath });
+      updateClipboard({ paths: [...selectedPaths], mode: 'cut', srcDir: currentPath });
       addToast(t('已剪切'), 'info');
       return;
     }
@@ -1830,41 +1898,78 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   };
 
   const handlePaste = async () => {
+    if (operationInProgressRef.current) return;
     if (!clipboard || clipboard.paths.length === 0) return;
     if (clipboard.srcDir === currentPath && clipboard.mode === 'cut') {
       addToast(t('源目录与目标目录相同，无需移动'), 'warning');
       return;
     }
+    operationInProgressRef.current = true;
     let count = 0;
-    for (const srcPath of clipboard.paths) {
-      const name = srcPath.split('/').pop();
-      let destPath = joinPath(currentPath, name);
-      if (clipboard.mode === 'copy' && clipboard.srcDir === currentPath) {
-        const base = name.replace(/(\.[^.]+)$/, '');
-        const ext = name !== base ? name.slice(base.length) : '';
-        const existing = new Set(items.map(i => i.name));
-        let copyName = `${base}_copy${ext}`;
-        let idx = 1;
-        while (existing.has(copyName)) {
-          idx++;
-          copyName = `${base}_copy${idx}${ext}`;
-        }
-        destPath = joinPath(currentPath, copyName);
-      }
-      try {
-        if (clipboard.mode === 'copy') {
-          await AppGo.CopyItem(sessionId, srcPath, destPath);
+    // 注意：existing 在循环内会被更新，反映本次粘贴已产生的文件名，避免同批同名互覆盖
+    const existing = new Set(items.map(i => i.name));
+    const total = clipboard.paths.length;
+    setOperationProgress({ message: t('正在粘贴中...'), current: 0, total });
+    try {
+      for (let i = 0; i < total; i++) {
+        const srcPath = clipboard.paths[i];
+        const name = srcPath.split('/').pop();
+        let destPath = joinPath(currentPath, name);
+        let destName = name;
+        if (clipboard.mode === 'copy' && clipboard.srcDir === currentPath) {
+          const base = name.replace(/(\.[^.]+)$/, '');
+          const ext = name !== base ? name.slice(base.length) : '';
+          let copyName = `${base}_copy${ext}`;
+          let idx = 1;
+          while (existing.has(copyName)) {
+            idx++;
+            copyName = `${base}_copy${idx}${ext}`;
+          }
+          destName = copyName;
+          destPath = joinPath(currentPath, copyName);
         } else {
-          await AppGo.MoveItem(sessionId, srcPath, destPath);
+          if (existing.has(name)) {
+            // 确认对话框缺失时显式报错并跳过，避免静默吞掉覆盖操作
+            if (typeof window.luminDialog?.confirm !== 'function') {
+              addToast(`${t('无法确认覆盖操作，已跳过')} ${name}`, 'error');
+              continue;
+            }
+            const ok = await window.luminDialog.confirm(
+              `${t('目标已存在同名项目')} "${name}"，${t('是否覆盖？')}`
+            );
+            if (!ok) continue;
+          }
         }
-        count++;
-      } catch (err) {
-        addToast(`${t('操作失败')}: ${name} - ${err}`, 'error');
+
+        // Only update progress and show the copy/move text after confirmation passes
+        setOperationProgress({
+          message: `${clipboard.mode === 'copy' ? t('正在复制') : t('正在移动')} ${name}`,
+          current: i + 1,
+          total
+        });
+        try {
+          if (clipboard.mode === 'copy') {
+            await AppGo.CopyItem(sessionId, srcPath, destPath);
+          } else {
+            await AppGo.MoveItem(sessionId, srcPath, destPath);
+          }
+          // 把刚产生的目标名加入 existing，让同批后续迭代可见
+          existing.add(destName);
+          count++;
+        } catch (err) {
+          addToast(`${t('操作失败')}: ${name} - ${err}`, 'error');
+        }
       }
+    } finally {
+      setOperationProgress(null);
+      operationInProgressRef.current = false;
     }
     if (count > 0) {
       addToast(`${t('操作完成')}: ${count} ${t('项')}`, 'success');
-      if (clipboard.mode === 'cut') setClipboard(null);
+      // cut 成功移动后清空剪贴板，避免对已移动的源再次粘贴（标准文件管理器行为）
+      if (clipboard.mode === 'cut') {
+        updateClipboard(null);
+      }
     }
     await loadDir(currentPath);
   };
@@ -2185,6 +2290,35 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           style={{ flex: 1, minWidth: 0 }}
         />
 
+        {clipboard && (
+          <>
+            <Tiptop text={t('粘贴')} placement="bottom">
+              <button
+                className="btn file-toolbar-outline-btn"
+                aria-label={t('粘贴')}
+                onClick={() => {
+                  if (operationInProgressRef.current) {
+                    addToast(t('有操作正在进行，请稍候'), 'warning');
+                  } else {
+                    void handlePaste();
+                  }
+                }}
+              >
+                <ClipboardPaste size={14} />
+              </button>
+            </Tiptop>
+            <Tiptop text={t('取消')} placement="bottom">
+              <button
+                className="btn file-toolbar-outline-btn"
+                aria-label={t('取消')}
+                onClick={() => updateClipboard(null)}
+              >
+                <X size={14} />
+              </button>
+            </Tiptop>
+          </>
+        )}
+
         <div className="file-toolbar-actions">
           <Tiptop text={t('新建文件')} placement="bottom">
             <button
@@ -2299,9 +2433,14 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           {currentPath !== '/' && (
             <div
               className="file-item"
-              onClick={() => {
+              onDoubleClick={() => {
                 const parent = currentPath.substring(0, currentPath.lastIndexOf('/')) || '/';
                 loadDir(parent);
+              }}
+              onClick={(e) => {
+                if ((e.detail || 1) >= 2) return;
+                setSelectedPaths([]);
+                fileListRef.current?.focus();
               }}
             >
               <div className="file-name-cell">
@@ -2441,7 +2580,14 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
                       className="btn btn-ghost btn-sm btn-icon"
                       aria-label={t('删除')}
                       style={{ color: 'var(--danger)' }}
-                      onClick={(e) => { e.stopPropagation(); handleDelete(item); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (operationInProgressRef.current) {
+                          addToast(t('有操作正在进行，请稍候'), 'warning');
+                        } else {
+                          handleDelete(item);
+                        }
+                      }}
                     ><Trash2 size={14} /></button>
                   </Tiptop>
                 </div>
@@ -2471,8 +2617,22 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           onEdit={() => { handleEdit(contextMenu.item); closeContextMenu(); }}
           onRename={() => { startRename(contextMenu.item); closeContextMenu(); }}
           onChmod={() => { void handleChmod(contextMenu.item); closeContextMenu(); }}
-          onDelete={() => { handleDelete(contextMenu.item); closeContextMenu(); }}
-          onDeleteShell={() => { handleDeleteShell(contextMenu.item); closeContextMenu(); }}
+          onDelete={() => {
+            if (operationInProgressRef.current) {
+              addToast(t('有操作正在进行，请稍候'), 'warning');
+            } else {
+              handleDelete(contextMenu.item);
+            }
+            closeContextMenu();
+          }}
+          onDeleteShell={() => {
+            if (operationInProgressRef.current) {
+              addToast(t('有操作正在进行，请稍候'), 'warning');
+            } else {
+              handleDeleteShell(contextMenu.item);
+            }
+            closeContextMenu();
+          }}
           onMkdir={() => { handleMkdir(); closeContextMenu(); }}
           onNewFile={() => { handleNewFile(); closeContextMenu(); }}
           onCompress={() => { handleCompress(contextMenu.item); closeContextMenu(); }}
@@ -2526,6 +2686,35 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           onClose={() => setChmodTarget(null)}
           t={t}
         />
+      )}
+
+      {/* Operation Progress Overlay */}
+      {operationProgress && (
+        <div className="file-operation-overlay">
+          <div className="file-operation-card">
+            <div className="file-operation-title">
+              {operationProgress.message}
+            </div>
+            {operationProgress.total > 0 ? (
+              <>
+                <div className="file-operation-progress-container">
+                  <div
+                    className="file-operation-progress-bar"
+                    style={{ width: `${(operationProgress.current / operationProgress.total) * 100}%` }}
+                  />
+                </div>
+                <div className="file-operation-details">
+                  <span>{Math.round((operationProgress.current / operationProgress.total) * 100)}%</span>
+                  <span>{operationProgress.current} / {operationProgress.total}</span>
+                </div>
+              </>
+            ) : (
+              <div className="file-operation-spinner">
+                <RefreshCw className="spin" size={20} />
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

@@ -777,6 +777,18 @@ func (a *App) SaveChmodDialogSettings(mode string, includeSubdirectories bool) e
 	return a.configManager.SaveChmodDialogSettings(mode, includeSubdirectories)
 }
 
+func (a *App) ListOwnershipCandidates(sessionId string) (OwnershipCandidates, error) {
+	return a.sshManager.ListOwnershipCandidates(sessionId)
+}
+
+func (a *App) GetPathOwnership(sessionId string, path string) (PathOwnershipInfo, error) {
+	return a.sshManager.GetPathOwnership(sessionId, path)
+}
+
+func (a *App) ChownFile(sessionId string, path string, owner string, group string, recursive bool) error {
+	return a.sshManager.ChownFile(sessionId, path, owner, group, recursive)
+}
+
 // ChmodFile changes file permissions via SFTP or recursively via chmod -R
 func (a *App) ChmodFile(sessionId string, path string, mode string, recursive bool) error {
 	return a.sshManager.ChmodFile(sessionId, path, mode, recursive)

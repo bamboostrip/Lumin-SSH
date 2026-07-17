@@ -2446,6 +2446,200 @@ func (m *SSHManager) ListDirContext(ctx context.Context, sessionId string, path 
 	return results, nil
 }
 
+type OwnershipCandidateEntry struct {
+	ID string `json:"id"`
+	Name string `json:"name"`
+}
+
+type OwnershipCandidates struct {
+	Users []OwnershipCandidateEntry `json:"users"`
+	Groups []OwnershipCandidateEntry `json:"groups"`
+}
+
+type PathOwnershipInfo struct {
+	UID string `json:"uid"`
+	GID string `json:"gid"`
+	Mode string `json:"mode"`
+	Permission string `json:"permission"`
+}
+
+func normalizeOwnershipCandidateEntries(entries []OwnershipCandidateEntry) []OwnershipCandidateEntry {
+	seen := make(map[string]struct{}, len(entries))
+	result := make([]OwnershipCandidateEntry, 0, len(entries))
+	for _, entry := range entries {
+		name := strings.TrimSpace(entry.Name)
+		id := strings.TrimSpace(entry.ID)
+		if name == "" || id == "" || id == "-" {
+			continue
+		}
+		key := id + "\x00" + name
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, OwnershipCandidateEntry{
+			ID: id,
+			Name: name,
+		})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		leftID, leftErr := strconv.Atoi(result[i].ID)
+		rightID, rightErr := strconv.Atoi(result[j].ID)
+		if leftErr == nil && rightErr == nil && leftID != rightID {
+			return leftID < rightID
+		}
+		if result[i].Name != result[j].Name {
+			return result[i].Name < result[j].Name
+		}
+		return result[i].ID < result[j].ID
+	})
+	return result
+}
+
+func (m *SSHManager) ListOwnershipCandidates(sessionId string) (OwnershipCandidates, error) {
+	client, _, err := m.getClientEntry(sessionId)
+	if err != nil {
+		return OwnershipCandidates{}, err
+	}
+	out, err := m.executeCmdWithClient(client, `printf '__LUMIN_USERS__\n'; (getent passwd 2>/dev/null || cat /etc/passwd 2>/dev/null || true); printf '__LUMIN_GROUPS__\n'; (getent group 2>/dev/null || cat /etc/group 2>/dev/null || true)`)
+	if err != nil {
+		return OwnershipCandidates{}, err
+	}
+	result := OwnershipCandidates{}
+	currentSection := ""
+	for _, line := range strings.Split(out, "\n") {
+		trimmed := strings.TrimSpace(line)
+		switch trimmed {
+		case "__LUMIN_USERS__":
+			currentSection = "users"
+			continue
+		case "__LUMIN_GROUPS__":
+			currentSection = "groups"
+			continue
+		}
+		if trimmed == "" {
+			continue
+		}
+		parts := strings.Split(trimmed, ":")
+		if len(parts) < 3 {
+			continue
+		}
+		entry := OwnershipCandidateEntry{
+			ID: strings.TrimSpace(parts[2]),
+			Name: strings.TrimSpace(parts[0]),
+		}
+		switch currentSection {
+		case "users":
+			result.Users = append(result.Users, entry)
+		case "groups":
+			result.Groups = append(result.Groups, entry)
+		}
+	}
+	result.Users = normalizeOwnershipCandidateEntries(result.Users)
+	result.Groups = normalizeOwnershipCandidateEntries(result.Groups)
+	return result, nil
+}
+
+func buildChownSpec(owner string, group string) string {
+	trimmedOwner := strings.TrimSpace(owner)
+	trimmedGroup := strings.TrimSpace(group)
+	if trimmedOwner == "" && trimmedGroup == "" {
+		return ""
+	}
+	if trimmedOwner == "" {
+		return ":" + trimmedGroup
+	}
+	if trimmedGroup == "" {
+		return trimmedOwner
+	}
+	return trimmedOwner + ":" + trimmedGroup
+}
+
+func hasPathOwnershipInfo(info PathOwnershipInfo) bool {
+	return strings.TrimSpace(info.Permission) != "" || strings.TrimSpace(info.Mode) != "" || strings.TrimSpace(info.UID) != "" && strings.TrimSpace(info.UID) != "-" || strings.TrimSpace(info.GID) != "" && strings.TrimSpace(info.GID) != "-"
+}
+
+func mergePathOwnershipInfo(base PathOwnershipInfo, candidate PathOwnershipInfo) PathOwnershipInfo {
+	if strings.TrimSpace(base.UID) == "" || strings.TrimSpace(base.UID) == "-" {
+		base.UID = strings.TrimSpace(candidate.UID)
+	}
+	if strings.TrimSpace(base.GID) == "" || strings.TrimSpace(base.GID) == "-" {
+		base.GID = strings.TrimSpace(candidate.GID)
+	}
+	if strings.TrimSpace(base.Mode) == "" {
+		base.Mode = strings.TrimSpace(candidate.Mode)
+	}
+	if strings.TrimSpace(base.Permission) == "" {
+		base.Permission = strings.TrimSpace(candidate.Permission)
+	}
+	return base
+}
+
+func (m *SSHManager) GetPathOwnership(sessionId string, path string) (PathOwnershipInfo, error) {
+	info := PathOwnershipInfo{
+		UID: "-",
+		GID: "-",
+	}
+	sftpClient, sftpErr := m.getSFTPClient(sessionId)
+	if sftpErr == nil && sftpClient != nil {
+		if fileInfo, statErr := sftpClient.Stat(path); statErr == nil && fileInfo != nil {
+			info.Permission = fileInfo.Mode().String()
+			info.Mode = fmt.Sprintf("%o", fileInfo.Mode().Perm())
+			if stat, ok := fileInfo.Sys().(interface{ GetUID() uint32 }); ok {
+				info.UID = fmt.Sprintf("%d", stat.GetUID())
+			}
+			if stat, ok := fileInfo.Sys().(interface{ GetGID() uint32 }); ok {
+				info.GID = fmt.Sprintf("%d", stat.GetGID())
+			}
+			if info.Permission != "" && info.Mode != "" && info.UID != "-" && info.GID != "-" {
+				return info, nil
+			}
+		}
+	}
+
+	client, _, clientErr := m.getClientEntry(sessionId)
+	if clientErr != nil {
+		if hasPathOwnershipInfo(info) {
+			return info, nil
+		}
+		if sftpErr != nil {
+			return info, sftpErr
+		}
+		return info, clientErr
+	}
+
+	out, err := m.executeCmdWithClient(client, "stat -Lc '%u\t%g\t%a\t%A' -- "+shellQuotePath(path)+" 2>/dev/null || stat -f '%u\t%g\t%Lp\t%Sp' -- "+shellQuotePath(path)+" 2>/dev/null")
+	if err != nil {
+		if hasPathOwnershipInfo(info) {
+			return info, nil
+		}
+		return info, err
+	}
+
+	fields := strings.SplitN(strings.TrimSpace(out), "\t", 4)
+	if len(fields) == 4 {
+		info = mergePathOwnershipInfo(info, PathOwnershipInfo{
+			UID: fields[0],
+			GID: fields[1],
+			Mode: fields[2],
+			Permission: fields[3],
+		})
+	}
+	return info, nil
+}
+
+func (m *SSHManager) ChownFile(sessionId string, path string, owner string, group string, recursive bool) error {
+	spec := buildChownSpec(owner, group)
+	if spec == "" {
+		return nil
+	}
+	prefix := ""
+	if recursive {
+		prefix = "-R "
+	}
+	return m.execRemoteCmdLong(context.Background(), sessionId, fmt.Sprintf("chown %s-- %s %s", prefix, shellQuotePath(spec), shellQuotePath(path)))
+}
+
 func (m *SSHManager) ChmodFile(sessionId string, path string, modeStr string, recursive bool) error {
 	modeValue := strings.TrimSpace(modeStr)
 	modeInt, err := strconv.ParseInt(modeValue, 8, 32)

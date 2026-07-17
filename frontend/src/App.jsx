@@ -641,6 +641,9 @@ export default function App() {
   const tabActionsRef = useRef(null);
   const terminalSubTabScrollRef = useRef(null);
   const terminalSubTabActionsRef = useRef(null);
+  const [terminalSubTabOverflow, setTerminalSubTabOverflow] = useState(false);
+  const [terminalSubTabCanScrollLeft, setTerminalSubTabCanScrollLeft] = useState(false);
+  const [terminalSubTabCanScrollRight, setTerminalSubTabCanScrollRight] = useState(false);
   const terminalSubTabDragSuppressUntilRef = useRef(0);
   const terminalSubTabScrollTargetRef = useRef(0);
   const terminalSubTabScrollFrameRef = useRef(0);
@@ -3442,6 +3445,24 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     '--terminal-list-scrollbar-thumb': withAlpha(terminalSubTabTheme?.xterm?.cursor, 0.32, 'rgba(var(--accent-rgb), 0.32)'),
     '--terminal-list-scrollbar-thumb-hover': withAlpha(terminalSubTabTheme?.xterm?.blue || terminalSubTabTheme?.xterm?.cursor, 0.58, 'rgba(var(--accent-rgb), 0.58)'),
   }), [terminalSubTabTheme]);
+  const syncTerminalSubTabOverflowState = useCallback(() => {
+    const el = terminalSubTabScrollRef.current;
+    if (!el) {
+      setTerminalSubTabOverflow(false);
+      setTerminalSubTabCanScrollLeft(false);
+      setTerminalSubTabCanScrollRight(false);
+      return;
+    }
+    const maxLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+    const currentLeft = el.scrollLeft;
+    const hasOverflow = maxLeft > 1;
+    setTerminalSubTabOverflow(hasOverflow);
+    setTerminalSubTabCanScrollLeft(hasOverflow && currentLeft > 1);
+    setTerminalSubTabCanScrollRight(hasOverflow && currentLeft < maxLeft - 1);
+    if (!hasOverflow) {
+      terminalSubTabScrollTargetRef.current = 0;
+    }
+  }, []);
   const stopTerminalSubTabScrollAnimation = useCallback(() => {
     if (!terminalSubTabScrollFrameRef.current) {
       return;
@@ -3461,6 +3482,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     if (Math.abs(deltaLeft) < 0.5) {
       el.scrollLeft = targetLeft;
       terminalSubTabScrollFrameRef.current = 0;
+      syncTerminalSubTabOverflowState();
       return;
     }
     const easing = terminalSubTabDraggingRef.current ? 0.3 : 0.16;
@@ -3469,7 +3491,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
       : deltaLeft * easing;
     el.scrollLeft = currentLeft + nextStep;
     terminalSubTabScrollFrameRef.current = requestAnimationFrame(stepTerminalSubTabScroll);
-  }, []);
+  }, [syncTerminalSubTabOverflowState]);
   const setTerminalSubTabScrollTarget = useCallback((nextLeft, immediate = false) => {
     const el = terminalSubTabScrollRef.current;
     if (!el) {
@@ -3481,18 +3503,37 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     if (immediate) {
       stopTerminalSubTabScrollAnimation();
       el.scrollLeft = clampedLeft;
+      syncTerminalSubTabOverflowState();
       return;
     }
     if (!terminalSubTabScrollFrameRef.current) {
       terminalSubTabScrollFrameRef.current = requestAnimationFrame(stepTerminalSubTabScroll);
     }
-  }, [stepTerminalSubTabScroll, stopTerminalSubTabScrollAnimation]);
+  }, [stepTerminalSubTabScroll, stopTerminalSubTabScrollAnimation, syncTerminalSubTabOverflowState]);
   useEffect(() => () => stopTerminalSubTabScrollAnimation(), [stopTerminalSubTabScrollAnimation]);
+  useEffect(() => {
+    const el = terminalSubTabScrollRef.current;
+    if (!el) return undefined;
+    const handleResize = () => syncTerminalSubTabOverflowState();
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(handleResize) : null;
+    observer?.observe(el);
+    window.addEventListener('resize', handleResize);
+    handleResize();
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [activeSessionId, activeSessionRootTerminals, contentTab, syncTerminalSubTabOverflowState]);
+  useEffect(() => {
+    const frame = requestAnimationFrame(syncTerminalSubTabOverflowState);
+    return () => cancelAnimationFrame(frame);
+  }, [activeSessionId, activeSessionRootTerminals, contentTab, syncTerminalSubTabOverflowState]);
   const handleTerminalSubTabScroll = useCallback((e) => {
     if (!terminalSubTabScrollFrameRef.current) {
       terminalSubTabScrollTargetRef.current = e.currentTarget.scrollLeft;
     }
-  }, []);
+    syncTerminalSubTabOverflowState();
+  }, [syncTerminalSubTabOverflowState]);
   const handleTerminalSubTabWheel = useCallback((e) => {
     const el = terminalSubTabScrollRef.current;
     if (!el || el.scrollWidth <= el.clientWidth) {
@@ -3505,6 +3546,15 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     const baseLeft = terminalSubTabScrollFrameRef.current ? terminalSubTabScrollTargetRef.current : el.scrollLeft;
     setTerminalSubTabScrollTarget(baseLeft + delta);
     e.preventDefault();
+  }, [setTerminalSubTabScrollTarget]);
+  const scrollTerminalSubTabs = useCallback((direction) => {
+    const el = terminalSubTabScrollRef.current;
+    if (!el) {
+      return;
+    }
+    const step = Math.max(96, Math.round(el.clientWidth * 0.45));
+    const baseLeft = terminalSubTabScrollFrameRef.current ? terminalSubTabScrollTargetRef.current : el.scrollLeft;
+    setTerminalSubTabScrollTarget(baseLeft + step * direction);
   }, [setTerminalSubTabScrollTarget]);
   const handleTerminalSubTabMouseDown = useCallback((e) => {
     if (e.button !== 0) {
@@ -4966,6 +5016,18 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
             {/* ── 终端子标签栏（多终端支持） ──────────────────── */}
             {activeSession && (contentTab === 'terminal' || contentTab === 'process' || contentTab === 'network' || contentTab === 'history' || (fileManagerPosition === 'tab' && contentTab === 'files')) && isSessionWorkspaceVisible(activeSession) && activeSession.terminals && activeSession.terminals.length >= 1 && (
               <div className="terminal-sub-tab-bar">
+                {terminalSubTabOverflow && (
+                  <button
+                    type="button"
+                    className={`terminal-sub-tab-nav terminal-sub-tab-nav-left${terminalSubTabCanScrollLeft ? '' : ' disabled'}`}
+                    onClick={() => scrollTerminalSubTabs(-1)}
+                    aria-label={t('向左滚动标签')}
+                    title={t('向左滚动标签')}
+                    disabled={!terminalSubTabCanScrollLeft}
+                  >
+                    <ChevronLeft size={14} />
+                  </button>
+                )}
                 <div
                   ref={terminalSubTabScrollRef}
                   className="terminal-sub-tab-scroll"
@@ -5028,6 +5090,18 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                     );
                   })}
                 </div>
+                {terminalSubTabOverflow && (
+                  <button
+                    type="button"
+                    className={`terminal-sub-tab-nav terminal-sub-tab-nav-right${terminalSubTabCanScrollRight ? '' : ' disabled'}`}
+                    onClick={() => scrollTerminalSubTabs(1)}
+                    aria-label={t('向右滚动标签')}
+                    title={t('向右滚动标签')}
+                    disabled={!terminalSubTabCanScrollRight}
+                  >
+                    <ChevronRight size={14} />
+                  </button>
+                )}
                 <div className="terminal-sub-tab-actions" ref={terminalSubTabActionsRef}>
                   {fileManagerPosition !== 'tab' && (fileManagerDockPreview === 'left' || fileManagerDockPreview === 'bottom') && (
                     <div ref={fileManagerDockTabAnchorRef} className="file-manager-tab-dock-placeholder" aria-hidden="true">

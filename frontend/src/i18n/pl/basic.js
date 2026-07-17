@@ -1108,6 +1108,8 @@ export default {
   "终端 cd 切换目录时自动同步文件管理器路径": "Terminal cd automatycznie synchronizuje ścieżkę menedżera plików podczas przełączania katalogów",
   "压缩传输": "Skompresowana transmisja",
   "多文件或文件夹上传时先在本机打包为 tar.gz，上传后远端自动解压": "Przesyłając wiele plików lub folderów, najpierw spakuj je lokalnie do pliku tar.gz, a następnie automatycznie rozpakuj je zdalnie po przesłaniu.",
+  "发起传输任务时自动打开传输队列": "Automatycznie otwieraj kolejkę transmisji podczas inicjowania zadania transmisji",
+  "上传或下载新建传输任务后自动展开传输队列面板": "Automatycznie rozwijaj panel kolejki transmisji po przesłaniu lub pobraniu nowego zadania transmisji",
   "下载保存": "Pobierz i zapisz",
   "每次下载都询问": "Pytaj przy każdym pobieraniu",
   "开启后，每次下载文件或文件夹前都先询问保存位置；关闭后直接保存到默认位置": "Po włączeniu za każdym razem, gdy pobierasz plik lub folder, zostaniesz zapytany o lokalizację zapisu; po wyłączeniu zostanie zapisany bezpośrednio w domyślnej lokalizacji.",

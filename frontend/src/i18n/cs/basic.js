@@ -1108,6 +1108,8 @@ export default {
   "终端 cd 切换目录时自动同步文件管理器路径": "Terminál cd automaticky synchronizuje cestu správce souborů při přepínání adresářů",
   "压缩传输": "Stlačený převod",
   "多文件或文件夹上传时先在本机打包为 tar.gz，上传后远端自动解压": "Při nahrávání více souborů nebo složek je nejprve lokálně zabalte do tar.gz a poté je po nahrání automaticky vzdáleně dekomprimujte.",
+  "发起传输任务时自动打开传输队列": "Automaticky otevřít přenosovou frontu při zahájení přenosové úlohy",
+  "上传或下载新建传输任务后自动展开传输队列面板": "Automaticky rozšířit panel přenosové fronty po nahrání nebo stažení nové přenosové úlohy",
   "下载保存": "Stáhnout a uložit",
   "每次下载都询问": "Při každém stahování se zeptejte",
   "开启后，每次下载文件或文件夹前都先询问保存位置；关闭后直接保存到默认位置": "Když je tato funkce zapnutá, pokaždé, když stáhnete soubor nebo složku, budete požádáni o umístění uložení; po vypnutí se uloží přímo do výchozího umístění.",

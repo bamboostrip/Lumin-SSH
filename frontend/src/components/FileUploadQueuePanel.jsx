@@ -244,6 +244,7 @@ function renderActionButton(label, danger, onClick) {
 
 export default function FileUploadQueuePanel({
   items,
+  closing = false,
   onClose,
   isAbortable,
   onAbortItem,
@@ -307,7 +308,21 @@ export default function FileUploadQueuePanel({
     : t('排队中');
 
   return (
-    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--surface-raised)' }}>
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--surface-raised)',
+        opacity: closing ? 0 : 1,
+        transform: closing ? 'translateX(100%)' : 'translateX(0)',
+        transformOrigin: 'right center',
+        transition: 'opacity 100ms ease, transform 100ms ease-in-out',
+        willChange: 'opacity, transform',
+        pointerEvents: closing ? 'none' : 'auto',
+      }}
+    >
       <div className="modal-header" style={{ padding: '12px 14px 10px', borderBottom: '1px solid var(--border)' }}>
         <div className="modal-title" style={{ fontSize: 14 }}>
           <ClipboardList size={14} />

@@ -643,6 +643,7 @@ export default function SettingsModal({
   const [programDirectory, setProgramDirectory] = useState('');
   const [fileManagerFollowTerminalCwd, setFileManagerFollowTerminalCwd] = useState(localStorage.getItem('fileManagerFollowTerminalCwd') !== 'false');
   const [fileManagerCompressedTransfer, setFileManagerCompressedTransfer] = useState(localStorage.getItem('fileManagerCompressedTransfer') !== 'false');
+  const [fileManagerAutoOpenTransferQueue, setFileManagerAutoOpenTransferQueue] = useState(localStorage.getItem('fileManagerAutoOpenTransferQueue') !== 'false');
   const [fileManagerAskDownloadEveryTime, setFileManagerAskDownloadEveryTime] = useState(localStorage.getItem('fileManagerAskDownloadEveryTime') === 'true');
   const [fileManagerDownloadConflictStrategy, setFileManagerDownloadConflictStrategy] = useState(localStorage.getItem('fileManagerDownloadConflictStrategy') || 'auto_rename');
   const [fileManagerDownloadConflictDiffBySize, setFileManagerDownloadConflictDiffBySize] = useState(localStorage.getItem('fileManagerDownloadConflictDiffBySize') !== 'false');
@@ -721,6 +722,12 @@ export default function SettingsModal({
     setFileManagerCompressedTransfer(next);
     if (next) localStorage.removeItem('fileManagerCompressedTransfer');
     else localStorage.setItem('fileManagerCompressedTransfer', 'false');
+  };
+  const handleToggleFileManagerAutoOpenTransferQueue = () => {
+    const next = !fileManagerAutoOpenTransferQueue;
+    setFileManagerAutoOpenTransferQueue(next);
+    if (next) localStorage.removeItem('fileManagerAutoOpenTransferQueue');
+    else localStorage.setItem('fileManagerAutoOpenTransferQueue', 'false');
   };
   const handleToggleFileManagerAskDownloadEveryTime = () => {
     const next = !fileManagerAskDownloadEveryTime;
@@ -1377,6 +1384,8 @@ export default function SettingsModal({
                 onToggleFileManagerFollowTerminalCwd={handleToggleFileManagerFollowTerminalCwd}
                 fileManagerCompressedTransfer={fileManagerCompressedTransfer}
                 onToggleFileManagerCompressedTransfer={handleToggleFileManagerCompressedTransfer}
+                fileManagerAutoOpenTransferQueue={fileManagerAutoOpenTransferQueue}
+                onToggleFileManagerAutoOpenTransferQueue={handleToggleFileManagerAutoOpenTransferQueue}
                 fileManagerAskDownloadEveryTime={fileManagerAskDownloadEveryTime}
                 onToggleFileManagerAskDownloadEveryTime={handleToggleFileManagerAskDownloadEveryTime}
                 fileManagerDownloadConflictStrategy={fileManagerDownloadConflictStrategy}

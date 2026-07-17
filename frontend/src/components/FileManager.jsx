@@ -13,6 +13,7 @@ import {
   FileArchive, Settings, ClipboardList, Wrench, Image, Code, Globe,
   Palette, Database, Terminal, Film, Music, Archive, HardDrive, BookOpen,
   Pencil, PenLine, Download, Upload, Trash2, RefreshCw, Lock, FolderUp, SquarePen, Copy,
+  X, ClipboardPaste,
 } from 'lucide-react';
 
 // 格式化文件大小
@@ -616,6 +617,38 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     lastClickedPathRef.current = null;
   }, [currentPath]);
   const [clipboard, setClipboard] = useState(null); // { paths: string[], mode: 'copy'|'cut', srcDir: string }
+
+  const updateClipboard = (newClipboard) => {
+    if (!window.__luminClipboards) {
+      window.__luminClipboards = {};
+    }
+    if (newClipboard) {
+      window.__luminClipboards[sessionGroupId] = newClipboard;
+    } else {
+      delete window.__luminClipboards[sessionGroupId];
+    }
+    setClipboard(newClipboard);
+    window.dispatchEvent(new CustomEvent('lumin-clipboard-changed', {
+      detail: { sessionGroupId, clipboard: newClipboard }
+    }));
+  };
+
+  useEffect(() => {
+    const cached = (window.__luminClipboards && window.__luminClipboards[sessionGroupId]) || null;
+    setClipboard(cached);
+
+    const handleClipboardChange = (e) => {
+      if (e.detail && e.detail.sessionGroupId === sessionGroupId) {
+        setClipboard(e.detail.clipboard);
+      }
+    };
+
+    window.addEventListener('lumin-clipboard-changed', handleClipboardChange);
+    return () => {
+      window.removeEventListener('lumin-clipboard-changed', handleClipboardChange);
+    };
+  }, [sessionGroupId]);
+
   const [renamingItem, setRenamingItem] = useState(null);
   const [renameValue, setRenameValue] = useState('');
   const [chmodTarget, setChmodTarget] = useState(null); // { item, path, mode, includeSubdirectories, showIncludeSubdirectories }
@@ -1810,14 +1843,14 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     if (isCtrl && e.key === 'c') {
       e.preventDefault();
       if (selectedPaths.length === 0) return;
-      setClipboard({ paths: [...selectedPaths], mode: 'copy', srcDir: currentPath });
+      updateClipboard({ paths: [...selectedPaths], mode: 'copy', srcDir: currentPath });
       addToast(t('已复制'), 'info');
       return;
     }
     if (isCtrl && e.key === 'x') {
       e.preventDefault();
       if (selectedPaths.length === 0) return;
-      setClipboard({ paths: [...selectedPaths], mode: 'cut', srcDir: currentPath });
+      updateClipboard({ paths: [...selectedPaths], mode: 'cut', srcDir: currentPath });
       addToast(t('已剪切'), 'info');
       return;
     }
@@ -1836,13 +1869,13 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       return;
     }
     let count = 0;
+    const existing = new Set(items.map(i => i.name));
     for (const srcPath of clipboard.paths) {
       const name = srcPath.split('/').pop();
       let destPath = joinPath(currentPath, name);
       if (clipboard.mode === 'copy' && clipboard.srcDir === currentPath) {
         const base = name.replace(/(\.[^.]+)$/, '');
         const ext = name !== base ? name.slice(base.length) : '';
-        const existing = new Set(items.map(i => i.name));
         let copyName = `${base}_copy${ext}`;
         let idx = 1;
         while (existing.has(copyName)) {
@@ -1850,6 +1883,13 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           copyName = `${base}_copy${idx}${ext}`;
         }
         destPath = joinPath(currentPath, copyName);
+      } else {
+        if (existing.has(name)) {
+          const ok = await window.luminDialog?.confirm(
+            `${t('目标已存在同名项目')} "${name}"，${t('是否覆盖？')}`
+          );
+          if (!ok) continue;
+        }
       }
       try {
         if (clipboard.mode === 'copy') {
@@ -1864,7 +1904,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
     if (count > 0) {
       addToast(`${t('操作完成')}: ${count} ${t('项')}`, 'success');
-      if (clipboard.mode === 'cut') setClipboard(null);
+      if (clipboard.mode === 'cut') updateClipboard(null);
     }
     await loadDir(currentPath);
   };
@@ -2184,6 +2224,29 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           }}
           style={{ flex: 1, minWidth: 0 }}
         />
+
+        {clipboard && (
+          <>
+            <Tiptop text={t('粘贴')} placement="bottom">
+              <button
+                className="btn file-toolbar-outline-btn"
+                aria-label={t('粘贴')}
+                onClick={() => void handlePaste()}
+              >
+                <ClipboardPaste size={14} />
+              </button>
+            </Tiptop>
+            <Tiptop text={t('取消')} placement="bottom">
+              <button
+                className="btn file-toolbar-outline-btn"
+                aria-label={t('取消')}
+                onClick={() => updateClipboard(null)}
+              >
+                <X size={14} />
+              </button>
+            </Tiptop>
+          </>
+        )}
 
         <div className="file-toolbar-actions">
           <Tiptop text={t('新建文件')} placement="bottom">

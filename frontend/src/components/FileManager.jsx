@@ -23,10 +23,37 @@ import {
   FileArchive, Settings, ClipboardList, Wrench, Image, Code, Globe,
   Palette, Database, Terminal, Film, Music, Archive, HardDrive, BookOpen,
   Pencil, PenLine, Download, Upload, Trash2, RefreshCw, Lock, FolderUp, SquarePen, Copy,
-  X, ClipboardPaste, Plus,
+  X, ClipboardPaste, Plus, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 
 // 格式化文件大小
+const FILE_LIST_ACTIONS_COLUMN_WIDTH = 110;
+const FILE_LIST_NAME_MIN_WIDTH = 120;
+const FILE_LIST_SIZE_MIN_WIDTH = 60;
+const FILE_LIST_PERMISSION_MIN_WIDTH = 85;
+const FILE_LIST_MODIFIED_MIN_WIDTH = 110;
+const FILE_LIST_SIZE_MAX_WIDTH = 160;
+const FILE_LIST_PERMISSION_MAX_WIDTH = 220;
+const FILE_LIST_MODIFIED_MAX_WIDTH = 210;
+
+const fileListMeasureCanvas = typeof document !== 'undefined' ? document.createElement('canvas') : null;
+
+function measureFileListTextWidth(text, font) {
+  if (!fileListMeasureCanvas) {
+    return String(text || '').length * 8;
+  }
+  const ctx = fileListMeasureCanvas.getContext('2d');
+  if (!ctx) {
+    return String(text || '').length * 8;
+  }
+  ctx.font = font;
+  return ctx.measureText(String(text || '')).width;
+}
+
+function clampFileListColumnWidth(width, min, max) {
+  return Math.max(min, Math.min(max, Math.ceil(width)));
+}
+
 function fmtSize(bytes) {
   if (!bytes || bytes === 0) return '-';
   if (bytes < 1024) return `${bytes} B`;
@@ -396,6 +423,144 @@ function permsFromChmodMode(modeStr) {
   };
 }
 
+const CHMOD_OWNER_PRESET_OPTIONS = [
+  { id: '0', name: 'root' },
+  { id: '26', name: 'postgres' },
+  { id: '27', name: 'mysql' },
+  { id: '33', name: 'www-data' },
+  { id: '101', name: 'nginx' },
+  { id: '999', name: 'redis' },
+  { id: '1000', name: 'ubuntu' },
+  { id: '65534', name: 'nobody' },
+];
+
+const CHMOD_GROUP_PRESET_OPTIONS = [
+  { id: '0', name: 'root' },
+  { id: '4', name: 'adm' },
+  { id: '10', name: 'wheel' },
+  { id: '27', name: 'sudo' },
+  { id: '33', name: 'www-data' },
+  { id: '101', name: 'nginx' },
+  { id: '999', name: 'redis' },
+  { id: '1000', name: 'users' },
+  { id: '65534', name: 'nogroup' },
+];
+
+function normalizeIdentityId(value) {
+  const trimmed = String(value ?? '').trim();
+  return trimmed && trimmed !== '-' ? trimmed : '';
+}
+
+function formatIdentityDisplay(name, id) {
+  const normalizedId = normalizeIdentityId(id);
+  if (!normalizedId) {
+    return '-';
+  }
+  const trimmedName = String(name || '').trim();
+  return trimmedName ? `${trimmedName}(${normalizedId})` : normalizedId;
+}
+
+function buildIdentityOptionList(currentId, presets) {
+  const normalizedCurrentId = normalizeIdentityId(currentId);
+  const presetOptions = Array.isArray(presets) ? presets : [];
+  const currentOption = normalizedCurrentId
+    ? (presetOptions.find((item) => normalizeIdentityId(item.id) === normalizedCurrentId) || { id: normalizedCurrentId, name: '' })
+    : null;
+  const options = currentOption
+    ? [currentOption, ...presetOptions.filter((item) => normalizeIdentityId(item.id) !== normalizedCurrentId)]
+    : presetOptions;
+  const seen = new Set();
+  return options
+    .map((item) => {
+      const id = normalizeIdentityId(item.id);
+      if (!id) {
+        return null;
+      }
+      const name = String(item.name || '').trim();
+      const label = formatIdentityDisplay(name, id);
+      return {
+        id,
+        name,
+        label,
+        searchText: `${name} ${id} ${label}`.toLowerCase(),
+      };
+    })
+    .filter((item) => {
+      if (!item || seen.has(item.label)) {
+        return false;
+      }
+      seen.add(item.label);
+      return true;
+    });
+}
+
+function resolveIdentityInputValue(currentId, presets) {
+  const normalizedCurrentId = normalizeIdentityId(currentId);
+  if (!normalizedCurrentId) {
+    return '-';
+  }
+  const matched = (Array.isArray(presets) ? presets : []).find((item) => normalizeIdentityId(item.id) === normalizedCurrentId);
+  return formatIdentityDisplay(matched?.name || '', normalizedCurrentId);
+}
+
+function resolveIdentityInputSpec(value, options, fallbackId = '') {
+  const trimmed = String(value ?? '').trim();
+  const candidates = Array.isArray(options) ? options : [];
+  if (!trimmed || trimmed === '-') {
+    return normalizeIdentityId(fallbackId);
+  }
+  const matched = candidates.find((item) => {
+    const normalizedId = normalizeIdentityId(item.id);
+    const label = formatIdentityDisplay(item.name, normalizedId);
+    return trimmed === label || trimmed === String(item.name || '').trim() || trimmed === normalizedId;
+  });
+  if (matched) {
+    return String(matched.name || '').trim() || normalizeIdentityId(matched.id);
+  }
+  const labelMatch = trimmed.match(/^(.*)\(([^()]+)\)$/);
+  if (labelMatch) {
+    const name = String(labelMatch[1] || '').trim();
+    const id = normalizeIdentityId(labelMatch[2]);
+    return name || id || normalizeIdentityId(fallbackId);
+  }
+  return trimmed;
+}
+
+function resolveIdentityCompareKey(value, options, fallbackId = '') {
+  const trimmed = String(value ?? '').trim();
+  const fallback = normalizeIdentityId(fallbackId);
+  const candidates = Array.isArray(options) ? options : [];
+  if (!trimmed || trimmed === '-') {
+    return fallback ? `id:${fallback}` : '';
+  }
+  const matched = candidates.find((item) => {
+    const normalizedId = normalizeIdentityId(item.id);
+    const label = formatIdentityDisplay(item.name, normalizedId);
+    return trimmed === label || trimmed === String(item.name || '').trim() || trimmed === normalizedId;
+  });
+  if (matched) {
+    const normalizedId = normalizeIdentityId(matched.id);
+    if (normalizedId) {
+      return `id:${normalizedId}`;
+    }
+    const normalizedName = String(matched.name || '').trim().toLowerCase();
+    return normalizedName ? `name:${normalizedName}` : '';
+  }
+  const labelMatch = trimmed.match(/^(.*)\(([^()]+)\)$/);
+  if (labelMatch) {
+    const name = String(labelMatch[1] || '').trim().toLowerCase();
+    const id = normalizeIdentityId(labelMatch[2]);
+    if (id) {
+      return `id:${id}`;
+    }
+    return name ? `name:${name}` : '';
+  }
+  if (/^\d+$/.test(trimmed)) {
+    return `id:${trimmed}`;
+  }
+  return `name:${trimmed.toLowerCase()}`;
+}
+
 function createLimiter(limit) {
   const max = Math.max(1, limit);
   let active = 0;
@@ -454,7 +619,7 @@ async function uploadChunkWithRetry(label, uploadFn, onAttempt) {
 }
 
 // ── Chmod Dialog ──────────────────────────────────────────────
-function ChmodDialog({ path, permission, mode, includeSubdirectories = false, showIncludeSubdirectories = false, onSave, onClose, t }) {
+function ChmodDialog({ path, permission, mode, uid, gid, ownerCandidates = [], groupCandidates = [], includeSubdirectories = false, showIncludeSubdirectories = false, onSave, onClose, t }) {
   const parsePerms = (permStr) => {
     const p = permStr && permStr.length >= 10 ? permStr.slice(1) : '---------';
     return {
@@ -469,6 +634,50 @@ function ChmodDialog({ path, permission, mode, includeSubdirectories = false, sh
   const [perms, setPerms] = useState(rememberedMode ? permsFromChmodMode(rememberedMode) : fallbackPerms);
   const [octal, setOctal] = useState(rememberedMode || calcChmodOctal(fallbackPerms));
   const [includeChildren, setIncludeChildren] = useState(Boolean(includeSubdirectories));
+  const ownerOptions = useMemo(() => buildIdentityOptionList(uid, ownerCandidates), [uid, ownerCandidates]);
+  const groupOptions = useMemo(() => buildIdentityOptionList(gid, groupCandidates), [gid, groupCandidates]);
+  const ownerDefaultValue = useMemo(() => resolveIdentityInputValue(uid, ownerCandidates), [uid, ownerCandidates]);
+  const groupDefaultValue = useMemo(() => resolveIdentityInputValue(gid, groupCandidates), [gid, groupCandidates]);
+  const [ownerInput, setOwnerInput] = useState(ownerDefaultValue);
+  const [groupInput, setGroupInput] = useState(groupDefaultValue);
+  const [ownerTouched, setOwnerTouched] = useState(false);
+  const [groupTouched, setGroupTouched] = useState(false);
+
+  useEffect(() => {
+    setOwnerTouched(false);
+  }, [path, uid]);
+
+  useEffect(() => {
+    setGroupTouched(false);
+  }, [path, gid]);
+
+  useEffect(() => {
+    if (!ownerTouched) {
+      setOwnerInput(ownerDefaultValue);
+    }
+  }, [ownerDefaultValue, ownerTouched]);
+
+  useEffect(() => {
+    if (!groupTouched) {
+      setGroupInput(groupDefaultValue);
+    }
+  }, [groupDefaultValue, groupTouched]);
+
+  const filteredOwnerOptions = useMemo(() => {
+    const query = String(ownerInput || '').trim().toLowerCase();
+    const candidates = query
+      ? ownerOptions.filter((option) => option.searchText.includes(query))
+      : ownerOptions;
+    return candidates.slice(0, 80);
+  }, [ownerInput, ownerOptions]);
+
+  const filteredGroupOptions = useMemo(() => {
+    const query = String(groupInput || '').trim().toLowerCase();
+    const candidates = query
+      ? groupOptions.filter((option) => option.searchText.includes(query))
+      : groupOptions;
+    return candidates.slice(0, 80);
+  }, [groupInput, groupOptions]);
 
   const togglePerm = (cat, key) => {
     setPerms(prev => {
@@ -495,6 +704,44 @@ function ChmodDialog({ path, permission, mode, includeSubdirectories = false, sh
         <div className="modal-body">
           <div className="chmod-dialog-body">
             <div className="chmod-dialog-path">{path}</div>
+            <div style={{ display: 'grid', gap: 10, marginTop: 12, marginBottom: 12 }}>
+              <div style={{ display: 'grid', gap: 6 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{t('属主')}</span>
+                <input
+                  className="input"
+                  list="chmod-owner-options"
+                  value={ownerInput}
+                  onChange={(e) => {
+                    setOwnerTouched(true);
+                    setOwnerInput(e.target.value);
+                  }}
+                  placeholder={t('搜索或输入属主...')}
+                />
+              </div>
+              <datalist id="chmod-owner-options">
+                {filteredOwnerOptions.map((option) => (
+                  <option key={option.label} value={option.label} />
+                ))}
+              </datalist>
+              <div style={{ display: 'grid', gap: 6 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{t('属组')}</span>
+                <input
+                  className="input"
+                  list="chmod-group-options"
+                  value={groupInput}
+                  onChange={(e) => {
+                    setGroupTouched(true);
+                    setGroupInput(e.target.value);
+                  }}
+                  placeholder={t('搜索或输入属组...')}
+                />
+              </div>
+              <datalist id="chmod-group-options">
+                {filteredGroupOptions.map((option) => (
+                  <option key={option.label} value={option.label} />
+                ))}
+              </datalist>
+            </div>
             <div className="chmod-grid">
               <div className="chmod-row">
                 <span></span>
@@ -541,7 +788,7 @@ function ChmodDialog({ path, permission, mode, includeSubdirectories = false, sh
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>{t('取消')}</button>
-          <button className="btn btn-primary" onClick={() => onSave(octal.length === 3 ? octal : calcChmodOctal(perms), includeChildren)}>{t('确定')}</button>
+          <button className="btn btn-primary" onClick={() => onSave(octal.length === 3 ? octal : calcChmodOctal(perms), includeChildren, ownerInput, groupInput)}>{t('确定')}</button>
         </div>
       </div>
     </div>
@@ -649,7 +896,17 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   const normalizePath = useCallback((value) => {
     const trimmed = String(value || '').trim();
     if (!trimmed) return '';
-    return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+    const normalizedSlashes = trimmed.replace(/\\/g, '/').replace(/\/+/g, '/');
+    const parts = [];
+    normalizedSlashes.split('/').forEach((part) => {
+      if (!part || part === '.') return;
+      if (part === '..') {
+        if (parts.length > 0) parts.pop();
+        return;
+      }
+      parts.push(part);
+    });
+    return parts.length > 0 ? `/${parts.join('/')}` : '/';
   }, []);
   const [fileManagerWorkspace, setFileManagerWorkspaceState] = useState(() => getSessionFileManagerWorkspace(sessionId));
   const [currentPath, setCurrentPath] = useState('/');
@@ -690,6 +947,41 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   const [items, setItems] = useState([]);
   const [sortField, setSortField] = useState('name');  // name, size, permissions, modified
   const [sortDir, setSortDir] = useState('asc');  // asc, desc
+  const fileListColumnWidths = useMemo(() => {
+    const headerFont = '600 12px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    const cellFont = '12px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    const monoFont = '12px "JetBrains Mono", "Fira Code", "Cascadia Code", monospace';
+    const sizeTexts = [t('大小'), ...items.map((item) => (item.isDirectory ? '-' : fmtSize(item.size)))];
+    const permissionTexts = [t('权限'), ...items.map((item) => item.permission || '-')];
+    const modifiedTexts = [t('修改时间'), ...items.map((item) => fmtDate(item.modifyTime))];
+    const sizeWidth = clampFileListColumnWidth(
+      Math.max(
+        ...sizeTexts.map((text, index) => measureFileListTextWidth(text, index === 0 ? headerFont : monoFont))
+      ) + 24,
+      FILE_LIST_SIZE_MIN_WIDTH,
+      FILE_LIST_SIZE_MAX_WIDTH,
+    );
+    const permissionWidth = clampFileListColumnWidth(
+      Math.max(
+        ...permissionTexts.map((text, index) => measureFileListTextWidth(text, index === 0 ? headerFont : monoFont))
+      ) + 28,
+      FILE_LIST_PERMISSION_MIN_WIDTH,
+      FILE_LIST_PERMISSION_MAX_WIDTH,
+    );
+    const modifiedWidth = clampFileListColumnWidth(
+      Math.max(
+        ...modifiedTexts.map((text, index) => measureFileListTextWidth(text, index === 0 ? headerFont : cellFont))
+      ) + 28,
+      FILE_LIST_MODIFIED_MIN_WIDTH,
+      FILE_LIST_MODIFIED_MAX_WIDTH,
+    );
+    return {
+      size: sizeWidth,
+      permission: permissionWidth,
+      modified: modifiedWidth,
+      minWidth: `${FILE_LIST_NAME_MIN_WIDTH + sizeWidth + permissionWidth + modifiedWidth + FILE_LIST_ACTIONS_COLUMN_WIDTH}px`,
+    };
+  }, [items, t]);
 
   // 排序后的列表（目录在前）
   const sortedItems = useMemo(() => [...items].sort((a, b) => {
@@ -721,6 +1013,12 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   const nativeUploadQueueIdRef = useRef('');
   const abortedUploadIdsRef = useRef(new Set());
   const fileListRef = useRef(null);
+  const fileManagerTabScrollRef = useRef(null);
+  const fileManagerTabScrollTargetRef = useRef(0);
+  const fileManagerTabScrollFrameRef = useRef(0);
+  const [fileManagerTabOverflow, setFileManagerTabOverflow] = useState(false);
+  const [fileManagerTabCanScrollLeft, setFileManagerTabCanScrollLeft] = useState(false);
+  const [fileManagerTabCanScrollRight, setFileManagerTabCanScrollRight] = useState(false);
   const tabItemsCacheRef = useRef(new Map());
   const getCachedTabItems = useCallback((tabId) => {
     const cachedItems = tabItemsCacheRef.current.get(String(tabId || '').trim());
@@ -736,6 +1034,106 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     if (!key) return;
     tabItemsCacheRef.current.delete(key);
   }, []);
+  const syncFileManagerTabOverflowState = useCallback(() => {
+    const el = fileManagerTabScrollRef.current;
+    if (!el) {
+      setFileManagerTabOverflow(false);
+      setFileManagerTabCanScrollLeft(false);
+      setFileManagerTabCanScrollRight(false);
+      return;
+    }
+    const maxLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+    const currentLeft = el.scrollLeft;
+    const hasOverflow = maxLeft > 1;
+    setFileManagerTabOverflow(hasOverflow);
+    setFileManagerTabCanScrollLeft(hasOverflow && currentLeft > 1);
+    setFileManagerTabCanScrollRight(hasOverflow && currentLeft < maxLeft - 1);
+    if (!hasOverflow) {
+      fileManagerTabScrollTargetRef.current = 0;
+    }
+  }, []);
+  const stopFileManagerTabScrollAnimation = useCallback(() => {
+    if (!fileManagerTabScrollFrameRef.current) {
+      return;
+    }
+    cancelAnimationFrame(fileManagerTabScrollFrameRef.current);
+    fileManagerTabScrollFrameRef.current = 0;
+  }, []);
+  const stepFileManagerTabScroll = useCallback(() => {
+    const el = fileManagerTabScrollRef.current;
+    if (!el) {
+      fileManagerTabScrollFrameRef.current = 0;
+      return;
+    }
+    const currentLeft = el.scrollLeft;
+    const targetLeft = fileManagerTabScrollTargetRef.current;
+    const deltaLeft = targetLeft - currentLeft;
+    if (Math.abs(deltaLeft) < 0.5) {
+      el.scrollLeft = targetLeft;
+      fileManagerTabScrollFrameRef.current = 0;
+      syncFileManagerTabOverflowState();
+      return;
+    }
+    const nextStep = Math.abs(deltaLeft) < 10
+      ? Math.sign(deltaLeft) * Math.max(0.8, Math.abs(deltaLeft) * 0.45)
+      : deltaLeft * 0.18;
+    el.scrollLeft = currentLeft + nextStep;
+    fileManagerTabScrollFrameRef.current = requestAnimationFrame(stepFileManagerTabScroll);
+  }, [syncFileManagerTabOverflowState]);
+  const setFileManagerTabScrollTarget = useCallback((nextLeft) => {
+    const el = fileManagerTabScrollRef.current;
+    if (!el) {
+      return;
+    }
+    const maxLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+    const clampedLeft = Math.max(0, Math.min(maxLeft, nextLeft));
+    fileManagerTabScrollTargetRef.current = clampedLeft;
+    if (!fileManagerTabScrollFrameRef.current) {
+      fileManagerTabScrollFrameRef.current = requestAnimationFrame(stepFileManagerTabScroll);
+    }
+  }, [stepFileManagerTabScroll]);
+  const scrollFileManagerTabs = useCallback((direction) => {
+    const el = fileManagerTabScrollRef.current;
+    if (!el) {
+      return;
+    }
+    const step = Math.max(96, Math.round(el.clientWidth * 0.45));
+    const baseLeft = fileManagerTabScrollFrameRef.current ? fileManagerTabScrollTargetRef.current : el.scrollLeft;
+    setFileManagerTabScrollTarget(baseLeft + step * direction);
+  }, [setFileManagerTabScrollTarget]);
+  const handleFileManagerTabScroll = useCallback((event) => {
+    if (!fileManagerTabScrollFrameRef.current) {
+      fileManagerTabScrollTargetRef.current = event.currentTarget.scrollLeft;
+    }
+    syncFileManagerTabOverflowState();
+  }, [syncFileManagerTabOverflowState]);
+  const handleFileManagerTabWheel = useCallback((event) => {
+    const el = fileManagerTabScrollRef.current;
+    if (!el || el.scrollWidth <= el.clientWidth) return;
+    const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+    if (!delta) return;
+    const baseLeft = fileManagerTabScrollFrameRef.current ? fileManagerTabScrollTargetRef.current : el.scrollLeft;
+    setFileManagerTabScrollTarget(baseLeft + delta);
+    event.preventDefault();
+  }, [setFileManagerTabScrollTarget]);
+  useEffect(() => () => stopFileManagerTabScrollAnimation(), [stopFileManagerTabScrollAnimation]);
+  useEffect(() => {
+    const el = fileManagerTabScrollRef.current;
+    if (!el) return undefined;
+    const handleResize = () => syncFileManagerTabOverflowState();
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(handleResize) : null;
+    observer?.observe(el);
+    window.addEventListener('resize', handleResize);
+    handleResize();
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [syncFileManagerTabOverflowState]);
+  useEffect(() => {
+    const frame = requestAnimationFrame(syncFileManagerTabOverflowState);
+    return () => cancelAnimationFrame(frame);
+  }, [fileManagerWorkspace, syncFileManagerTabOverflowState]);
   const commitFileManagerWorkspace = useCallback((updater) => {
     const next = setSessionFileManagerWorkspace(sessionId, updater);
     setFileManagerWorkspaceState(next);
@@ -1316,6 +1714,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   }, [isActive, sessionGroupId, workbenchState.editorSplitOpen, workbenchState.uploadOpen]);
 
   const loadDir = useCallback(async (path, options = {}) => {
+    const normalizedPath = normalizePath(path) || '/';
     const resolvedOptions = typeof options === 'boolean' ? { silent: options } : (options || {});
     const targetTabId = String(
       resolvedOptions.tabId
@@ -1338,12 +1737,12 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     if (staleWhileRevalidate && staleItems) {
       displayedTabIdRef.current = targetTabId || displayedTabIdRef.current;
       currentPathHydratedRef.current = true;
-      currentPathRef.current = path;
+      currentPathRef.current = normalizedPath;
       setLoading(false);
       setItems(staleItems);
-      setCurrentPath(path);
+      setCurrentPath(normalizedPath);
     }
-    const samePathRefresh = currentPathHydratedRef.current && path === currentPathRef.current;
+    const samePathRefresh = currentPathHydratedRef.current && normalizedPath === currentPathRef.current;
     const preserveView = resolvedOptions.preserveView ?? (staleWhileRevalidate ? true : samePathRefresh);
     const trackDiff = resolvedOptions.trackDiff ?? (staleWhileRevalidate ? true : samePathRefresh);
     const showLoading = resolvedOptions.showLoading ?? (staleWhileRevalidate ? false : !(preserveView || trackDiff));
@@ -1354,7 +1753,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       queueFileListViewRestore();
     }
     try {
-      const data = await AppGo.ListDir(sessionId, path);
+      const data = await AppGo.ListDir(sessionId, normalizedPath);
       if (!canApplyResult()) return false;
       if (trackDiff) {
         updateItemsPreservingView((current) => {
@@ -1365,7 +1764,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           const nextByName = new Map(nextItems.map((entry) => [entry.name, entry]));
 
           nextItems.forEach((entry) => {
-            const logicalPath = joinPath(path, entry.name);
+            const logicalPath = joinPath(normalizedPath, entry.name);
             const previousEntry = currentByName.get(entry.name);
             if (!previousEntry) {
               queueRowEffect(logicalPath, logicalPath, 'added');
@@ -1379,7 +1778,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           const newDeletedPlaceholders = currentVisibleItems
             .filter((entry) => !nextByName.has(entry.name))
             .map((entry) => {
-              const logicalPath = joinPath(path, entry.name);
+              const logicalPath = joinPath(normalizedPath, entry.name);
               const placeholder = createDeletedPlaceholder(entry, logicalPath);
               queueRowEffect(logicalPath, placeholder.__rowKey, 'removed');
               return placeholder;
@@ -1393,8 +1792,8 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       }
       displayedTabIdRef.current = targetTabId || displayedTabIdRef.current;
       currentPathHydratedRef.current = true;
-      currentPathRef.current = path;
-      setCurrentPath(path);
+      currentPathRef.current = normalizedPath;
+      setCurrentPath(normalizedPath);
       if (!preserveView && fileListRef.current) {
         fileListRef.current.scrollTop = 0;
       }
@@ -1406,7 +1805,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         const msg = String(err).toLowerCase().includes('permission denied')
           ? `${t('权限不足')}: SFTP ${t('仍以')} ${sessionId ? t('原用户') : ''} ${t('身份运行，终端内 sudo 不影响文件管理器')}`
           : `${t('读取目录失败')}: ${err}`;
-        addToast(`${msg} [${path}]`, 'error');
+        addToast(`${msg} [${normalizedPath}]`, 'error');
       }
       return false;
     } finally {
@@ -1414,7 +1813,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         setLoading(false);
       }
     }
-  }, [sessionId, addToast, t, queueFileListViewRestore, updateItemsPreservingView, isDeletedPlaceholderItem, didItemMetadataChange, queueRowEffect, createDeletedPlaceholder]);
+  }, [sessionId, addToast, normalizePath, t, queueFileListViewRestore, updateItemsPreservingView, isDeletedPlaceholderItem, didItemMetadataChange, queueRowEffect, createDeletedPlaceholder]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3216,14 +3615,54 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       rememberedMode = normalizeChmodMode(settings?.mode);
       rememberedIncludeSubdirectories = settings?.includeSubdirectories === true;
     } catch (_) {}
+    let resolvedItem = item;
+    const getPathOwnership = window?.go?.main?.App?.GetPathOwnership;
+    const needsMetadata = !item?.permission || !item?.mode || !item?.uid || item?.uid === '-' || !item?.gid || item?.gid === '-';
+    if (needsMetadata && typeof getPathOwnership === 'function') {
+      try {
+        const ownership = await getPathOwnership(sessionId, itemPath);
+        if (ownership && typeof ownership === 'object') {
+          resolvedItem = {
+            ...item,
+            permission: ownership.permission || item?.permission || '',
+            mode: ownership.mode || item?.mode || '',
+            uid: ownership.uid || item?.uid || '-',
+            gid: ownership.gid || item?.gid || '-',
+          };
+        }
+      } catch (error) {
+        console.warn('GetPathOwnership failed:', error);
+      }
+    }
     setChmodTarget({
-      item,
+      item: resolvedItem,
       path: itemPath,
-      mode: rememberedMode || normalizeChmodMode(item.mode),
+      mode: rememberedMode || normalizeChmodMode(resolvedItem.mode),
+      ownerCandidates: [],
+      groupCandidates: [],
       includeSubdirectories: rememberedIncludeSubdirectories,
-      showIncludeSubdirectories: item.isDirectory,
+      showIncludeSubdirectories: resolvedItem.isDirectory,
     });
-  }, []);
+    const listOwnershipCandidates = window?.go?.main?.App?.ListOwnershipCandidates;
+    if (typeof listOwnershipCandidates !== 'function') {
+      return;
+    }
+    try {
+      const nextCandidates = await listOwnershipCandidates(sessionId);
+      setChmodTarget((current) => {
+        if (!current || current.path !== itemPath) {
+          return current;
+        }
+        return {
+          ...current,
+          ownerCandidates: Array.isArray(nextCandidates?.users) ? nextCandidates.users : [],
+          groupCandidates: Array.isArray(nextCandidates?.groups) ? nextCandidates.groups : [],
+        };
+      });
+    } catch (error) {
+      console.warn('ListOwnershipCandidates failed:', error);
+    }
+  }, [sessionId]);
 
   // Chmod
   const handleChmod = async (item, basePath = currentPath) => {
@@ -3231,18 +3670,37 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     await openChmodTarget(itemPath, item);
   };
 
-  const handleChmodSave = async (modeStr, includeSubdirectories) => {
+  const handleChmodSave = async (modeStr, includeSubdirectories, ownerValue, groupValue) => {
     if (!chmodTarget) return;
     const normalizedMode = normalizeChmodMode(modeStr) || '644';
+    const currentMode = normalizeChmodMode(chmodTarget.mode) || normalizedMode;
+    const modeChanged = normalizedMode !== currentMode;
     const rememberedIncludeSubdirectories = Boolean(includeSubdirectories);
     const recursive = Boolean(chmodTarget.showIncludeSubdirectories && rememberedIncludeSubdirectories);
+    const ownerCandidates = Array.isArray(chmodTarget.ownerCandidates) ? chmodTarget.ownerCandidates : [];
+    const groupCandidates = Array.isArray(chmodTarget.groupCandidates) ? chmodTarget.groupCandidates : [];
+    const currentOwnerId = normalizeIdentityId(chmodTarget.item.uid);
+    const currentGroupId = normalizeIdentityId(chmodTarget.item.gid);
+    const ownerChanged = resolveIdentityCompareKey(ownerValue, ownerCandidates, currentOwnerId) !== (currentOwnerId ? `id:${currentOwnerId}` : '');
+    const groupChanged = resolveIdentityCompareKey(groupValue, groupCandidates, currentGroupId) !== (currentGroupId ? `id:${currentGroupId}` : '');
+    const ownerSpec = ownerChanged ? resolveIdentityInputSpec(ownerValue, ownerCandidates, currentOwnerId) : '';
+    const groupSpec = groupChanged ? resolveIdentityInputSpec(groupValue, groupCandidates, currentGroupId) : '';
     try {
       try {
         await AppGo.SaveChmodDialogSettings(normalizedMode, rememberedIncludeSubdirectories);
       } catch (saveErr) {
         console.warn('SaveChmodDialogSettings failed:', saveErr);
       }
-      await AppGo.ChmodFile(sessionId, chmodTarget.path, normalizedMode, recursive);
+      if (ownerChanged || groupChanged) {
+        const chownFile = window?.go?.main?.App?.ChownFile;
+        if (typeof chownFile !== 'function') {
+          throw new Error(t('应用不可用'));
+        }
+        await chownFile(sessionId, chmodTarget.path, ownerSpec, groupSpec, recursive);
+      }
+      if (modeChanged) {
+        await AppGo.ChmodFile(sessionId, chmodTarget.path, normalizedMode, recursive);
+      }
       addToast(t('权限修改成功'), 'success');
       setChmodTarget(null);
       if (getParentPath(chmodTarget.path) === currentPathRef.current) {
@@ -3398,7 +3856,16 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     <div
       ref={fileManagerRootRef}
       className="file-manager"
-      style={{ position: 'relative', '--wails-drop-target': 'drop' }}
+      style={{
+        position: 'relative',
+        '--wails-drop-target': 'drop',
+        '--file-col-name-min': `${FILE_LIST_NAME_MIN_WIDTH}px`,
+        '--file-col-size': `${fileListColumnWidths.size}px`,
+        '--file-col-permission': `${fileListColumnWidths.permission}px`,
+        '--file-col-modified': `${fileListColumnWidths.modified}px`,
+        '--file-col-actions': `${FILE_LIST_ACTIONS_COLUMN_WIDTH}px`,
+        '--file-list-min-width': fileListColumnWidths.minWidth,
+      }}
       onContextMenu={(e) => {
         e.preventDefault();
         setContextMenu({
@@ -3439,10 +3906,26 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           value={editingPath !== null ? editingPath : currentPath}
           onChange={(e) => setEditingPath(e.target.value)}
           onFocus={() => setEditingPath(currentPath)}
-          onBlur={() => {
+          onBlur={async () => {
             if (editingPath !== null) {
               const p = editingPath.trim();
-              if (p && p !== currentPath) loadDir(p.startsWith('/') ? p : '/' + p);
+              const normalizedTargetPath = normalizePath(p);
+              if (normalizedTargetPath && normalizedTargetPath !== currentPath) {
+                const getPathOwnership = window?.go?.main?.App?.GetPathOwnership;
+                let resolvedDirectoryPath = normalizedTargetPath;
+                if (typeof getPathOwnership === 'function') {
+                  try {
+                    const ownership = await getPathOwnership(sessionId, normalizedTargetPath);
+                    const permission = String(ownership?.permission || '');
+                    if (permission && !permission.startsWith('d')) {
+                      resolvedDirectoryPath = getParentPath(normalizedTargetPath);
+                    }
+                  } catch (_) {}
+                }
+                if (resolvedDirectoryPath) {
+                  void loadDir(resolvedDirectoryPath);
+                }
+              }
               setEditingPath(null);
             }
           }}
@@ -3578,7 +4061,24 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       </div>
 
       <div className="terminal-sub-tab-bar">
-        <div className="terminal-sub-tab-scroll">
+        {fileManagerTabOverflow && (
+          <button
+            type="button"
+            className={`terminal-sub-tab-nav terminal-sub-tab-nav-left${fileManagerTabCanScrollLeft ? '' : ' disabled'}`}
+            onClick={() => scrollFileManagerTabs(-1)}
+            aria-label={t('向左滚动标签')}
+            title={t('向左滚动标签')}
+            disabled={!fileManagerTabCanScrollLeft}
+          >
+            <ChevronLeft size={14} />
+          </button>
+        )}
+        <div
+          ref={fileManagerTabScrollRef}
+          className="terminal-sub-tab-scroll"
+          onWheel={handleFileManagerTabWheel}
+          onScroll={handleFileManagerTabScroll}
+        >
           {fileManagerWorkspace.tabs.map((tab) => {
             const isActiveTab = activeFileManagerTab?.id === tab.id;
             return (
@@ -3618,6 +4118,18 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
             );
           })}
         </div>
+        {fileManagerTabOverflow && (
+          <button
+            type="button"
+            className={`terminal-sub-tab-nav terminal-sub-tab-nav-right${fileManagerTabCanScrollRight ? '' : ' disabled'}`}
+            onClick={() => scrollFileManagerTabs(1)}
+            aria-label={t('向右滚动标签')}
+            title={t('向右滚动标签')}
+            disabled={!fileManagerTabCanScrollRight}
+          >
+            <ChevronRight size={14} />
+          </button>
+        )}
         <div className="terminal-sub-tab-actions">
           <button
             className="btn btn-ghost btn-sm terminal-create-btn"
@@ -3967,6 +4479,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           path={chmodTarget.path}
           permission={chmodTarget.item.permission}
           mode={chmodTarget.mode}
+          uid={chmodTarget.item.uid}
+          gid={chmodTarget.item.gid}
+          ownerCandidates={chmodTarget.ownerCandidates}
+          groupCandidates={chmodTarget.groupCandidates}
           includeSubdirectories={chmodTarget.includeSubdirectories}
           showIncludeSubdirectories={chmodTarget.showIncludeSubdirectories}
           onSave={handleChmodSave}

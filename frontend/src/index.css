@@ -854,29 +854,51 @@ input::-ms-clear {
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  padding-bottom: 2px;
-  scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: var(--terminal-list-scrollbar-thumb, rgba(var(--accent-rgb), 0.52)) color-mix(in srgb, var(--surface-sunken) 78%, transparent);
+  padding-bottom: 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   overscroll-behavior-x: contain;
 }
 
 .terminal-sub-tab-scroll::-webkit-scrollbar {
-  height: 6px;
+  width: 0;
+  height: 0;
+  display: none;
 }
 
-.terminal-sub-tab-scroll::-webkit-scrollbar-track {
-  background: color-mix(in srgb, var(--surface-sunken) 78%, transparent);
-  border-radius: var(--radius-full);
+.terminal-sub-tab-nav {
+  align-self: stretch;
+  width: 24px;
+  min-width: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  transition: var(--transition-fast);
 }
 
-.terminal-sub-tab-scroll::-webkit-scrollbar-thumb {
-  background: var(--terminal-list-scrollbar-thumb, rgba(var(--accent-rgb), 0.52));
-  border-radius: var(--radius-full);
+.terminal-sub-tab-nav-left {
+  border-right: 1px solid var(--border-subtle);
 }
 
-.terminal-sub-tab-scroll::-webkit-scrollbar-thumb:hover {
-  background: var(--terminal-list-scrollbar-thumb-hover, rgba(var(--accent-rgb), 0.72));
+.terminal-sub-tab-nav-right {
+  border-left: 1px solid var(--border-subtle);
+}
+
+.terminal-sub-tab-nav:hover {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  color: var(--text-primary);
+}
+
+.terminal-sub-tab-nav.disabled,
+.terminal-sub-tab-nav:disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
 }
 
 .terminal-sub-tab-scroll.is-dragging,
@@ -950,24 +972,27 @@ input::-ms-clear {
   user-select: none;
   flex-shrink: 0;
   white-space: nowrap;
-  background: transparent;
-  color: var(--text-tertiary);
-  border: none;
+  position: relative;
+  background: color-mix(in srgb, var(--surface-overlay) 82%, var(--surface-raised));
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
   border-bottom: 2px solid transparent;
-  box-shadow: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
   transition: var(--transition-fast);
 }
 .terminal-sub-tab:hover {
-  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  background: color-mix(in srgb, var(--surface-overlay) 92%, var(--surface-hover));
   color: var(--text-primary);
-  border-color: transparent;
-  box-shadow: none;
+  border-color: var(--border);
+  border-bottom-color: transparent;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 .terminal-sub-tab.active {
-  background: transparent;
+  background: var(--surface-base);
   color: var(--text-primary);
-  border-color: var(--accent);
-  box-shadow: none;
+  border-color: var(--border-subtle);
+  border-bottom-color: var(--accent);
+  box-shadow: inset 0 -2px 0 var(--accent);
   font-weight: 600;
 }
 .terminal-sub-tab-close {
@@ -1895,8 +1920,13 @@ body.theme-light .batch-operation-bar {
 
 .file-list-header {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) 60px 85px 110px 110px;
-  min-width: 500px;
+  grid-template-columns:
+    minmax(var(--file-col-name-min, 120px), 1fr)
+    var(--file-col-size, 60px)
+    var(--file-col-permission, 85px)
+    var(--file-col-modified, 110px)
+    var(--file-col-actions, 110px);
+  min-width: var(--file-list-min-width, 500px);
   padding: 6px 10px;
   border-bottom: 1px solid var(--border);
   font-size: var(--text-xs);
@@ -1912,8 +1942,13 @@ body.theme-light .batch-operation-bar {
 
 .file-item {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) 60px 85px 110px 110px;
-  min-width: 500px;
+  grid-template-columns:
+    minmax(var(--file-col-name-min, 120px), 1fr)
+    var(--file-col-size, 60px)
+    var(--file-col-permission, 85px)
+    var(--file-col-modified, 110px)
+    var(--file-col-actions, 110px);
+  min-width: var(--file-list-min-width, 500px);
   padding: 5px 10px;
   border-bottom: 1px solid var(--border-subtle);
   cursor: pointer;

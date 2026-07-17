@@ -42,6 +42,22 @@ function ensureFileManagerWorkspaceStore() {
   return root[FILE_MANAGER_WORKSPACE_STATE_KEY];
 }
 
+function normalizeFileManagerTabPath(path) {
+  const trimmed = String(path || '').trim();
+  if (!trimmed) return '';
+  const normalizedSlashes = trimmed.replace(/\\/g, '/').replace(/\/+/g, '/');
+  const parts = [];
+  normalizedSlashes.split('/').forEach((part) => {
+    if (!part || part === '.') return;
+    if (part === '..') {
+      if (parts.length > 0) parts.pop();
+      return;
+    }
+    parts.push(part);
+  });
+  return parts.length > 0 ? `/${parts.join('/')}` : '/';
+}
+
 function normalizeFileManagerWorkspaceState(state) {
   const source = state && typeof state === 'object' ? state : {};
   const tabs = Array.isArray(source.tabs)
@@ -52,7 +68,7 @@ function normalizeFileManagerWorkspaceState(state) {
         if (!id) return null;
         return {
           id,
-          path: typeof tab.path === 'string' ? tab.path : '',
+          path: normalizeFileManagerTabPath(tab.path),
           sortField: typeof tab.sortField === 'string' ? tab.sortField : 'name',
           sortDir: tab.sortDir === 'desc' ? 'desc' : 'asc',
           selectedPaths: Array.isArray(tab.selectedPaths) ? tab.selectedPaths.filter((item) => typeof item === 'string') : [],

@@ -2294,7 +2294,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           <>
             <Tiptop text={t('粘贴')} placement="bottom">
               <button
-                className="btn file-toolbar-outline-btn"
+                className="btn file-toolbar-outline-btn has-count"
                 aria-label={t('粘贴')}
                 onClick={() => {
                   if (operationInProgressRef.current) {
@@ -2305,6 +2305,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
                 }}
               >
                 <ClipboardPaste size={14} />
+                <span className="clipboard-count-badge">{clipboard.paths.length}</span>
               </button>
             </Tiptop>
             <Tiptop text={t('取消')} placement="bottom">

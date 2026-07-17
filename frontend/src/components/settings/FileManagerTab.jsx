@@ -19,6 +19,8 @@ export default function FileManagerTab({
   onToggleFileManagerFollowTerminalCwd,
   fileManagerCompressedTransfer,
   onToggleFileManagerCompressedTransfer,
+  fileManagerAutoOpenTransferQueue,
+  onToggleFileManagerAutoOpenTransferQueue,
   fileManagerAskDownloadEveryTime,
   onToggleFileManagerAskDownloadEveryTime,
   fileManagerDownloadConflictStrategy,
@@ -57,6 +59,12 @@ export default function FileManagerTab({
             title={$t('压缩传输')}
             description={$t('多文件或文件夹上传时先在本机打包为 tar.gz，上传后远端自动解压')}
             action={<ToggleSwitch checked={fileManagerCompressedTransfer} onChange={onToggleFileManagerCompressedTransfer} />}
+          />
+          <div className="divider" style={{ margin: '12px 0', borderTop: '1px solid var(--border)' }} />
+          <SettingRow
+            title={$t('发起传输任务时自动打开传输队列')}
+            description={$t('上传或下载新建传输任务后自动展开传输队列面板')}
+            action={<ToggleSwitch checked={fileManagerAutoOpenTransferQueue} onChange={onToggleFileManagerAutoOpenTransferQueue} />}
           />
         </div>
       </div>

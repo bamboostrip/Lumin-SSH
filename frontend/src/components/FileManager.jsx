@@ -112,6 +112,7 @@ const DOWNLOAD_CONFLICT_STRATEGY_AUTO_RENAME = 'auto_rename';
 const DOWNLOAD_RENAME_SUFFIX_TIMESTAMP = 'timestamp';
 const DOWNLOAD_RENAME_SUFFIX_RANDOM = 'random';
 const DOWNLOAD_RENAME_SUFFIX_SEQUENCE = 'sequence';
+const UPLOAD_PANEL_CLOSE_ANIMATION_MS = 100;
 
 // Check if a file name is a hidden/system file that should be skipped
 function isHiddenFile(name) {
@@ -222,6 +223,10 @@ function debugUploadItemInfo(item) {
 
 function isCompressedTransferEnabled() {
   return localStorage.getItem('fileManagerCompressedTransfer') !== 'false';
+}
+
+function shouldAutoOpenTransferQueue() {
+  return localStorage.getItem('fileManagerAutoOpenTransferQueue') !== 'false';
 }
 
 function getDownloadConflictSettingsFromStorage() {
@@ -949,6 +954,19 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   const [workbenchState, setWorkbenchStateState] = useState(() => getSessionWorkbenchState(sessionGroupId));
   const [uploadQueueItems, setUploadQueueItems] = useState(() => getSessionUploadQueue(sessionGroupId));
   const activeUploadCount = useMemo(() => uploadQueueItems.filter((item) => item.status === 'queued' || item.status === 'uploading').length, [uploadQueueItems]);
+  const uploadPanelCloseTimerRef = useRef(0);
+  const [uploadPanelClosing, setUploadPanelClosing] = useState(false);
+
+  const clearUploadPanelCloseTimer = useCallback(() => {
+    if (uploadPanelCloseTimerRef.current) {
+      window.clearTimeout(uploadPanelCloseTimerRef.current);
+      uploadPanelCloseTimerRef.current = 0;
+    }
+  }, []);
+
+  useEffect(() => () => {
+    clearUploadPanelCloseTimer();
+  }, [clearUploadPanelCloseTimer]);
 
   // 当所有文件关闭时，重置分栏 host 宽度
   useEffect(() => {
@@ -983,21 +1001,63 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     return subscribeSessionUploadQueue(sessionGroupId, setUploadQueueItems);
   }, [sessionGroupId]);
 
-  const setUploadPanelOpen = useCallback((open) => {
+  const openUploadPanel = useCallback(() => {
+    clearUploadPanelCloseTimer();
+    setUploadPanelClosing(false);
+    setSessionWorkbenchState(sessionGroupId, {
+      uploadOpen: true,
+      activeTab: 'upload',
+    });
+  }, [clearUploadPanelCloseTimer, sessionGroupId]);
+
+  const finishUploadPanelClose = useCallback(() => {
+    clearUploadPanelCloseTimer();
+    setUploadPanelClosing(false);
     const current = getSessionWorkbenchState(sessionGroupId);
     setSessionWorkbenchState(sessionGroupId, {
-      uploadOpen: open,
-      activeTab: open ? 'upload' : (current.editorSplitOpen ? 'editor' : current.activeTab),
+      uploadOpen: false,
+      activeTab: current.editorSplitOpen ? 'editor' : current.activeTab,
     });
-  }, [sessionGroupId]);
+  }, [clearUploadPanelCloseTimer, sessionGroupId]);
+
+  const closeUploadPanel = useCallback(() => {
+    const current = getSessionWorkbenchState(sessionGroupId);
+    if (!current.uploadOpen && !uploadPanelClosing) {
+      return;
+    }
+    clearUploadPanelCloseTimer();
+    setUploadPanelClosing(true);
+    uploadPanelCloseTimerRef.current = window.setTimeout(() => {
+      finishUploadPanelClose();
+    }, UPLOAD_PANEL_CLOSE_ANIMATION_MS);
+  }, [clearUploadPanelCloseTimer, finishUploadPanelClose, sessionGroupId, uploadPanelClosing]);
+
+  const setUploadPanelOpen = useCallback((open) => {
+    if (open) {
+      openUploadPanel();
+      return;
+    }
+    closeUploadPanel();
+  }, [closeUploadPanel, openUploadPanel]);
+
+  const openTransferQueueIfNeeded = useCallback(() => {
+    if (shouldAutoOpenTransferQueue()) {
+      setUploadPanelOpen(true);
+    }
+  }, [setUploadPanelOpen]);
 
   const toggleUploadPanel = useCallback(() => {
+    if (uploadPanelClosing) {
+      openUploadPanel();
+      return;
+    }
     const current = getSessionWorkbenchState(sessionGroupId);
-    setSessionWorkbenchState(sessionGroupId, {
-      uploadOpen: !current.uploadOpen,
-      activeTab: current.uploadOpen ? (current.editorSplitOpen ? 'editor' : current.activeTab) : 'upload',
-    });
-  }, [sessionGroupId]);
+    if (current.uploadOpen) {
+      closeUploadPanel();
+      return;
+    }
+    openUploadPanel();
+  }, [closeUploadPanel, openUploadPanel, sessionGroupId, uploadPanelClosing]);
 
   useEffect(() => {
     const host = document.getElementById('editor-split-host');
@@ -1434,8 +1494,16 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       return;
     }
     normalizedIds.forEach((id) => abortedUploadIdsRef.current.delete(id));
-    updateSessionUploadQueue(sessionGroupId, (current) => current.filter((item) => !normalizedIds.has(item.id)));
-  }, [sessionGroupId]);
+    let shouldClosePanel = false;
+    updateSessionUploadQueue(sessionGroupId, (current) => {
+      const next = current.filter((item) => !normalizedIds.has(item.id));
+      shouldClosePanel = next.length === 0;
+      return next;
+    });
+    if (shouldClosePanel) {
+      closeUploadPanel();
+    }
+  }, [closeUploadPanel, sessionGroupId]);
 
   const abortUploadItems = useCallback((items, detail = t('已终止')) => {
     (items || []).forEach((item) => {
@@ -1464,7 +1532,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     if (localPaths.length === 0) {
       return;
     }
-    setUploadPanelOpen(true);
+    openTransferQueueIfNeeded();
     const settings = getUploadSettings();
     const createdAt = Date.now();
     const name = localPaths.length === 1
@@ -1544,7 +1612,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         nativeUploadQueueIdRef.current = '';
       }
     }
-  }, [sessionId, sessionGroupId, currentPath, addToast, loadDir, t, markUploadAborted, getUploadSettings, setUploadPanelOpen]);
+  }, [sessionId, sessionGroupId, currentPath, addToast, loadDir, t, markUploadAborted, getUploadSettings, openTransferQueueIfNeeded]);
 
   const uploadEntries = useCallback(async (entries) => {
     const uploadEntriesList = entries
@@ -1558,7 +1626,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       return;
     }
 
-    setUploadPanelOpen(true);
+    openTransferQueueIfNeeded();
     const settings = getUploadSettings();
     const chunkSizeBytes = Math.max(1, settings.chunkSizeKiB * 1024);
     const maxFiles = Math.max(1, settings.maxFiles);
@@ -1752,7 +1820,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       }
       if (mountedRef.current) setTransferInfo(null);
     }
-  }, [sessionId, sessionGroupId, currentPath, getUploadSettings, addToast, loadDir, t, markUploadAborted, setUploadPanelOpen]);
+  }, [sessionId, sessionGroupId, currentPath, getUploadSettings, addToast, loadDir, t, markUploadAborted, openTransferQueueIfNeeded]);
 
   useEffect(() => {
     const off = EventsOn('ssh-disconnected', (disconnectedSessionId) => {
@@ -1900,7 +1968,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
 
       if (!item.isDirectory) {
         queueId = `download-file-${createdAt}`;
-        setUploadPanelOpen(true);
+        openTransferQueueIfNeeded();
         updateSessionUploadQueue(sessionGroupId, (current) => [{
           id: queueId,
           name: item.name,
@@ -1941,7 +2009,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
 
       const compressedEnabled = isCompressedTransferEnabled();
       queueId = `${compressedEnabled ? 'download-dir-compressed' : 'download-dir'}-${createdAt}`;
-      setUploadPanelOpen(true);
+      openTransferQueueIfNeeded();
       updateSessionUploadQueue(sessionGroupId, (current) => [{
         id: queueId,
         name: item.name,
@@ -1994,7 +2062,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       });
       if (!isAborted && err) addToast(`${t('下载失败')}: ${err}`, 'error');
     }
-  }, [sessionId, sessionGroupId, currentPath, addToast, t, getDefaultDownloadDir, getDownloadConflictSettings, resolvePromptDownloadConflict, setUploadPanelOpen]);
+  }, [sessionId, sessionGroupId, currentPath, addToast, t, getDefaultDownloadDir, getDownloadConflictSettings, resolvePromptDownloadConflict, openTransferQueueIfNeeded]);
 
   // Open file editor
   const handleEdit = async (item) => {
@@ -3037,6 +3105,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       {uploadPanelTarget && createPortal(
         <FileUploadQueuePanel
           items={uploadQueueItems}
+          closing={uploadPanelClosing}
           onClose={() => setUploadPanelOpen(false)}
           isAbortable={isUploadAbortable}
           onAbortItem={(item) => { void abortUploadItem(item, t('已终止')); }}

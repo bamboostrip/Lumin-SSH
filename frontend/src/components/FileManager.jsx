@@ -2299,9 +2299,13 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           {currentPath !== '/' && (
             <div
               className="file-item"
-              onClick={() => {
+              onDoubleClick={() => {
                 const parent = currentPath.substring(0, currentPath.lastIndexOf('/')) || '/';
                 loadDir(parent);
+              }}
+              onClick={(e) => {
+                if ((e.detail || 1) >= 2) return;
+                fileListRef.current?.focus();
               }}
             >
               <div className="file-name-cell">

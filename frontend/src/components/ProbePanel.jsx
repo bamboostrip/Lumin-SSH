@@ -139,12 +139,14 @@ function isInternalIP(ip) {
   return false;
 }
 
+const createEmptyHist = () => ({ cpu: Array(30).fill(0), up: Array(30).fill(0), down: Array(30).fill(0) });
+
 // ══════════════════════════════════════════════════════════════════════════
-export default function ProbePanel({ sessionId, host, addToast, enabled, active, onEnable, onShowAllProcesses, onShowNetworkDetails }) {
+export default function ProbePanel({ sessionId, host, addToast, enabled, active, onEnable, onShowAllProcesses, onShowNetworkDetails, snapshot, onSnapshot }) {
   const { t } = useTranslation();
-  const [info, setInfo] = useState(null);
+  const [info, setInfo] = useState(() => snapshot?.info || null);
   // ponytail: 合并 3 个历史数组为 1 个状态更新，减少 3 次渲染为 1 次
-  const [hist, setHist] = useState({ cpu: Array(30).fill(0), up: Array(30).fill(0), down: Array(30).fill(0) });
+  const [hist, setHist] = useState(() => snapshot?.hist || createEmptyHist());
   const [showConfirm, setShowConfirm] = useState(false);
   const [enabling, setEnabling] = useState(false);
   const [hideIP, setHideIP] = useState(() => localStorage.getItem('probeHideIP') === 'true');
@@ -160,9 +162,9 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, active,
 
   // 切换服务器时立即清空旧数据和静态缓存
   useEffect(() => {
-    setInfo(null);
+    setInfo(snapshot?.info || null);
     staticInfoRef.current = null;
-    setHist({ cpu: Array(30).fill(0), up: Array(30).fill(0), down: Array(30).fill(0) });
+    setHist(snapshot?.hist || createEmptyHist());
     setCpuExpanded(false);
     setProbeError(null);
     probeErrorCountRef.current = 0;
@@ -243,11 +245,15 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, active,
         processes: data.processes || [],
       };
       setInfo(ni);
-      setHist(prev => ({
-        cpu: [...prev.cpu, ni.cpuUsage].slice(-30),
-        up: [...prev.up, ni.netUp].slice(-30),
-        down: [...prev.down, ni.netDown].slice(-30),
-      }));
+      setHist(prev => {
+        const nextHist = {
+          cpu: [...prev.cpu, ni.cpuUsage].slice(-30),
+          up: [...prev.up, ni.netUp].slice(-30),
+          down: [...prev.down, ni.netDown].slice(-30),
+        };
+        onSnapshot?.({ info: ni, hist: nextHist });
+        return nextHist;
+      });
       probeErrorCountRef.current = 0;
       setProbeError(false);
     } catch (_) {

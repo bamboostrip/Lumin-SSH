@@ -448,6 +448,7 @@ export default function App() {
   const [conversationDiffPanels, setConversationDiffPanels] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
   const [monitoringEnabled, setMonitoringEnabled] = useState({}); // { [sessionId]: boolean }
+  const [probeSnapshots, setProbeSnapshots] = useState({}); // { [sessionId]: { info, hist } }
   const [serverListViewMode, setServerListViewMode] = useState(localStorage.getItem('serverListViewMode') || 'grid'); // 'grid' | 'table'
   const [hideSensitive, setHideSensitive] = useState(localStorage.getItem('hideSensitive') === 'true');
   const [fileManagerPosition, setFileManagerPosition] = useState(() => {
@@ -3312,6 +3313,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
   }, [dispatchTerminalPaneResize, getSessionPanes, getSessionRootPaneCells, resolveSessionRootTerminalId]);
 
   const activeSession = useMemo(() => sessions.find((s) => s.id === activeSessionId), [sessions, activeSessionId]);
+  const isActiveSessionConnected = activeSession?.status === 'connected';
   const isSessionWorkspaceVisible = useCallback((session) => !!session, []);
   const activeSessionRootTerminals = useMemo(() => (
     activeSession ? getSessionWorkspaceTabs(activeSession) : []
@@ -3749,9 +3751,12 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     }).filter(Boolean);
   }, [fileManagerDockPreview, getFileManagerDockConfirmRect]);
   const isCreatingTerminal = creatingTerminalSessionId !== null;
-  const connectedProbeSessions = useMemo(() => sessions.filter((s) => s.status === 'connected'), [sessions]);
+  const probeSessions = useMemo(() => sessions.filter((s) => (
+    s.status === 'connected' || (s.status === 'closed' && monitoringEnabled[s.id])
+  )), [monitoringEnabled, sessions]);
+  const shouldShowProbePanel = probeSessions.some((s) => s.id === activeSessionId);
 
-  const probePanelNode = connectedProbeSessions.length > 0 ? (
+  const probePanelNode = shouldShowProbePanel ? (
     <div
       style={{
         width: '100%',
@@ -3760,7 +3765,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
         overflow: 'hidden',
       }}
     >
-      {connectedProbeSessions.map((s) => {
+      {probeSessions.map((s) => {
         const isPanelActive = !probePanelCollapsed && activeSessionId === s.id;
         return (
           <div
@@ -3776,7 +3781,9 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
               host={s.host}
               addToast={addToast}
               enabled={!!monitoringEnabled[s.id]}
-              active={isPanelActive}
+              active={isPanelActive && s.status === 'connected'}
+              snapshot={probeSnapshots[s.id]}
+              onSnapshot={(snapshot) => setProbeSnapshots(prev => ({ ...prev, [s.id]: snapshot }))}
               onEnable={() => setMonitoringEnabled(prev => ({ ...prev, [s.id]: true }))}
               onShowAllProcesses={() => setContentTab('process')}
               onShowNetworkDetails={() => setContentTab('network')}
@@ -3786,7 +3793,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
       })}
     </div>
   ) : null;
-  const aiPanelNode = sessions.length > 0 ? (
+  const aiPanelNode = isActiveSessionConnected && sessions.length > 0 ? (
     <div
       style={{
         width: aiPanelWidth,
@@ -4781,7 +4788,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                 </button>
               </Tiptop>
             )}
-            {activeSessionId !== null && sessions.length > 0 && (
+            {activeSessionId !== null && isActiveSessionConnected && sessions.length > 0 && (
               <Tiptop text={showAIPanel ? t('收起 AI 助手面板') : t('打开 AI 助手面板')} placement="bottom">
                 <button
                   className="btn btn-ghost btn-icon no-drag"
@@ -5014,7 +5021,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
           {/* 左侧主区域：标签、终端子标签、会话内容 */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100%', overflow: 'hidden' }}>
             {/* ── 终端子标签栏（多终端支持） ──────────────────── */}
-            {activeSession && (contentTab === 'terminal' || contentTab === 'process' || contentTab === 'network' || contentTab === 'history' || (fileManagerPosition === 'tab' && contentTab === 'files')) && isSessionWorkspaceVisible(activeSession) && activeSession.terminals && activeSession.terminals.length >= 1 && (
+            {activeSession && isActiveSessionConnected && (contentTab === 'terminal' || contentTab === 'process' || contentTab === 'network' || contentTab === 'history' || (fileManagerPosition === 'tab' && contentTab === 'files')) && isSessionWorkspaceVisible(activeSession) && activeSession.terminals && activeSession.terminals.length >= 1 && (
               <div className="terminal-sub-tab-bar">
                 {terminalSubTabOverflow && (
                   <button
@@ -5222,7 +5229,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                       <div style={{ display: (contentTab === 'terminal' || s.status !== 'connected') ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0, height: '100%', position: 'relative' }}>
                         {mountedSessions.has(s.id) && (
                           isSessionWorkspaceVisible(s) ? (() => {
-                            const isTerminalViewActive = activeSessionId === s.id && contentTab === 'terminal';
+                            const isTerminalViewActive = activeSessionId === s.id && (contentTab === 'terminal' || s.status !== 'connected');
                             const workspaceTabs = getSessionWorkspaceTabs(s);
                             const activeWorkspaceTab = workspaceTabs.find((tab) => tab.id === activeTerminalId);
                             const activeLayout = activeWorkspaceTab?.type === 'group' ? terminalPaneLayouts[activeWorkspaceTab.id] : null;

@@ -124,6 +124,8 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
   const termRef        = useRef(null);
   const fitAddonRef    = useRef(null);
   const wsRef          = useRef(null);
+  const statusRef      = useRef(status);
+  useEffect(() => { statusRef.current = status; }, [status]);
   const serverIdRef    = useRef(serverId);
   serverIdRef.current  = serverId;
   const [themeToggle, setThemeToggle]     = useState(0); // 用于强制重渲染（浅色/深色模式切换）
@@ -712,6 +714,11 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
     let localInputLength = 0; // 用于保护提示符，防止退格越界
 
     term.onData((data) => {
+      if ((statusRef.current === 'closed' || statusRef.current === 'error') && (data.includes('\r') || data.includes('\n'))) {
+        window.dispatchEvent(new CustomEvent('ssh-reconnect-trigger', { detail: sessionId }));
+        return;
+      }
+
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(textEncoder.encode(data));
       }
@@ -1073,6 +1080,8 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
   const isConnected  = status === 'connected';
   const isConnecting = status === 'connecting';
   const isError      = status === 'error';
+  const isClosed     = status === 'closed';
+  const statusColor  = isConnected ? 'var(--success)' : isConnecting ? 'var(--warning)' : isError ? 'var(--danger)' : 'var(--text-tertiary)';
   const cmdTrimmed   = cmdInput.trim();
 
   // 连接成功时触发一次性涟漪动画
@@ -1191,7 +1200,12 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
 
   const executeCommand = (directCmd) => {
     const cmd = directCmd || cmdInput;
-    if (!isConnected) return;
+    if (!isConnected) {
+      if (isClosed || isError) {
+        window.dispatchEvent(new CustomEvent('ssh-reconnect-trigger', { detail: sessionId }));
+      }
+      return;
+    }
     const text = (cmd ?? '').trim();
     AppGo.WriteTerminal(sessionId, text + '\r').catch((err) => {
       console.error('WriteTerminal failed:', err);
@@ -1542,13 +1556,13 @@ export default function Terminal({ sessionId, serverId, historyServerId, status,
         
         {/* 右侧极简状态显示 */}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 11, opacity: 0.5, fontFamily: 'var(--font-mono)' }}>
+          <span style={{ fontSize: 11, color: statusColor, fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
             {isConnected  ? t('已连接')
              : isConnecting ? t('连接中...')
              : isError      ? t('错误')
              : t('离线')}
           </span>
-          {(isError || status === 'closed') && (
+          {(isError || isClosed) && (
             <button
               className="term-reconnect-btn"
               onClick={() => {

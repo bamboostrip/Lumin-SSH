@@ -1,4 +1,4 @@
-import { BarChart3, Monitor, Search, LayoutGrid, List, Eye, EyeOff, RefreshCw, Database, CheckSquare, Folder, Copy, Download, Trash2, X, Plus } from 'lucide-react';
+import { BarChart3, Monitor, Search, LayoutGrid, List, Eye, EyeOff, RefreshCw, Database, CheckSquare, Folder, FolderOpen, Copy, Download, Trash2, X, Plus } from 'lucide-react';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useTranslation } from '../i18n.js';
 import AddServerModal from './AddServerModal.jsx';
@@ -63,6 +63,11 @@ export default function Dashboard({
     return Array.from(groups);
   }, [filteredServers]);
   const hasVisibleGroupHeaders = visibleGroupNames.length > 1 || (visibleGroupNames.length === 1 && visibleGroupNames[0] !== '');
+
+  const allCollapsed = useMemo(() => {
+    if (visibleGroupNames.length === 0) return false;
+    return visibleGroupNames.every(name => collapsedGroups.has(name));
+  }, [visibleGroupNames, collapsedGroups]);
 
   return (
     <div className="dashboard-container">
@@ -173,22 +178,20 @@ export default function Dashboard({
                 </button>
               </Tiptop>
               {hasVisibleGroupHeaders && (
-                <>
-                  <button
-                    className="btn btn-ghost"
-                    onClick={() => setCollapsedGroups(new Set(visibleGroupNames))}
-                    style={{ height: 30, padding: '0 10px', fontSize: 12, border: '1px solid var(--border)' }}
-                  >
-                    {t('收起分组')}
-                  </button>
-                  <button
-                    className="btn btn-ghost"
-                    onClick={() => setCollapsedGroups(new Set())}
-                    style={{ height: 30, padding: '0 10px', fontSize: 12, border: '1px solid var(--border)' }}
-                  >
-                    {t('打开分组')}
-                  </button>
-                </>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    if (allCollapsed) {
+                      setCollapsedGroups(new Set());
+                    } else {
+                      setCollapsedGroups(new Set(visibleGroupNames));
+                    }
+                  }}
+                  style={{ height: 30, padding: '0 10px', fontSize: 12, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 6 }}
+                >
+                  {allCollapsed ? <FolderOpen size={14} /> : <Folder size={14} />}
+                  <span>{allCollapsed ? t('打开分组') : t('收起分组')}</span>
+                </button>
               )}
               {/* 数据管理（导入/导出） */}
               <Tiptop text={t('数据管理')} placement="bottom">

@@ -1373,6 +1373,8 @@ const dynamicProbeScript = `#!/bin/sh
 # Collects dynamic metrics via /proc
 
 cat /proc/uptime
+echo ---LOAD---
+cat /proc/loadavg 2>/dev/null
 echo ---MEM---
 grep -E '^MemTotal:|^MemFree:|^MemAvailable:|^Buffers:|^Cached:|^SReclaimable:|^SwapTotal:|^SwapFree:' /proc/meminfo
 echo ---DF---
@@ -1547,6 +1549,13 @@ func (m *SSHManager) getSystemInfo(sessionId string, includeNetworkConnections b
 		uptimeDays = int(uptimeSeconds / 86400)
 		uptimeHours = int((uptimeSeconds - float64(uptimeDays*86400)) / 3600)
 		uptimeMins = int((uptimeSeconds - float64(uptimeDays*86400) - float64(uptimeHours*3600)) / 60)
+	}
+
+	// ── Parse load average ───────────────────────────────────────────
+	loadLines := extractSection(lines1, "---LOAD---", "---MEM---")
+	var load1, load5, load15 float64
+	if len(loadLines) > 0 {
+		fmt.Sscanf(strings.TrimSpace(loadLines[0]), "%f %f %f", &load1, &load5, &load15)
 	}
 
 	// ── Parse memory ──────────────────────────────────────────────────
@@ -2150,6 +2159,7 @@ func (m *SSHManager) getSystemInfo(sessionId string, includeNetworkConnections b
 
 	return map[string]interface{}{
 		"uptime": map[string]int{"days": uptimeDays, "hours": uptimeHours, "mins": uptimeMins},
+		"load":   map[string]float64{"load1": load1, "load5": load5, "load15": load15},
 		"cpu": map[string]interface{}{
 			"usage": cpuTotalUsage,
 			"cores": cpuCoreUsages,
@@ -2518,19 +2528,19 @@ func (m *SSHManager) ListDirContext(ctx context.Context, sessionId string, path 
 }
 
 type OwnershipCandidateEntry struct {
-	ID string `json:"id"`
+	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 
 type OwnershipCandidates struct {
-	Users []OwnershipCandidateEntry `json:"users"`
+	Users  []OwnershipCandidateEntry `json:"users"`
 	Groups []OwnershipCandidateEntry `json:"groups"`
 }
 
 type PathOwnershipInfo struct {
-	UID string `json:"uid"`
-	GID string `json:"gid"`
-	Mode string `json:"mode"`
+	UID        string `json:"uid"`
+	GID        string `json:"gid"`
+	Mode       string `json:"mode"`
 	Permission string `json:"permission"`
 }
 
@@ -2549,7 +2559,7 @@ func normalizeOwnershipCandidateEntries(entries []OwnershipCandidateEntry) []Own
 		}
 		seen[key] = struct{}{}
 		result = append(result, OwnershipCandidateEntry{
-			ID: id,
+			ID:   id,
 			Name: name,
 		})
 	}
@@ -2596,7 +2606,7 @@ func (m *SSHManager) ListOwnershipCandidates(sessionId string) (OwnershipCandida
 			continue
 		}
 		entry := OwnershipCandidateEntry{
-			ID: strings.TrimSpace(parts[2]),
+			ID:   strings.TrimSpace(parts[2]),
 			Name: strings.TrimSpace(parts[0]),
 		}
 		switch currentSection {
@@ -2690,9 +2700,9 @@ func (m *SSHManager) GetPathOwnership(sessionId string, path string) (PathOwners
 	fields := strings.SplitN(strings.TrimSpace(out), "\t", 4)
 	if len(fields) == 4 {
 		info = mergePathOwnershipInfo(info, PathOwnershipInfo{
-			UID: fields[0],
-			GID: fields[1],
-			Mode: fields[2],
+			UID:        fields[0],
+			GID:        fields[1],
+			Mode:       fields[2],
 			Permission: fields[3],
 		})
 	}

@@ -117,29 +117,29 @@ export default function Dashboard({
         {/* 🖥 全部主机目录 */}
         <div className="hosts-section-container">
           <div className="section-title-container">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
-              <span className="section-title-icon"><Monitor size={16} /></span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+              <span className="section-title-icon"><Monitor size={14} /></span>
               <span className="section-title">{t('主机')}</span>
               {/* 搜索框 */}
-              <div style={{ position: 'relative', flex: 1, maxWidth: 280, minWidth: 120 }}>
-                <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)', pointerEvents: 'none' }} />
+              <div style={{ position: 'relative', flex: 1, maxWidth: 240, minWidth: 120 }}>
+                <Search size={12} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)', pointerEvents: 'none' }} />
                 <input
                   className="input-compact"
                   placeholder={t('搜索服务器...')}
                   value={searchQuery}
                   onChange={onSearchChange}
-                  style={{ width: '100%', paddingLeft: 28, height: 30, fontSize: 12, borderRadius: 8, background: 'var(--surface-overlay)', border: '1px solid var(--border)' }}
+                  style={{ width: '100%', paddingLeft: 26, height: 28, fontSize: 12, borderRadius: 'var(--radius-sm)', background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)' }}
                 />
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8 }}>
               {/* 选择模式开关 */}
               <Tiptop text={selectionMode ? t('退出选择') : t('选择模式')} placement="bottom">
                 <button
-                  className="btn btn-ghost btn-icon"
+                  className={`btn btn-ghost btn-icon${selectionMode ? ' active' : ''}`}
                   onClick={onSelectionModeToggle}
                   aria-label={selectionMode ? t('退出选择') : t('选择模式')}
-                  style={selectionMode ? { background: 'var(--accent-dim)', color: 'var(--accent)', border: '1px solid var(--accent)' } : {}}
+                  aria-pressed={selectionMode}
                 >
                   <CheckSquare size={14} />
                 </button>
@@ -152,7 +152,7 @@ export default function Dashboard({
                     aria-label={t('卡片视图')}
                     className={serverListViewMode === 'grid' ? 'active' : ''}
                   >
-                    <LayoutGrid size={14} />
+                    <LayoutGrid size={13} />
                   </button>
                 </Tiptop>
                 <div className="segment-control-divider" />
@@ -162,17 +162,18 @@ export default function Dashboard({
                     aria-label={t('列表视图')}
                     className={serverListViewMode === 'table' ? 'active' : ''}
                   >
-                    <List size={14} />
+                    <List size={13} />
                   </button>
                 </Tiptop>
               </div>
               {/* 隐藏敏感信息 */}
               <Tiptop text={hideSensitive ? t('显示敏感信息') : t('隐藏敏感信息')} placement="bottom">
                 <button
-                  className="btn btn-ghost btn-icon"
+                  className={`btn btn-ghost btn-icon${hideSensitive ? ' active' : ''}`}
                   onClick={onHideSensitiveToggle}
                   aria-label={hideSensitive ? t('显示敏感信息') : t('隐藏敏感信息')}
-                  style={hideSensitive ? { background: 'var(--warning-dim)', color: 'var(--warning)', border: '1px solid var(--warning)' } : {}}
+                  aria-pressed={hideSensitive}
+                  style={hideSensitive ? { background: 'var(--warning-dim)', color: 'var(--warning)', borderColor: 'rgba(var(--warning-rgb), 0.35)' } : undefined}
                 >
                   {hideSensitive ? <Eye size={14} /> : <EyeOff size={14} />}
                 </button>
@@ -187,9 +188,9 @@ export default function Dashboard({
                       setCollapsedGroups(new Set(visibleGroupNames));
                     }
                   }}
-                  style={{ height: 30, padding: '0 10px', fontSize: 12, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 6 }}
+                  style={{ height: 28, padding: '0 8px', fontSize: 12, border: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: 4 }}
                 >
-                  {allCollapsed ? <Folder size={14} /> : <FolderOpen size={14} />}
+                  {allCollapsed ? <Folder size={13} /> : <FolderOpen size={13} />}
                   <span>{allCollapsed ? t('打开分组') : t('收起分组')}</span>
                 </button>
               )}
@@ -199,9 +200,9 @@ export default function Dashboard({
                   className="btn btn-ghost"
                   onClick={onOpenImportExport}
                   aria-label={t('数据管理')}
-                  style={{ height: 30, padding: '0 10px', display: 'flex', alignItems: 'center', gap: 6, border: '1px solid var(--border)' }}
+                  style={{ height: 28, padding: '0 8px', display: 'flex', alignItems: 'center', gap: 4, border: '1px solid var(--border-subtle)' }}
                 >
-                  <Database size={14} />
+                  <Database size={13} />
                   <span style={{ fontSize: 12 }}>{t('数据管理')}</span>
                 </button>
               </Tiptop>

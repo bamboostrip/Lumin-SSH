@@ -436,15 +436,15 @@ export default function ServerList({
             </div>
           )}
           <div style={{
-            width: 34, height: 34, borderRadius: 8,
+            width: 28, height: 28, borderRadius: 'var(--radius-sm)',
             background: osInfo.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 18, flexShrink: 0,
+            fontSize: 15, flexShrink: 0,
             border: '1px solid var(--border-subtle)',
           }}>
             {osInfo.icon}
           </div>
-          <div className="server-info" style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1, minWidth: 0 }}>
-            <div className="server-name" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: 'var(--text-primary)', fontWeight: 500 }}>
+          <div className="server-info" style={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, minWidth: 0 }}>
+            <div className="server-name" style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>
               <span
                 key={`name-${nameToken || 'stable'}`}
                 data-edit-source-field="name"
@@ -454,12 +454,12 @@ export default function ServerList({
                 {server.name || server.host}
               </span>
               {connected && (
-                <span style={{ fontSize: 8, color: 'var(--success)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
+                <span style={{ fontSize: 10, color: 'var(--success)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
                   ● {t('已连接')}
                 </span>
               )}
             </div>
-            <div className="server-host" data-edit-source-field="hostPort" style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div className="server-host" data-edit-source-field="hostPort" style={{ color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               <span
                 key={`host-${hostToken || 'stable'}`}
                 className={`save-flow-target${hostToken ? ' save-flow-target-active' : ''}`}
@@ -468,7 +468,7 @@ export default function ServerList({
               </span>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
             {ping?.online && ping?.latency !== undefined && ping?.latency !== null ? (
               <>
                 <span style={{
@@ -478,14 +478,14 @@ export default function ServerList({
                   {ping.latency === -1 ? t('<1毫秒') : `${ping.latency}${t('毫秒')}`}
                 </span>
                 <div style={{
-                  width: 8, height: 8, borderRadius: '50%',
+                  width: 7, height: 7, borderRadius: '50%',
                   background: latClass === 'good' ? 'var(--success)' : latClass === 'warn' ? 'var(--warning)' : 'var(--danger)',
                 }} />
               </>
             ) : (
               ping !== undefined && !ping?.online ? (
                 <Tiptop text={t('服务器离线或不可达')}>
-                  <span style={{ fontSize: 14, color: 'var(--danger)', fontWeight: 'bold', lineHeight: 1 }} aria-label={t('服务器离线或不可达')}><X size={14} /></span>
+                  <span style={{ fontSize: 14, color: 'var(--danger)', fontWeight: 'bold', lineHeight: 1 }} aria-label={t('服务器离线或不可达')}><X size={13} /></span>
                 </Tiptop>
               ) : null
             )}
@@ -495,13 +495,13 @@ export default function ServerList({
                 aria-label={t('编辑服务器')}
                 style={{
                   background: 'none', border: 'none', cursor: 'pointer',
-                  padding: '4px 6px', borderRadius: 6,
+                  padding: '3px 4px', borderRadius: 4,
                   color: isHovered ? 'var(--text-primary)' : 'var(--text-muted)',
-                  fontSize: 14, opacity: isHovered ? 1 : 0,
-                  transition: 'all 0.15s', display: 'flex', alignItems: 'center',
+                  fontSize: 13, opacity: isHovered ? 1 : 0,
+                  transition: 'opacity 0.12s, color 0.12s', display: 'flex', alignItems: 'center',
                 }}
               >
-                <SquarePen size={14} />
+                <SquarePen size={13} />
               </button>
             </Tiptop>
           </div>
@@ -521,11 +521,11 @@ export default function ServerList({
               style={{
                 gridColumn: '1 / -1',
                 display: 'flex', alignItems: 'center', gap: 6,
-                padding: '6px 0', marginBottom: item.collapsed ? 0 : 8,
-                marginTop: 8,
-                borderTop: '1px solid var(--border)',
-                paddingTop: 10,
-                color: 'var(--text-secondary)', fontSize: 13, fontWeight: 500,
+                padding: '4px 0', marginBottom: item.collapsed ? 0 : 4,
+                marginTop: 4,
+                borderTop: '1px solid var(--border-subtle)',
+                paddingTop: 8,
+                color: 'var(--text-secondary)', fontSize: 12, fontWeight: 500,
                 userSelect: 'none',
               }}
             >

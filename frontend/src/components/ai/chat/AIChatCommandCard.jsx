@@ -220,15 +220,15 @@ export default function AIChatCommandCard({ purpose, command, output, status = r
           ) : null}
         </div>
       </div>
-      <div style={{ width: '100%', border: mutationPalette.cardBorder, borderRadius: 12, background: mutationPalette.cardBackground, boxShadow: mutationPalette.cardBoxShadow, overflow: 'hidden' }}>
-        <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-subtle)', background: mutationPalette.headerBackground }}>
-          <div style={{ minWidth: 0, display: 'grid', gap: 6 }}>
-            <div style={{ minWidth: 0, fontSize: 13, color: 'var(--text-primary)', fontWeight: 700, lineHeight: 1.6, wordBreak: 'break-word' }}>
-              <span style={{ display: 'inline-block', marginRight: 8, padding: '2px 8px', borderRadius: 999, border: mutationPalette.metaBadgeBorder, background: mutationPalette.metaBadgeBackground, color: mutationPalette.metaBadgeColor, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', verticalAlign: 'baseline' }}>
+      <div style={{ width: '100%', border: mutationPalette.cardBorder, borderRadius: 8, background: mutationPalette.cardBackground, boxShadow: mutationPalette.cardBoxShadow, overflow: 'hidden' }}>
+        <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border-subtle)', background: mutationPalette.headerBackground }}>
+          <div style={{ minWidth: 0, display: 'grid', gap: 5 }}>
+            <div style={{ minWidth: 0, fontSize: 12, color: 'var(--text-primary)', fontWeight: 600, lineHeight: 1.5, wordBreak: 'break-word' }}>
+              <span style={{ display: 'inline-block', marginRight: 6, padding: '1px 6px', borderRadius: 4, border: mutationPalette.metaBadgeBorder, background: mutationPalette.metaBadgeBackground, color: mutationPalette.metaBadgeColor, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', verticalAlign: 'baseline' }}>
                 {commandModeLabel}
               </span>
               {targetLabel ? (
-                <span style={{ display: 'inline-block', marginRight: 8, padding: '2px 8px', borderRadius: 999, border: '1px solid var(--border-subtle)', background: 'rgba(var(--accent-rgb), 0.08)', color: 'var(--text-secondary)', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', verticalAlign: 'baseline' }}>
+                <span style={{ display: 'inline-block', marginRight: 6, padding: '1px 6px', borderRadius: 4, border: '1px solid var(--border-subtle)', background: 'rgba(var(--accent-rgb), 0.08)', color: 'var(--text-secondary)', fontSize: 11, fontWeight: 500, whiteSpace: 'nowrap', verticalAlign: 'baseline' }}>
                   {targetLabel}
                 </span>
               ) : null}

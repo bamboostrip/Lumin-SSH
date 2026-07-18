@@ -1329,41 +1329,42 @@ export default function SettingsModal({
       <div className="modal modal-xl" style={{ display: 'flex', flexDirection: 'column', height: '80vh', background: 'var(--surface-raised)' }}>
         
         {/* Settings Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>{$t('设置')}</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{$t('设置')}</div>
           <button className="btn btn-ghost btn-icon" onClick={handleClose} style={{ color: 'var(--text-secondary)' }}><X size={16} /></button>
         </div>
 
         {/* Settings Body Layout */}
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-          
+
           {/* Settings Sidebar */}
-          <div style={{ width: 220, borderRight: '1px solid var(--border)', padding: '16px 8px', display: 'flex', flexDirection: 'column', gap: 4, background: 'var(--surface-base)' }}>
+          <div style={{ width: 196, borderRight: '1px solid var(--border-subtle)', padding: '10px 6px', display: 'flex', flexDirection: 'column', gap: 2, background: 'var(--surface-base)' }}>
             {TABS.map(tab => (
-              <div 
+              <div
                 key={tab.id}
                 className={`sidebar-menu-item ${activeTab === tab.id ? 'active' : ''}`}
                 onClick={() => setActiveTab(tab.id)}
-                style={{ 
-                  padding: '8px 12px', 
-                  borderRadius: 'var(--radius-sm)', 
+                style={{
+                  padding: '7px 10px',
+                  borderRadius: 'var(--radius-sm)',
                   cursor: 'pointer',
                   color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)',
                   background: activeTab === tab.id ? 'var(--surface-overlay)' : 'transparent',
                   fontWeight: activeTab === tab.id ? 600 : 400,
-                  transition: 'all 0.15s',
+                  transition: 'background 0.12s ease, color 0.12s ease',
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
+                  fontSize: 13,
                 }}
               >
-                <span style={{ display: 'inline-flex', alignItems: 'center' }}>{(() => { const IC = TAB_ICON[tab.id]; return IC ? <IC size={16} /> : null; })()}</span> {$t(TAB_LABELS[tab.id])}
+                <span style={{ display: 'inline-flex', alignItems: 'center' }}>{(() => { const IC = TAB_ICON[tab.id]; return IC ? <IC size={15} /> : null; })()}</span> {$t(TAB_LABELS[tab.id])}
               </div>
             ))}
           </div>
 
           {/* Settings Content */}
-          <div style={{ flex: 1, padding: '32px 48px', overflowY: 'auto', background: 'var(--surface-raised)' }}>
+          <div style={{ flex: 1, padding: '20px 24px', overflowY: 'auto', background: 'var(--surface-raised)' }}>
             
             {activeTab === 'app' && (
               <AppTab

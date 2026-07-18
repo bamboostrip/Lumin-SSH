@@ -3524,23 +3524,23 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
                 minWidth: 0,
                 display: 'flex',
                 alignItems: 'center',
-                gap: 10,
-                padding: '10px 16px',
+                gap: 8,
+                padding: '8px 12px',
                 border: 'none',
                 background: 'transparent',
                 textAlign: 'left',
                 cursor: 'pointer',
               }}
             >
-              <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: 4 }}>
-                <div style={{ fontSize: 15, fontWeight: panelState.activeConversationId === item.id ? 700 : 600, color: 'var(--text-primary)', lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{new Date(item.updatedAt).toLocaleString(getLanguage() || 'zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+              <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: 2 }}>
+                <div style={{ fontSize: 13, fontWeight: panelState.activeConversationId === item.id ? 600 : 500, color: 'var(--text-primary)', lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{new Date(item.updatedAt).toLocaleString(getLanguage() || 'zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{item.messageCount} {t('消息')}</div>
                 </div>
               </div>
             </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 16, flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginRight: 10, flexShrink: 0 }}>
               <button
                 type="button"
                 title={t('打开任务所在文件夹')}
@@ -3551,22 +3551,22 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
                 onFocus={() => setHoveredConversationActionKey(`${item.id}:folder`)}
                 onBlur={() => setHoveredConversationActionKey((current) => (current === `${item.id}:folder` ? '' : current))}
                 style={{
-                  width: 28,
-                  height: 28,
+                  width: 26,
+                  height: 26,
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  borderRadius: 8,
+                  borderRadius: 6,
                   color: isFolderHovered ? 'var(--accent)' : 'var(--text-muted)',
-                  background: isFolderHovered ? 'rgba(var(--accent-rgb), 0.12)' : 'transparent',
-                  border: isFolderHovered ? '1px solid rgba(var(--accent-rgb), 0.28)' : '1px solid transparent',
-                  boxShadow: isFolderHovered ? '0 0 0 1px rgba(var(--accent-rgb), 0.05)' : 'none',
+                  background: isFolderHovered ? 'rgba(var(--accent-rgb), 0.10)' : 'transparent',
+                  border: isFolderHovered ? '1px solid rgba(var(--accent-rgb), 0.22)' : '1px solid transparent',
+                  boxShadow: 'none',
                   flexShrink: 0,
                   cursor: 'pointer',
-                  transition: 'background 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease',
+                  transition: 'background 120ms ease, border-color 120ms ease, color 120ms ease',
                 }}
               >
-                <FolderOpen size={14} />
+                <FolderOpen size={13} />
               </button>
               <button
                 type="button"
@@ -3581,19 +3581,19 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
                 onFocus={() => setHoveredConversationActionKey(`${item.id}:delete`)}
                 onBlur={() => setHoveredConversationActionKey((current) => (current === `${item.id}:delete` ? '' : current))}
                 style={{
-                  width: 28,
-                  height: 28,
+                  width: 26,
+                  height: 26,
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  borderRadius: 8,
-                  color: isDeleteHovered ? '#ff9b9b' : 'var(--text-muted)',
-                  background: isDeleteHovered ? 'rgba(255, 107, 107, 0.12)' : 'transparent',
-                  border: isDeleteHovered ? '1px solid rgba(255, 107, 107, 0.32)' : '1px solid transparent',
-                  boxShadow: isDeleteHovered ? '0 0 0 1px rgba(255, 107, 107, 0.05)' : 'none',
+                  borderRadius: 6,
+                  color: isDeleteHovered ? 'var(--danger)' : 'var(--text-muted)',
+                  background: isDeleteHovered ? 'var(--danger-dim)' : 'transparent',
+                  border: isDeleteHovered ? '1px solid rgba(var(--danger-rgb), 0.28)' : '1px solid transparent',
+                  boxShadow: 'none',
                   flexShrink: 0,
                   cursor: 'pointer',
-                  transition: 'background 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease',
+                  transition: 'background 120ms ease, border-color 120ms ease, color 120ms ease',
                 }}
               >
                 ×
@@ -3606,29 +3606,29 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
 
     return (
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: 'var(--surface-base)' }}>
-        <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', background: 'var(--surface-raised)', position: 'sticky', top: 0, zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: 0.2 }}>{t('对话历史')}</div>
+        <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--surface-raised)', position: 'sticky', top: 0, zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>{t('对话历史')}</div>
           <button
             type="button"
             title={t('全局搜索对话')}
             aria-label={t('全局搜索对话')}
             onClick={handleOpenGlobalSearch}
             style={{
-              width: 32,
-              height: 32,
+              width: 28,
+              height: 28,
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              borderRadius: 8,
-              border: globalSearchOpen ? '1px solid var(--accent-border)' : '1px solid var(--border)',
-              background: globalSearchOpen ? 'rgba(var(--accent-rgb), 0.12)' : 'var(--surface-base)',
+              borderRadius: 6,
+              border: globalSearchOpen ? '1px solid var(--accent-border)' : '1px solid var(--border-subtle)',
+              background: globalSearchOpen ? 'rgba(var(--accent-rgb), 0.10)' : 'var(--surface-sunken)',
               color: globalSearchOpen ? 'var(--accent)' : 'var(--text-tertiary)',
               cursor: 'pointer',
-              transition: 'var(--transition)',
+              transition: 'var(--transition-fast)',
               flexShrink: 0,
             }}
           >
-            <Search size={15} />
+            <Search size={14} />
           </button>
         </div>
         {content}

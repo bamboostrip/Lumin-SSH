@@ -1193,7 +1193,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
   }, []);
 
   // ── 智能窗口状态管理：记住窗口大小与最大化 ──────────────
-  // 启动时恢复上次窗口状态
+  // 启动时恢复上次窗口状态（先设正常尺寸，再按需最大化，避免把全屏尺寸当正常尺寸）
   useEffect(() => {
     if (localStorage.getItem('rememberWindowSize') === 'false') return;
     try {
@@ -1207,27 +1207,65 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     } catch {}
   }, []);
 
-  // 定时轮询保存窗口大小与最大化状态
+  // 定时轮询 + resize 时保存窗口大小与最大化状态
+  // 最大化时绝不能用 GetSize 的全屏尺寸覆盖 w/h，否则取消最大化/重开就丢了原先大小
   useEffect(() => {
     if (localStorage.getItem('rememberWindowSize') === 'false') return;
-    let lastW = 0, lastH = 0, lastMaximized = false;
-    const interval = setInterval(async () => {
+    let lastW = 0, lastH = 0, lastMaximized = null;
+    let debounceTimer = 0;
+    try {
+      const saved = JSON.parse(localStorage.getItem('windowSize') || 'null');
+      if (saved?.w > 100 && saved?.h > 100) {
+        lastW = saved.w;
+        lastH = saved.h;
+      }
+    } catch {}
+    const persist = async () => {
       try {
         const [size, maximized] = await Promise.all([WindowGetSize(), WindowIsMaximised()]);
         if (maximized) {
-          if (!lastMaximized) {
+          if (lastMaximized !== true) {
             lastMaximized = true;
-            localStorage.setItem('windowSize', JSON.stringify({ w: size.w, h: size.h, maximized: true }));
+            const w = lastW > 100 ? lastW : size?.w;
+            const h = lastH > 100 ? lastH : size?.h;
+            if (w > 100 && h > 100) {
+              localStorage.setItem('windowSize', JSON.stringify({ w, h, maximized: true }));
+            }
           }
-        } else if (size?.w > 100 && size?.h > 100 && (size.w !== lastW || size.h !== lastH)) {
-          lastW = size.w;
-          lastH = size.h;
-          lastMaximized = false;
-          localStorage.setItem('windowSize', JSON.stringify({ w: size.w, h: size.h, maximized: false }));
+        } else if (size?.w > 100 && size?.h > 100) {
+          if (size.w !== lastW || size.h !== lastH || lastMaximized !== false) {
+            lastW = size.w;
+            lastH = size.h;
+            lastMaximized = false;
+            localStorage.setItem('windowSize', JSON.stringify({ w: size.w, h: size.h, maximized: false }));
+          }
         }
       } catch {}
-    }, 2000);
-    return () => clearInterval(interval);
+    };
+    const onResize = () => {
+      window.clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(persist, 150);
+    };
+    window.addEventListener('resize', onResize);
+    const interval = setInterval(persist, 2000);
+    return () => {
+      window.clearTimeout(debounceTimer);
+      window.removeEventListener('resize', onResize);
+      clearInterval(interval);
+    };
+  }, []);
+
+  // 最大化前先记下当前正常尺寸，避免轮询时已是全屏而丢尺寸
+  const handleToggleMaximise = useCallback(async () => {
+    try {
+      if (localStorage.getItem('rememberWindowSize') !== 'false') {
+        const [size, maximized] = await Promise.all([WindowGetSize(), WindowIsMaximised()]);
+        if (!maximized && size?.w > 100 && size?.h > 100) {
+          localStorage.setItem('windowSize', JSON.stringify({ w: size.w, h: size.h, maximized: true }));
+        }
+      }
+    } catch {}
+    WindowToggleMaximise();
   }, []);
 
   const startDrag = useCallback((e, direction) => {
@@ -5120,7 +5158,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
               <button className="btn btn-ghost btn-icon no-drag" onClick={WindowMinimise} aria-label={t('最小化')}><Minus size={14} /></button>
             </Tiptop>
             <Tiptop text={t('最大化')} placement="bottom">
-              <button className="btn btn-ghost btn-icon no-drag" onClick={WindowToggleMaximise} aria-label={t('最大化')}><Square size={14} /></button>
+              <button className="btn btn-ghost btn-icon no-drag" onClick={handleToggleMaximise} aria-label={t('最大化')}><Square size={14} /></button>
             </Tiptop>
             <Tiptop text={t('关闭')} placement="bottom">
               <button className="btn btn-ghost btn-icon no-drag" aria-label={t('关闭')} onClick={handleCloseWindow}><X size={14} /></button>

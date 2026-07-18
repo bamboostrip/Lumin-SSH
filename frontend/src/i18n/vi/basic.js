@@ -608,6 +608,8 @@ export default {
   "保存名称": "lưu tên",
   "个命令/子分组": "lệnh/nhóm con",
   "末尾添加回车符CR": "Thêm ký tự trả về đầu dòng CR ở cuối",
+  "按Ctrl+Enter发送": "Gửi bằng Ctrl+Enter",
+  "发送后清空": "Xóa sau khi gửi",
   "如：系统监控": "Chẳng hạn như: giám sát hệ thống",
   "如：查看内存": "Chẳng hạn như: kiểm tra bộ nhớ",
   "如：free -m": "Chẳng hạn như: miễn phí -m",
@@ -1373,4 +1375,8 @@ export default {
   "操作失败": "Thao tác không thành công",
   "操作完成": "Thao tác đã hoàn tất",
   "有操作正在进行，请稍候": "Đang thực hiện một thao tác, vui lòng đợi.",
+  "命令编辑器": "Trinh soan lenh",
+  "在此输入要发送的命令…": "Nhap lenh can gui...",
+  "选项": "Tuy chon",
+  "输入命令(/ 快捷命令), 按Ctrl+回车 或 Shift+回车 换行": "Nhap lenh (/ lenh nhanh). Ctrl+Enter hoac Shift+Enter de xuong dong",
 };

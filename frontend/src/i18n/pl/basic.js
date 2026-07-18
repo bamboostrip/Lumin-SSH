@@ -608,6 +608,8 @@ export default {
   "保存名称": "zapisz nazwę",
   "个命令/子分组": "polecenia/podgrupy",
   "末尾添加回车符CR": "Dodaj na końcu znak powrotu karetki CR",
+  "按Ctrl+Enter发送": "Wyślij Ctrl+Enter",
+  "发送后清空": "Wyczyść po wysłaniu",
   "如：系统监控": "Takie jak: monitorowanie systemu",
   "如：查看内存": "Na przykład: sprawdź pamięć",
   "如：free -m": "Takie jak: wolne -m",
@@ -1373,4 +1375,8 @@ export default {
   "操作失败": "Operacja nie powiodła się",
   "操作完成": "Operacja zakończona",
   "有操作正在进行，请稍候": "Trwa operacja. Proszę czekać.",
+  "命令编辑器": "Edytor polecen",
+  "在此输入要发送的命令…": "Wpisz polecenie do wyslania...",
+  "选项": "Opcje",
+  "输入命令(/ 快捷命令), 按Ctrl+回车 或 Shift+回车 换行": "Wpisz polecenie (/ szybkie polecenie). Ctrl+Enter lub Shift+Enter - nowa linia",
 };

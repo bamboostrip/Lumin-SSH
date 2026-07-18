@@ -250,7 +250,9 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
   const [showCmdEditor, setShowCmdEditor] = useState(false);
   const [cmdEditorText, setCmdEditorText] = useState('');
   const [cmdEditorAddCR, setCmdEditorAddCR] = useState(true);
+  const [cmdEditorClearAfterSend, setCmdEditorClearAfterSend] = useState(true);
   const [cmdEditorShowOpts, setCmdEditorShowOpts] = useState(false);
+  const cmdEditorOptsRef = useRef(null);
 
   // 编辑/添加对话框
   const [dialog, setDialog] = useState(null); // { type:'add'|'edit', groupPath?, item? }
@@ -433,6 +435,27 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
     document.addEventListener('click', handler);
     return () => document.removeEventListener('click', handler);
   }, [historyDropdown]);
+
+  // ── 点击外部关闭命令编辑器「选项」菜单 ───────────────
+  useEffect(() => {
+    if (!cmdEditorShowOpts) return;
+    const handler = (e) => {
+      if (cmdEditorOptsRef.current?.contains(e.target)) return;
+      setCmdEditorShowOpts(false);
+    };
+    // 捕获阶段：面板根节点 stopPropagation 也不会挡住
+    document.addEventListener('mousedown', handler, true);
+    document.addEventListener('click', handler, true);
+    return () => {
+      document.removeEventListener('mousedown', handler, true);
+      document.removeEventListener('click', handler, true);
+    };
+  }, [cmdEditorShowOpts]);
+
+  // 命令编辑器关闭时，顺带收起选项菜单
+  useEffect(() => {
+    if (!showCmdEditor && cmdEditorShowOpts) setCmdEditorShowOpts(false);
+  }, [showCmdEditor, cmdEditorShowOpts]);
 
   // ── 持久化到文件（保存 + 重新加载，确保双向一致）──
   const save = async (list) => {
@@ -837,7 +860,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
   };
 
   // ── 命令编辑器：发送临时命令（不保存） ────────────────
-  const sendEditorCommand = () => {
+  const sendEditorCommand = useCallback(() => {
     const cmd = cmdEditorText.replace(/\r\n?/g, '\n');
     const text = cmd.trim();
     if (!text) return;
@@ -853,7 +876,8 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
       });
       if (addToast) addToast(t('已发送'), 'info', 1500);
     }
-  };
+    if (cmdEditorClearAfterSend) setCmdEditorText('');
+  }, [addToast, cmdEditorAddCR, cmdEditorClearAfterSend, cmdEditorText, connectedSessions, sendTarget, sessionId, t]);
 
   // ── 插入参数按钮 ────────────────────────────────────
   const insertParam = (n) => {
@@ -921,10 +945,13 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
           type="button"
           className={`btn btn-secondary btn-sm${showCmdEditor ? ' active' : ''}`}
           aria-pressed={showCmdEditor}
-          onClick={() => {
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
             closeContextMenu();
-            setShowCmdEditor((v) => !v);
+            // 切换命令编辑器时，始终先收起「选项」菜单
             setCmdEditorShowOpts(false);
+            setShowCmdEditor((v) => !v);
           }}
           style={showCmdEditor ? {
             color: 'var(--text-primary)',
@@ -979,6 +1006,12 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
                     e.preventDefault();
                     setShowCmdEditor(false);
                     setCmdEditorShowOpts(false);
+                    return;
+                  }
+                  // Ctrl/Cmd + Enter 发送
+                  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    sendEditorCommand();
                   }
                 }}
               />
@@ -990,7 +1023,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
               flexShrink: 0,
               position: 'relative',
             }}>
-              <div style={{ position: 'relative' }}>
+              <div style={{ position: 'relative' }} ref={cmdEditorOptsRef}>
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
@@ -1004,14 +1037,32 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
                       left: 0,
                       bottom: 'calc(100% + 6px)',
                       zIndex: 2,
-                      minWidth: 180,
+                      minWidth: 190,
                       padding: '8px 10px',
                       background: C.popupBg,
                       border: '1px solid ' + C.btnBorder,
                       borderRadius: 6,
                       boxShadow: 'var(--shadow-md)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 8,
                     }}
                   >
+                    <div style={{ fontSize: 11, color: C.mutedColor, userSelect: 'none' }}>
+                      {t('按Ctrl+Enter发送')}
+                    </div>
+                    <label style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      fontSize: 12, color: C.inputColor, cursor: 'pointer',
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={cmdEditorClearAfterSend}
+                        onChange={(e) => setCmdEditorClearAfterSend(e.target.checked)}
+                        style={{ accentColor: 'var(--success)' }}
+                      />
+                      {t('发送后清空')}
+                    </label>
                     <label style={{
                       display: 'flex', alignItems: 'center', gap: 6,
                       fontSize: 12, color: C.inputColor, cursor: 'pointer',

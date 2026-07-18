@@ -608,6 +608,8 @@ export default {
   "保存名称": "salvar nome",
   "个命令/子分组": "comandos/subgrupos",
   "末尾添加回车符CR": "Adicione o caractere de retorno de carro CR no final",
+  "按Ctrl+Enter发送": "Enviar com Ctrl+Enter",
+  "发送后清空": "Limpar após enviar",
   "如：系统监控": "Tais como: monitoramento do sistema",
   "如：查看内存": "Tais como: verificar a memória",
   "如：free -m": "Tais como: grátis -m",
@@ -1373,4 +1375,8 @@ export default {
   "操作失败": "Falha na operação",
   "操作完成": "Operação concluída",
   "有操作正在进行，请稍候": "Há uma operação em andamento, aguarde.",
+  "命令编辑器": "Editor de comandos",
+  "在此输入要发送的命令…": "Digite um comando para enviar...",
+  "选项": "Opcoes",
+  "输入命令(/ 快捷命令), 按Ctrl+回车 或 Shift+回车 换行": "Digite um comando (/ comando rapido). Ctrl+Enter ou Shift+Enter para nova linha",
 };

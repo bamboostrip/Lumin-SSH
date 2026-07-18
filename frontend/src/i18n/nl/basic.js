@@ -608,6 +608,8 @@ export default {
   "保存名称": "naam opslaan",
   "个命令/子分组": "opdrachten/subgroepen",
   "末尾添加回车符CR": "Voeg aan het eind een regelterugloopteken CR toe",
+  "按Ctrl+Enter发送": "Versturen met Ctrl+Enter",
+  "发送后清空": "Wissen na verzenden",
   "如：系统监控": "Zoals: systeemmonitoring",
   "如：查看内存": "Zoals: geheugen controleren",
   "如：free -m": "Zoals: gratis -m",
@@ -1373,4 +1375,8 @@ export default {
   "操作失败": "Operatie mislukt",
   "操作完成": "Operatie voltooid",
   "有操作正在进行，请稍候": "Er wordt een bewerking uitgevoerd. Even geduld a.u.b.",
+  "命令编辑器": "Opdrachteditor",
+  "在此输入要发送的命令…": "Typ een te verzenden opdracht...",
+  "选项": "Opties",
+  "输入命令(/ 快捷命令), 按Ctrl+回车 或 Shift+回车 换行": "Voer opdracht in (/ snelle opdracht). Ctrl+Enter of Shift+Enter voor nieuwe regel",
 };

@@ -608,6 +608,8 @@ export default {
   "保存名称": "salvează numele",
   "个命令/子分组": "comenzi/subgrupuri",
   "末尾添加回车符CR": "Adăugați caracterul de întoarcere car CR la sfârșit",
+  "按Ctrl+Enter发送": "Trimite cu Ctrl+Enter",
+  "发送后清空": "Golește după trimitere",
   "如：系统监控": "Cum ar fi: monitorizarea sistemului",
   "如：查看内存": "Cum ar fi: verificarea memoriei",
   "如：free -m": "Precum: liber -m",
@@ -1373,4 +1375,8 @@ export default {
   "操作失败": "Operațiunea a eșuat",
   "操作完成": "Operațiune finalizată",
   "有操作正在进行，请稍候": "Există o operațiune în desfășurare, vă rugăm să așteptați.",
+  "命令编辑器": "Editor de comenzi",
+  "在此输入要发送的命令…": "Introduceti o comanda de trimis...",
+  "选项": "Optiuni",
+  "输入命令(/ 快捷命令), 按Ctrl+回车 或 Shift+回车 换行": "Introduceti o comanda (/ comanda rapida). Ctrl+Enter sau Shift+Enter pentru linie noua",
 };

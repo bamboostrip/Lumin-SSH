@@ -475,6 +475,8 @@ export default {
   "命令编辑器": "Command Editor",
   "在此输入要发送的命令…": "Type a command to send...",
   "选项": "Options",
+  "按Ctrl+Enter发送": "Press Ctrl+Enter to send",
+  "发送后清空": "Clear after send",
   "暂无历史记录": "No history yet",
   "192.168.1.1 或 example.com": "192.168.1.1 or example.com",
   "新密码（留空则不修改）": "New password (leave blank to keep)",
@@ -1384,4 +1386,5 @@ export default {
   "操作失败": "Operation failed",
   "操作完成": "Operation completed",
   "有操作正在进行，请稍候": "An operation is currently in progress, please wait",
+  "输入命令(/ 快捷命令), 按Ctrl+回车 或 Shift+回车 换行": "Enter command (/ quick command). Ctrl+Enter or Shift+Enter for newline",
 };

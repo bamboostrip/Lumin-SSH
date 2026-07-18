@@ -608,6 +608,8 @@ export default {
   "保存名称": "simpan nama",
   "个命令/子分组": "perintah/subgrup",
   "末尾添加回车符CR": "Tambahkan karakter pengangkutan kembali CR di akhir",
+  "按Ctrl+Enter发送": "Kirim dengan Ctrl+Enter",
+  "发送后清空": "Kosongkan setelah kirim",
   "如：系统监控": "Seperti: pemantauan sistem",
   "如：查看内存": "Seperti: periksa memori",
   "如：free -m": "Seperti: gratis -m",
@@ -1373,4 +1375,8 @@ export default {
   "操作失败": "Operasi gagal",
   "操作完成": "Operasi selesai",
   "有操作正在进行，请稍候": "Ada operasi yang sedang berlangsung, harap tunggu.",
+  "命令编辑器": "Editor perintah",
+  "在此输入要发送的命令…": "Ketik perintah untuk dikirim...",
+  "选项": "Opsi",
+  "输入命令(/ 快捷命令), 按Ctrl+回车 或 Shift+回车 换行": "Masukkan perintah (/ perintah cepat). Ctrl+Enter atau Shift+Enter untuk baris baru",
 };

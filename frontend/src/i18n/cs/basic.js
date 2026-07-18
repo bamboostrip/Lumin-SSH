@@ -608,6 +608,8 @@ export default {
   "保存名称": "uložit jméno",
   "个命令/子分组": "příkazy/podskupiny",
   "末尾添加回车符CR": "Na konec přidejte znak návratu vozíku CR",
+  "按Ctrl+Enter发送": "Odeslat Ctrl+Enter",
+  "发送后清空": "Vymazat po odeslání",
   "如：系统监控": "Jako například: monitorování systému",
   "如：查看内存": "Jako například: kontrola paměti",
   "如：free -m": "Jako například: volný -m",
@@ -1373,4 +1375,8 @@ export default {
   "操作失败": "Operace se nezdařila",
   "操作完成": "Operace dokončena",
   "有操作正在进行，请稍候": "Probíhá operace, čekejte prosím.",
+  "命令编辑器": "Editor prikazu",
+  "在此输入要发送的命令…": "Zadejte prikaz k odeslani...",
+  "选项": "Moznosti",
+  "输入命令(/ 快捷命令), 按Ctrl+回车 或 Shift+回车 换行": "Zadejte prikaz (/ rychly prikaz). Ctrl+Enter nebo Shift+Enter pro novy radek",
 };

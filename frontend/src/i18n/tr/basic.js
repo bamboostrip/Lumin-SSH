@@ -608,6 +608,8 @@ export default {
   "保存名称": "adı kaydet",
   "个命令/子分组": "komutlar/alt gruplar",
   "末尾添加回车符CR": "Sonuna satırbaşı karakteri CR'yi ekleyin",
+  "按Ctrl+Enter发送": "Ctrl+Enter ile gönder",
+  "发送后清空": "Gönderdikten sonra temizle",
   "如：系统监控": "Örneğin: sistem izleme",
   "如：查看内存": "Mesela: hafızayı kontrol et",
   "如：free -m": "Mesela: bedava -m",
@@ -1373,4 +1375,8 @@ export default {
   "操作失败": "İşlem başarısız oldu",
   "操作完成": "İşlem tamamlandı",
   "有操作正在进行，请稍候": "Devam eden bir işlem var, lütfen bekleyin.",
+  "命令编辑器": "Komut duzenleyici",
+  "在此输入要发送的命令…": "Gonderilecek komutu yazin...",
+  "选项": "Secenekler",
+  "输入命令(/ 快捷命令), 按Ctrl+回车 或 Shift+回车 换行": "Komut girin (/ hizli komut). Yeni satir icin Ctrl+Enter veya Shift+Enter",
 };

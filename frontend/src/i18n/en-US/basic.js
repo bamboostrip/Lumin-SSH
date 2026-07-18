@@ -2,8 +2,6 @@ export const LANGUAGE_LABEL = "English";
 
 export default {
   "存储桶": "Bucket",
-  "Token 中心": "Token Center",
-  "Token 中心正在加载": "Token Center is loading",
   "uv 可执行文件": "uv Executable",
   "保存恢复密码失败": "Failed to save recovery password",
   "关闭分屏": "Close Split",
@@ -14,7 +12,6 @@ export default {
   "分屏组": "Split Group",
   "刷新延迟": "Refresh Delay",
   "复制完整 diff/内容": "Copy Full Diff/Content",
-  "如果页面长时间没有显示内容,可能需要科学上网后才能正常访问。": "If the page takes a long time to load, you may need a VPN to access it.",
   "安装": "Install",
   "安装中...": "Installing...",
   "展开文件管理面板": "Expand File Manager Panel",
@@ -35,7 +32,6 @@ export default {
   "旧密码和新密码都无法解密云端备份。继续将不读取或合并云端数据，而是以本机当前数据覆盖所有已配置的云端同步目标。旧备份会保留，但其他设备尚未同步到本机的数据可能丢失。": "Neither the old nor the new password can decrypt the cloud backup. Continuing will skip reading or merging cloud data and overwrite all configured cloud sync destinations with the current local data. Old backups will be preserved, but data from other devices that has not yet been synced to this device may be lost.",
   "确认强制重置恢复密码": "Confirm Forced Recovery Password Reset",
   "以本机数据覆盖云端": "Overwrite Cloud Data with Local Data",
-  "打开 Token 中心": "Open Token Center",
   "搜索或输入新分组...": "Search or enter new group...",
   "搜索或输入属主...": "Search or enter owner...",
   "搜索或输入属组...": "Search or enter group...",
@@ -65,7 +61,6 @@ export default {
   "记忆工作区设置保存失败": "Failed to save workspace memory setting",
   "工作区持久化级别保存失败": "Workspace persistence level save failed",
   "请求失败": "Request Failed",
-  "请稍候片刻,系统会在页面加载完成后自动进入 Token 中心。": "Please wait. The system will automatically enter the Token Center once the page has loaded.",
   "读取长文本包装文件能力未就绪": "Long text wrapper file reading capability is unavailable",
   "输入恢复密码": "Enter Recovery Password",
   "运行环境设置保存失败": "Failed to save runtime environment settings",

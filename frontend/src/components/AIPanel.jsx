@@ -842,7 +842,42 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     }
     return (Array.isArray(aiProviderState?.providers) ? aiProviderState.providers : []).find((item) => item?.id === currentProviderId) || null
   }, [aiProviderState])
-  const effectiveProviderId = selectedAIProvider?.id || ''
+  const availableAIProviders = useMemo(
+    () => (Array.isArray(aiProviderState?.providers) ? aiProviderState.providers : []),
+    [aiProviderState],
+  )
+  const resolveFirstAvailableProviderId = useCallback((providers = []) => {
+    return typeof providers[0]?.id === 'string' ? providers[0].id.trim() : ''
+  }, [])
+  const resolveAvailableProviderId = useCallback((providers = [], preferredProviderId = '') => {
+    const normalizedPreferredProviderId = typeof preferredProviderId === 'string' ? preferredProviderId.trim() : ''
+    if (normalizedPreferredProviderId && providers.some((item) => item?.id === normalizedPreferredProviderId)) {
+      return normalizedPreferredProviderId
+    }
+    return resolveFirstAvailableProviderId(providers)
+  }, [resolveFirstAvailableProviderId])
+  const buildConversationWithProviderId = useCallback((snapshot, providerId) => {
+    if (!snapshot || typeof snapshot !== 'object') {
+      return snapshot
+    }
+    const normalizedProviderId = typeof providerId === 'string' ? providerId.trim() : ''
+    const currentProviderId = typeof snapshot?.settings?.currentProviderId === 'string' ? snapshot.settings.currentProviderId.trim() : ''
+    if (currentProviderId === normalizedProviderId) {
+      return snapshot
+    }
+    return {
+      ...snapshot,
+      updatedAt: Date.now(),
+      settings: normalizeAIConversationTaskSettings({
+        ...snapshot.settings,
+        currentProviderId: normalizedProviderId,
+      }),
+    }
+  }, [])
+  const effectiveProviderId = selectedAIProvider?.id || resolveAvailableProviderId(
+    availableAIProviders,
+    typeof aiProviderState?.currentProviderId === 'string' ? aiProviderState.currentProviderId.trim() : '',
+  )
   const effectiveAutoApprovalSettings = useMemo(() => {
     if (!activeConversation) {
       return normalizedGlobalAISettings
@@ -2046,12 +2081,23 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     resetGlobalSearchState()
     resetConversationSearchState()
     const snapshot = await getAIConversation(conversationId)
-    setConversationList((prev) => upsertConversationSummary(prev, snapshot))
+    const latestProviderState = await getAIProviderState().catch(() => ({
+      currentProviderId: typeof aiProviderState?.currentProviderId === 'string' ? aiProviderState.currentProviderId.trim() : '',
+      providers: availableAIProviders,
+    }))
+    const latestProviders = Array.isArray(latestProviderState?.providers) ? latestProviderState.providers : []
+    const resolvedProviderId = resolveAvailableProviderId(latestProviders, snapshot?.settings?.currentProviderId)
+    const nextSnapshot = buildConversationWithProviderId(snapshot, resolvedProviderId)
+    setAIProviderState({
+      currentProviderId: resolvedProviderId,
+      providers: latestProviders,
+    })
+    setConversationList((prev) => upsertConversationSummary(prev, nextSnapshot))
     setPanelState(panelInstanceKey, {
-      activeConversationId: snapshot.id,
-      conversation: snapshot,
-      messages: snapshot.messages,
-      apiMessages: snapshot.apiMessages,
+      activeConversationId: nextSnapshot.id,
+      conversation: nextSnapshot,
+      messages: nextSnapshot.messages,
+      apiMessages: nextSnapshot.apiMessages,
       activeRequestId: '',
       activeAssistantMessageId: '',
       activeToolExecution: null,
@@ -2066,8 +2112,12 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       isCondensingContext: false,
       activeChangeReview: null,
     })
-    void refreshAIConversationContextTokens(snapshot, panelInstanceKey)
-  }, [panelInstanceKey, refreshAIConversationContextTokens, resetComposerEditState, setPanelState])
+    if (nextSnapshot !== snapshot) {
+      await saveConversationSnapshot(nextSnapshot, panelInstanceKey)
+      return
+    }
+    void refreshAIConversationContextTokens(nextSnapshot, panelInstanceKey)
+  }, [aiProviderState, availableAIProviders, buildConversationWithProviderId, panelInstanceKey, refreshAIConversationContextTokens, resetComposerEditState, resolveAvailableProviderId, saveConversationSnapshot, setPanelState])
 
   const handleRestoreConversationBackup = useCallback(async (snapshot) => {
     if (!snapshot?.id) {
@@ -2199,6 +2249,21 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
 
   const handleProviderChange = useCallback(async (providerId) => {
     const normalizedProviderId = typeof providerId === 'string' ? providerId.trim() : ''
+    const syncLatestProviderState = async () => {
+      try {
+        const latestProviderState = await getAIProviderState()
+        setAIProviderState({
+          currentProviderId: normalizedProviderId || latestProviderState.currentProviderId || '',
+          providers: Array.isArray(latestProviderState?.providers) ? latestProviderState.providers : [],
+        })
+      } catch {
+        setAIProviderState((current) => ({
+          ...current,
+          currentProviderId: normalizedProviderId,
+        }))
+      }
+    }
+
     setAIProviderState((current) => ({
       ...current,
       currentProviderId: normalizedProviderId,
@@ -2217,6 +2282,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         conversation: nextConversation,
       }))
       await saveConversationSnapshot(nextConversation, panelInstanceKey)
+      await syncLatestProviderState()
       return
     }
 
@@ -2225,6 +2291,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       currentProviderId: normalizedProviderId,
     })
     setGlobalAISettings(nextSettings)
+    await syncLatestProviderState()
   }, [activeConversation, globalAISettings, panelInstanceKey, saveConversationSnapshot, setPanelState])
 
   const handlePatchAutoApprovalSettings = useCallback(async (patch) => {
@@ -2373,11 +2440,49 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
 
     clearRestorePreview()
 
+    let targetConversationSnapshot = activeConversation
     const activeComposerState = overrideEditState || composerEditState
     const isEditingExistingMessage = activeComposerState?.mode === 'edit' && activeComposerState?.targetMessageId
     const isRetryingMessage = activeComposerState?.mode === 'retry' && activeComposerState?.targetMessageId
 
-    if (!effectiveProviderId) {
+    const latestProviderState = await getAIProviderState().catch(() => ({
+      currentProviderId: typeof aiProviderState?.currentProviderId === 'string' ? aiProviderState.currentProviderId.trim() : '',
+      providers: availableAIProviders,
+    }))
+    const latestProviders = Array.isArray(latestProviderState?.providers) ? latestProviderState.providers : []
+    const preferredProviderId = targetConversationSnapshot
+      ? targetConversationSnapshot?.settings?.currentProviderId
+      : latestProviderState?.currentProviderId
+    const resolvedProviderId = resolveAvailableProviderId(latestProviders, preferredProviderId)
+    const nextConversationSnapshot = targetConversationSnapshot
+      ? buildConversationWithProviderId(targetConversationSnapshot, resolvedProviderId)
+      : null
+
+    setAIProviderState({
+      currentProviderId: resolvedProviderId,
+      providers: latestProviders,
+    })
+
+    if (targetConversationSnapshot && nextConversationSnapshot !== targetConversationSnapshot) {
+      targetConversationSnapshot = nextConversationSnapshot
+      setConversationList((prev) => upsertConversationSummary(prev, nextConversationSnapshot))
+      setPanelState(panelInstanceKey, (current) => ({
+        ...current,
+        conversation: nextConversationSnapshot,
+      }))
+      await saveConversationSnapshot(nextConversationSnapshot, panelInstanceKey)
+    } else if (!targetConversationSnapshot) {
+      const currentGlobalProviderId = typeof latestProviderState?.currentProviderId === 'string' ? latestProviderState.currentProviderId.trim() : ''
+      if (resolvedProviderId && resolvedProviderId !== currentGlobalProviderId) {
+        const nextSettings = await saveAIGlobalSettings({
+          ...(globalAISettings || {}),
+          currentProviderId: resolvedProviderId,
+        })
+        setGlobalAISettings(nextSettings)
+      }
+    }
+
+    if (!resolvedProviderId) {
       return false
     }
 
@@ -2402,7 +2507,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       return false
     }
 
-    let targetConversation = activeConversation
+    let targetConversation = targetConversationSnapshot
     if (!targetConversation) {
       targetConversation = await createAIConversation(truncateConversationTitle(nextText))
       setConversationList((prev) => upsertConversationSummary(prev, targetConversation))
@@ -2569,7 +2674,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       await saveConversationSnapshot(erroredConversation, panelInstanceKey)
       return false
     }
-  }, [activeConversation, composerEditState, composerImages, effectiveAutoApprovalEnabled, effectiveProviderId, getAIAssistantFirstReply, isQueueBlocked, normalizedGlobalAISettings.slashCommands, panelInstanceKey, panelState.activeRequestId, panelState.requestPhase, requestConversationSmoothScrollToBottom, resetComposerEditState, saveConversationSnapshot, setPanelState, terminalId, terminalOutputCharacterLimit, terminalOutputLineLimit, truncateConversationAfterMessage])
+  }, [activeConversation, aiProviderState, availableAIProviders, buildConversationWithProviderId, composerEditState, composerImages, effectiveAutoApprovalEnabled, getAIAssistantFirstReply, globalAISettings, isQueueBlocked, normalizedGlobalAISettings.slashCommands, panelInstanceKey, panelState.activeRequestId, panelState.requestPhase, requestConversationSmoothScrollToBottom, resetComposerEditState, resolveAvailableProviderId, saveConversationSnapshot, setPanelState, terminalId, terminalOutputCharacterLimit, terminalOutputLineLimit, truncateConversationAfterMessage])
 
   const handleFollowupResponse = useCallback(async (payload) => {
     if (!payload || typeof payload !== 'object') {

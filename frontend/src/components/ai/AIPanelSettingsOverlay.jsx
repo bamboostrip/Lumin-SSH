@@ -7,6 +7,10 @@ import AISlashCommandsSettings from './AISlashCommandsSettings.jsx'
 import AIConversationBackupSettings from './AIConversationBackupSettings.jsx'
 import Tiptop from '../Tiptop.jsx'
 
+function formatTokenCountInMillions(value) {
+  return `${(value / 1000000).toFixed(6)}M`
+}
+
 function PreviewPill({ label, primary = false }) {
   return (
     <div
@@ -224,6 +228,10 @@ export default function AIPanelSettingsOverlay({
   const continueAfterToolRejection = globalAISettings?.continueAfterToolRejection !== false
   const proxyNodes = Array.isArray(globalAISettings?.proxyNodes) ? globalAISettings.proxyNodes : []
   const aiRequestProxyId = typeof globalAISettings?.aiRequestProxyId === 'string' ? globalAISettings.aiRequestProxyId : ''
+  const toolResultTokenThreshold = Number.isFinite(Number(globalAISettings?.toolResultTokenThreshold))
+    ? Math.max(1, Math.trunc(Number(globalAISettings.toolResultTokenThreshold)))
+    : 350000
+  const toolResultTokenThresholdDisplay = formatTokenCountInMillions(toolResultTokenThreshold)
 
   return (
     <div
@@ -528,21 +536,35 @@ export default function AIPanelSettingsOverlay({
                   </div>
                   <div style={{ borderTop: '1px solid var(--border)' }} />
                   <div style={{ display: 'grid', gap: 8 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700 }}>{t('终端输出字符上限')}</div>
-                        <div style={{ color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.6 }}>{t('控制 MCP 终端输出保留的最大字符数')}</div>
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flexWrap: 'wrap' }}>
+                        <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700 }}>{t('工具阈值')}</div>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '2px 8px', borderRadius: 999, border: '1px solid rgba(var(--accent-rgb), 0.24)', background: 'rgba(var(--accent-rgb), 0.08)', color: 'var(--text-primary)', fontSize: 12, fontWeight: 700, fontVariantNumeric: 'tabular-nums', fontFamily: 'var(--font-mono)' }}>{toolResultTokenThresholdDisplay}</span>
                       </div>
-                      <span style={{ fontSize: 13, minWidth: 72, textAlign: 'right', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{terminalOutputCharacterLimit}</span>
+                      <div style={{ color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.6 }}>{t('当工具返回结果的预估 Token 数超过此阈值时,原始内容将被省略,并显示“结果过大”的提示.调高可保留更多原始输出,但也会增加上下文膨胀风险.')}</div>
                     </div>
                     <input
-                      type="range"
-                      min="1000"
-                      max="500000"
+                      type="number"
+                      min="1"
                       step="1000"
-                      value={terminalOutputCharacterLimit}
-                      onChange={onTerminalOutputCharacterLimitChange}
-                      style={{ width: '100%', cursor: 'pointer' }}
+                      value={toolResultTokenThreshold}
+                      onChange={(event) => {
+                        const nextValue = parseInt(event.target.value, 10)
+                        if (Number.isFinite(nextValue)) {
+                          void onSaveGlobalAISettings?.({ toolResultTokenThreshold: nextValue })
+                        }
+                      }}
+                      style={{
+                        width: '100%',
+                        borderRadius: 8,
+                        border: '1px solid var(--border)',
+                        background: 'var(--surface-base)',
+                        color: 'var(--text-primary)',
+                        padding: '8px 10px',
+                        fontSize: 13,
+                        fontFamily: 'var(--font-mono)',
+                        boxSizing: 'border-box',
+                      }}
                     />
                   </div>
                   <div style={{ borderTop: '1px solid var(--border)' }} />

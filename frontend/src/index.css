@@ -29,9 +29,9 @@ svg[class*="lucide"] {
 
   /* ── 文本层级 ── */
   --text-primary:    #eaf0f7;   /* 主文本 — 微蓝白 */
-  --text-secondary:  #96a2b3;   /* 次文本 — 蓝灰 */
-  --text-tertiary:   #818fa0;   /* 辅助文本 — 4.5:1 WCAG AA */
-  --text-muted:      #5a6578;   /* 最弱文本/占位符 — 3:1 WCAG AA UI */
+  --text-secondary:  #d0d8e3;   /* 次文本 — 高对比 */
+  --text-tertiary:   #d0d8e3;   /* 辅助文本 — 和次文本同等清晰 */
+  --text-muted:      #b8c4d4;   /* 最弱文本/占位符 */
 
   /* ── 语义化强调色（更鲜明） ── */
   --accent:         #4d9eff;    /* 主强调（亮蓝） */
@@ -159,9 +159,9 @@ body.theme-light {
   --border-focus:  #2563eb;
 
   --text-primary:    #1c1917;   /* 暖黑主文本 */
-  --text-secondary:  #57534e;   /* 暖灰次文本 */
-  --text-tertiary:   #78716c;   /* 暖灰辅助文本 */
-  --text-muted:      #a8a29e;   /* 暖灰占位符 */
+  --text-secondary:  #1f1b18;   /* 暖灰次文本 */
+  --text-tertiary:   #1f1b18;   /* 暖灰辅助文本 — 和次文本同等清晰 */
+  --text-muted:      #292524;   /* 暖灰弱文本 */
 
   --accent:         #2563eb;   /* 主强调（鲜明蓝） */
   --accent-rgb:     37, 99, 235;
@@ -1730,11 +1730,11 @@ body.theme-light .batch-operation-bar {
 .probe-metric-icon { display: inline-flex; flex-shrink: 0; }
 .probe-metric-label { font-size: 11.5px; color: var(--text-tertiary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .probe-metric-value { font-size: 17px; line-height: 1.15; font-family: var(--font-mono); font-weight: 800; font-variant-numeric: tabular-nums; }
-.probe-metric-sub { margin-top: 3px; font-size: 10.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.probe-metric-sub { margin-top: 3px; font-size: 10.5px; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .probe-peak-card { padding: 14px 16px; }
 .probe-peak-label { font-size: 12px; color: var(--text-tertiary); font-weight: 700; margin-bottom: 4px; }
 .probe-peak-value { font-size: 30px; line-height: 1.05; font-family: var(--font-mono); font-weight: 800; margin-bottom: 10px; font-variant-numeric: tabular-nums; }
-.probe-peak-sub { margin-top: 7px; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.probe-peak-sub { margin-top: 7px; font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .probe-sparkline { width: 100%; display: block; margin-bottom: 8px; }
 .probe-sparkline-empty { width: 100%; }
@@ -1794,7 +1794,7 @@ body.theme-light .batch-operation-bar {
 .probe-interface-list { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
 .probe-interface-row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; min-width: 0; color: var(--text-tertiary); }
 .probe-interface-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); }
-.probe-interface-row b { font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono); font-weight: 600; white-space: nowrap; }
+.probe-interface-row b { font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono); font-weight: 400; white-space: nowrap; }
 
 .probe-disk-main { margin-bottom: 8px; }
 .probe-disk-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px; }
@@ -2236,7 +2236,7 @@ body.theme-light .batch-operation-bar {
   border-bottom: 1px solid var(--border);
   font-size: var(--text-xs);
   font-weight: 650;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   text-transform: none;
   letter-spacing: 0;
   background: var(--surface-sunken);
@@ -2337,10 +2337,10 @@ body.theme-light .batch-operation-bar {
 }
 .file-name.is-dir { color: var(--accent); font-weight: 500; }
 
-.file-size { font-size: var(--text-sm); color: var(--text-tertiary); font-family: var(--font-mono); }
+.file-size { font-size: var(--text-sm); color: var(--text-secondary); font-family: var(--font-mono); }
 .file-permission {
   font-size: var(--text-sm);
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   font-family: var(--font-mono);
   cursor: pointer;
   white-space: nowrap;
@@ -2348,7 +2348,7 @@ body.theme-light .batch-operation-bar {
   text-overflow: ellipsis;
 }
 .file-permission:hover { color: var(--accent); }
-.file-date { font-size: var(--text-sm); color: var(--text-tertiary); }
+.file-date { font-size: var(--text-sm); color: var(--text-secondary); }
 .file-actions { opacity: 0; display: flex; gap: var(--space-1); justify-content: flex-end; }
 
 /* ── 右键菜单 ───────────────────────────────────────────────── */

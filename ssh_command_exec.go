@@ -65,7 +65,11 @@ func (m *SSHManager) ExecuteCommandInTerminal(sessionID string, command string, 
 				writeLimitedInteractiveOutput(&captured, chunk)
 				raw = captured.String()
 			}
-			if strings.Contains(raw, endMarker) || !ok {
+			completed := strings.Contains(raw, endMarker)
+			if completed || !ok {
+				if completed {
+					m.markInteractiveSessionPromptReady(sessionID)
+				}
 				exitCode, hasExitCode := extractInteractiveExitCode(raw)
 				if hasExitCode {
 					result.ExitCode = &exitCode
@@ -169,6 +173,14 @@ func (m *SSHManager) waitForInteractiveSessionIdle(sessionID string, control <-c
 			return ai.ToolExecutionActionNone, waitingNotified, reassignedSessionID, nil
 		}
 	}
+}
+
+func (m *SSHManager) markInteractiveSessionPromptReady(sessionID string) {
+	m.mu.Lock()
+	if sessionData, ok := m.sessions[sessionID]; ok && sessionData != nil && sessionData.RemoteHistoryActive {
+		sessionData.PromptReady = true
+	}
+	m.mu.Unlock()
 }
 
 func drainInteractiveOutputChannel(outputChannel <-chan []byte) {
@@ -308,13 +320,17 @@ func (m *SSHManager) ExecuteCommandInTerminalControlled(sessionID string, comman
 				raw = captured.String()
 			}
 			snapshot := sanitizeInteractiveCommandOutput(raw, startMarker, endMarker)
-			if !decisionRequired && strings.TrimSpace(snapshot) != "" && !strings.Contains(raw, endMarker) {
+			completed := strings.Contains(raw, endMarker)
+			if !decisionRequired && strings.TrimSpace(snapshot) != "" && !completed {
 				decisionRequired = true
 				if onCommandOutput != nil {
 					onCommandOutput(snapshot)
 				}
 			}
-			if strings.Contains(raw, endMarker) || !ok {
+			if completed || !ok {
+				if completed {
+					m.markInteractiveSessionPromptReady(currentSessionID)
+				}
 				exitCode, hasExitCode := extractInteractiveExitCode(raw)
 				if hasExitCode {
 					result.ExitCode = &exitCode

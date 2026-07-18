@@ -737,17 +737,17 @@ func (m *SSHManager) pipeOutput(sessionId string, r io.Reader, historyStream *co
 		if n > 0 {
 			var data []byte
 			if historyStream != nil {
-				visible, commands, cwd := historyStream.Process(buf[:n])
+				visible, commands, cwd, promptSeen := historyStream.Process(buf[:n])
 				data = visible
-				if cwd != "" {
+				if cwd != "" || promptSeen {
 					shouldEmitCwd := false
 					m.mu.Lock()
 					if s, ok := m.sessions[sessionId]; ok {
-						if s.CurrentCwd != cwd {
+						if cwd != "" && s.CurrentCwd != cwd {
 							s.CurrentCwd = cwd
 							shouldEmitCwd = true
 						}
-						if s.RemoteHistoryActive {
+						if promptSeen && s.RemoteHistoryActive {
 							s.PromptReady = true
 						}
 					}

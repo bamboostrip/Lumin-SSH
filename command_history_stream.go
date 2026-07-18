@@ -30,13 +30,13 @@ func newCommandHistoryStream() *commandHistoryStream {
 	return &commandHistoryStream{}
 }
 
-func (s *commandHistoryStream) Process(chunk []byte) ([]byte, []string, string) {
+func (s *commandHistoryStream) Process(chunk []byte) ([]byte, []string, string, bool) {
 	if len(chunk) == 0 {
-		return nil, nil, ""
+		return nil, nil, "", false
 	}
 
 	if len(s.visibleCarry) == 0 && !s.inMarker && !bytes.Contains(chunk, historyMarkerStart) && !bytes.Contains(chunk, cwdMarkerStart) {
-		return chunk, nil, ""
+		return chunk, nil, "", false
 	}
 
 	data := append(append([]byte{}, s.visibleCarry...), chunk...)
@@ -45,17 +45,19 @@ func (s *commandHistoryStream) Process(chunk []byte) ([]byte, []string, string) 
 	out := make([]byte, 0, len(data))
 	commands := make([]string, 0, 1)
 	cwd := ""
+	promptSeen := false
 
 	for i := 0; i < len(data); {
 		if s.inMarker {
 			relEnd := bytes.IndexByte(data[i:], historyMarkerEnd)
 			if relEnd == -1 {
 				s.payloadCarry = append(s.payloadCarry, data[i:]...)
-				return out, commands, cwd
+				return out, commands, cwd, promptSeen
 			}
 
 			end := i + relEnd
 			s.payloadCarry = append(s.payloadCarry, data[i:end]...)
+			promptSeen = true
 			if s.markerKind == markerKindCommand {
 				if command := decodeHistoryMarkerPayload(s.payloadCarry); command != "" && command != s.lastCommand {
 					commands = append(commands, command)
@@ -103,7 +105,7 @@ func (s *commandHistoryStream) Process(chunk []byte) ([]byte, []string, string) 
 			if overlap > 0 {
 				s.visibleCarry = append(s.visibleCarry, remaining[visibleEnd:]...)
 			}
-			return out, commands, cwd
+			return out, commands, cwd, promptSeen
 		}
 
 		start := i + relStart
@@ -115,7 +117,7 @@ func (s *commandHistoryStream) Process(chunk []byte) ([]byte, []string, string) 
 		s.markerKind = markerKind
 	}
 
-	return out, commands, cwd
+	return out, commands, cwd, promptSeen
 }
 
 func isInteractiveHistoryPrompt(command string) bool {

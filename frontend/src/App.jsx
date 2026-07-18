@@ -449,8 +449,11 @@ export default function App() {
   const workspaceRestoreNavigationOverrideRef = useRef(false);
   const [restoringWorkspaceSessionIds, setRestoringWorkspaceSessionIds] = useState(new Set());
   const lastTerminalRef = useRef({}); // 记录每个 session 最后选中的终端
+  const lastContentTabRef = useRef({}); // 记录每个 session 最后打开的内容页（终端/进程/网络等）
   const [mountedSessions, setMountedSessions] = useState(new Set());
-  const [contentTab, setContentTab] = useState('terminal'); // 'terminal' | 'files'
+  const [contentTab, setContentTab] = useState('terminal'); // 'terminal' | 'files' | 'process' | 'network' | 'history'
+  const contentTabRef = useRef(contentTab);
+  useEffect(() => { contentTabRef.current = contentTab; }, [contentTab]);
   const [serverEditor, setServerEditor] = useState(null);
   const [editFlyAnimation, setEditFlyAnimation] = useState(null);
   const [editFlyShiningFields, setEditFlyShiningFields] = useState({});
@@ -618,14 +621,16 @@ export default function App() {
       host: nextSession.host || '',
       activeTerminalId: resolvedActiveTerminalId,
       contentTab: normalizeWorkspaceContentTab(
-        overrides.contentTab ?? (activeSessionIdRef.current === nextSession.id ? contentTab : 'terminal'),
+        overrides.contentTab
+          ?? (activeSessionIdRef.current === nextSession.id ? contentTabRef.current : lastContentTabRef.current[nextSession.id])
+          ?? 'terminal',
       ),
       terminals: nextTerminals.map((term) => ({ id: term.id, label: term.label })),
       terminalPaneLayouts: sessionLayouts,
       fileManagerWorkspaces,
       savedAt: Date.now(),
     };
-  }, [contentTab, resolveSessionRootTerminalId, t]);
+  }, [resolveSessionRootTerminalId, t]);
 
   const persistServerWorkspaceSessionSnapshot = useCallback((session, overrides = {}) => {
     if (!rememberWorkspace || workspacePersistenceLevel !== 'session' || !session?.serverId) {
@@ -910,15 +915,14 @@ export default function App() {
   useEffect(() => {
     const scroll = tabScrollRef.current;
     const list = tabListRef.current;
-    const actions = tabActionsRef.current;
     if (!scroll || !list) return;
     const check = () => {
-      const actionsWidth = actions ? actions.offsetWidth : 0;
-      setTabsOverflow(list.scrollWidth > scroll.clientWidth - actionsWidth + 1);
+      setTabsOverflow(list.scrollWidth > scroll.clientWidth + 1);
     };
     check();
     const ro = new ResizeObserver(check);
     ro.observe(scroll);
+    ro.observe(list);
     return () => ro.disconnect();
   }, [sessions]);
   useEffect(() => {
@@ -2318,18 +2322,25 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
   }, []);
 
   // ── 切换到下一个可用 session ──────────────────────────────
+  const resolveSessionContentTab = useCallback((sessionId) => {
+    const tab = normalizeWorkspaceContentTab(lastContentTabRef.current[sessionId] || 'terminal');
+    // 文件管理器已停靠时，files 页签不可用，回落终端
+    if (tab === 'files' && fileManagerPosition !== 'tab') return 'terminal';
+    return tab;
+  }, [fileManagerPosition]);
+
   const switchToNextSession = useCallback((currentSessionId) => {
     const remaining = sessionsRef.current.filter(s => s.id !== currentSessionId);
     if (remaining.length > 0) {
       const nextSession = remaining[remaining.length - 1];
       setActiveSessionId(nextSession.id);
       setActiveTerminalId(resolveSessionRootTerminalId(nextSession, lastTerminalRef.current[nextSession.id]));
-      setContentTab('terminal');
+      setContentTab(resolveSessionContentTab(nextSession.id));
     } else {
       setActiveSessionId(null);
       setActiveTerminalId(null);
     }
-  }, [resolveSessionRootTerminalId]);
+  }, [resolveSessionContentTab, resolveSessionRootTerminalId]);
 
   // ponytail: 提取 tab 点击处理，避免每次渲染创建 N 个闭包
   const handleTabClick = useCallback((sessionId) => {
@@ -2340,12 +2351,12 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     const sess = sessionsRef.current.find(x => x.id === sessionId);
     const nextTerminalId = sess ? resolveSessionRootTerminalId(sess, lastTerminalRef.current[sessionId]) : null;
     setActiveTerminalId(nextTerminalId);
-    setContentTab('terminal');
+    setContentTab(resolveSessionContentTab(sessionId));
     persistWorkspaceSnapshotRef.current({
       activeSessionId: sessionId,
       activeTerminalId: nextTerminalId,
     });
-  }, [markWorkspaceRestoreNavigationOverride, resolveSessionRootTerminalId]);
+  }, [markWorkspaceRestoreNavigationOverride, resolveSessionContentTab, resolveSessionRootTerminalId]);
 
   const canCopySessionPassword = useCallback((sessionId) => {
     const session = sessionsRef.current.find((item) => item.id === sessionId);
@@ -2929,7 +2940,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     if (existing) {
       setActiveSessionId(existing.id);
       setActiveTerminalId(resolveSessionRootTerminalId(existing, lastTerminalRef.current[existing.id]));
-      setContentTab('terminal');
+      setContentTab(resolveSessionContentTab(existing.id));
       return;
     }
 
@@ -2937,7 +2948,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     if (closedSession) {
       setActiveSessionId(closedSession.id);
       setActiveTerminalId(resolveSessionRootTerminalId(closedSession, lastTerminalRef.current[closedSession.id]));
-      setContentTab('terminal');
+      setContentTab(resolveSessionContentTab(closedSession.id));
       await reconnectSession(closedSession);
       return;
     }
@@ -2999,6 +3010,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
         lastTerminalRef.current[sessionId] = nextActiveTerminalId;
         setActiveTerminalId(nextActiveTerminalId);
         setContentTab(nextContentTab);
+        lastContentTabRef.current[sessionId] = nextContentTab;
         persistWorkspaceSnapshotRef.current({
           sessions: sessionsRef.current,
           activeSessionId: sessionId,
@@ -3017,7 +3029,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     } catch (err) {
       handleConnectError(sessionId, err);
     }
-  }, [fileManagerPosition, handleConnectError, loadServerWorkspaceSessionSnapshot, markWorkspaceRestoreNavigationOverride, postConnectSetup, reconnectSession, rememberWorkspace, resolveSessionRootTerminalId, t, workspacePersistenceLevel]);
+  }, [fileManagerPosition, handleConnectError, loadServerWorkspaceSessionSnapshot, markWorkspaceRestoreNavigationOverride, postConnectSetup, reconnectSession, rememberWorkspace, resolveSessionContentTab, resolveSessionRootTerminalId, t, workspacePersistenceLevel]);
 
   // ── Close session ──────────────────────────────────────────
   // ponytail: 内部关闭逻辑，不带确认弹窗，供 closeSession 和右键菜单共用
@@ -3028,7 +3040,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
         session,
         terminalPaneLayouts: terminalPaneLayoutsRef.current,
         activeTerminalId: activeSessionIdRef.current === sessionId ? activeTerminalIdRef.current : lastTerminalRef.current[sessionId],
-        contentTab: activeSessionIdRef.current === sessionId ? contentTab : 'terminal',
+        contentTab: activeSessionIdRef.current === sessionId ? contentTabRef.current : (lastContentTabRef.current[sessionId] || 'terminal'),
       });
     }
     const termIds = session?.terminals ? session.terminals.map(t => t.id) : [sessionId];
@@ -3061,7 +3073,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     if (connectingServersRef.current.some((s) => s.sessionId === sessionId)) {
       setConnectingServers((prev) => prev.filter((s) => s.sessionId !== sessionId));
     }
-  }, [contentTab, persistServerWorkspaceSessionSnapshot]);
+  }, [persistServerWorkspaceSessionSnapshot]);
 
   const closeSession = useCallback(async (sessionId, e) => {
     e?.stopPropagation();
@@ -3092,7 +3104,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
         session,
         terminalPaneLayouts: terminalPaneLayoutsRef.current,
         activeTerminalId: activeSessionIdRef.current === session.id ? activeTerminalIdRef.current : lastTerminalRef.current[session.id],
-        contentTab: activeSessionIdRef.current === session.id ? contentTab : 'terminal',
+        contentTab: activeSessionIdRef.current === session.id ? contentTabRef.current : (lastContentTabRef.current[session.id] || 'terminal'),
       });
     });
     const allTermIds = all.flatMap(s => s.terminals?.length > 0 ? s.terminals.map(t => t.id) : [s.id]);
@@ -3109,7 +3121,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     setActiveSessionId(null);
     setActiveTerminalId(null);
     setConnectingServers([]);
-  }, [contentTab, persistServerWorkspaceSessionSnapshot, t]);
+  }, [persistServerWorkspaceSessionSnapshot, t]);
 
   // ── 在当前服务器上新建终端标签 ──────────────────────────────
   const openNewTerminal = useCallback(async (sessionId) => {
@@ -3167,7 +3179,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
         session,
         terminalPaneLayouts: terminalPaneLayoutsRef.current,
         activeTerminalId: activeSessionIdRef.current === sessionId ? activeTerminalIdRef.current : lastTerminalRef.current[sessionId],
-        contentTab: activeSessionIdRef.current === sessionId ? contentTab : 'terminal',
+        contentTab: activeSessionIdRef.current === sessionId ? contentTabRef.current : (lastContentTabRef.current[sessionId] || 'terminal'),
       });
     }
     AppGo.DisconnectSSH(terminalId).catch(() => {});
@@ -3200,7 +3212,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     if (activeSessionIdRef.current === sessionId && activeTerminalIdRef.current === terminalId) {
       setActiveTerminalId(resolveSessionRootTerminalId({ ...session, terminals: remaining }, lastTerminalRef.current[sessionId]));
     }
-  }, [contentTab, persistServerWorkspaceSessionSnapshot, resolveSessionRootTerminalId, switchToNextSession]);
+  }, [persistServerWorkspaceSessionSnapshot, resolveSessionRootTerminalId, switchToNextSession]);
 
   const dispatchTerminalPaneResize = useCallback(() => {
     setTimeout(() => {
@@ -3436,7 +3448,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
         session,
         terminalPaneLayouts: terminalPaneLayoutsRef.current,
         activeTerminalId: activeSessionIdRef.current === sessionId ? activeTerminalIdRef.current : lastTerminalRef.current[sessionId],
-        contentTab: activeSessionIdRef.current === sessionId ? contentTab : 'terminal',
+        contentTab: activeSessionIdRef.current === sessionId ? contentTabRef.current : (lastContentTabRef.current[sessionId] || 'terminal'),
       });
       window?.go?.main?.App?.ClearWorkspaceState?.().catch(() => {});
       setSessions((prev) => prev.filter((item) => item.id !== sessionId));
@@ -3463,7 +3475,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
       setActiveTerminalId(nextActiveTabId || null);
     }
     dispatchTerminalPaneResize();
-  }, [contentTab, dispatchTerminalPaneResize, persistServerWorkspaceSessionSnapshot, resolveSessionRootTerminalId, switchToNextSession]);
+  }, [dispatchTerminalPaneResize, persistServerWorkspaceSessionSnapshot, resolveSessionRootTerminalId, switchToNextSession]);
 
   const closeTerminalPane = useCallback((layoutId, paneId, e) => {
     e?.stopPropagation();
@@ -3643,7 +3655,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
           session,
           terminalPaneLayouts: savedLayouts,
           activeTerminalId: session.id === savedActiveSessionId ? savedActiveTerminalId : lastTerminalRef.current[session.id],
-          contentTab: session.id === savedActiveSessionId ? contentTab : 'terminal',
+          contentTab: session.id === savedActiveSessionId ? contentTab : (lastContentTabRef.current[session.id] || 'terminal'),
         });
       });
     }
@@ -4077,12 +4089,18 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     </div>
   ) : null;
 
-  // 同步 activeTerminalId 到 ref，记住每个 session 最后选中的终端
+  // 同步 activeTerminalId / contentTab 到每个 session 的记忆
   useEffect(() => {
     if (activeSessionId && activeTerminalId) {
       lastTerminalRef.current[activeSessionId] = activeTerminalId;
     }
   }, [activeSessionId, activeTerminalId]);
+
+  useEffect(() => {
+    if (activeSessionId) {
+      lastContentTabRef.current[activeSessionId] = normalizeWorkspaceContentTab(contentTab);
+    }
+  }, [activeSessionId, contentTab]);
 
   // 追踪已访问的 session，仅渲染访问过的 session 组件（避免未激活的 session 创建 xterm/WebSocket）
   useEffect(() => {
@@ -4881,7 +4899,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                 </button>
               </Tiptop>
               <div className="tab-scroll" ref={tabScrollRef}>
-                <div ref={tabListRef} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', height: '100%' }}>
+                <div ref={tabListRef} className="tab-list">
                   {sessions.map((s) => (
                     <div
                       key={s.id}
@@ -4921,31 +4939,31 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                     </div>
                   ))}
                 </div>
-                <div ref={tabActionsRef} style={{ position: 'sticky', right: 0, display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, background: 'transparent' }}>
-                  {tabsOverflow && (
-                    <Tiptop text={t('服务器列表')} placement="bottom">
-                      <button
-                        ref={sessionListBtnRef}
-                        className="btn btn-icon no-drag"
-                        onClick={toggleSessionList}
-                        aria-label={t('服务器列表')}
-                      >
-                        <ChevronDown size={14} />
-                      </button>
-                    </Tiptop>
-                  )}
-                  {sessions.length >= 2 && (
-                    <Tiptop text={t('关闭全部')} placement="bottom">
-                      <button
-                        className="btn btn-danger btn-sm no-drag"
-                        onClick={closeAllSessions}
-                        aria-label={t('关闭全部')}
-                      >
-                        <X size={12} /> {t('关闭全部')}
-                      </button>
-                    </Tiptop>
-                  )}
-                </div>
+              </div>
+              <div ref={tabActionsRef} className="tab-actions">
+                {tabsOverflow && (
+                  <Tiptop text={t('服务器列表')} placement="bottom">
+                    <button
+                      ref={sessionListBtnRef}
+                      className="btn btn-icon no-drag"
+                      onClick={toggleSessionList}
+                      aria-label={t('服务器列表')}
+                    >
+                      <ChevronDown size={14} />
+                    </button>
+                  </Tiptop>
+                )}
+                {sessions.length >= 2 && (
+                  <Tiptop text={t('关闭全部')} placement="bottom">
+                    <button
+                      className="btn btn-danger btn-sm no-drag"
+                      onClick={closeAllSessions}
+                      aria-label={t('关闭全部')}
+                    >
+                      <X size={12} /> {t('关闭全部')}
+                    </button>
+                  </Tiptop>
+                )}
               </div>
             </div>
           )}

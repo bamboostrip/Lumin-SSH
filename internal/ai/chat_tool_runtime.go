@@ -927,6 +927,7 @@ func (a *App) failAIChatToolPreview(requestID string, batch *aiPendingToolBatch,
 	} else {
 		message["result"] = resolvedResultText
 	}
+	attachAIResultTokenEstimateMeta(message, buildAIChatToolResultContent(tool.Name, resolvedResultText))
 	a.emitAIChatEvent(map[string]interface{}{
 		"kind":      "upsert_message",
 		"requestId": requestID,
@@ -946,10 +947,58 @@ func (a *App) failAIChatToolPreview(requestID string, batch *aiPendingToolBatch,
 	a.resumeAIChatAfterToolBatch(requestID, batch)
 }
 
+func buildAIChatToolResultContent(toolName string, resultText string) string {
+	return fmt.Sprintf("[%s] Result:\n%s", toolName, resultText)
+}
+
+func buildAIMCPToolResultContent(serverName string, toolName string, resultText string) string {
+	return fmt.Sprintf("[%s:%s] Result:\n%s", serverName, toolName, resultText)
+}
+
+func buildAIResultTokenEstimateDisplay(tokenCount int) string {
+	if tokenCount <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%.6fM", float64(tokenCount)/1000000)
+}
+
+func buildAIResultTokenEstimateMeta(rawResultContent string) map[string]interface{} {
+	if strings.TrimSpace(rawResultContent) == "" {
+		return nil
+	}
+	tokenCount, err := CountTokenBlocks([]TokenCountBlock{{
+		Type: "text",
+		Text: rawResultContent,
+	}})
+	if err != nil || tokenCount <= 0 {
+		return nil
+	}
+	return map[string]interface{}{
+		"resultTokenEstimate":        tokenCount,
+		"resultTokenEstimateDisplay": buildAIResultTokenEstimateDisplay(tokenCount),
+	}
+}
+
+func attachAIResultTokenEstimateMeta(message map[string]interface{}, rawResultContent string) map[string]interface{} {
+	meta := buildAIResultTokenEstimateMeta(rawResultContent)
+	if message == nil || len(meta) == 0 {
+		return message
+	}
+	existingExtra, _ := message["extra"].(map[string]interface{})
+	if existingExtra == nil {
+		existingExtra = map[string]interface{}{}
+	}
+	for key, value := range meta {
+		existingExtra[key] = value
+	}
+	message["extra"] = existingExtra
+	return message
+}
+
 func buildAIChatToolResultMessage(toolName string, resultText string) AIChatRequestMessage {
 	return AIChatRequestMessage{
 		Role:    "user",
-		Content: fmt.Sprintf("[%s] Result:\n%s", toolName, resultText),
+		Content: buildAIChatToolResultContent(toolName, resultText),
 	}
 }
 
@@ -976,7 +1025,7 @@ func (a *App) emitAIChatToolResultMessage(requestID string, execution *aiToolExe
 		"message": map[string]interface{}{
 			"messageId":    fmt.Sprintf("api-tool-result-%d", time.Now().UnixNano()),
 			"role":         "user",
-			"content":      fmt.Sprintf("[%s] Result:\n%s", execution.Tool.Name, resultText),
+			"content":      buildAIChatToolResultContent(execution.Tool.Name, resultText),
 			"uiMessageIds": []string{execution.ToolMessageID},
 			"ts":           time.Now().UnixMilli(),
 		},
@@ -1055,7 +1104,7 @@ func buildAIChatCommandToolMessage(execution *aiToolExecutionState, purpose stri
 	if len(extra) > 0 {
 		message["extra"] = extra
 	}
-	return message
+	return attachAIResultTokenEstimateMeta(message, buildAIChatToolResultContent(execution.Tool.Name, output))
 }
 
 func (a *App) emitAIChatCommandToolMessage(requestID string, execution *aiToolExecutionState, purpose string, command string, output string, status string, extra map[string]interface{}) {
@@ -1434,6 +1483,7 @@ func (a *App) runAIChatGenericToolExecution(execution *aiToolExecutionState) {
 	attachAIRestoreArtifactRef(message, execution.RestoreArtifactPath)
 	attachAICopyContent(message, execution.CopyContent)
 	attachAIConversationDiffMeta(message, execution.ConversationDiffPrimaryPath, execution.ConversationDiffFileCount, execution.ConversationDiffToolName, execution.ConversationDiffHasPreview)
+	attachAIResultTokenEstimateMeta(message, buildAIChatToolResultContent(execution.Tool.Name, rawResultText))
 	a.emitAIChatEvent(map[string]interface{}{
 		"kind":      "upsert_message",
 		"requestId": execution.RequestID,
@@ -1503,6 +1553,7 @@ func (a *App) runAIChatLiveSearchToolExecution(execution *aiToolExecutionState) 
 					"status":             "执行中",
 					"result":             safeContent,
 					"remainingFileEdits": getAIToolRemainingFileEdits(execution.Tool),
+					"extra":              buildAIResultTokenEstimateMeta(buildAIChatToolResultContent(execution.Tool.Name, safeContent)),
 				},
 			})
 		})
@@ -1553,6 +1604,7 @@ func (a *App) runAIChatLiveSearchToolExecution(execution *aiToolExecutionState) 
 			"status":             statusText,
 			"result":             uiResultText,
 			"remainingFileEdits": getAIToolRemainingFileEdits(execution.Tool),
+			"extra":              buildAIResultTokenEstimateMeta(buildAIChatToolResultContent(execution.Tool.Name, rawResultText)),
 		},
 	})
 
@@ -1857,6 +1909,7 @@ func (a *App) terminateAIChatToolExecutionImmediately(execution *aiToolExecution
 	attachAIRestoreArtifactRef(message, execution.RestoreArtifactPath)
 	attachAICopyContent(message, execution.CopyContent)
 	attachAIConversationDiffMeta(message, execution.ConversationDiffPrimaryPath, execution.ConversationDiffFileCount, execution.ConversationDiffToolName, execution.ConversationDiffHasPreview)
+	attachAIResultTokenEstimateMeta(message, buildAIChatToolResultContent(execution.Tool.Name, resultText))
 	a.emitAIChatEvent(map[string]interface{}{
 		"kind":      "upsert_message",
 		"requestId": execution.RequestID,

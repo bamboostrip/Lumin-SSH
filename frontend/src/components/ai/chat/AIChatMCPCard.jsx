@@ -2,10 +2,11 @@ import { ChevronDown, Server } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from '../../../i18n.js'
 
-export default function AIChatMCPCard({ serverName, toolName, args, response, isLast = false, hasSubsequentAssistantMessage = false }) {
+export default function AIChatMCPCard({ serverName, toolName, args, response, extra = {}, isLast = false, hasSubsequentAssistantMessage = false }) {
   const { t } = useTranslation()
   const [isRequestExpanded, setIsRequestExpanded] = useState(isLast)
   const [isResponseExpanded, setIsResponseExpanded] = useState(false)
+  const resultTokenEstimateDisplay = typeof extra?.resultTokenEstimateDisplay === 'string' ? extra.resultTokenEstimateDisplay.trim() : ''
 
   useEffect(() => {
     if (isLast) {
@@ -43,6 +44,11 @@ export default function AIChatMCPCard({ serverName, toolName, args, response, is
               <span style={{ padding: '2px 8px', borderRadius: 999, border: '1px solid color-mix(in srgb, var(--success) 30%, var(--border))', background: 'color-mix(in srgb, var(--success) 8%, var(--surface-overlay))', color: 'var(--success)', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>
                 {t('completed')}
               </span>
+            ) : null}
+            {resultTokenEstimateDisplay ? (
+              <div style={{ padding: '2px 8px', borderRadius: 999, border: '1px solid color-mix(in srgb, var(--accent) 24%, var(--border))', background: 'color-mix(in srgb, var(--accent) 8%, var(--surface-overlay))', color: 'var(--text-secondary)', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums' }}>
+                {resultTokenEstimateDisplay}
+              </div>
             ) : null}
             <button
               type="button"

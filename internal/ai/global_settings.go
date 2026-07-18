@@ -55,6 +55,7 @@ type AIGlobalSettings struct {
 	MessageActionBarAtBottom            bool             `json:"messageActionBarAtBottom"`
 	ApprovalButtonOrder                 string           `json:"approvalButtonOrder"`
 	CommandActionButtonOrder            string           `json:"commandActionButtonOrder"`
+	ToolResultTokenThreshold            int              `json:"toolResultTokenThreshold,omitempty"`
 	AIRequestProxyID                    string           `json:"aiRequestProxyId,omitempty"`
 	UpdatedAt                           int64            `json:"updatedAt,omitempty"`
 	ProxyNodes                          []AIProxyNode    `json:"proxyNodes,omitempty"`
@@ -73,6 +74,7 @@ func defaultAIGlobalSettings() AIGlobalSettings {
 		MessageActionBarAtBottom:      true,
 		ApprovalButtonOrder:           "reject-approve",
 		CommandActionButtonOrder:      "terminate-continue",
+		ToolResultTokenThreshold:      350000,
 	}
 }
 
@@ -294,6 +296,9 @@ func normalizeAIGlobalSettings(settings AIGlobalSettings) AIGlobalSettings {
 	}
 	settings.ProxyNodes = normalizeAIProxyNodes(settings.ProxyNodes)
 	settings.AIRequestProxyID = normalizeAIRequestProxyID(settings.AIRequestProxyID, settings.ProxyNodes)
+	if settings.ToolResultTokenThreshold <= 0 {
+		settings.ToolResultTokenThreshold = defaultAIGlobalSettings().ToolResultTokenThreshold
+	}
 	return settings
 }
 

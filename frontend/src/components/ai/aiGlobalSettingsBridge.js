@@ -30,6 +30,7 @@ const DEFAULT_AI_GLOBAL_SETTINGS = {
   messageActionBarAtBottom: true,
   approvalButtonOrder: 'reject-approve',
   commandActionButtonOrder: 'terminate-continue',
+  toolResultTokenThreshold: 350000,
   aiRequestProxyId: '',
   updatedAt: 0,
   proxyNodes: [],
@@ -84,6 +85,14 @@ function normalizeSoundVolume(value) {
     return 1
   }
   return parsed
+}
+
+function normalizeToolResultTokenThreshold(value) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 350000
+  }
+  return Math.max(1, Math.trunc(parsed))
 }
 
 function normalizeProxyType(value) {
@@ -143,6 +152,7 @@ export function normalizeAIGlobalSettings(settings) {
   const updatedAt = Number.isFinite(Number(settings?.updatedAt)) && Number(settings?.updatedAt) > 0 ? Number(settings.updatedAt) : Date.now()
   const soundEnabled = settings?.soundEnabled !== false
   const soundVolume = normalizeSoundVolume(settings?.soundVolume)
+  const toolResultTokenThreshold = normalizeToolResultTokenThreshold(settings?.toolResultTokenThreshold)
 
   return {
     ...DEFAULT_AI_GLOBAL_SETTINGS,
@@ -166,6 +176,7 @@ export function normalizeAIGlobalSettings(settings) {
     alwaysAllowFollowupQuestions: Boolean(settings?.alwaysAllowFollowupQuestions),
     soundEnabled,
     soundVolume,
+    toolResultTokenThreshold,
     mcpEnabled: settings?.mcpEnabled !== false,
     mcpAllowBrowserCalls: Boolean(settings?.mcpAllowBrowserCalls),
     terminalIsolation: settings?.terminalIsolation !== false,

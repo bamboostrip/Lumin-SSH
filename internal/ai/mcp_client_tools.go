@@ -215,8 +215,14 @@ func parseAIMCPToolArguments(raw string) (map[string]any, error) {
 	return arguments, nil
 }
 
-func buildAIMCPToolMessage(execution *aiToolExecutionState, serverName string, toolName string, args string, response string, status string, source mcp.ServerSource) map[string]interface{} {
-	return map[string]interface{}{
+func buildAIMCPToolMessage(execution *aiToolExecutionState, serverName string, toolName string, args string, response string, status string, source mcp.ServerSource, extra map[string]interface{}) map[string]interface{} {
+	mergedExtra := map[string]interface{}{
+		"source": string(source),
+	}
+	for key, value := range extra {
+		mergedExtra[key] = value
+	}
+	message := map[string]interface{}{
 		"id":         execution.ToolMessageID,
 		"turnId":     execution.AssistantMessageID,
 		"kind":       "mcp",
@@ -225,10 +231,12 @@ func buildAIMCPToolMessage(execution *aiToolExecutionState, serverName string, t
 		"args":       args,
 		"response":   response,
 		"status":     status,
-		"extra": map[string]interface{}{
-			"source": string(source),
-		},
+		"extra":      mergedExtra,
 	}
+	if _, exists := mergedExtra["resultTokenEstimateDisplay"]; exists {
+		return message
+	}
+	return attachAIResultTokenEstimateMeta(message, buildAIMCPToolResultContent(serverName, toolName, response))
 }
 
 func (a *App) runAIChatMCPClientToolExecution(execution *aiToolExecutionState) {
@@ -251,6 +259,7 @@ func (a *App) runAIChatMCPClientToolExecution(execution *aiToolExecutionState) {
 	rawResultText := ""
 	argsText := "{}"
 	toolLabel := strings.TrimSpace(execution.Tool.Params["tool_name"])
+	rawResultSource := ""
 	switch execution.Tool.Name {
 	case aiUseMCPToolName:
 		if toolLabel == "" {
@@ -272,9 +281,16 @@ func (a *App) runAIChatMCPClientToolExecution(execution *aiToolExecutionState) {
 		} else {
 			uiResultText = strings.TrimSpace(callResult.Response)
 			rawResultText = callResult.Response
+			rawResultSource = callResult.Response
 			argsText = callResult.Args
 			if callResult.IsError {
 				statusText = "错误"
+			} else if strings.TrimSpace(rawResultSource) != "" {
+				thresholdedResult := buildAIResultContentWithThreshold(rawResultSource, a.GetAIGlobalSettings().ToolResultTokenThreshold)
+				if thresholdedResult.Oversized {
+					uiResultText = thresholdedResult.Content
+					rawResultText = thresholdedResult.Content
+				}
 			}
 		}
 	case aiAccessMCPResourceToolName:
@@ -294,7 +310,15 @@ func (a *App) runAIChatMCPClientToolExecution(execution *aiToolExecutionState) {
 		} else {
 			uiResultText = strings.TrimSpace(readResult.Response)
 			rawResultText = readResult.Response
+			rawResultSource = readResult.Response
 			argsText = marshalMCPAccessResourceArgs(uri)
+			if strings.TrimSpace(rawResultSource) != "" {
+				thresholdedResult := buildAIResultContentWithThreshold(rawResultSource, a.GetAIGlobalSettings().ToolResultTokenThreshold)
+				if thresholdedResult.Oversized {
+					uiResultText = thresholdedResult.Content
+					rawResultText = thresholdedResult.Content
+				}
+			}
 		}
 	default:
 		a.failAIChatToolPreview(execution.RequestID, execution.Batch, execution.Tool, "当前工具不支持 MCP 客户端调用")
@@ -307,10 +331,16 @@ func (a *App) runAIChatMCPClientToolExecution(execution *aiToolExecutionState) {
 	if execution.Cancel != nil {
 		execution.Cancel()
 	}
+	mcpExtra := map[string]interface{}{}
+	if resultTokenEstimateMeta := buildAIResultTokenEstimateMeta(buildAIMCPToolResultContent(serverName, toolLabel, rawResultSource)); len(resultTokenEstimateMeta) > 0 {
+		for key, value := range resultTokenEstimateMeta {
+			mcpExtra[key] = value
+		}
+	}
 	a.emitAIChatEvent(map[string]interface{}{
 		"kind":      "upsert_message",
 		"requestId": execution.RequestID,
-		"message":   buildAIMCPToolMessage(execution, serverName, toolLabel, argsText, uiResultText, statusText, source),
+		"message":   buildAIMCPToolMessage(execution, serverName, toolLabel, argsText, uiResultText, statusText, source, mcpExtra),
 	})
 	a.emitAIMCPToolResultMessage(execution.RequestID, execution.ToolMessageID, serverName, toolLabel, rawResultText)
 	a.emitAIChatToolExecutionPersistRequested(execution.RequestID)
@@ -550,13 +580,18 @@ func (a *App) emitAIMCPToolResultMessage(requestID string, toolMessageID string,
 	if a == nil || strings.TrimSpace(resultText) == "" {
 		return
 	}
+	thresholdedResult := buildAIResultContentWithThreshold(resultText, a.GetAIGlobalSettings().ToolResultTokenThreshold)
+	resultContent := thresholdedResult.Content
+	if strings.TrimSpace(resultContent) == "" {
+		resultContent = strings.TrimSpace(resultText)
+	}
 	a.emitAIChatEvent(map[string]interface{}{
 		"kind":      "api_message_append",
 		"requestId": requestID,
 		"message": map[string]interface{}{
 			"messageId":    fmt.Sprintf("api-mcp-result-%d", time.Now().UnixNano()),
 			"role":         "user",
-			"content":      fmt.Sprintf("[%s:%s] Result:\n%s", serverName, toolName, resultText),
+			"content":      buildAIMCPToolResultContent(serverName, toolName, resultContent),
 			"uiMessageIds": []string{toolMessageID},
 			"ts":           time.Now().UnixMilli(),
 		},

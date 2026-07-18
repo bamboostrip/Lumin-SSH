@@ -947,6 +947,15 @@ func (a *App) failAIChatToolPreview(requestID string, batch *aiPendingToolBatch,
 	a.resumeAIChatAfterToolBatch(requestID, batch)
 }
 
+const aiDefaultToolResultTokenThreshold = 350000
+
+type aiToolResultThresholdResult struct {
+	Content                  string
+	TokenCount               int
+	TokenEstimateDisplay     string
+	Oversized                bool
+}
+
 func buildAIChatToolResultContent(toolName string, resultText string) string {
 	return fmt.Sprintf("[%s] Result:\n%s", toolName, resultText)
 }
@@ -962,20 +971,64 @@ func buildAIResultTokenEstimateDisplay(tokenCount int) string {
 	return fmt.Sprintf("%.6fM", float64(tokenCount)/1000000)
 }
 
-func buildAIResultTokenEstimateMeta(rawResultContent string) map[string]interface{} {
+func estimateAIResultTokens(rawResultContent string) (int, string, bool) {
 	if strings.TrimSpace(rawResultContent) == "" {
-		return nil
+		return 0, "", false
 	}
 	tokenCount, err := CountTokenBlocks([]TokenCountBlock{{
 		Type: "text",
 		Text: rawResultContent,
 	}})
 	if err != nil || tokenCount <= 0 {
+		return 0, "", false
+	}
+	return tokenCount, buildAIResultTokenEstimateDisplay(tokenCount), true
+}
+
+func buildAIOversizedToolResultMessage(tokenCount int, threshold int) string {
+	return fmt.Sprintf(
+		"[ERROR] [Token Limit] Tool result returned too much data, so the raw output was omitted. Estimated size is about %s tokens, exceeding the threshold of %s. Do not assume omitted content; if you need details, call the tool again with a narrower scope, output limits, or a summary request.",
+		buildAIResultTokenEstimateDisplay(tokenCount),
+		buildAIResultTokenEstimateDisplay(threshold),
+	)
+}
+
+func buildAIResultContentWithThreshold(rawResultContent string, threshold int) aiToolResultThresholdResult {
+	trimmedContent := strings.TrimSpace(rawResultContent)
+	if trimmedContent == "" {
+		return aiToolResultThresholdResult{}
+	}
+	tokenCount, tokenDisplay, ok := estimateAIResultTokens(trimmedContent)
+	if !ok {
+		return aiToolResultThresholdResult{Content: trimmedContent}
+	}
+	normalizedThreshold := threshold
+	if normalizedThreshold <= 0 {
+		normalizedThreshold = aiDefaultToolResultTokenThreshold
+	}
+	if tokenCount > normalizedThreshold {
+		return aiToolResultThresholdResult{
+			Content:              buildAIOversizedToolResultMessage(tokenCount, normalizedThreshold),
+			TokenCount:           tokenCount,
+			TokenEstimateDisplay: tokenDisplay,
+			Oversized:            true,
+		}
+	}
+	return aiToolResultThresholdResult{
+		Content:              trimmedContent,
+		TokenCount:           tokenCount,
+		TokenEstimateDisplay: tokenDisplay,
+	}
+}
+
+func buildAIResultTokenEstimateMeta(rawResultContent string) map[string]interface{} {
+	tokenCount, tokenDisplay, ok := estimateAIResultTokens(rawResultContent)
+	if !ok || tokenCount <= 0 {
 		return nil
 	}
 	return map[string]interface{}{
 		"resultTokenEstimate":        tokenCount,
-		"resultTokenEstimateDisplay": buildAIResultTokenEstimateDisplay(tokenCount),
+		"resultTokenEstimateDisplay": tokenDisplay,
 	}
 }
 
@@ -1018,14 +1071,19 @@ func (a *App) emitAIChatToolResultMessage(requestID string, execution *aiToolExe
 	if shouldSuppressAIChatToolResultUserMessage(execution.Tool.Name) {
 		return
 	}
-	execution.Batch.RequestMessages = append(execution.Batch.RequestMessages, buildAIChatToolResultMessage(execution.Tool.Name, resultText))
+	thresholdedResult := buildAIResultContentWithThreshold(resultText, a.GetAIGlobalSettings().ToolResultTokenThreshold)
+	resultContent := thresholdedResult.Content
+	if strings.TrimSpace(resultContent) == "" {
+		resultContent = strings.TrimSpace(resultText)
+	}
+	execution.Batch.RequestMessages = append(execution.Batch.RequestMessages, buildAIChatToolResultMessage(execution.Tool.Name, resultContent))
 	a.emitAIChatEvent(map[string]interface{}{
 		"kind":      "api_message_append",
 		"requestId": requestID,
 		"message": map[string]interface{}{
 			"messageId":    fmt.Sprintf("api-tool-result-%d", time.Now().UnixNano()),
 			"role":         "user",
-			"content":      buildAIChatToolResultContent(execution.Tool.Name, resultText),
+			"content":      buildAIChatToolResultContent(execution.Tool.Name, resultContent),
 			"uiMessageIds": []string{execution.ToolMessageID},
 			"ts":           time.Now().UnixMilli(),
 		},
@@ -1103,6 +1161,9 @@ func buildAIChatCommandToolMessage(execution *aiToolExecutionState, purpose stri
 	}
 	if len(extra) > 0 {
 		message["extra"] = extra
+		if _, exists := extra["resultTokenEstimateDisplay"]; exists {
+			return message
+		}
 	}
 	return attachAIResultTokenEstimateMeta(message, buildAIChatToolResultContent(execution.Tool.Name, output))
 }
@@ -1465,6 +1526,11 @@ func (a *App) runAIChatGenericToolExecution(execution *aiToolExecutionState) {
 	} else {
 		uiResultText = formatToolResultContent(callResult)
 		rawResultText = formatAIRawToolResultContent(callResult)
+		thresholdedResult := buildAIResultContentWithThreshold(rawResultText, a.GetAIGlobalSettings().ToolResultTokenThreshold)
+		if thresholdedResult.Oversized {
+			uiResultText = thresholdedResult.Content
+			rawResultText = thresholdedResult.Content
+		}
 	}
 	uiResultText = sanitizeAIToolResultText(uiResultText)
 
@@ -1483,7 +1549,7 @@ func (a *App) runAIChatGenericToolExecution(execution *aiToolExecutionState) {
 	attachAIRestoreArtifactRef(message, execution.RestoreArtifactPath)
 	attachAICopyContent(message, execution.CopyContent)
 	attachAIConversationDiffMeta(message, execution.ConversationDiffPrimaryPath, execution.ConversationDiffFileCount, execution.ConversationDiffToolName, execution.ConversationDiffHasPreview)
-	attachAIResultTokenEstimateMeta(message, buildAIChatToolResultContent(execution.Tool.Name, rawResultText))
+	attachAIResultTokenEstimateMeta(message, buildAIChatToolResultContent(execution.Tool.Name, formatAIRawToolResultContent(callResult)))
 	a.emitAIChatEvent(map[string]interface{}{
 		"kind":      "upsert_message",
 		"requestId": execution.RequestID,
@@ -1577,6 +1643,12 @@ func (a *App) runAIChatLiveSearchToolExecution(execution *aiToolExecutionState) 
 			if strings.TrimSpace(uiResultText) == "" {
 				uiResultText = "无内容"
 				rawResultText = uiResultText
+			} else {
+				thresholded := buildAIResultContentWithThreshold(rawResultText, a.GetAIGlobalSettings().ToolResultTokenThreshold)
+				if thresholded.Oversized {
+					uiResultText = thresholded.Content
+					rawResultText = thresholded.Content
+				}
 			}
 		}
 	}
@@ -1719,6 +1791,7 @@ func (a *App) runAIChatCommandToolExecution(execution *aiToolExecutionState) {
 
 	statusText := "已执行"
 	rawResultText := result.Output
+	rawResultSource := rawResultText
 	uiResultText := sanitizeAIToolResultText(strings.TrimSpace(result.Output))
 	stopAfterThisTool := false
 
@@ -1744,6 +1817,21 @@ func (a *App) runAIChatCommandToolExecution(execution *aiToolExecutionState) {
 		stopAfterThisTool = true
 	}
 
+	if execErr == nil && strings.TrimSpace(rawResultSource) != "" {
+		thresholdedResult := buildAIResultContentWithThreshold(rawResultSource, a.GetAIGlobalSettings().ToolResultTokenThreshold)
+		if thresholdedResult.Oversized {
+			uiResultText = thresholdedResult.Content
+			rawResultText = thresholdedResult.Content
+		}
+	}
+
+	commandExtra := buildAIChatCommandMessageExtra(execution.targetSessionID(), "", isMutating)
+	if resultTokenEstimateMeta := buildAIResultTokenEstimateMeta(buildAIChatToolResultContent(execution.Tool.Name, rawResultSource)); len(resultTokenEstimateMeta) > 0 {
+		for key, value := range resultTokenEstimateMeta {
+			commandExtra[key] = value
+		}
+	}
+
 	a.emitAIChatCommandToolMessage(
 		execution.RequestID,
 		execution,
@@ -1751,7 +1839,7 @@ func (a *App) runAIChatCommandToolExecution(execution *aiToolExecutionState) {
 		command,
 		uiResultText,
 		statusText,
-		buildAIChatCommandMessageExtra(execution.targetSessionID(), "", isMutating),
+		commandExtra,
 	)
 
 	if strings.TrimSpace(uiResultText) == "" {

@@ -312,10 +312,72 @@ export default function AppTab({ CURRENT_VERSION, BUILD_TIME, updateInfo, checki
           url="https://github.com/wmwlwmwl/Lumin-SSH"
         />
         <AboutLink
+          icon={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>}
+          title={$t('Android 客户端')}
+          url="https://github.com/wmwlwmwl/Lumin-SSH-Android"
+        />
+        <AboutLink
           icon={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>}
           title={$t('更新内容')}
           url="https://github.com/wmwlwmwl/Lumin-SSH/releases"
         />
+      </div>
+
+      <div style={{
+        marginTop: 4,
+        padding: '14px 16px',
+        borderRadius: 'var(--radius-md)',
+        border: '1px solid var(--border)',
+        background: 'var(--surface-overlay)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+          {$t('跨端说明')}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+          {$t('本产品为桌面端。Android 客户端独立仓库、分开发版，数据可通过云同步互通。')}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.55 }}>
+          {$t('本 Release 仅 Desktop，Android 端见 Lumin-SSH-Android')}
+          {' · '}
+          {$t('许可见仓库 LICENSE')}
+        </div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 2 }}>
+          <button
+            type="button"
+            onClick={() => window.runtime?.BrowserOpenURL('https://github.com/wmwlwmwl/Lumin-SSH-Android')}
+            style={{
+              background: 'var(--surface-base)',
+              color: 'var(--accent)',
+              border: '1px solid var(--border)',
+              borderRadius: 8,
+              padding: '6px 12px',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            {$t('打开 Android 仓库')}
+          </button>
+          <button
+            type="button"
+            onClick={() => window.runtime?.BrowserOpenURL('https://github.com/wmwlwmwl/Lumin-SSH-Android/releases')}
+            style={{
+              background: 'var(--surface-base)',
+              color: 'var(--text-secondary)',
+              border: '1px solid var(--border)',
+              borderRadius: 8,
+              padding: '6px 12px',
+              fontSize: 12,
+              fontWeight: 500,
+              cursor: 'pointer',
+            }}
+          >
+            {$t('Android 发行版')}
+          </button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 8 }}>

@@ -108,16 +108,19 @@ jobs:
           name: "Lumin SSH Client ${{ github.ref_name }}"
           body: |
             ## 更新日志
-            - 文件管理器大幅改进：多选、复制/剪切/粘贴、传输队列、进度遮罩、跨终端剪贴板共享
-            - 终端时间戳渲染优化与显示改进
-            - 分组按钮合并为智能切换按钮
-            - 新增快捷切换主题入口
-            - AI 助手右键菜单"引用"、工具改进、加载策略优化
-            - 修复 SSH 异常断开检测与清理
-            - 修复提示音异常
-            - 多语言更新与英文翻译修复
-            - 服务器标签页新增复制密码
-            - 修复 StrictMode 下 mountedRef 失效、剪贴板并发健壮性加固
+            - 快捷命令底部停靠，重构命令编辑器
+            - 改进关于界面与进程管理页右键菜单
+            - 修复记忆工作区异常，增强记忆工作区
+            - 修复最大化时窗口还原尺寸丢失
+            - 切换服务器保留内容页，修正顶栏标签与工具按钮样式
+            - 收敛 UI 密度与对比，优化凭据表单交互
+            - 统一选项卡组件/样式
+            - AI 助手多项改进：目录感知、加载策略优化
+            - 移除 Token 中心
+            - 优化系统监控面板与终端组件样式
+            - 改进文件管理器
+            - 多语言更新
+            - 更新 LICENSE、README 中英文版
 
             ## 产物下载
             - Linux 便携版 ([Lumin-V${{ steps.version.outputs.version }}-linux-amd64](https://github.com/wmwlwmwl/Lumin-SSH/releases/download/v${{ steps.version.outputs.version }}/Lumin-V${{ steps.version.outputs.version }}-linux-amd64))：即下即用
@@ -128,6 +131,8 @@ jobs:
             - Windows 便携绿色版 ([Lumin-V${{ steps.version.outputs.version }}-portable.exe](https://github.com/wmwlwmwl/Lumin-SSH/releases/download/v${{ steps.version.outputs.version }}/Lumin-V${{ steps.version.outputs.version }}-portable.exe))：内嵌 WebView2，即下即用
             - Windows 标准安装版 ([Lumin-V${{ steps.version.outputs.version }}-amd64-installer.exe](https://github.com/wmwlwmwl/Lumin-SSH/releases/download/v${{ steps.version.outputs.version }}/Lumin-V${{ steps.version.outputs.version }}-amd64-installer.exe))：NSIS 安装包
             - 每个产物附带 .sha256 校验文件，自动更新时校验 SHA256 确保文件完整性
+            - 本 Release **仅 Desktop**，Android 端见 [Lumin-SSH-Android](https://github.com/wmwlwmwl/Lumin-SSH-Android/releases)
+            - 许可见仓库 [LICENSE](LICENSE)
 
             ## 安装/卸载方法
             ### DEB 包（Debian/Ubuntu）

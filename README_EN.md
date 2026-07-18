@@ -6,7 +6,7 @@
 
 [![Release](https://img.shields.io/github/v/release/wmwlwmwl/Lumin-SSH?style=flat-square&color=0078D6&label=RELEASE)](https://github.com/wmwlwmwl/Lumin-SSH/releases)
 [![Platform](https://img.shields.io/badge/PLATFORM-WINDOWS%20%7C%20macOS%20%7C%20Linux-0078D6.svg?style=flat-square)](https://github.com/wmwlwmwl/Lumin-SSH/releases)
-[![License](https://img.shields.io/badge/LICENSE-MIT-8CBA00.svg?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/LICENSE-Source%20License%201.1-8CBA00.svg?style=flat-square)](LICENSE)
 
 [English](./README_EN.md) · [简体中文](./README.md)
 
@@ -15,6 +15,8 @@
 ---
 
 ## About
+
+> **Android client** (separate repo, independent releases): [Lumin-SSH-Android](https://github.com/wmwlwmwl/Lumin-SSH-Android) · [Releases](https://github.com/wmwlwmwl/Lumin-SSH-Android/releases)
 
 Lumin is a desktop SSH client for developers and system administrators. Built with Go-native concurrency, WebSocket, and xterm.js, it delivers a low-latency terminal experience. It includes system resource probes, a remote file manager, command history and completion, optionally encrypted cloud sync, AI chat, and MCP integration with no server-side agent required.
 
@@ -369,4 +371,15 @@ Contributions of all kinds are welcome! Here's how you can help:
 
 ## License
 
-[MIT License](LICENSE) — Open source is all about having fun. Use it, modify it, enjoy it!
+This project uses the [Lumin SSH Source License 1.1](LICENSE) (same as the Android client):
+
+| | |
+|--|--|
+| **Allowed** | Non-commercial use, study, research, public forks (keep license/attribution; redistribution must be source-available) |
+| **Not allowed** | Commercial use |
+| **Not allowed** | Distributing only encrypted/packed/heavily obfuscated builds without readable source |
+
+Third-party components keep their own licenses. This license is **not legal advice**.
+
+> Desktop and Android ship from **separate repositories**. Releases in this repo are **Desktop only**. Android: [Lumin-SSH-Android](https://github.com/wmwlwmwl/Lumin-SSH-Android).
+

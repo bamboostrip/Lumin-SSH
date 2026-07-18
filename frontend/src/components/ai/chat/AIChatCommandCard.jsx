@@ -171,6 +171,7 @@ export default function AIChatCommandCard({ purpose, command, output, status = r
   const commandModeLabel = isMutating ? t('修改') : t('只读')
   const targetLabel = typeof extra?.targetLabel === 'string' ? extra.targetLabel.trim() : ''
   const targetCwd = typeof extra?.targetCwd === 'string' ? extra.targetCwd.trim() : ''
+  const resultTokenEstimateDisplay = typeof extra?.resultTokenEstimateDisplay === 'string' ? extra.resultTokenEstimateDisplay.trim() : ''
 
   return (
     <div style={{ display: 'grid', gap: 8 }}>
@@ -188,6 +189,11 @@ export default function AIChatCommandCard({ purpose, command, output, status = r
           <div style={{ padding: '2px 8px', borderRadius: 999, border: '1px solid rgba(var(--warning-rgb), 0.35)', background: 'rgba(var(--warning-rgb), 0.08)', color: 'var(--warning)', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>
             {t(normalizedStatus)}
           </div>
+          {resultTokenEstimateDisplay ? (
+            <div style={{ padding: '2px 8px', borderRadius: 999, border: '1px solid color-mix(in srgb, var(--accent) 24%, var(--border))', background: 'color-mix(in srgb, var(--accent) 8%, var(--surface-overlay))', color: 'var(--text-secondary)', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums' }}>
+              {resultTokenEstimateDisplay}
+            </div>
+          ) : null}
           {output ? (
             <button
               type="button"

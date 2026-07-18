@@ -8,7 +8,7 @@ function normalizeAIMessageStatus(value) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-export default function AIChatToolCard({ restoreArtifactPath = '', copyContent = '', actionLabel, title, summary, code, result = '', status, remainingFileEdits = 0, isLast = false, hasSubsequentAssistantMessage = false, onPreviewRestore, onApplyRestore }) {
+export default function AIChatToolCard({ restoreArtifactPath = '', copyContent = '', actionLabel, title, summary, code, result = '', status, remainingFileEdits = 0, extra = {}, isLast = false, hasSubsequentAssistantMessage = false, onPreviewRestore, onApplyRestore }) {
   const { t } = useTranslation()
   const [isAutoExpanded, setIsAutoExpanded] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
@@ -75,6 +75,7 @@ export default function AIChatToolCard({ restoreArtifactPath = '', copyContent =
   const copyCharacterCount = normalizedCopyContent ? normalizedCopyContent.length : 0
   const showCopyCharacterCount = copyCharacterCount > 0
   const showRevertTitleButton = ['apply_diff', 'write_to_file', 'search_replace', 'edit_file', 'apply_patch'].includes(String(actionLabel || '').trim())
+  const resultTokenEstimateDisplay = typeof extra?.resultTokenEstimateDisplay === 'string' ? extra.resultTokenEstimateDisplay.trim() : ''
 
   const handleToggleExpand = () => {
     setIsAutoExpanded(false)
@@ -183,6 +184,11 @@ export default function AIChatToolCard({ restoreArtifactPath = '', copyContent =
           {status ? (
             <div style={{ padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', ...statusPalette }}>
               {t(normalizedStatus)}
+            </div>
+          ) : null}
+          {resultTokenEstimateDisplay ? (
+            <div style={{ padding: '2px 8px', borderRadius: 999, border: '1px solid color-mix(in srgb, var(--accent) 24%, var(--border))', background: 'color-mix(in srgb, var(--accent) 8%, var(--surface-overlay))', color: 'var(--text-secondary)', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums' }}>
+              {resultTokenEstimateDisplay}
             </div>
           ) : null}
           <button

@@ -2,7 +2,11 @@ import { useState, useEffect, useCallback, useRef, useReducer } from 'react';
 import * as AppGo from '../../wailsjs/go/main/App.js';
 import { useTranslation } from '../i18n.js';
 import Tiptop from './Tiptop.jsx';
-import { ClipboardList, Search, RefreshCw, XCircle, X, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { clampMenuPosition } from '../utils/menuPosition.js';
+import { ClipboardList, Search, RefreshCw, XCircle, X, ArrowUpDown, ArrowUp, ArrowDown, Copy } from 'lucide-react';
+
+const PROCESS_MENU_W = 170;
+const PROCESS_MENU_H = 160;
 
 // ponytail: input is MB from Go backend (ps RSS KB → /1024 → MB)
 const fmem = (mb) => {
@@ -30,6 +34,8 @@ export default function ProcessPage({ sessionId, addToast, active }) {
   const [error, setError] = useState(null);
   const [selectedPids, setSelectedPids] = useState(new Set());
   const [killing, setKilling] = useState(false);
+  const [contextMenu, setContextMenu] = useState(null); // { x, y, process }
+  const contextMenuRef = useRef(null);
   const [detailState, detailDispatch] = useReducer((state, action) => {
     switch (action.type) {
       case 'toggle': {
@@ -197,11 +203,21 @@ export default function ProcessPage({ sessionId, addToast, active }) {
     }
   };
 
+  const confirmKill = async (count) => {
+    if (localStorage.getItem('skipProcessKillConfirm') === 'true') return true;
+    const result = await window.luminDialog?.confirm(
+      t('确定要终止选中的 ') + count + t(' 个进程吗？'),
+      t('操作确认'),
+      t('不再询问'),
+    );
+    if (!result?.confirmed) return false;
+    if (result.checked) localStorage.setItem('skipProcessKillConfirm', 'true');
+    return true;
+  };
+
   const killSelected = async () => {
     if (selectedPids.size === 0) return;
-    if (!await window.luminDialog?.confirm(
-      t('确定要终止选中的 ') + selectedPids.size + t(' 个进程吗？')
-    )) return;
+    if (!await confirmKill(selectedPids.size)) return;
 
     setKilling(true);
     let killed = 0;
@@ -221,10 +237,117 @@ export default function ProcessPage({ sessionId, addToast, active }) {
     }
   };
 
+  const killOne = async (p) => {
+    if (!p) return;
+    if (!await confirmKill(1)) return;
+    setKilling(true);
+    try {
+      await AppGo.KillProcess(sessionId, p.pid);
+      addToast?.(t('已终止 ') + 1 + t(' 个进程'), 'success');
+      setSelectedPids(prev => {
+        if (!prev.has(p.pid)) return prev;
+        const next = new Set(prev);
+        next.delete(p.pid);
+        return next;
+      });
+      load();
+    } catch (_) {
+      addToast?.(t('无法终止进程，请检查权限'), 'error');
+    } finally {
+      setKilling(false);
+    }
+  };
+
+  const copyText = (text, okMsg) => {
+    const value = String(text || '');
+    if (!value) {
+      addToast?.(t('复制失败'), 'error');
+      return;
+    }
+    navigator.clipboard?.writeText(value).then(() => {
+      addToast?.(okMsg || `${t('已复制')}: ${value}`, 'success');
+    }).catch(() => {
+      addToast?.(t('复制失败'), 'error');
+    });
+  };
+
+  const copyEnv = async (p) => {
+    if (!p) return;
+    try {
+      const vars = await AppGo.GetProcessEnv(sessionId, p.pid);
+      if (!vars?.length) {
+        addToast?.(t('无环境变量'), 'error');
+        return;
+      }
+      await navigator.clipboard.writeText(vars.join('\n'));
+      addToast?.(`${t('已复制')}: ${t('环境变量')} (${vars.length})`, 'success');
+    } catch (_) {
+      addToast?.(t('复制失败'), 'error');
+    }
+  };
+
   const handleRowClick = (p) => {
     detailDispatch({ type: 'toggle', process: p });
     setSelectedPids(new Set());
   };
+
+  const handleRowContextMenu = (e, p) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const pos = clampMenuPosition(e.clientX, e.clientY, PROCESS_MENU_W, PROCESS_MENU_H);
+    // 复用详情面板已加载的环境变量；未知时异步探测，无则不展示菜单项
+    const known = (activeProcess?.pid === p.pid && envVars !== null)
+      ? envVars.length > 0
+      : null;
+    setContextMenu({ x: pos.x, y: pos.y, process: p, hasEnv: known });
+    if (known !== null) return;
+    const pid = p.pid;
+    AppGo.GetProcessEnv(sessionId, pid)
+      .then((vars) => {
+        if (!mountedRef.current) return;
+        setContextMenu((prev) => {
+          if (!prev || prev.process?.pid !== pid) return prev;
+          return { ...prev, hasEnv: Array.isArray(vars) && vars.length > 0 };
+        });
+      })
+      .catch(() => {
+        if (!mountedRef.current) return;
+        setContextMenu((prev) => {
+          if (!prev || prev.process?.pid !== pid) return prev;
+          return { ...prev, hasEnv: false };
+        });
+      });
+  };
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const onDown = (e) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target)) {
+        setContextMenu(null);
+      }
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setContextMenu(null);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [contextMenu]);
+
+  // 菜单渲染后按实测尺寸再夹一次，防止估高不足导致溢出（含 hasEnv 出现后增高）
+  useEffect(() => {
+    if (!contextMenu || !contextMenuRef.current) return;
+    const { offsetWidth, offsetHeight } = contextMenuRef.current;
+    setContextMenu(prev => {
+      if (!prev) return prev;
+      const next = clampMenuPosition(prev.x, prev.y, offsetWidth, offsetHeight);
+      if (next.x === prev.x && next.y === prev.y) return prev;
+      return { ...prev, x: next.x, y: next.y };
+    });
+  }, [contextMenu?.process?.pid, contextMenu?.hasEnv]);
 
   const startDetailDrag = useCallback((e) => {
     e.preventDefault();
@@ -395,7 +518,9 @@ export default function ProcessPage({ sessionId, addToast, active }) {
             <div>
               <div style={{ height: visibleRange.start * ROW_H }} />
               {filtered.slice(visibleRange.start, visibleRange.end).map((p) => (
-                <div key={p.pid} style={{
+                <div key={p.pid}
+                  onContextMenu={(e) => handleRowContextMenu(e, p)}
+                  style={{
                   display: 'grid',
                   gridTemplateColumns: tableColumns,
                   gap: 0,
@@ -404,7 +529,9 @@ export default function ProcessPage({ sessionId, addToast, active }) {
                   fontFamily: 'var(--font-mono)',
                   color: 'var(--text-primary)',
                   cursor: 'pointer',
-                  background: selectedPids.has(p.pid) ? 'var(--surface-active)' : detailState.activePid === p.pid ? 'var(--surface-active)' : 'transparent',
+                  background: selectedPids.has(p.pid) || contextMenu?.process?.pid === p.pid
+                    ? 'var(--surface-active)'
+                    : detailState.activePid === p.pid ? 'var(--surface-active)' : 'transparent',
                 }}>
                   <div style={{ padding: '6px 6px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: '1px solid var(--border-light)' }} onClick={e => e.stopPropagation()}>
                     <input type="checkbox" checked={selectedPids.has(p.pid)}
@@ -429,6 +556,64 @@ export default function ProcessPage({ sessionId, addToast, active }) {
           </div>
         )}
       </div>
+
+      {/* 进程行右键菜单 */}
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          className="context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div
+            className="context-menu-item danger"
+            onClick={() => {
+              const p = contextMenu.process;
+              setContextMenu(null);
+              void killOne(p);
+            }}
+          >
+            <span className="item-icon"><XCircle size={14} /></span>
+            <span className="item-label">{t('终止')}</span>
+          </div>
+          <div className="context-menu-divider" />
+          <div
+            className="context-menu-item"
+            onClick={() => {
+              const p = contextMenu.process;
+              setContextMenu(null);
+              copyText(p?.name, `${t('已复制')}: ${p?.name || ''}`);
+            }}
+          >
+            <span className="item-icon"><Copy size={14} /></span>
+            <span className="item-label">{t('复制名称')}</span>
+          </div>
+          <div
+            className="context-menu-item"
+            onClick={() => {
+              const p = contextMenu.process;
+              setContextMenu(null);
+              copyText(p?.cmd || p?.name, t('命令已复制到剪贴板'));
+            }}
+          >
+            <span className="item-icon"><Copy size={14} /></span>
+            <span className="item-label">{t('复制命令行')}</span>
+          </div>
+          {contextMenu.hasEnv && (
+            <div
+              className="context-menu-item"
+              onClick={() => {
+                const p = contextMenu.process;
+                setContextMenu(null);
+                void copyEnv(p);
+              }}
+            >
+              <span className="item-icon"><Copy size={14} /></span>
+              <span className="item-label">{t('复制环境变量')}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 进程详情面板 */}
       {detailState.processes.length > 0 && (

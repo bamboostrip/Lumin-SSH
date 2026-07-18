@@ -6,6 +6,7 @@ export default function GeneralTab({
   confirmCloseSession, onToggleConfirmCloseSession,
   confirmCloseAll, onToggleConfirmCloseAll,
   confirmFileDelete, onToggleConfirmFileDelete,
+  confirmProcessKill, onToggleConfirmProcessKill,
   windowCloseAction, onWindowCloseActionChange,
   updateUseProxy, onToggleUpdateUseProxy,
   rememberWorkspace, onToggleRememberWorkspace,
@@ -56,6 +57,14 @@ export default function GeneralTab({
               <div style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{$t('删除文件或文件夹前弹出确认弹窗')}</div>
             </div>
             <ToggleSwitch checked={confirmFileDelete} onChange={onToggleConfirmFileDelete} />
+          </div>
+          <div className="divider" style={{ margin: '12px 0', borderTop: '1px solid var(--border)' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ color: 'var(--text-primary)', fontSize: 13 }}>{$t('终止进程时确认')}</div>
+              <div style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{$t('终止进程前弹出确认弹窗')}</div>
+            </div>
+            <ToggleSwitch checked={confirmProcessKill} onChange={onToggleConfirmProcessKill} />
           </div>
           <div className="divider" style={{ margin: '12px 0', borderTop: '1px solid var(--border)' }} />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

@@ -635,6 +635,7 @@ export default function SettingsModal({
   const [confirmCloseSession, setConfirmCloseSession] = useState(localStorage.getItem('skipCloseSessionConfirm') !== 'true');
   const [confirmCloseAll, setConfirmCloseAll] = useState(localStorage.getItem('skipCloseAllConfirm') !== 'true');
   const [confirmFileDelete, setConfirmFileDelete] = useState(localStorage.getItem('skipFileDeleteConfirm') !== 'true');
+  const [confirmProcessKill, setConfirmProcessKill] = useState(localStorage.getItem('skipProcessKillConfirm') !== 'true');
   const [windowCloseAction, setWindowCloseAction] = useState(localStorage.getItem('windowCloseAction') || 'ask');
   const [updateUseProxy, setUpdateUseProxy] = useState(localStorage.getItem('updateUseProxy') === 'true');
   const [rememberWorkspace, setRememberWorkspace] = useState(false);
@@ -679,6 +680,12 @@ export default function SettingsModal({
     setConfirmFileDelete(next);
     if (next) localStorage.removeItem('skipFileDeleteConfirm');
     else localStorage.setItem('skipFileDeleteConfirm', 'true');
+  };
+  const handleToggleConfirmProcessKill = () => {
+    const next = !confirmProcessKill;
+    setConfirmProcessKill(next);
+    if (next) localStorage.removeItem('skipProcessKillConfirm');
+    else localStorage.setItem('skipProcessKillConfirm', 'true');
   };
   const handleWindowCloseActionChange = (value) => {
     setWindowCloseAction(value);
@@ -1381,6 +1388,8 @@ export default function SettingsModal({
                 onToggleConfirmCloseAll={handleToggleConfirmCloseAll}
                 confirmFileDelete={confirmFileDelete}
                 onToggleConfirmFileDelete={handleToggleConfirmFileDelete}
+                confirmProcessKill={confirmProcessKill}
+                onToggleConfirmProcessKill={handleToggleConfirmProcessKill}
                 windowCloseAction={windowCloseAction}
                 onWindowCloseActionChange={handleWindowCloseActionChange}
                 updateUseProxy={updateUseProxy}

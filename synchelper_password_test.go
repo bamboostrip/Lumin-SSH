@@ -1060,4 +1060,195 @@ func TestPruneSyncTombstonesByDaysUploadsRemaining(t *testing.T) {
 	if tombstoneMap(uploaded.DeletedConnections)["new"] != newAt {
 		t.Fatalf("上传快照应保留 new 墓碑：%+v", uploaded.DeletedConnections)
 	}
+	// 清理后必须推进水位线，否则对端旧墓碑还会被并回来
+	if pb := cm.loadTombstoneStore().PrunedBefore; pb <= 0 {
+		t.Fatalf("清理后 PrunedBefore 应推进，got=%d", pb)
+	}
+	if uploaded.TombstonePrunedBefore <= 0 {
+		t.Fatalf("上传快照应带 tombstone_pruned_before，got=%d", uploaded.TombstonePrunedBefore)
+	}
+}
+
+func TestPruneWatermarkBlocksRemoteTombstoneRestore(t *testing.T) {
+	// 清理删除记录后，即使远端仍有旧墓碑，合并也不得恢复
+	cm := testSyncManager(t)
+	now := time.Now().UnixMilli()
+	oldAt := now - 40*24*60*60*1000
+	if err := cm.persistSyncSnapshot(&SyncSnapshot{
+		Connections:   []Connection{{ID: "keep", Host: "k", Port: 22, Username: "root", LastModified: now}},
+		QuickCommands: "[]",
+		SnapshotTime:  now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cm.saveTombstoneStore(syncTombstoneStore{
+		Connections: []SyncTombstone{{ID: "old", DeletedAt: oldAt}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	storage := &memoryStorage{files: map[string][]byte{}}
+	cm.syncProvidersForTest = func() ([]providerEntry, []providerFailure) {
+		return []providerEntry{{provider: "webdav", storage: storage}}, nil
+	}
+	if _, err := cm.PruneSyncTombstones(30); err != nil {
+		t.Fatal(err)
+	}
+	// 模拟对端仍带着被清掉的 old 墓碑
+	remote := &SyncSnapshot{
+		Connections: []Connection{{ID: "keep", Host: "k", Port: 22, Username: "root", LastModified: now}},
+		DeletedConnections: []SyncTombstone{
+			{ID: "old", DeletedAt: oldAt},
+		},
+		HasCredentials: true,
+		SnapshotTime:   now + 1,
+	}
+	storage2 := &memoryStorage{files: map[string][]byte{
+		"connections_backup_20260102_000000.000_+0000.json": mustJSON(t, remote),
+	}}
+	if _, err := cm.syncFromProvider(storage2, 0, "", "webdav"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := tombstoneMap(cm.loadTombstoneStore().Connections)["old"]; ok {
+		t.Fatalf("水位线应挡住远端旧墓碑恢复：%+v", cm.loadTombstoneStore())
+	}
+	// 上传包也不得再带 old
+	if len(storage2.writes) > 0 {
+		var uploaded SyncSnapshot
+		if err := json.Unmarshal(storage2.files[storage2.writes[len(storage2.writes)-1]], &uploaded); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := tombstoneMap(uploaded.DeletedConnections)["old"]; ok {
+			t.Fatalf("上传不得恢复 old 墓碑：%+v", uploaded.DeletedConnections)
+		}
+	}
+}
+
+
+func TestAutoSyncSkipsFirstContactTombstoneConflict(t *testing.T) {
+	cm := testSyncManager(t)
+	// 本地有 drop 墓碑，从未同步过 webdav；远端仍有 drop → AutoSync 应跳过
+	if err := cm.persistSyncSnapshot(&SyncSnapshot{
+		Connections: []Connection{
+			{ID: "keep", Host: "keep.example", Port: 22, Username: "root", LastModified: 100},
+		},
+		DeletedConnections: []SyncTombstone{{ID: "drop", DeletedAt: 500}},
+		QuickCommands:      "[]",
+		SnapshotTime:       200,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	remote := &SyncSnapshot{
+		Connections: []Connection{
+			{ID: "keep", Host: "keep.example", Port: 22, Username: "root", LastModified: 100},
+			{ID: "drop", Host: "drop.example", Port: 22, Username: "root", LastModified: 100},
+		},
+		SnapshotTime: 150,
+	}
+	if !cm.shouldSkipAutoSyncForTombstoneConflict("webdav", remote) {
+		t.Fatal("首次接触 + 冲突应跳过 AutoSync")
+	}
+	// 已同步过该后端则不跳过
+	cm.saveLastSyncTime("webdav", 999)
+	if cm.shouldSkipAutoSyncForTombstoneConflict("webdav", remote) {
+		t.Fatal("已同步过后端不应再因冲突跳过 AutoSync")
+	}
+}
+
+func TestPreviewTombstoneConflictsListsRemoteItems(t *testing.T) {
+	cm := testSyncManager(t)
+	// 本地已删 drop，有墓碑；远端仍有 drop → 预检应列出
+	if err := cm.persistSyncSnapshot(&SyncSnapshot{
+		Connections: []Connection{
+			{ID: "keep", Host: "keep.example", Port: 22, Username: "root", LastModified: 100},
+		},
+		DeletedConnections: []SyncTombstone{{ID: "drop", DeletedAt: 500}},
+		QuickCommands:      "[]",
+		SnapshotTime:       200,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	remote := &SyncSnapshot{
+		Connections: []Connection{
+			{ID: "keep", Host: "keep.example", Port: 22, Username: "root", LastModified: 100},
+			{ID: "drop", Name: "被删", Host: "drop.example", Port: 22, Username: "root", LastModified: 100},
+		},
+		SnapshotTime: 150,
+	}
+	storage := &memoryStorage{files: map[string][]byte{
+		"connections_backup_20260101_000000.000_+0000.json": mustJSON(t, remote),
+	}}
+	cm.syncProvidersForTest = func() ([]providerEntry, []providerFailure) {
+		return []providerEntry{{provider: "webdav", storage: storage}}, nil
+	}
+	prev, err := cm.PreviewTombstoneConflicts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prev.WouldDeleteConnections) != 1 || prev.WouldDeleteConnections[0].ID != "drop" {
+		t.Fatalf("应预检到 drop：%+v", prev)
+	}
+	// 清除冲突墓碑后预检为空
+	cm.ClearTombstoneConflicts([]string{"drop"}, nil)
+	prev2, err := cm.PreviewTombstoneConflicts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prev2.WouldDeleteConnections) != 0 {
+		t.Fatalf("清除后应无冲突：%+v", prev2)
+	}
+}
+
+func TestInferredDeleteWritesTombstoneSoUploadIsNotEmpty(t *testing.T) {
+	// 复现 1.txt：本地按 lastSync 启发式删掉 drop，上传不得是「人没了、墓碑也空」
+	cm := testSyncManager(t)
+	if err := cm.persistSyncSnapshot(&SyncSnapshot{
+		Connections: []Connection{
+			{ID: "keep", Host: "keep.example", Port: 22, Username: "root", LastModified: 100},
+			{ID: "drop", Host: "drop.example", Port: 22, Username: "root", LastModified: 100},
+		},
+		QuickCommands: "[]",
+		SnapshotTime:  200,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// PC 本地 lastSync 已经很高，远程无 drop、也无墓碑 → 旧逻辑会删人但不写墓碑
+	cm.saveLastSyncTime("webdav", 150)
+	remote := &SyncSnapshot{
+		Connections: []Connection{
+			{ID: "keep", Host: "keep.example", Port: 22, Username: "root", LastModified: 100},
+		},
+		HasCredentials: true,
+		SnapshotTime:   150,
+	}
+	storage := &memoryStorage{files: map[string][]byte{
+		"connections_backup_20260101_000000.000_+0000.json": mustJSON(t, remote),
+	}}
+	if _, err := cm.syncFromProvider(storage, 0, "", "webdav"); err != nil {
+		t.Fatal(err)
+	}
+	got := cm.GetConnections()
+	for _, c := range got {
+		if c.ID == "drop" {
+			t.Fatalf("drop 应被删除：%+v", got)
+		}
+	}
+	tombs := tombstoneMap(cm.loadTombstoneStore().Connections)
+	if tombs["drop"] <= 100 {
+		t.Fatalf("启发式删除必须写墓碑：%+v", cm.loadTombstoneStore().Connections)
+	}
+	if len(storage.writes) == 0 {
+		t.Fatal("应上传带墓碑的合并结果")
+	}
+	var uploaded SyncSnapshot
+	if err := json.Unmarshal(storage.files[storage.writes[len(storage.writes)-1]], &uploaded); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := tombstoneMap(uploaded.DeletedConnections)["drop"]; !ok {
+		t.Fatalf("上传快照不得是空墓碑：%+v", uploaded.DeletedConnections)
+	}
+	for _, c := range uploaded.Connections {
+		if c.ID == "drop" {
+			t.Fatalf("上传不得复活 drop：%+v", uploaded.Connections)
+		}
+	}
 }

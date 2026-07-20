@@ -4339,22 +4339,26 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     try {
       await AppGo.DeleteConnection(id);
       setServers((prev) => prev.filter((s) => s.id !== id));
+      // 若正在编辑被删服务器，清空左侧表单，避免残留已删除配置
+      setServerEditor((current) => (current?.id === id ? null : current));
       addToast(t('服务器已删除'), 'success');
     } catch {
       addToast(t('删除失败'), 'error');
     }
-  }, [addToast]);
+  }, [addToast, t]);
 
   const handleBatchDelete = useCallback(async (ids) => {
     try {
       await AppGo.BatchDeleteConnections(ids);
       setServers((prev) => prev.filter((s) => !ids.includes(s.id)));
       setSelectedServerIds([]);
+      // 批量删除含当前编辑项时，同步清空表单
+      setServerEditor((current) => (current?.id && ids.includes(current.id) ? null : current));
       addToast(t('服务器已删除'), 'success');
     } catch {
       addToast(t('删除失败'), 'error');
     }
-  }, [addToast]);
+  }, [addToast, t]);
 
   const handleGroupDelete = useCallback(async (groupName, ids) => {
     if (await window.luminDialog?.confirm(`${t('确定删除')}「${groupName}」分组的 ${ids.length} ${t('个服务器')}？`)) {

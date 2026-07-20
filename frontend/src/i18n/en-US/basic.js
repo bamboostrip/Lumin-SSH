@@ -235,6 +235,8 @@ export default {
   "监控脚本写入服务器失败，请检查连接或权限": "Failed to write probe script, check connection or permissions",
   "系统": "System",
   "已复制": "Copied",
+  "链接已复制": "Link copied",
+  "打开": "Open",
   "复制路径": "Copy Path",
   "打开所在目录": "Open Containing Folder",
   "打开所在目录失败": "Failed to open containing folder",

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
-import { Copy, Clipboard, Trash2, CheckSquare, Play, Clock, X, Zap, MessageSquarePlus } from 'lucide-react';
+import { Copy, Clipboard, Trash2, CheckSquare, Play, Clock, X, Zap, MessageSquarePlus, ExternalLink } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/main/App.js';
 import { EventsOn } from '../../wailsjs/runtime/runtime.js';
 import { getModKey, formatShortcut } from '../utils/platform.js';
@@ -46,6 +46,101 @@ function getTerminalBufferSnapshotText(term) {
     lines.push(line.translateToString(true))
   }
   return lines.join('\n').trim()
+}
+
+// 手写 URL 规则（不依赖 addon-web-links）；provider 负责点击，覆盖层负责常驻下划线
+const TERMINAL_URL_REGEX = /(https?|HTTPS?):[/]{2}[^\s"'!*(){}|\\^<>`]*[^\s"':,.!?{}|\\^~\[\]`()<>]/;
+
+function isTerminalHttpUrl(urlString) {
+  try {
+    const url = new URL(urlString);
+    const base = url.password && url.username
+      ? `${url.protocol}//${url.username}:${url.password}@${url.host}`
+      : url.username
+        ? `${url.protocol}//${url.username}@${url.host}`
+        : `${url.protocol}//${url.host}`;
+    return urlString.toLocaleLowerCase().startsWith(base.toLocaleLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 当前正在输入的逻辑行起始（0-based，含上键历史回显 / 多行 wrap）。
+ * 该行及之后不识别链接：只有「已经执行过」滚到输出区的内容才可点/高亮。
+ */
+function getTerminalInputStartLine(term) {
+  const buf = term?.buffer?.active;
+  if (!buf) return Number.POSITIVE_INFINITY;
+  let line = (buf.baseY || 0) + (buf.cursorY || 0);
+  while (line > 0) {
+    const row = buf.getLine(line);
+    if (row?.isWrapped) line -= 1;
+    else break;
+  }
+  return line;
+}
+
+/**
+ * 取含 bufferLine0 的逻辑行各段（处理 isWrapped 换行 URL）。
+ * isWrapped=true 表示本行是上一行的续行。
+ */
+function getLogicalLineSegments(term, bufferLine0) {
+  const buf = term.buffer.active;
+  let start = bufferLine0;
+  while (start > 0) {
+    const line = buf.getLine(start);
+    if (!line?.isWrapped) break;
+    start -= 1;
+  }
+  const segs = [];
+  let y = start;
+  for (;;) {
+    const line = buf.getLine(y);
+    if (!line) break;
+    segs.push({ y0: y, text: line.translateToString(true) });
+    const next = buf.getLine(y + 1);
+    if (!next?.isWrapped) break;
+    y += 1;
+  }
+  return segs;
+}
+
+/** joined 串 0-based 下标 → buffer 1-based 列/行 */
+function joinedIndexToPos(segs, index) {
+  let rem = index;
+  for (const seg of segs) {
+    if (rem < seg.text.length) {
+      return { x: rem + 1, y: seg.y0 + 1 };
+    }
+    rem -= seg.text.length;
+  }
+  const last = segs[segs.length - 1];
+  return { x: Math.max(1, last.text.length), y: last.y0 + 1 };
+}
+
+/**
+ * 扫描逻辑行（含 wrap）上的 http(s) 链接。
+ * 换行 URL 会拼完整再匹配，range 可跨多行。输入逻辑行返回空。
+ */
+function findTerminalHttpLinksOnLine(term, bufferLineNumber) {
+  const line0 = bufferLineNumber - 1;
+  if (line0 >= getTerminalInputStartLine(term)) return [];
+  const segs = getLogicalLineSegments(term, line0);
+  if (!segs.length) return [];
+  const joined = segs.map((s) => s.text).join('');
+  if (!joined) return [];
+  const rex = new RegExp(TERMINAL_URL_REGEX.source, (TERMINAL_URL_REGEX.flags || '') + 'g');
+  const links = [];
+  let match;
+  while ((match = rex.exec(joined))) {
+    const value = match[0];
+    if (!isTerminalHttpUrl(value)) continue;
+    const start = joinedIndexToPos(segs, match.index);
+    const end = joinedIndexToPos(segs, match.index + value.length - 1);
+    links.push({ text: value, range: { start, end } });
+  }
+  return links;
 }
 
 function isInteractivePromptText(value) {
@@ -231,6 +326,8 @@ export default function Terminal({
   serverIdRef.current  = serverId;
   const [themeToggle, setThemeToggle]     = useState(0); // 用于强制重渲染（浅色/深色模式切换）
   const [contextMenu, setContextMenu]         = useState(null);
+  const [linkMenu, setLinkMenu]               = useState(null); // { x, y, url }
+  const [linkToast, setLinkToast]             = useState('');
   const [contextHasSelection, setContextHasSelection] = useState(false);
   const [justConnected, setJustConnected]     = useState(false);
   const [cmdInput, setCmdInput]               = useState('');
@@ -328,6 +425,8 @@ export default function Terminal({
   };
   const gutterRef = useRef(null);
   const gutterSyncRAFRef = useRef(null);
+  const linkUnderlineLayerRef = useRef(null);
+  const linkUnderlineSyncRAFRef = useRef(null);
   const smartWriteRef = useRef(null);
 
   // ponytail: getTerminalTheme() 每次渲染调用 30+ 次，缓存为 1 次
@@ -340,6 +439,92 @@ export default function Terminal({
       gutterSyncRAFRef.current = null;
       syncGutter();
     });
+  }
+
+  // ── 链接：可见区扫描缓存（下划线与 provider 共用，避免双扫） ────
+  const viewportLinkCacheRef = useRef({ key: '', byLine: new Map() });
+
+  function getViewportLinkCache(term) {
+    const buf = term.buffer.active;
+    const rows = term.rows || 0;
+    const viewportY = buf.viewportY;
+    // 简单 key：视口位置 + 行数 + 输入行起点（输入行变化时失效）
+    const inputStart = getTerminalInputStartLine(term);
+    const key = `${viewportY}|${rows}|${inputStart}|${buf.baseY}|${buf.cursorY}`;
+    const cache = viewportLinkCacheRef.current;
+    if (cache.key === key) return cache.byLine;
+    const byLine = new Map();
+    for (let row = 0; row < rows; row += 1) {
+      const bufferLineNumber = viewportY + row + 1;
+      const links = findTerminalHttpLinksOnLine(term, bufferLineNumber);
+      if (links.length) byLine.set(bufferLineNumber, links);
+    }
+    viewportLinkCacheRef.current = { key, byLine };
+    return byLine;
+  }
+
+  function invalidateViewportLinkCache() {
+    viewportLinkCacheRef.current = { key: '', byLine: new Map() };
+  }
+
+  function scheduleLinkUnderlineSync() {
+    if (linkUnderlineSyncRAFRef.current !== null) return;
+    linkUnderlineSyncRAFRef.current = requestAnimationFrame(() => {
+      linkUnderlineSyncRAFRef.current = null;
+      invalidateViewportLinkCache();
+      syncLinkUnderlines();
+    });
+  }
+
+  function syncLinkUnderlines() {
+    const layer = linkUnderlineLayerRef.current;
+    const term = termRef.current;
+    const container = containerRef.current;
+    if (!layer) return;
+    if (!term?.buffer?.active || !container) {
+      layer.innerHTML = '';
+      return;
+    }
+    const screen = container.querySelector('.xterm-screen');
+    const rowsEl = container.querySelector('.xterm-rows');
+    if (!screen || !rowsEl) {
+      layer.innerHTML = '';
+      return;
+    }
+    const cols = term.cols || 1;
+    const rows = term.rows || 1;
+    const screenRect = screen.getBoundingClientRect();
+    const cellWidth = screenRect.width / cols;
+    const cellHeight = screenRect.height / rows;
+    const rowsRect = rowsEl.getBoundingClientRect();
+    const offsetX = rowsRect.left - screenRect.left;
+    const offsetY = rowsRect.top - screenRect.top;
+    const byLine = getViewportLinkCache(term);
+    const parts = [];
+    const seen = new Set();
+    const viewportY = term.buffer.active.viewportY;
+    byLine.forEach((links) => {
+      for (const link of links) {
+        const id = `${link.range.start.y}:${link.range.start.x}-${link.range.end.y}:${link.range.end.x}:${link.text}`;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const y0 = link.range.start.y;
+        const y1 = link.range.end.y;
+        for (let by = y0; by <= y1; by += 1) {
+          const row = by - 1 - viewportY;
+          if (row < 0 || row >= rows) continue;
+          const startCol = by === y0 ? Math.max(0, link.range.start.x - 1) : 0;
+          const endCol = by === y1 ? Math.max(startCol + 1, link.range.end.x) : cols;
+          const left = offsetX + startCol * cellWidth;
+          const width = Math.max(cellWidth, (endCol - startCol) * cellWidth);
+          const top = offsetY + (row + 1) * cellHeight - 2;
+          parts.push(
+            `<div style="position:absolute;left:${left}px;top:${top}px;width:${width}px;height:0;border-bottom:1px solid var(--accent, #4d9eff);pointer-events:none;"></div>`,
+          );
+        }
+      }
+    });
+    layer.innerHTML = parts.join('');
   }
 
   function syncGutter() {
@@ -447,6 +632,31 @@ export default function Terminal({
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
+    // 点击/手型用 provider；常驻下划线用覆盖层。可见区扫描走 getViewportLinkCache
+    const linkProviderDisposable = term.registerLinkProvider({
+      provideLinks(bufferLineNumber, callback) {
+        const found = getViewportLinkCache(term).get(bufferLineNumber) || [];
+        if (!found.length) {
+          callback(undefined);
+          return;
+        }
+        callback(found.map(({ text, range }) => ({
+          text,
+          range,
+          decorations: { underline: false, pointerCursor: true },
+          activate(event, uri) {
+            event?.preventDefault?.();
+            event?.stopPropagation?.();
+            try { term.clearSelection(); } catch (_) {}
+            requestAnimationFrame(() => { try { term.clearSelection(); } catch (_) {} });
+            const x = event?.clientX ?? 0;
+            const y = event?.clientY ?? 0;
+            setContextMenu(null);
+            setLinkMenu({ ...clampMenuPosition(x, y, 200, 96), url: uri });
+          },
+        })));
+      },
+    });
     term.open(containerRef.current);
     alternateBufferActiveRef.current = false;
     setAlternateBufferActive(false);
@@ -460,6 +670,7 @@ export default function Terminal({
         userPinned = false;
       }
       scheduleGutterSync();
+      scheduleLinkUnderlineSync();
     };
     const scrollDisposable = term.onScroll(onTermScroll);
     // 直接监听 xterm 视口 DOM scroll 事件作为更可靠的备选
@@ -484,7 +695,10 @@ export default function Terminal({
         tsSet(term.registerMarker(pos - cursorLine), formatTerminalTimestamp());
       }
     });
-    const writeParsedDisposable = term.onWriteParsed(scheduleGutterSync);
+    const writeParsedDisposable = term.onWriteParsed(() => {
+      scheduleGutterSync();
+      scheduleLinkUnderlineSync();
+    });
     const bufferChangeDisposable = term.buffer.onBufferChange((buffer) => {
       const alternate = buffer.type === 'alternate';
       alternateBufferActiveRef.current = alternate;
@@ -495,8 +709,10 @@ export default function Terminal({
           gutterSyncRAFRef.current = null;
         }
         if (gutterRef.current) gutterRef.current.innerHTML = '';
+        if (linkUnderlineLayerRef.current) linkUnderlineLayerRef.current.innerHTML = '';
       } else {
         scheduleGutterSync();
+        scheduleLinkUnderlineSync();
       }
     });
     const wheelHandler = (e) => {
@@ -874,7 +1090,10 @@ export default function Terminal({
     const resizeDisposable = term.onResize(({ cols, rows }) => {
       AppGo.ResizeTerminal(sessionId, cols, rows);
       scheduleGutterSync();
+      scheduleLinkUnderlineSync();
     });
+    // 首帧同步常驻下划线
+    scheduleLinkUnderlineSync();
 
     return () => {
       cancelled = true;
@@ -883,10 +1102,16 @@ export default function Terminal({
       writeParsedDisposable.dispose();
       bufferChangeDisposable.dispose();
       resizeDisposable.dispose();
+      try { linkProviderDisposable.dispose(); } catch (_) {}
       if (gutterSyncRAFRef.current !== null) {
         cancelAnimationFrame(gutterSyncRAFRef.current);
         gutterSyncRAFRef.current = null;
       }
+      if (linkUnderlineSyncRAFRef.current !== null) {
+        cancelAnimationFrame(linkUnderlineSyncRAFRef.current);
+        linkUnderlineSyncRAFRef.current = null;
+      }
+      if (linkUnderlineLayerRef.current) linkUnderlineLayerRef.current.innerHTML = '';
       clearTimeout(fitTimer);
       if (vpEl) vpEl.removeEventListener('scroll', onTermScroll);
       // 移除 wheel 监听器，避免内存泄漏
@@ -1087,6 +1312,7 @@ export default function Terminal({
 
   const handleContextMenu = (e) => {
     e.preventDefault();
+    setLinkMenu(null);
     const hasSelection = !!(termRef.current && termRef.current.getSelection());
     setContextHasSelection(hasSelection);
     setContextMenu(clampMenuPosition(e.clientX, e.clientY, 190, 140));
@@ -1096,13 +1322,48 @@ export default function Terminal({
     if (contextMenu) setContextMenu(null);
   };
 
-  // 点击外部关闭右键菜单
+  const closeLinkMenu = () => {
+    if (linkMenu) setLinkMenu(null);
+  };
+
+  const openExternalUrl = (url) => {
+    if (!url) return;
+    if (typeof window.runtime?.BrowserOpenURL === 'function') {
+      window.runtime.BrowserOpenURL(url);
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleLinkMenuAction = (action) => {
+    const url = linkMenu?.url || '';
+    closeLinkMenu();
+    if (!url) return;
+    if (action === 'copy') {
+      navigator.clipboard.writeText(url).then(() => {
+        setLinkToast(t('链接已复制'));
+        setTimeout(() => setLinkToast(''), 1500);
+      }).catch(() => {});
+      termRef.current?.focus();
+      return;
+    }
+    if (action === 'open') {
+      openExternalUrl(url);
+      termRef.current?.focus();
+    }
+  };
+
+  // 点击外部关闭右键菜单 / 链接菜单
   useEffect(() => {
-    if (!contextMenu) return;
-    const handler = () => setContextMenu(null);
+    if (!contextMenu && !linkMenu) return;
+    const handler = (e) => {
+      if (e.target?.closest?.('.context-menu')) return;
+      setContextMenu(null);
+      setLinkMenu(null);
+    };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [contextMenu]);
+  }, [contextMenu, linkMenu]);
 
   const handleMenuAction = (action) => {
     closeContextMenu();
@@ -1733,14 +1994,33 @@ export default function Terminal({
           boxSizing: 'border-box',
         }} />
         <div
-          ref={containerRef}
           style={{
+            position: 'relative',
             flex: 1,
             minHeight: 0,
-            padding: '0',
-            background: 'transparent',
           }}
-        />
+        >
+          <div
+            ref={containerRef}
+            style={{
+              height: '100%',
+              minHeight: 0,
+              padding: '0',
+              background: 'transparent',
+            }}
+          />
+          {/* 常驻链接下划线（pointer-events:none，不挡点击/选区） */}
+          <div
+            ref={linkUnderlineLayerRef}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              pointerEvents: 'none',
+              overflow: 'hidden',
+              zIndex: 2,
+            }}
+          />
+        </div>
       </div>
 
       {/* ── 底部命令输入栏 ── */}
@@ -2255,6 +2535,107 @@ export default function Terminal({
               </div>
             )
           )}
+        </div>
+      )}
+
+      {/* ── 终端链接菜单：复制 / 打开（对齐安卓） ── */}
+      {linkMenu && (
+        <>
+          {/* 透明遮罩：挡住终端拖选，点击空白关闭 */}
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: Z.MODAL - 1,
+              background: 'transparent',
+              cursor: 'default',
+            }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              try { termRef.current?.clearSelection(); } catch (_) {}
+              setLinkMenu(null);
+            }}
+            onMouseMove={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+          />
+          <div
+            className="context-menu"
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{
+              position: 'fixed',
+              left: linkMenu.x,
+              top: linkMenu.y,
+              backgroundColor: 'var(--term-context-bg)',
+              border: 'var(--term-context-border)',
+              borderRadius: '8px',
+              boxShadow: 'var(--term-context-shadow)',
+              zIndex: Z.MODAL,
+              padding: '4px 0',
+              minWidth: '200px',
+              maxWidth: '360px',
+              fontFamily: 'var(--font-ui)',
+            }}
+          >
+            <div
+              style={{
+                padding: '6px 12px 4px',
+                fontSize: 11,
+                color: 'var(--text-muted, #8899aa)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+              title={linkMenu.url}
+            >
+              {linkMenu.url}
+            </div>
+            <div className="context-menu-separator" />
+            <div
+              className="context-menu-item"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleLinkMenuAction('copy');
+              }}
+            >
+              <span className="item-icon"><Copy size={13} /></span>
+              <span className="item-label">{t('复制')}</span>
+            </div>
+            <div
+              className="context-menu-item"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleLinkMenuAction('open');
+              }}
+            >
+              <span className="item-icon"><ExternalLink size={13} /></span>
+              <span className="item-label">{t('打开')}</span>
+            </div>
+          </div>
+        </>
+      )}
+
+      {linkToast && (
+        <div
+          style={{
+            position: 'absolute',
+            left: '50%',
+            bottom: 56,
+            transform: 'translateX(-50%)',
+            background: 'var(--term-context-bg, rgba(20,24,32,0.92))',
+            border: 'var(--term-context-border, 1px solid rgba(255,255,255,0.08))',
+            color: 'var(--text-primary, #eaf0f7)',
+            borderRadius: 8,
+            padding: '6px 12px',
+            fontSize: 12,
+            zIndex: Z.MODAL,
+            pointerEvents: 'none',
+            boxShadow: 'var(--term-context-shadow)',
+          }}
+        >
+          {linkToast}
         </div>
       )}
     </div>

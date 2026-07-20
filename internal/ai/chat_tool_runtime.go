@@ -1702,6 +1702,7 @@ func (a *App) runAIChatCommandToolExecution(execution *aiToolExecutionState) {
 	command, _ := arguments["command"].(string)
 	purpose, _ := arguments["purpose"].(string)
 	cwd, _ := arguments["cwd"].(string)
+	cwd = strings.TrimSpace(cwd)
 	shellType, _ := arguments["shellType"].(string)
 	isMutating := false
 	switch value := arguments["is_mutating"].(type) {
@@ -1711,74 +1712,79 @@ func (a *App) runAIChatCommandToolExecution(execution *aiToolExecutionState) {
 		isMutating = int(value) == 1
 	}
 
-	result, outcome, execErr := a.sshManager.ExecuteCommandInTerminalControlled(
-		execution.targetSessionID(),
-		command,
-		purpose,
-		isMutating,
-		cwd,
-		shellType,
-		5*time.Minute,
-		execution.DecisionCh,
-		execution.ReassignCh,
-		func() {
-			execution.setAllowTerminalAssignment(true)
-			if !a.isAIChatToolExecutionCurrent(execution.RequestID, execution.ExecutionID) {
-				return
-			}
-			a.emitAIChatToolExecutionTerminalAssignmentRequired(
-				execution.RequestID,
-				execution,
-				buildAIChatCommandToolMessage(
+	result, outcome, execErr := func() (mcpserver.CommandExecutionResult, aiToolExecutionAction, error) {
+		if cwd == "" {
+			return mcpserver.CommandExecutionResult{}, aiToolExecutionActionNone, fmt.Errorf("missing required argument: cwd")
+		}
+		return a.sshManager.ExecuteCommandInTerminalControlled(
+			execution.targetSessionID(),
+			command,
+			purpose,
+			isMutating,
+			cwd,
+			shellType,
+			5*time.Minute,
+			execution.DecisionCh,
+			execution.ReassignCh,
+			func() {
+				execution.setAllowTerminalAssignment(true)
+				if !a.isAIChatToolExecutionCurrent(execution.RequestID, execution.ExecutionID) {
+					return
+				}
+				a.emitAIChatToolExecutionTerminalAssignmentRequired(
+					execution.RequestID,
 					execution,
-					purpose,
-					command,
-					"",
-					"排队中, 等待终端空闲",
-					buildAIChatCommandMessageExtra(execution.targetSessionID(), "", isMutating),
-				),
-			)
-		},
-		func() {
-			execution.setAllowTerminalAssignment(false)
-			if !a.isAIChatToolExecutionCurrent(execution.RequestID, execution.ExecutionID) {
-				return
-			}
-			a.emitAIChatToolExecutionStarted(
-				execution.RequestID,
-				execution,
-				buildAIChatCommandToolMessage(
+					buildAIChatCommandToolMessage(
+						execution,
+						purpose,
+						command,
+						"",
+						"排队中, 等待终端空闲",
+						buildAIChatCommandMessageExtra(execution.targetSessionID(), "", isMutating),
+					),
+				)
+			},
+			func() {
+				execution.setAllowTerminalAssignment(false)
+				if !a.isAIChatToolExecutionCurrent(execution.RequestID, execution.ExecutionID) {
+					return
+				}
+				a.emitAIChatToolExecutionStarted(
+					execution.RequestID,
 					execution,
-					purpose,
-					command,
-					"",
-					"执行中",
-					buildAIChatCommandMessageExtra(execution.targetSessionID(), "", isMutating),
-				),
-			)
-		},
-		func(snapshot string) {
-			execution.setAllowTerminalAssignment(false)
-			if !a.isAIChatToolExecutionCurrent(execution.RequestID, execution.ExecutionID) {
-				return
-			}
-			safeSnapshot := sanitizeAIToolResultText(snapshot)
-			execution.setSnapshotOutput(safeSnapshot)
-			execution.AllowContinue = true
-			a.emitAIChatToolExecutionActionRequired(
-				execution.RequestID,
-				execution,
-				buildAIChatCommandToolMessage(
+					buildAIChatCommandToolMessage(
+						execution,
+						purpose,
+						command,
+						"",
+						"执行中",
+						buildAIChatCommandMessageExtra(execution.targetSessionID(), "", isMutating),
+					),
+				)
+			},
+			func(snapshot string) {
+				execution.setAllowTerminalAssignment(false)
+				if !a.isAIChatToolExecutionCurrent(execution.RequestID, execution.ExecutionID) {
+					return
+				}
+				safeSnapshot := sanitizeAIToolResultText(snapshot)
+				execution.setSnapshotOutput(safeSnapshot)
+				execution.AllowContinue = true
+				a.emitAIChatToolExecutionActionRequired(
+					execution.RequestID,
 					execution,
-					purpose,
-					command,
-					safeSnapshot,
-					"等待处理",
-					buildAIChatCommandMessageExtra(execution.targetSessionID(), "", isMutating),
-				),
-			)
-		},
-	)
+					buildAIChatCommandToolMessage(
+						execution,
+						purpose,
+						command,
+						safeSnapshot,
+						"等待处理",
+						buildAIChatCommandMessageExtra(execution.targetSessionID(), "", isMutating),
+					),
+				)
+			},
+		)
+	}()
 
 	if !a.isAIChatToolExecutionCurrent(execution.RequestID, execution.ExecutionID) {
 		return

@@ -230,6 +230,7 @@ export default function SettingsModal({
   onRestored,
   probePanelPosition,
   onProbePanelPositionChange,
+  forceDarkTheme = false,
   initialTab = 'general',
 }) {
   const CURRENT_VERSION = APP_VERSION;
@@ -462,6 +463,9 @@ export default function SettingsModal({
   }, [initialTab])
 
   const handleThemeChange = (mode) => {
+    if (forceDarkTheme) {
+      return;
+    }
     setThemeMode(mode);
     localStorage.setItem('themeMode', mode);
     const isSystemLight = window.matchMedia('(prefers-color-scheme: light)').matches;
@@ -1527,8 +1531,8 @@ export default function SettingsModal({
                 onTerminalTimestampsChange={handleTerminalTimestampsChange}
                 terminalColorTheme={terminalColorTheme}
                 onTerminalColorThemeChange={(key) => { setTerminalColorTheme(key); localStorage.setItem('terminalColorTheme', key); window.dispatchEvent(new CustomEvent('terminal-theme-changed', { detail: key })); }}
-                themeMode={themeMode}
-                onThemeChange={handleThemeChange}
+                themeMode={forceDarkTheme ? 'dark' : themeMode}
+                onThemeChange={forceDarkTheme ? () => {} : handleThemeChange}
                 showThemeQuickEntry={showThemeQuickEntry}
                 onToggleThemeQuickEntry={handleToggleThemeQuickEntry}
                 probePanelPosition={probePanelPosition}

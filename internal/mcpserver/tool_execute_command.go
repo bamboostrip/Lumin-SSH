@@ -10,7 +10,7 @@ const defaultExecuteCommandTimeout = 5 * time.Minute
 func executeCommandToolDefinition() ToolDefinition {
 	return ToolDefinition{
 		Name: "execute_command",
-		Description: "Execute a command inside the real connected SSH terminal identified by session_id. This keeps the command visible and interactive for the user while still capturing output and exit code.",
+		Description: "Execute a command inside the real connected SSH terminal identified by session_id. This keeps the command visible and interactive for the user while still capturing output and exit code. Always pass the target working directory via cwd instead of embedding cd or similar directory-changing syntax inside the command.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -33,7 +33,7 @@ func executeCommandToolDefinition() ToolDefinition {
 				},
 				"cwd": map[string]any{
 					"type": "string",
-					"description": "Optional working directory to switch to before execution.",
+					"description": "Required working directory to switch to before execution. Always pass the target directory via cwd instead of prefixing the command with cd or similar shell directory-changing syntax.",
 				},
 				"shellType": map[string]any{
 					"type": "string",
@@ -41,7 +41,7 @@ func executeCommandToolDefinition() ToolDefinition {
 					"enum": []string{"powershell", "cmd", "zsh"},
 				},
 			},
-			"required": []string{"session_id", "command", "purpose", "is_mutating", "shellType"},
+			"required": []string{"session_id", "command", "purpose", "is_mutating", "cwd", "shellType"},
 			"additionalProperties": false,
 		},
 	}
@@ -81,7 +81,7 @@ func (c *Catalog) callExecuteCommand(arguments map[string]any) (any, error) {
 	if !ok {
 		return nil, fmt.Errorf("argument is_mutating must be 0 or 1")
 	}
-	cwd, _, err := optionalStringArgument(arguments, "cwd")
+	cwd, err := requireStringArgument(arguments, "cwd")
 	if err != nil {
 		return nil, err
 	}

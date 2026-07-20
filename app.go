@@ -1758,6 +1758,22 @@ func (a *App) PruneSyncTombstones(days int) (SyncTombstonePruneResult, error) {
 	return a.configManager.PruneSyncTombstones(days)
 }
 
+// PreviewTombstoneConflicts 合并同步前：先读目标云，列出本地墓碑将删掉的远端项。
+func (a *App) PreviewTombstoneConflicts() (TombstoneConflictPreview, error) {
+	if a == nil || a.configManager == nil {
+		return TombstoneConflictPreview{}, fmt.Errorf("配置未初始化")
+	}
+	return a.configManager.PreviewTombstoneConflicts()
+}
+
+// ClearTombstoneConflicts 放弃删除意图（保留云端项）后应再执行合并同步。
+func (a *App) ClearTombstoneConflicts(connectionIDs []string, credentialIDs []string) {
+	if a == nil || a.configManager == nil {
+		return
+	}
+	a.configManager.ClearTombstoneConflicts(connectionIDs, credentialIDs)
+}
+
 func (a *App) SetAutoSyncEnabled(enabled bool) error {
 	return a.configManager.SetAutoSyncEnabled(enabled)
 }

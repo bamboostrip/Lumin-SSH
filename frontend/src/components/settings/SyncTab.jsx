@@ -471,14 +471,28 @@ export default function SyncTab({
 
         <div style={{
           display: 'flex', flexDirection: 'column', gap: 10,
-          padding: '10px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)',
-          background: 'var(--surface-raised)', color: 'var(--text-secondary)', fontSize: 12, marginBottom: 16
+          padding: '12px 14px', borderRadius: 'var(--radius-md)',
+          border: '1px solid color-mix(in srgb, var(--warning) 35%, var(--border))',
+          background: 'color-mix(in srgb, var(--warning) 8%, var(--surface-raised))',
+          color: 'var(--text-secondary)', fontSize: 12, marginBottom: 16
         }}>
           <div>
             <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{$t('删除记录')}</span>
-            <span style={{ marginLeft: 10 }}>{$t('连接')} {Number.isFinite(tombstoneConnections) ? tombstoneConnections : 0}</span>
-            <span style={{ marginLeft: 10 }}>{$t('凭据')} {Number.isFinite(tombstoneCredentials) ? tombstoneCredentials : 0}</span>
-            <div style={{ marginTop: 4, color: 'var(--text-tertiary)' }}>{$t('用于多设备同步删除，一般无需处理。')}</div>
+            <span style={{
+              marginLeft: 10, padding: '1px 8px', borderRadius: 999,
+              background: 'color-mix(in srgb, var(--warning) 18%, transparent)',
+              color: 'var(--warning)', fontWeight: 600
+            }}>
+              {$t('连接')} {Number.isFinite(tombstoneConnections) ? tombstoneConnections : 0}
+            </span>
+            <span style={{
+              marginLeft: 8, padding: '1px 8px', borderRadius: 999,
+              background: 'color-mix(in srgb, var(--text-secondary) 14%, transparent)',
+              color: 'var(--text-primary)', fontWeight: 600
+            }}>
+              {$t('凭据')} {Number.isFinite(tombstoneCredentials) ? tombstoneCredentials : 0}
+            </span>
+            <div style={{ marginTop: 6, color: 'var(--text-tertiary)', lineHeight: 1.45 }}>{$t('用于多设备同步删除，一般无需处理。')}</div>
           </div>
           {tombstoneTotal > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -488,7 +502,7 @@ export default function SyncTab({
                 value={tombstoneDays}
                 disabled={pruningTombstones || syncing || loadingBackups || restoring}
                 onChange={(e) => setTombstoneDays(Number(e.target.value))}
-                style={{ width: 90, height: 30, fontSize: 12, padding: '0 8px' }}
+                style={{ width: 90, height: 32, fontSize: 12, padding: '0 8px' }}
               >
                 <option value={7}>7</option>
                 <option value={30}>30</option>
@@ -498,10 +512,16 @@ export default function SyncTab({
               </select>
               <span>{$t('天的删除记录')}</span>
               <button
-                className="btn btn-ghost"
+                type="button"
                 onClick={() => onPruneSyncTombstones?.(tombstoneDays)}
                 disabled={pruningTombstones || syncing || loadingBackups || restoring}
-                style={{ fontSize: 12, color: 'var(--warning)' }}
+                style={{
+                  height: 32, padding: '0 12px', borderRadius: 'var(--radius-sm)',
+                  border: '1px solid color-mix(in srgb, var(--warning) 70%, transparent)',
+                  background: 'color-mix(in srgb, var(--warning) 16%, transparent)',
+                  color: 'var(--warning)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  opacity: (pruningTombstones || syncing || loadingBackups || restoring) ? 0.55 : 1
+                }}
               >
                 {pruningTombstones ? $t('同步中...') : $t('清理删除记录')}
               </button>

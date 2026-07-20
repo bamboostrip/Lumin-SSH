@@ -2965,6 +2965,8 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
         if (data.localChanged) loadServers();
       } else if (data.action === 'upload') {
         addToast(t('本地数据已同步到云端'), 'info', 4000);
+      } else if (data.action === 'skip' && data.reason === 'tombstone_conflict_needs_manual_sync') {
+        addToast(t('已跳过自动同步：删除记录将影响目标云，请手动合并同步并确认。'), 'warning', 8000);
       }
     });
     return () => { if (unbind) unbind(); };

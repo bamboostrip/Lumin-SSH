@@ -1278,6 +1278,48 @@ export default function SettingsModal({
     setSyncing(true);
     try {
       await confirmSecureProviders(syncMode === 'all' ? configuredProviderIds() : [syncMode]);
+
+      // 先读目标云，再决定是否应用本地删除墓碑（不是点切换模式就弹）
+      try {
+        const preview = await AppGo.PreviewTombstoneConflicts();
+        const delConns = preview?.wouldDeleteConnections || [];
+        const delCreds = preview?.wouldDeleteCredentials || [];
+        if (delConns.length > 0 || delCreds.length > 0) {
+          const connNames = delConns.map((x) => x.name || x.host || x.id).filter(Boolean);
+          const credNames = delCreds.map((x) => x.name || x.id).filter(Boolean);
+          const lines = [];
+          if (connNames.length) lines.push(`${$t('服务器')}：${connNames.slice(0, 8).join('、')}${connNames.length > 8 ? '…' : ''}`);
+          if (credNames.length) lines.push(`${$t('凭据')}：${credNames.slice(0, 8).join('、')}${credNames.length > 8 ? '…' : ''}`);
+          const body = `${$t('目标云上仍存在以下项，本地删除记录同步后将删除它们：')}\n${lines.join('\n')}\n\n${$t('请选择：删除它们，或保留它们并与本地合并。')}`;
+          const action = await window.luminDialog?.choice?.(
+            body,
+            $t('同步删除确认'),
+            [
+              { label: $t('保留并合并'), value: 'keep', primary: true },
+              { label: $t('删除'), value: 'apply', secondary: true },
+              { label: $t('取消'), value: 'cancel', secondary: true },
+            ],
+          );
+          if (action === 'cancel' || action == null) return;
+          if (action === 'keep') {
+            await AppGo.ClearTombstoneConflicts(
+              delConns.map((x) => x.id).filter(Boolean),
+              delCreds.map((x) => x.id).filter(Boolean),
+            );
+          }
+        }
+      } catch (previewErr) {
+        const cont = await window.luminDialog?.choice?.(
+          `${$t('无法检查删除冲突，仍继续同步可能按本地删除记录静默删除目标云上的项。')}\n${previewErr}`,
+          $t('预检失败'),
+          [
+            { label: $t('仍继续同步'), value: 'continue', primary: true },
+            { label: $t('取消'), value: 'cancel', secondary: true },
+          ],
+        );
+        if (cont !== 'continue') return;
+      }
+
       const sync = syncMode === 'all'
         ? () => AppGo.SyncAllProviders()
         : () => (PROVIDERS[syncMode] || PROVIDERS.webdav).sync();
@@ -1317,7 +1359,7 @@ export default function SettingsModal({
     const dayNum = Number(days);
     const label = dayNum > 0 ? `${$t('清理超过')} ${dayNum} ${$t('天的删除记录')}` : $t('清理全部删除记录');
     const action = await window.luminDialog?.choice?.(
-      $t('将清理本地并上传到已配置云端，避免下次同步再次合并回来。确定？'),
+      $t('将清理本地并上传到当前同步模式对应的云端，避免下次同步再次合并回来。确定？'),
       label,
       [
         { label: $t('清理删除记录'), value: 'clear', primary: true },

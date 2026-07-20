@@ -729,8 +729,11 @@ type SyncTombstone struct {
 }
 
 type syncTombstoneStore struct {
-	Connections []SyncTombstone `json:"connections,omitempty"`
-	Credentials []SyncTombstone `json:"credentials,omitempty"`
+	Connections  []SyncTombstone `json:"connections,omitempty"`
+	Credentials  []SyncTombstone `json:"credentials,omitempty"`
+	// PrunedBefore：清理删除记录时推进。合并远端墓碑时丢弃 deleted_at < PrunedBefore 的项，
+	// 防止「本机已清理」又被另一端旧墓碑并回来。
+	PrunedBefore int64 `json:"pruned_before,omitempty"`
 }
 
 func (c *ConfigManager) loadTombstoneStore() syncTombstoneStore {
@@ -813,11 +816,42 @@ func mergeTombstoneMaps(a, b map[string]int64) map[string]int64 {
 	return out
 }
 
+// filterTombstonesNotBefore 丢弃 deleted_at < prunedBefore 的墓碑（清理水位线）。
+func filterTombstonesNotBefore(list []SyncTombstone, prunedBefore int64) []SyncTombstone {
+	if prunedBefore <= 0 || len(list) == 0 {
+		return list
+	}
+	m := tombstoneMap(list)
+	for id, at := range m {
+		if at < prunedBefore {
+			delete(m, id)
+		}
+	}
+	return tombstonesFromMap(m)
+}
+
+// maxTombstoneDeletedAt 返回列表中最大 deleted_at。
+func maxTombstoneDeletedAt(lists ...[]SyncTombstone) int64 {
+	var max int64
+	for _, list := range lists {
+		for _, t := range list {
+			if t.DeletedAt > max {
+				max = t.DeletedAt
+			}
+		}
+	}
+	return max
+}
+
 func (c *ConfigManager) addConnectionTombstonesLocked(ids []string, deletedAt int64) {
 	if deletedAt <= 0 || len(ids) == 0 {
 		return
 	}
 	store := c.loadTombstoneStore()
+	// 新删除必须越过清理水位线，否则会被 filter 掉
+	if deletedAt <= store.PrunedBefore {
+		deletedAt = store.PrunedBefore + 1
+	}
 	m := tombstoneMap(store.Connections)
 	changed := false
 	for _, id := range ids {
@@ -844,6 +878,9 @@ func (c *ConfigManager) addCredentialTombstonesLocked(ids []string, deletedAt in
 		return
 	}
 	store := c.loadTombstoneStore()
+	if deletedAt <= store.PrunedBefore {
+		deletedAt = store.PrunedBefore + 1
+	}
 	m := tombstoneMap(store.Credentials)
 	changed := false
 	for _, id := range ids {

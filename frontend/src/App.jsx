@@ -461,9 +461,11 @@ export default function App() {
   const [editFlyAnimation, setEditFlyAnimation] = useState(null);
   const [editFlyShiningFields, setEditFlyShiningFields] = useState({});
   const [saveFlowHighlights, setSaveFlowHighlights] = useState({ serverId: null, rowPulse: null, fields: {} });
+  const [editorModeBanner, setEditorModeBanner] = useState(null);
   const editFlyTimerRef = useRef(null);
   const editFlyFieldTimerRefs = useRef([]);
   const editFlyShineTimerRefs = useRef([]);
+  const editorModeBannerTimerRef = useRef(null);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState('general');
   const [showCredentials, setShowCredentials] = useState(false);
@@ -4632,6 +4634,20 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
   }, [clampLayerPoint]);
 
   const startEditFlyAnimation = useCallback((server, payload) => {
+    // 屏幕中央大号短提示（比右上角 Toast 更醒目）
+    if (editorModeBannerTimerRef.current) {
+      clearTimeout(editorModeBannerTimerRef.current);
+      editorModeBannerTimerRef.current = null;
+    }
+    setEditorModeBanner({
+      id: Date.now(),
+      text: server?.id ? t('已进入编辑 · 请在左侧修改') : t('已进入克隆 · 请在左侧填写'),
+    });
+    editorModeBannerTimerRef.current = setTimeout(() => {
+      setEditorModeBanner(null);
+      editorModeBannerTimerRef.current = null;
+    }, 1600);
+
     if (!payload?.sourceRects) {
       setServerEditor(server);
       return;
@@ -4972,6 +4988,10 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     editFlyFieldTimerRefs.current = [];
     editFlyShineTimerRefs.current.forEach(clearTimeout);
     editFlyShineTimerRefs.current = [];
+    if (editorModeBannerTimerRef.current) {
+      clearTimeout(editorModeBannerTimerRef.current);
+      editorModeBannerTimerRef.current = null;
+    }
   }, []);
 
 
@@ -6311,6 +6331,12 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
               </div>
             )
           ))}
+        </div>
+      )}
+
+      {editorModeBanner && (
+        <div className="editor-mode-banner" key={editorModeBanner.id} aria-live="polite">
+          {editorModeBanner.text}
         </div>
       )}
 

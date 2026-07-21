@@ -1344,6 +1344,8 @@ export default {
   "关闭 WebView GPU 加速，重启应用后生效": "Tắt tính năng tăng tốc GPU WebView, tính năng này sẽ có hiệu lực sau khi khởi động lại ứng dụng.",
   "设置已保存，重启后生效": "Các cài đặt đã được lưu và sẽ có hiệu lực sau khi khởi động lại",
   "硬件加速设置保存失败": "Không lưu được cài đặt tăng tốc phần cứng",
+  "已进入编辑 · 请在左侧修改": "Đang sửa · Chỉnh bên trái",
+  "已进入克隆 · 请在左侧填写": "Đang nhân bản · Điền bên trái",
   "导入": "nhập khẩu",
   "导出": "Xuất khẩu",
   "保存导入模板": "Lưu mẫu nhập",

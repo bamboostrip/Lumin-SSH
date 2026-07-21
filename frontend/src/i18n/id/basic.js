@@ -1344,6 +1344,8 @@ export default {
   "关闭 WebView GPU 加速，重启应用后生效": "Matikan akselerasi GPU WebView, yang akan berlaku setelah aplikasi dimulai ulang.",
   "设置已保存，重启后生效": "Pengaturan telah disimpan dan akan berlaku setelah restart",
   "硬件加速设置保存失败": "Gagal menyimpan pengaturan akselerasi perangkat keras",
+  "已进入编辑 · 请在左侧修改": "Mengedit · Ubah di kiri",
+  "已进入克隆 · 请在左侧填写": "Mengklon · Isi di kiri",
   "导入": "impor",
   "导出": "Ekspor",
   "保存导入模板": "Simpan templat impor",

@@ -1344,6 +1344,8 @@ export default {
   "关闭 WebView GPU 加速，重启应用后生效": "Deaktivieren Sie die WebView-GPU-Beschleunigung, die nach dem Neustart der Anwendung wirksam wird.",
   "设置已保存，重启后生效": "Die Einstellungen wurden gespeichert und werden nach dem Neustart wirksam",
   "硬件加速设置保存失败": "Die Hardwarebeschleunigungseinstellungen konnten nicht gespeichert werden",
+  "已进入编辑 · 请在左侧修改": "Bearbeiten · Links ändern",
+  "已进入克隆 · 请在左侧填写": "Klonen · Links ausfüllen",
   "导入": "Import",
   "导出": "Export",
   "保存导入模板": "Importvorlage speichern",

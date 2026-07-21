@@ -1344,6 +1344,8 @@ export default {
   "关闭 WebView GPU 加速，重启应用后生效": "Disable WebView GPU acceleration. Takes effect after restarting the app",
   "设置已保存，重启后生效": "Setting saved. Restart the app to apply it",
   "硬件加速设置保存失败": "Failed to save hardware acceleration setting",
+  "已进入编辑 · 请在左侧修改": "Editing · Change fields on the left",
+  "已进入克隆 · 请在左侧填写": "Cloning · Fill in fields on the left",
   "导入": "import",
   "导出": "Export",
   "保存导入模板": "Save import template",

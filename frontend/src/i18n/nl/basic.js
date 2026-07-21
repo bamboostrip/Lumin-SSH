@@ -1344,6 +1344,8 @@ export default {
   "关闭 WebView GPU 加速，重启应用后生效": "Schakel WebView GPU-versnelling uit. Deze wordt van kracht nadat de applicatie opnieuw is opgestart.",
   "设置已保存，重启后生效": "De instellingen zijn opgeslagen en worden van kracht na het opnieuw opstarten",
   "硬件加速设置保存失败": "Kan hardwareversnellingsinstellingen niet opslaan",
+  "已进入编辑 · 请在左侧修改": "Bewerken · Wijzig links",
+  "已进入克隆 · 请在左侧填写": "Klonen · Vul links in",
   "导入": "importeren",
   "导出": "Exporteren",
   "保存导入模板": "Importsjabloon opslaan",

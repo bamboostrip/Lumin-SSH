@@ -1344,6 +1344,8 @@ export default {
   "关闭 WebView GPU 加速，重启应用后生效": "Vypněte akceleraci WebView GPU, která se projeví po restartu aplikace.",
   "设置已保存，重启后生效": "Nastavení byla uložena a projeví se po restartu",
   "硬件加速设置保存失败": "Nastavení hardwarové akcelerace se nepodařilo uložit",
+  "已进入编辑 · 请在左侧修改": "Úpravy · Upravte vlevo",
+  "已进入克隆 · 请在左侧填写": "Klonování · Vyplňte vlevo",
   "导入": "importovat",
   "导出": "Vývozní",
   "保存导入模板": "Uložit šablonu importu",

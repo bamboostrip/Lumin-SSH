@@ -1344,6 +1344,8 @@ export default {
   "关闭 WebView GPU 加速，重启应用后生效": "Wyłącz akcelerację GPU WebView, która zacznie obowiązywać po ponownym uruchomieniu aplikacji.",
   "设置已保存，重启后生效": "Ustawienia zostały zapisane i zaczną obowiązywać po ponownym uruchomieniu",
   "硬件加速设置保存失败": "Nie udało się zapisać ustawień akceleracji sprzętowej",
+  "已进入编辑 · 请在左侧修改": "Edycja · Zmień po lewej",
+  "已进入克隆 · 请在左侧填写": "Klonowanie · Uzupełnij po lewej",
   "导入": "import",
   "导出": "Eksport",
   "保存导入模板": "Zapisz szablon importu",

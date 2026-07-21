@@ -1344,6 +1344,8 @@ export default {
   "关闭 WebView GPU 加速，重启应用后生效": "Uygulamayı yeniden başlattıktan sonra etkili olacak olan WebView GPU hızlandırmayı kapatın.",
   "设置已保存，重启后生效": "Ayarlar kaydedildi ve yeniden başlattıktan sonra etkili olacak",
   "硬件加速设置保存失败": "Donanım hızlandırma ayarları kaydedilemedi",
+  "已进入编辑 · 请在左侧修改": "Düzenleme · Soldan değiştirin",
+  "已进入克隆 · 请在左侧填写": "Klonlama · Soldan doldurun",
   "导入": "içe aktarmak",
   "导出": "İhracat",
   "保存导入模板": "İçe aktarma şablonunu kaydet",

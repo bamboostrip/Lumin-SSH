@@ -1344,6 +1344,8 @@ export default {
   "关闭 WebView GPU 加速，重启应用后生效": "Dezactivați accelerarea WebView GPU, care va avea efect după repornirea aplicației.",
   "设置已保存，重启后生效": "Setările au fost salvate și vor intra în vigoare după repornire",
   "硬件加速设置保存失败": "Nu s-au salvat setările de accelerare hardware",
+  "已进入编辑 · 请在左侧修改": "Editare · Modificați în stânga",
+  "已进入克隆 · 请在左侧填写": "Clonare · Completați în stânga",
   "导入": "import",
   "导出": "Export",
   "保存导入模板": "Salvați șablonul de import",

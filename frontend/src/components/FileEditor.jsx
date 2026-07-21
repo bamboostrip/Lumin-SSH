@@ -20,10 +20,17 @@ import { Z } from '../constants/zIndex';
 import { getSessionWorkbenchState, setSessionWorkbenchState, subscribeSessionWorkbenchState } from '../utils/fileWorkbench.js';
 import Tiptop from './Tiptop.jsx';
 
-const EXTERNAL_AUTO_OPEN_KEY = 'fileEditorAutoOpenExternal';
+const EXTERNAL_PREFERRED_APP_KEY = 'fileEditorPreferredApp';
 
-function readExternalAutoOpen() {
-  return localStorage.getItem(EXTERNAL_AUTO_OPEN_KEY) === 'true';
+function readPreferredExternalApp() {
+  return (localStorage.getItem(EXTERNAL_PREFERRED_APP_KEY) || '').trim();
+}
+
+function preferredExternalAppLabel(path) {
+  if (!path) return '';
+  const normalized = path.replace(/\\/g, '/');
+  const base = normalized.split('/').pop() || path;
+  return base.replace(/\.exe$/i, '').replace(/\.app$/i, '');
 }
 
 // Debian sources.list 语法高亮
@@ -144,7 +151,17 @@ export default function FileEditor({
   const [editedContents, setEditedContents] = useState({});
   const [saving, setSaving] = useState(false);
   const [minimized, setMinimized] = useState(false);
-  const [autoOpenExternal, setAutoOpenExternal] = useState(() => readExternalAutoOpen());
+  const [preferredExternalApp, setPreferredExternalApp] = useState(() => readPreferredExternalApp());
+
+  useEffect(() => {
+    const refreshPreferred = () => setPreferredExternalApp(readPreferredExternalApp());
+    window.addEventListener('storage', refreshPreferred);
+    window.addEventListener('focus', refreshPreferred);
+    return () => {
+      window.removeEventListener('storage', refreshPreferred);
+      window.removeEventListener('focus', refreshPreferred);
+    };
+  }, []);
 
   // 打开文件时自动恢复
   useEffect(() => {
@@ -587,42 +604,44 @@ export default function FileEditor({
               {t('使用系统编辑器')}
             </button>
           </Tiptop>
-          <Tiptop text={t('用…编辑')} placement="bottom">
+          <Tiptop
+            text={preferredExternalApp
+              ? `${t('用已记住的编辑器打开')} (${preferredExternalAppLabel(preferredExternalApp)})`
+              : t('用…编辑')}
+            placement="bottom"
+          >
             <button
               className="btn btn-ghost btn-sm"
               disabled={!activeFile || externalOpening || !onOpenWithEditor}
-              onClick={() => onOpenWithEditor?.(activeFile, currentContent)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11 }}
+              onClick={() => {
+                onOpenWithEditor?.(activeFile, currentContent, false);
+                setTimeout(() => setPreferredExternalApp(readPreferredExternalApp()), 0);
+              }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: 11, maxWidth: 160 }}
             >
               <AppWindow size={13} />
-              {t('用…编辑')}
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {preferredExternalApp
+                  ? `${t('用')} ${preferredExternalAppLabel(preferredExternalApp)}`
+                  : t('用…编辑')}
+              </span>
             </button>
           </Tiptop>
-          <Tiptop text={t('自动打开外部编辑器')} placement="bottom">
-            <label
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                fontSize: 11,
-                color: 'var(--text-secondary)',
-                cursor: 'pointer',
-                userSelect: 'none',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={autoOpenExternal}
-                onChange={(e) => {
-                  const next = e.target.checked;
-                  setAutoOpenExternal(next);
-                  localStorage.setItem(EXTERNAL_AUTO_OPEN_KEY, next ? 'true' : 'false');
+          {preferredExternalApp && (
+            <Tiptop text={t('更换外部编辑器')} placement="bottom">
+              <button
+                className="btn btn-ghost btn-sm"
+                disabled={!activeFile || externalOpening || !onOpenWithEditor}
+                onClick={() => {
+                  onOpenWithEditor?.(activeFile, currentContent, true);
+                  setTimeout(() => setPreferredExternalApp(readPreferredExternalApp()), 0);
                 }}
-              />
-              {t('自动打开')}
-            </label>
-          </Tiptop>
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 6px', fontSize: 11 }}
+              >
+                {t('更换…')}
+              </button>
+            </Tiptop>
+          )}
           <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving || !isModified}>
             {saving ? t('保存中...') : <><Save size={13} /> {t('保存')}</>}
           </button>

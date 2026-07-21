@@ -43,9 +43,51 @@ type ExternalEditManager struct {
 }
 
 func NewExternalEditManager(app *App) *ExternalEditManager {
-	return &ExternalEditManager{
+	m := &ExternalEditManager{
 		sessions: make(map[string]*externalEditSession),
 		app:      app,
+	}
+	// Best-effort: clear leftover temp files from previous crashed runs.
+	go m.pruneOrphanTemp(0)
+	return m
+}
+
+// pruneOrphanTemp removes temp dirs that are not tracked by active sessions.
+// maxAge=0 means remove all untracked dirs immediately.
+func (m *ExternalEditManager) pruneOrphanTemp(maxAge time.Duration) {
+	root, err := m.tempRoot()
+	if err != nil {
+		return
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return
+	}
+	activeDirs := map[string]struct{}{}
+	m.mu.Lock()
+	for _, sess := range m.sessions {
+		activeDirs[filepath.Dir(sess.localPath)] = struct{}{}
+	}
+	m.mu.Unlock()
+	now := time.Now()
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		dirPath := filepath.Join(root, entry.Name())
+		if _, ok := activeDirs[dirPath]; ok {
+			continue
+		}
+		if maxAge > 0 {
+			info, statErr := entry.Info()
+			if statErr != nil {
+				continue
+			}
+			if now.Sub(info.ModTime()) < maxAge {
+				continue
+			}
+		}
+		_ = os.RemoveAll(dirPath)
 	}
 }
 
@@ -387,10 +429,11 @@ func (m *ExternalEditManager) StopSession(sessionID string) {
 
 func (m *ExternalEditManager) StopAll() {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	for _, sess := range m.sessions {
 		m.stopSessionLocked(sess, true)
 	}
+	m.mu.Unlock()
+	m.pruneOrphanTemp(0)
 }
 
 func (m *ExternalEditManager) List() []map[string]interface{} {

@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -23,22 +22,6 @@ type R2Config struct {
 	Region          string `json:"region"`
 	Prefix          string `json:"prefix"`
 	MaxBackups      int    `json:"maxBackups"`
-}
-
-// getR2Key 基于连接配置派生加密密钥。
-// 注意：此处使用裸 SHA-256 而未加盐与迭代（无 KDF），该简化处理是可接受的，因为：
-//  1. 输入包含访问密钥等高熵字段；
-//  2. 该密钥仅用于已加密配置数据的传输/静态保护；
-//  3. 主保护由 ConfigManager 的主密钥提供。
-//
-// 修改 KDF 会破坏与既有备份的向后兼容，故保持现状。
-func (c *ConfigManager) getR2Key() []byte {
-	conf := c.GetR2Config()
-	if conf == nil {
-		return c.key
-	}
-	hash := sha256.Sum256([]byte(conf.AccessKeyID + conf.SecretAccessKey + conf.Bucket + conf.Endpoint))
-	return hash[:]
 }
 
 func (c *ConfigManager) GetR2Config() *R2Config {
@@ -174,7 +157,6 @@ type r2Storage struct {
 	cli        *minio.Client
 	bucket     string
 	prefix     string
-	key        []byte
 	maxBackups int
 }
 
@@ -242,8 +224,6 @@ func (s *r2Storage) DeleteFile(name string) error {
 	return s.cli.RemoveObject(ctx, s.bucket, s.prefix+name, minio.RemoveObjectOptions{})
 }
 
-func (s *r2Storage) EncryptKey() []byte { return s.key }
-
 func (c *ConfigManager) newR2Storage() (RemoteStorage, int, error) {
 	conf := c.GetR2Config()
 	if conf == nil {
@@ -253,7 +233,7 @@ func (c *ConfigManager) newR2Storage() (RemoteStorage, int, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	return &r2Storage{cli: cli, bucket: conf.Bucket, prefix: conf.Prefix, key: c.getR2Key(), maxBackups: conf.MaxBackups}, conf.MaxBackups, nil
+	return &r2Storage{cli: cli, bucket: conf.Bucket, prefix: conf.Prefix, maxBackups: conf.MaxBackups}, conf.MaxBackups, nil
 }
 
 // BackupToR2 备份到 R2

@@ -48,7 +48,7 @@ Lumin is a desktop SSH client for developers and system administrators. Built wi
 ### Server Management
 - **Auto-Save** — Quick-connected servers are automatically saved after successful connection
 - **Clone Server** — Right-click to clone any server with all configuration (passwords, keys included)
-- **Import/Export** — The host list toolbar's data management entry lets you export all connections (and referenced credentials) as **plaintext JSON** or **encrypted .enc**; encrypted export can reuse the configured cloud sync key (zero interaction) or a custom password; import auto-detects plaintext/encrypted, auto-tries cloud sync keys for encrypted files, and prompts for password on failure; supports importing cloud backup `.enc` files directly; provides an import template download for easy batch entry and cross-machine migration
+- **Import/Export** — The host list toolbar's data management entry lets you export all connections (and referenced credentials) as **plaintext JSON** or **encrypted .lumin2**; encrypted export can reuse the recovery password or a custom password; import auto-detects plaintext JSON and `.lumin2`, and prompts for a password on failure; provides an import template download for easy batch entry and cross-machine migration
 - **Duplicate Detection** — Detects host+port+username duplicates on add/edit/clone/quick connect
 - **Group Management** — Organize servers into groups, move between groups, filter by group
 - **OS Icon Recognition** — Auto-detects 30+ OS types with rich icon set
@@ -102,7 +102,7 @@ Lumin is a desktop SSH client for developers and system administrators. Built wi
 
 ### Cloud Sync (WebDAV / R2 / FTP / SFTP)
 - **Four Cloud Storage Backends** — **WebDAV**, **Cloudflare R2 (S3-compatible)**, **FTP**, **SFTP**
-- **Optional Encrypted Backups** — Set a recovery password to create `.lumin2` encrypted backups; otherwise portable `.json` snapshots are used; legacy `.enc` remains import/restore compatible only
+- **Optional Encrypted Backups** — Set a recovery password to create `.lumin2` encrypted backups; otherwise portable `.json` snapshots are used
 - **One-Click Restore** — Configure the same backend on a new machine and restore servers, credentials, quick commands, AI settings, proxy nodes, and more
 - **Smart Merge** — Merge records by update time and propagate deletions to reduce accidental overwrites across devices
 - **Multi-Cloud Merge Sync** — The “All” mode merges all configured cloud backends first, then writes the final result back to every configured backend
@@ -303,7 +303,7 @@ A 32-byte random AES key is generated on first run and stored in `lumin.key`. Al
 
 ### How do I sync configs across machines?
 
-Settings → Sync & Cloud → configure any backend (WebDAV / R2 / FTP / SFTP). Set a recovery password for encrypted `.lumin2` snapshots; without one, Lumin syncs `.json` snapshots. Legacy `.enc` is import/restore compatible only. Configure the same backend on the new machine to restore.
+Settings → Sync & Cloud → configure any backend (WebDAV / R2 / FTP / SFTP). Set a recovery password for encrypted `.lumin2` snapshots; without one, Lumin syncs `.json` snapshots. Configure the same backend on the new machine to restore.
 
 ### Does server cloning copy passwords?
 

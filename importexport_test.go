@@ -197,7 +197,7 @@ func TestExportImportRoundTrip(t *testing.T) {
 		t.Fatalf("marshal failed: %v", err)
 	}
 	cm := newTestConfigManager(t)
-	parsed, err := cm.parseImportData(data, [][]byte{}, "")
+	parsed, err := cm.parseImportData(data, "")
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
@@ -274,13 +274,13 @@ func TestEncryptedRoundTrip_PasswordKey(t *testing.T) {
 	}
 
 	// 用错误密码解密应返回 errNeedPassword
-	_, err = cm.parseImportData([]byte(encrypted), [][]byte{}, "wrong")
+	_, err = cm.parseImportData([]byte(encrypted), "wrong")
 	if !errors.Is(err, errNeedPassword) {
 		t.Fatalf("expected errNeedPassword with wrong key, got %v", err)
 	}
 
 	// 用正确密码解密
-	parsed, err := cm.parseImportData([]byte(encrypted), [][]byte{}, password)
+	parsed, err := cm.parseImportData([]byte(encrypted), password)
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
@@ -297,7 +297,7 @@ func TestParseImportData_Plaintext(t *testing.T) {
 	}, []Credential{})
 	data, _ := json.Marshal(plainExp)
 
-	parsed, err := cm.parseImportData(data, [][]byte{}, "")
+	parsed, err := cm.parseImportData(data, "")
 	if err != nil {
 		t.Fatalf("plaintext parse failed: %v", err)
 	}
@@ -314,7 +314,7 @@ func TestParseImportData_SyncSnapshotFormat(t *testing.T) {
 	}
 	data, _ := json.Marshal(snap)
 	// SyncSnapshot 没有 format 字段，tryParseExportJSON 会失败，应回退到 tryParseSnapshotJSON
-	parsed, err := cm.parseImportData(data, [][]byte{}, "")
+	parsed, err := cm.parseImportData(data, "")
 	if err != nil {
 		t.Fatalf("snapshot parse failed: %v", err)
 	}
@@ -330,7 +330,7 @@ func TestParseImportData_SyncSnapshotKeepsProxyNodes(t *testing.T) {
 		ProxyNodes:  []ai.AIProxyNode{{ID: "proxy-1", Name: "Proxy", Type: "socks5", Host: "127.0.0.1", Port: 1080}},
 	}
 	data, _ := json.Marshal(snap)
-	parsed, err := cm.parseImportData(data, [][]byte{}, "")
+	parsed, err := cm.parseImportData(data, "")
 	if err != nil {
 		t.Fatalf("snapshot parse failed: %v", err)
 	}
@@ -350,57 +350,19 @@ func TestApplyImportReferenceMappings(t *testing.T) {
 	}
 }
 
-// TestParseImportData_EncryptedSnapshot 加密的云端备份格式应能用云端密钥解密
-func TestParseImportData_EncryptedSnapshot(t *testing.T) {
-	cm := newTestConfigManager(t)
-	snap := SyncSnapshot{
-		Connections: []Connection{{Host: "cloud-host", Port: 2222, Username: "cloud-user"}},
-	}
-	snapJSON, _ := json.Marshal(snap)
-	cloudKey := sha256Key("fake-cloud-credentials")
-	encrypted, err := cm.encryptWithKey(string(snapJSON), cloudKey)
-	if err != nil {
-		t.Fatalf("encrypt snapshot failed: %v", err)
-	}
-
-	// 用云端密钥作为候选密钥，应能解密并识别为 SyncSnapshot
-	parsed, err := cm.parseImportData([]byte(encrypted), [][]byte{cloudKey}, "")
-	if err != nil {
-		t.Fatalf("encrypted snapshot parse failed: %v", err)
-	}
-	if len(parsed.Connections) != 1 || parsed.Connections[0].Host != "cloud-host" {
-		t.Fatalf("encrypted snapshot data mismatch: %+v", parsed)
-	}
-}
-
-// TestParseImportData_NeedPassword 无任何正确密钥时返回 errNeedPassword
+// TestParseImportData_NeedPassword 无正确密码时返回 errNeedPassword
 func TestParseImportData_NeedPassword(t *testing.T) {
 	cm := newTestConfigManager(t)
 	exp := buildConnectionsExport([]Connection{{Host: "h1"}}, []Credential{})
 	encrypted, _ := cm.encryptExportData(exp, "correct")
 
-	// 没有提供任何正确密钥
-	_, err := cm.parseImportData([]byte(encrypted), [][]byte{sha256Key("wrong1"), sha256Key("wrong2")}, "")
+	_, err := cm.parseImportData([]byte(encrypted), "")
 	if !errors.Is(err, errNeedPassword) {
 		t.Fatalf("expected errNeedPassword, got %v", err)
 	}
-}
-
-// TestParseImportData_PasswordKeyPriority 用户密码优先于候选密钥
-func TestParseImportData_PasswordKeyPriority(t *testing.T) {
-	cm := newTestConfigManager(t)
-	exp := buildConnectionsExport([]Connection{{Host: "h1", Password: "pw"}}, []Credential{})
-	password := "user-password"
-	data, _ := json.Marshal(exp)
-	encrypted, _ := cm.encryptWithKey(string(data), sha256Key(password))
-
-	// 旧 hex 中用户密码应先于候选云密钥尝试。
-	parsed, err := cm.parseImportData([]byte(encrypted), [][]byte{sha256Key("wrong")}, password)
-	if err != nil {
-		t.Fatalf("expected success with passwordKey priority, got %v", err)
-	}
-	if parsed.Connections[0].Password != "pw" {
-		t.Fatalf("data mismatch: %+v", parsed)
+	_, err = cm.parseImportData([]byte(encrypted), "wrong")
+	if !errors.Is(err, errNeedPassword) {
+		t.Fatalf("expected errNeedPassword with wrong password, got %v", err)
 	}
 }
 
@@ -418,21 +380,5 @@ func TestBuildImportTemplate(t *testing.T) {
 	}
 	if len(parsed.Connections) != 2 {
 		t.Fatalf("parsed template has %d connections", len(parsed.Connections))
-	}
-}
-
-// TestProviderOrder 同步后端排序：当前模式应排第一
-func TestProviderOrder(t *testing.T) {
-	order := providerOrder("r2")
-	if order[0] != "r2" {
-		t.Fatalf("expected r2 first, got %v", order)
-	}
-	if len(order) != 4 {
-		t.Fatalf("expected 4 providers, got %d", len(order))
-	}
-	// "all" 时保持默认顺序
-	orderAll := providerOrder("all")
-	if orderAll[0] != "webdav" {
-		t.Fatalf("expected webdav first for 'all', got %v", orderAll)
 	}
 }

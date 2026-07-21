@@ -4495,7 +4495,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
       }
       if (!filePath) { return; } // 用户取消文件选择，静默
 
-      // 尝试导入：先不传自定义密码，让后端自动尝试明文、恢复密码、旧版云同步密钥；失败才弹窗输入自定义密码
+      // 尝试导入：先不传自定义密码，让后端自动尝试明文、恢复密码；失败才弹窗输入自定义密码
       const doImport = async (pwd) => {
         const result = await AppGo.ImportConnections(filePath, pwd);
         // 后端取消时返回空 ImportResult（全 0），静默

@@ -28,13 +28,12 @@ type RemoteFile struct {
 	Size    int64
 }
 
-// RemoteStorage 远端存储接口，各提供商只需实现这四个方法 + 提供加密密钥
+// RemoteStorage 远端存储接口
 type RemoteStorage interface {
 	ListFiles() ([]RemoteFile, error)
 	ReadFile(name string) ([]byte, error)
 	WriteFile(name string, data []byte) error
 	DeleteFile(name string) error
-	EncryptKey() []byte
 }
 
 // maxBackupsProvider 是可选接口：后端若实现 MaxBackups()，syncFromProvider 在
@@ -99,9 +98,8 @@ func (s *SyncSnapshot) UnmarshalJSON(data []byte) error {
 
 // ─── 共享解密/解析 ─────────────────────────────────────────
 
-// decryptAndParseSnapshot 解析同步备份：先试明文 JSON，失败后按 extraKey（恢复密码）→ key（旧版后端派生密钥）解密。
-// extraKey 通常为恢复密码派生密钥，可为 nil；key 仅用于旧版云端 .enc 兼容。
-func (c *ConfigManager) decryptAndParseSnapshot(data string, key []byte, password string) (*SyncSnapshot, error) {
+// decryptAndParseSnapshot 解析同步备份：先试明文 JSON，失败后用恢复密码解密 LUMIN2。
+func (c *ConfigManager) decryptAndParseSnapshot(data string, password string) (*SyncSnapshot, error) {
 	// ponytail: 先试明文（新默认），不行再按密文解密
 	var snap SyncSnapshot
 	if err := json.Unmarshal([]byte(data), &snap); err == nil && snap.Connections != nil {
@@ -111,27 +109,16 @@ func (c *ConfigManager) decryptAndParseSnapshot(data string, key []byte, passwor
 	if err := json.Unmarshal([]byte(data), &conns); err == nil && len(conns) > 0 {
 		return &SyncSnapshot{Connections: conns}, nil
 	}
-	decrypted := ""
-	if strings.HasPrefix(strings.TrimSpace(data), lumin2Prefix) {
-		if password == "" {
-			return nil, fmt.Errorf("%w：LUMIN2 备份需要恢复密码", errRecoveryPassword)
-		}
-		var err error
-		decrypted, err = decryptLUMIN2(strings.TrimSpace(data), password)
-		if err != nil {
-			return nil, fmt.Errorf("LUMIN2 解密失败：%w", err)
-		}
-	} else {
-		// 1.2.0+ 删除旧 hex 兼容：以下分支仅读取旧 .enc/hex。
-		if password != "" {
-			decrypted = c.decryptWithKey(data, sha256Key(password))
-		}
-		if decrypted == "" && key != nil {
-			decrypted = c.decryptWithKey(data, key)
-		}
+	trimmed := strings.TrimSpace(data)
+	if !strings.HasPrefix(trimmed, lumin2Prefix) {
+		return nil, fmt.Errorf("不支持的备份格式：仅支持明文 JSON 与 LUMIN2 密文（.lumin2）")
 	}
-	if decrypted == "" {
-		return nil, fmt.Errorf("解密失败：如果这是旧版本产生的备份，且云端凭据已变更，则受 AES-256 高强加密保护，资料已永久无法恢复。")
+	if password == "" {
+		return nil, fmt.Errorf("%w：LUMIN2 备份需要恢复密码", errRecoveryPassword)
+	}
+	decrypted, err := decryptLUMIN2(trimmed, password)
+	if err != nil {
+		return nil, fmt.Errorf("LUMIN2 解密失败：%w", err)
 	}
 	// 尝试新格式（快照）
 	if err := json.Unmarshal([]byte(decrypted), &snap); err == nil && snap.Connections != nil {
@@ -468,8 +455,7 @@ func normalizeSyncAIProxyNodes(nodes []ai.AIProxyNode) []ai.AIProxyNode {
 // ─── 共享远端操作 ─────────────────────────────────────────
 
 func isBackupName(name string) bool {
-	// 1.2.0+ 删除旧 hex 兼容：.enc 仅用于读取/清理旧备份，新写入使用 .lumin2。
-	return strings.HasPrefix(name, "connections_backup_") && (strings.HasSuffix(name, ".json") || strings.HasSuffix(name, ".lumin2") || strings.HasSuffix(name, ".enc"))
+	return strings.HasPrefix(name, "connections_backup_") && (strings.HasSuffix(name, ".json") || strings.HasSuffix(name, ".lumin2"))
 }
 
 func isNoBackupError(err error) bool {
@@ -525,7 +511,7 @@ func (c *ConfigManager) fetchLatestBackup(s RemoteStorage, password string) (*Sy
 	if err != nil {
 		return nil, fmt.Errorf("读取最新备份 %s 失败：%w", backups[0], err)
 	}
-	snap, err := c.decryptAndParseSnapshot(string(data), s.EncryptKey(), password)
+	snap, err := c.decryptAndParseSnapshot(string(data), password)
 	if err != nil {
 		return nil, fmt.Errorf("解析最新备份 %s 失败：%w", backups[0], err)
 	}
@@ -547,9 +533,6 @@ func (c *ConfigManager) localAIGlobalSettingsForSync() *ai.AIGlobalSettings {
 
 // backupConnections 上传本地所有可同步数据到远端，同时清理超出 maxBackups 的旧备份。
 // 加密策略（与导出一致）：设置了恢复密码则上传 LUMIN2 .lumin2；否则明文 JSON 上传 .json。
-//
-// 1.2.0+ 删除旧 hex 兼容：旧版用后端派生密钥加密上传 .enc，新版不再产生此类备份，
-// 但 decryptAndParseSnapshot 仍保留读取兼容。
 func (c *ConfigManager) backupConnections(s RemoteStorage, maxBackups int) (map[string]interface{}, error) {
 	// 普通备份：上传前并远端墓碑，避免本机空墓碑盖掉云端删除记录
 	return c.uploadSnapshot(s, c.localSyncSnapshot(), c.GetRecoveryPassword(), maxBackups, true)
@@ -703,9 +686,9 @@ func (c *ConfigManager) listBackupFiles(s RemoteStorage) ([]map[string]interface
 	var backups []map[string]interface{}
 	for _, f := range files {
 		if !f.IsDir && isBackupName(f.Name) {
-			// 从文件名解析时间：优先新格式（带时区），fallback 旧格式（无时区用本地时间），支持 .lumin2/.enc/.json
+			// 从文件名解析时间：优先新格式（带时区），fallback 旧格式（无时区用本地时间）
 			timeStr := ""
-			base := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(f.Name, ".lumin2"), ".enc"), ".json")
+			base := strings.TrimSuffix(strings.TrimSuffix(f.Name, ".lumin2"), ".json")
 			if t, err := time.Parse("connections_backup_20060102_150405.000_-0700", base); err == nil {
 				timeStr = t.Local().Format("2006-01-02 15:04:05 -0700")
 			} else if t, err := time.ParseInLocation("connections_backup_20060102_150405.000", base, time.Local); err == nil {
@@ -2801,14 +2784,13 @@ func (c *ConfigManager) restoreSnapshotToLocal(snap *SyncSnapshot) {
 // restoreFromProvider 是 RestoreFromXxxFile 的共享实现：
 // 读取远端文件 → 解密解析快照 → 写回本地。
 // 统一用 filepath.Base 防止路径穿越。
-// extraKey 通常为恢复密码派生密钥，可为 nil。
 func (c *ConfigManager) restoreFromProvider(s RemoteStorage, filename string, maxBackups int, password string, provider string) error {
 	filename = filepath.Base(filename) // 防止路径穿越
 	data, err := s.ReadFile(filename)
 	if err != nil {
 		return err
 	}
-	snap, err := c.decryptAndParseSnapshot(string(data), s.EncryptKey(), password) // s.EncryptKey() 仅为旧版 .enc 兼容
+	snap, err := c.decryptAndParseSnapshot(string(data), password)
 	if err != nil {
 		return err
 	}

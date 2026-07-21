@@ -53,8 +53,6 @@ func (s *memoryStorage) DeleteFile(name string) error {
 	s.deletes = append(s.deletes, name)
 	return nil
 }
-func (s *memoryStorage) EncryptKey() []byte { return nil }
-
 func testSyncManager(t *testing.T) *ConfigManager {
 	t.Helper()
 	dir := t.TempDir()
@@ -614,7 +612,7 @@ func TestResetRecoveryPasswordUsesLocalSnapshotAndPreservesOldBackups(t *testing
 	if _, ok := s.files[oldName]; !ok {
 		t.Fatal("强制重置必须保留旧备份")
 	}
-	snap, err := cm.decryptAndParseSnapshot(string(s.files[s.writes[0]]), nil, "新密码")
+	snap, err := cm.decryptAndParseSnapshot(string(s.files[s.writes[0]]), "新密码")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -708,7 +706,7 @@ func TestChangeRecoveryPasswordPersistsAfterSuccessfulUploads(t *testing.T) {
 		t.Fatalf("全部成功后应持久化新密码，得到：%q", got)
 	}
 	for _, s := range []*memoryStorage{first, second} {
-		if _, err := cm.decryptAndParseSnapshot(string(s.files[s.writes[0]]), nil, "新密码"); err != nil {
+		if _, err := cm.decryptAndParseSnapshot(string(s.files[s.writes[0]]), "新密码"); err != nil {
 			t.Fatalf("新快照应使用新密码：%v", err)
 		}
 	}

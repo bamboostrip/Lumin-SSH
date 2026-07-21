@@ -544,7 +544,7 @@ func (a *App) SelectImportFile() (string, error) {
 	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
 		Title: "导入节点",
 		Filters: []runtime.FileFilter{
-			{DisplayName: "Lumin-SSH (*.json;*.lumin2;*.enc)", Pattern: "*.json;*.lumin2;*.enc"},
+			{DisplayName: "Lumin-SSH (*.json;*.lumin2)", Pattern: "*.json;*.lumin2"},
 		},
 	})
 	if err != nil {
@@ -555,10 +555,9 @@ func (a *App) SelectImportFile() (string, error) {
 
 // ImportConnections 从指定文件导入节点（合并，跳过重复）。
 // filePath 由前端通过 SelectImportFile 获取；password 为弹窗输入的自定义解密密码（可空）。
-// 智能识别明文 JSON / 恢复密码密文 / 旧版云端 .enc / 自定义密码密文：
+// 智能识别明文 JSON / LUMIN2 密文：
 //   - 明文直接解析
-//   - 密文自动先试恢复密码和旧版云同步密钥
-//   - 自动解密失败返回 errNeedPassword，前端弹窗输入自定义密码后再试
+//   - 密文优先用本机恢复密码，失败返回 errNeedPassword，前端弹窗输入自定义密码后再试
 func (a *App) ImportConnections(filePath string, password string) (ImportResult, error) {
 	if filePath == "" {
 		return ImportResult{}, nil
@@ -571,9 +570,8 @@ func (a *App) ImportConnections(filePath string, password string) (ImportResult,
 	if strings.TrimSpace(password) == "" {
 		password = a.configManager.GetRecoveryPassword()
 	}
-	candidateKeys := a.configManager.CandidateSyncKeys()
 
-	exp, err := a.configManager.parseImportData(data, candidateKeys, password)
+	exp, err := a.configManager.parseImportData(data, password)
 	if err != nil {
 		if errors.Is(err, errNeedPassword) {
 			// 原样返回，前端识别此 sentinel 并弹密码框
@@ -619,13 +617,6 @@ func (a *App) DownloadImportTemplate(lang string) (string, error) {
 		return "", fmt.Errorf("保存模板失败: %w", err)
 	}
 	return path, nil
-}
-
-// HasCloudSyncConfigured 返回本机是否配置了任意云同步后端（供前端 UI 决定是否提示输入密码）。
-// TODO(deprecated, 预计 v1.2.0+ 移除): 旧版逻辑，新版用 HasRecoveryPassword 判断。
-func (a *App) HasCloudSyncConfigured() bool {
-	key, _ := a.configManager.GetActiveSyncKey()
-	return key != nil
 }
 
 // HasRecoveryPassword 返回是否设置了恢复密码（供前端导出 UI 决定是否允许"复用恢复密码"）。

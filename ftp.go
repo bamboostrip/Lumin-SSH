@@ -46,22 +46,6 @@ type FTPConfig struct {
 	MaxBackups int    `json:"maxBackups"`
 }
 
-// getFTPKey 基于连接配置派生加密密钥。
-// 注意：此处使用裸 SHA-256 而未加盐与迭代（无 KDF），该简化处理是可接受的，因为：
-//  1. 输入包含用户密码等高熵字段；
-//  2. 该密钥仅用于已加密配置数据的传输/静态保护；
-//  3. 主保护由 ConfigManager 的主密钥提供。
-//
-// 修改 KDF 会破坏与既有备份的向后兼容，故保持现状。
-func (c *ConfigManager) getFTPKey() []byte {
-	conf := c.GetFTPConfig()
-	if conf == nil {
-		return c.key
-	}
-	hash := sha256.Sum256([]byte(conf.Host + fmt.Sprintf("%d", conf.Port) + conf.Username + conf.Password))
-	return hash[:]
-}
-
 func (c *ConfigManager) GetFTPConfig() *FTPConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -586,7 +570,6 @@ type ftpStorage struct {
 	c          *ConfigManager
 	client     *ftp.ServerConn
 	remoteDir  string
-	key        []byte
 	maxBackups int
 }
 
@@ -642,8 +625,6 @@ func (s *ftpStorage) DeleteFile(name string) error {
 	return s.client.Delete(path)
 }
 
-func (s *ftpStorage) EncryptKey() []byte { return s.key }
-
 func (c *ConfigManager) newFTPStorage() (RemoteStorage, int, error) {
 	conf := c.GetFTPConfig()
 	if conf == nil {
@@ -662,7 +643,6 @@ func (c *ConfigManager) newFTPStorage() (RemoteStorage, int, error) {
 		c:          c,
 		client:     client,
 		remoteDir:  conf.RemoteDir,
-		key:        c.getFTPKey(),
 		maxBackups: conf.MaxBackups,
 	}, conf.MaxBackups, nil
 }

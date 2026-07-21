@@ -215,9 +215,6 @@ export default function SyncTab({
           {!hasRecoveryPassword && (
             <div style={{ marginTop: 4, color: 'var(--warning)' }}>{$t('未开启加密同步时会以明文保存到云端；如需保护云端备份，请选择加密并设置恢复密码。')}</div>
           )}
-          <div style={{ marginTop: 4, color: 'var(--text-tertiary)', opacity: 0.7 }}>
-            {$t('旧版用云端凭据派生密钥加密的备份仍可解密（兼容），但将在 v1.2.0+ 移除。')}
-          </div>
         </div>
       </div>
 

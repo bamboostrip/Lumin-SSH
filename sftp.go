@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,22 +28,6 @@ type SFTPConfig struct {
 	Passphrase string `json:"passphrase,omitempty"`
 	RemoteDir  string `json:"remoteDir"`
 	MaxBackups int    `json:"maxBackups"`
-}
-
-// getSFTPKey 基于连接配置派生加密密钥。
-// 注意：此处使用裸 SHA-256 而未加盐与迭代（无 KDF），该简化处理是可接受的，因为：
-//  1. 输入包含用户密码等高熵字段；
-//  2. 该密钥仅用于已加密配置数据的传输/静态保护；
-//  3. 主保护由 ConfigManager 的主密钥提供。
-//
-// 修改 KDF 会破坏与既有备份的向后兼容，故保持现状。
-func (c *ConfigManager) getSFTPKey() []byte {
-	conf := c.GetSFTPConfig()
-	if conf == nil {
-		return c.key
-	}
-	hash := sha256.Sum256([]byte(conf.Host + fmt.Sprintf("%d", conf.Port) + conf.Username + conf.Password + conf.PrivateKey))
-	return hash[:]
 }
 
 func (c *ConfigManager) GetSFTPConfig() *SFTPConfig {
@@ -438,7 +421,6 @@ type sftpStorage struct {
 	client     *sftp.Client
 	sshClient  *ssh.Client
 	remoteDir  string
-	key        []byte
 	maxBackups int
 }
 
@@ -513,8 +495,6 @@ func (s *sftpStorage) DeleteFile(name string) error {
 	return s.client.Remove(path)
 }
 
-func (s *sftpStorage) EncryptKey() []byte { return s.key }
-
 func (c *ConfigManager) newSFTPStorage() (RemoteStorage, int, error) {
 	conf := c.GetSFTPConfig()
 	if conf == nil {
@@ -529,7 +509,6 @@ func (c *ConfigManager) newSFTPStorage() (RemoteStorage, int, error) {
 		client:     client,
 		sshClient:  sshClient,
 		remoteDir:  conf.RemoteDir,
-		key:        c.getSFTPKey(),
 		maxBackups: conf.MaxBackups,
 	}, conf.MaxBackups, nil
 }

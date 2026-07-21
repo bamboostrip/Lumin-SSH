@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -329,12 +328,6 @@ func buildImportTemplate(lang string) SyncSnapshot {
 // errNeedPassword 表示密文导入时所有候选密钥都解密失败，需要用户输入密码。
 var errNeedPassword = errors.New("need password")
 
-// sha256Key 把用户密码派生为 32 字节 AES 密钥（与云端各后端裸 SHA-256 口径一致）。
-func sha256Key(password string) []byte {
-	h := sha256.Sum256([]byte(password))
-	return h[:]
-}
-
 // encryptExportData 把导出对象序列化为 JSON 并用指定密码加密，返回 LUMIN2 字符串。
 func (c *ConfigManager) encryptExportData(exp SyncSnapshot, password string) (string, error) {
 	data, err := json.MarshalIndent(exp, "", "  ")
@@ -348,94 +341,15 @@ func (c *ConfigManager) encryptExportData(exp SyncSnapshot, password string) (st
 	return enc, nil
 }
 
-// providerOrder 返回按"当前同步后端优先"排序的候选后端列表（固定四后端，去重）。
-func providerOrder(currentMode string) []string {
-	all := []string{"webdav", "r2", "ftp", "sftp"}
-	current := strings.ToLower(strings.TrimSpace(currentMode))
-	if current == "" || current == "all" {
-		return all
-	}
-	// 把 current 放最前，其余保持原顺序
-	order := []string{current}
-	for _, p := range all {
-		if p != current {
-			order = append(order, p)
-		}
-	}
-	return order
-}
-
-// providerKeyIfConfigured 返回指定后端已配置时的派生密钥与显示名；未配置返回 (nil, "")。
-// 使用公开的 GetXxxConfig（自带锁），可在外部安全调用。
-func (c *ConfigManager) providerKeyIfConfigured(provider string) ([]byte, string) {
-	switch provider {
-	case "webdav":
-		conf := c.GetWebdavConfig()
-		if conf == nil || conf["url"] == "" {
-			return nil, ""
-		}
-		return c.getWebdavKey(), "WebDAV"
-	case "r2":
-		conf := c.GetR2Config()
-		if conf == nil || conf.Bucket == "" || conf.Endpoint == "" {
-			return nil, ""
-		}
-		return c.getR2Key(), "R2 (S3)"
-	case "ftp":
-		conf := c.GetFTPConfig()
-		if conf == nil || conf.Host == "" {
-			return nil, ""
-		}
-		return c.getFTPKey(), "FTP"
-	case "sftp":
-		conf := c.GetSFTPConfig()
-		if conf == nil || conf.Host == "" {
-			return nil, ""
-		}
-		return c.getSFTPKey(), "SFTP"
-	}
-	return nil, ""
-}
-
-// GetActiveSyncKey 按"当前同步后端优先 + 其他已配后端"策略返回本机可用的云端密钥。
-// 返回 (key, providerName)；都没有则返回 (nil, "")。
-func (c *ConfigManager) GetActiveSyncKey() ([]byte, string) {
-	mode := c.GetSyncMode()
-	for _, p := range providerOrder(mode) {
-		if key, name := c.providerKeyIfConfigured(p); key != nil {
-			return key, name
-		}
-	}
-	return nil, ""
-}
-
-// CandidateSyncKeys 返回本机所有可用的旧 hex 解密密钥列表（恢复密码优先，旧版后端派生密钥兼容），用于导入时自动尝试解密 .enc。
-func (c *ConfigManager) CandidateSyncKeys() [][]byte {
-	var keys [][]byte
-	// 恢复密码优先（新方式）
-	if rpKey := c.getRecoveryPasswordKey(); rpKey != nil {
-		keys = append(keys, rpKey)
-	}
-	// TODO(deprecated, 预计 v1.2.0+ 移除): 旧版后端派生密钥兼容回退。
-	mode := c.GetSyncMode()
-	for _, p := range providerOrder(mode) {
-		if key, _ := c.providerKeyIfConfigured(p); key != nil {
-			keys = append(keys, key)
-		}
-	}
-	return keys
-}
-
-// parseImportData 智能解析导入文件原始字节：先试明文 JSON，失败则用候选密钥逐个解密。
+// parseImportData 智能解析导入文件原始字节：先试明文 JSON，失败则用密码解密 LUMIN2。
 //
 // 解析优先级：
 //  1. 明文 connectionsExport（format 字段匹配）
-//  2. 明文 SyncSnapshot（兼容云端解密后的结构，忽略 quick_commands 等无关字段）
-//  3. hex 密文：先用 candidateKeys（恢复密码/旧版云同步密钥）解密，失败后再用用户输入的 passwordKey 解密
+//  2. 明文 SyncSnapshot
+//  3. LUMIN2 密文（需 password）
 //
-// passwordKey 为空表示用户未提供密码；candidateKeys 为恢复密码优先、旧版后端派生密钥兼容。
-// 所有密钥都解密失败时返回 errNeedPassword。
-func (c *ConfigManager) parseImportData(data []byte, candidateKeys [][]byte, password string) (*SyncSnapshot, error) {
+// password 为空表示用户未提供密码；解密失败时返回 errNeedPassword。
+func (c *ConfigManager) parseImportData(data []byte, password string) (*SyncSnapshot, error) {
 	// 先尝试明文 JSON：优先 connectionsExport 格式
 	if exp, ok := tryParseExportJSON(data); ok {
 		return exp, nil
@@ -446,43 +360,23 @@ func (c *ConfigManager) parseImportData(data []byte, candidateKeys [][]byte, pas
 	}
 
 	raw := strings.TrimSpace(string(data))
-	if strings.HasPrefix(raw, lumin2Prefix) {
-		if password == "" {
-			return nil, errNeedPassword
-		}
-		decrypted, err := decryptLUMIN2(raw, password)
-		if err != nil {
-			return nil, errNeedPassword
-		}
-		if exp, ok := tryParseSnapshotJSON([]byte(decrypted)); ok {
-			return exp, nil
-		}
-		if exp, ok := tryParseExportJSON([]byte(decrypted)); ok {
-			return exp, nil
-		}
-		return nil, fmt.Errorf("LUMIN2 解密成功但内容不是有效 SyncSnapshot")
+	if !strings.HasPrefix(raw, lumin2Prefix) {
+		return nil, fmt.Errorf("不支持的导入格式：仅支持明文 JSON 与 LUMIN2 密文（.lumin2）")
 	}
-
-	// 1.2.0+ 删除旧 hex 兼容：以下分支仅读取旧 .enc/hex。
-	var keysToTry [][]byte
-	if password != "" {
-		keysToTry = append(keysToTry, sha256Key(password))
+	if password == "" {
+		return nil, errNeedPassword
 	}
-	keysToTry = append(keysToTry, candidateKeys...)
-	for _, key := range keysToTry {
-		decrypted := c.decryptWithKey(raw, key)
-		if decrypted == "" {
-			continue
-		}
-		if exp, ok := tryParseExportJSON([]byte(decrypted)); ok {
-			return exp, nil
-		}
-		// 解密成功但不是 connectionsExport，尝试 SyncSnapshot 格式（云端备份）
-		if exp, ok := tryParseSnapshotJSON([]byte(decrypted)); ok {
-			return exp, nil
-		}
+	decrypted, err := decryptLUMIN2(raw, password)
+	if err != nil {
+		return nil, errNeedPassword
 	}
-	return nil, errNeedPassword
+	if exp, ok := tryParseSnapshotJSON([]byte(decrypted)); ok {
+		return exp, nil
+	}
+	if exp, ok := tryParseExportJSON([]byte(decrypted)); ok {
+		return exp, nil
+	}
+	return nil, fmt.Errorf("LUMIN2 解密成功但内容不是有效 SyncSnapshot")
 }
 
 // tryParseExportJSON 兼容旧版 connectionsExport，转换为 SyncSnapshot。

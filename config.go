@@ -324,57 +324,6 @@ func decryptLUMIN2(text, password string) (string, error) {
 	return string(plaintext), nil
 }
 
-// encryptWithKey 使用指定密钥加密旧版纯 hex 格式，仅用于兼容读取测试。
-// 1.2.0+ 删除旧 hex 兼容。
-func (c *ConfigManager) encryptWithKey(text string, key []byte) (string, error) {
-	if text == "" {
-		return "", nil
-	}
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return "", fmt.Errorf("aes.NewCipher: %w", err)
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", fmt.Errorf("cipher.NewGCM: %w", err)
-	}
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", fmt.Errorf("generate nonce: %w", err)
-	}
-	ciphertext := gcm.Seal(nonce, nonce, []byte(text), nil)
-	return hex.EncodeToString(ciphertext), nil
-}
-
-// decryptWithKey 使用指定密钥解密
-func (c *ConfigManager) decryptWithKey(hexText string, key []byte) string {
-	if hexText == "" {
-		return ""
-	}
-	ciphertext, err := hex.DecodeString(hexText)
-	if err != nil {
-		log.Printf("[decryptWithKey] hex decode failed: %v", err)
-		return ""
-	}
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return ""
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return ""
-	}
-	if len(ciphertext) < gcm.NonceSize() {
-		return ""
-	}
-	nonce, ct := ciphertext[:gcm.NonceSize()], ciphertext[gcm.NonceSize():]
-	plaintext, err := gcm.Open(nil, nonce, ct, nil)
-	if err != nil {
-		return ""
-	}
-	return string(plaintext)
-}
-
 func (c *ConfigManager) GetConnections() []Connection {
 	c.mu.RLock()
 	if !c.connCacheDirty && c.connCache != nil {
@@ -1472,15 +1421,6 @@ func (c *ConfigManager) getWebdavConfigLocked() map[string]string {
 	}
 }
 
-func (c *ConfigManager) getWebdavKey() []byte {
-	confMap := c.getWebdavConfigLocked()
-	if confMap == nil || confMap["url"] == "" {
-		return c.key
-	}
-	hash := sha256.Sum256([]byte(confMap["url"] + confMap["username"] + confMap["password"]))
-	return hash[:]
-}
-
 func (c *ConfigManager) SaveWebdavConfig(config map[string]string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -1531,7 +1471,6 @@ func (c *ConfigManager) TestWebdavConnection(url, username, password string) err
 type webdavStorage struct {
 	client     *gowebdav.Client
 	remotePath string
-	key        []byte
 }
 
 func (s *webdavStorage) ListFiles() ([]RemoteFile, error) {
@@ -1570,8 +1509,6 @@ func (s *webdavStorage) DeleteFile(name string) error {
 	return s.client.Remove(path)
 }
 
-func (s *webdavStorage) EncryptKey() []byte { return s.key }
-
 func (c *ConfigManager) newWebdavStorage() (RemoteStorage, int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -1581,11 +1518,9 @@ func (c *ConfigManager) newWebdavStorage() (RemoteStorage, int, error) {
 	}
 	client := gowebdav.NewClient(conf["url"], conf["username"], conf["password"])
 	maxBackups := parseIntOrDefault(conf["maxBackups"], 0)
-	hash := sha256.Sum256([]byte(conf["url"] + conf["username"] + conf["password"]))
 	return &webdavStorage{
 		client:     client,
 		remotePath: conf["remotePath"],
-		key:        hash[:],
 	}, maxBackups, nil
 }
 
@@ -1696,16 +1631,6 @@ func (c *ConfigManager) SetRecoveryPassword(password string) error {
 		return fmt.Errorf("加密恢复密码失败: %w", err)
 	}
 	return atomicWriteFile(c.recoveryPasswordFile, []byte(enc), 0600)
-}
-
-// getRecoveryPasswordKey 返回恢复密码的 SHA-256 派生密钥；未设置返回 nil。
-func (c *ConfigManager) getRecoveryPasswordKey() []byte {
-	pw := c.GetRecoveryPassword()
-	if pw == "" {
-		return nil
-	}
-	h := sha256.Sum256([]byte(pw))
-	return h[:]
 }
 
 func sanitizeChmodDialogMode(mode string) string {

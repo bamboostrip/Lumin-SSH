@@ -203,7 +203,6 @@ function getBackupFormatLabel(name = '') {
   const lower = String(name).toLowerCase();
   if (lower.endsWith('.lumin2')) return 'LUMIN2';
   if (lower.endsWith('.json')) return 'JSON';
-  if (lower.endsWith('.enc')) return 'ENC';
   return 'UNKNOWN';
 }
 

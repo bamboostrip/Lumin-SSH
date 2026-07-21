@@ -982,8 +982,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   const currentPathRef = useRef(currentPath);
   const currentPathHydratedRef = useRef(false);
   const initializingPathRef = useRef(true);
-  const skipNextTerminalFollowRef = useRef(false);
+  const pendingTerminalCwdRef = useRef('');
   const preserveWorkspacePathRef = useRef(false);
+  const followTerminalCwdRef = useRef(true);
+  const isActiveRef = useRef(isActive);
   const pendingTabSelectionRestoreRef = useRef(null);
   const activeFileManagerTab = useMemo(() => {
     const tabs = Array.isArray(fileManagerWorkspace?.tabs) ? fileManagerWorkspace.tabs : [];
@@ -1073,12 +1075,14 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   useEffect(() => { currentPathRef.current = currentPath; }, [currentPath]);
   useEffect(() => { fileManagerWorkspaceRef.current = fileManagerWorkspace; }, [fileManagerWorkspace]);
   useEffect(() => { activeFileManagerTabIdRef.current = activeFileManagerTab?.id || ''; }, [activeFileManagerTab]);
+  useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
   useEffect(() => { setFileManagerWorkspaceState(getSessionFileManagerWorkspace(sessionId)); }, [sessionId]);
   useEffect(() => {
     if (!sessionId) return undefined;
     return subscribeSessionFileManagerWorkspace(sessionId, setFileManagerWorkspaceState);
   }, [sessionId]);
   const [followTerminalCwd, setFollowTerminalCwd] = useState(() => localStorage.getItem('fileManagerFollowTerminalCwd') !== 'false');
+  useEffect(() => { followTerminalCwdRef.current = followTerminalCwd; }, [followTerminalCwd]);
   const [showFileManagerTabIcons, setShowFileManagerTabIcons] = useState(() => shouldShowFileManagerTabIcons());
   useEffect(() => {
     const handleChange = (e) => setFollowTerminalCwd(e.detail !== false);
@@ -1359,9 +1363,11 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
             : (currentPathHydratedRef.current && !preserveWorkspacePathRef.current ? currentPathRef.current : tab.path);
           const normalizedTabPath = normalizePath(tab.path) || '/';
           const normalizedNextPath = normalizePath(nextPath) || '/';
+          // 仅用户固定标签锁定路径；系统固定标签需跟随终端 cwd
+          const isUserPinned = tab.pinned === true && tab.systemPinned !== true;
           return {
             ...tab,
-            path: tab.pinned === true && normalizedNextPath !== normalizedTabPath ? tab.path : normalizedNextPath,
+            path: isUserPinned && normalizedNextPath !== normalizedTabPath ? tab.path : normalizedNextPath,
             sortField: overrides.sortField ?? sortFieldRef.current,
             sortDir: overrides.sortDir ?? sortDirRef.current,
             selectedPaths: Array.isArray(overrides.selectedPaths) ? overrides.selectedPaths : selectedPathsRef.current,
@@ -1908,8 +1914,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       ? currentWorkspace.tabs.find((tab) => tab.id === targetTabId)
       : null;
     const normalizedTargetWorkspaceTabPath = normalizePath(targetWorkspaceTab?.path) || '/';
+    // 用户固定标签：切换路径时开新标签；系统固定标签原地切换（含终端 cwd 同步）
     if (
       targetWorkspaceTab?.pinned === true
+      && targetWorkspaceTab?.systemPinned !== true
       && normalizedPath !== normalizedTargetWorkspaceTabPath
       && typeof openFileManagerPathInNewTabRef.current === 'function'
     ) {
@@ -2141,6 +2149,37 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     };
   }, [normalizePath]);
 
+  const applyTerminalCwdFollow = useCallback(async (cwd, options = {}) => {
+    const newPath = normalizePath(cwd);
+    if (!newPath) return false;
+    if (!followTerminalCwdRef.current) return false;
+    if (initializingPathRef.current) {
+      pendingTerminalCwdRef.current = newPath;
+      return false;
+    }
+    if (newPath === currentPathRef.current) {
+      pendingTerminalCwdRef.current = '';
+      return true;
+    }
+    // 非激活面板：缓存最新 cwd，激活后再应用（避免 display:none 时丢事件）
+    if (!isActiveRef.current && options.force !== true) {
+      pendingTerminalCwdRef.current = newPath;
+      return false;
+    }
+    const ok = await loadDir(newPath, {
+      silent: true,
+      preserveView: false,
+      trackDiff: false,
+      showLoading: options.showLoading === true,
+      transitionMode: options.transitionMode || 'directory',
+    });
+    if (ok) {
+      pendingTerminalCwdRef.current = '';
+      return true;
+    }
+    return false;
+  }, [loadDir, normalizePath]);
+
   useEffect(() => {
     if (!isActive) {
       return undefined;
@@ -2150,7 +2189,17 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     initializingPathRef.current = true;
     (async () => {
       try {
-        const forcedInitialPath = await resolveNonRememberedInitialPath();
+        // 优先：未处理的终端 cwd / 当前真实终端目录；其次标签记忆路径
+        let preferredTerminalPath = normalizePath(pendingTerminalCwdRef.current);
+        if (!preferredTerminalPath && followTerminalCwdRef.current) {
+          try {
+            preferredTerminalPath = normalizePath(await AppGo.GetTerminalCwd(sessionId));
+          } catch (_) {
+            preferredTerminalPath = '';
+          }
+        }
+
+        const forcedInitialPath = preferredTerminalPath || await resolveNonRememberedInitialPath();
         const existingWorkspace = getSessionFileManagerWorkspace(sessionId);
         const repairedWorkspace = ensureForcedInitialFileManagerTab(existingWorkspace, forcedInitialPath);
         const effectiveWorkspace = repairedWorkspace !== existingWorkspace
@@ -2159,7 +2208,6 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         if (cancelled) {
           return;
         }
-        skipNextTerminalFollowRef.current = true;
         setFileManagerWorkspaceState(effectiveWorkspace);
         const existingTab = effectiveWorkspace.tabs.find((tab) => tab.id === effectiveWorkspace.activeTabId) || effectiveWorkspace.tabs[0] || null;
         if (!existingTab) {
@@ -2168,7 +2216,11 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         setSortField(existingTab.sortField || 'name');
         setSortDir(existingTab.sortDir === 'desc' ? 'desc' : 'asc');
         const nextSelectedPaths = Array.isArray(existingTab.selectedPaths) ? existingTab.selectedPaths : [];
-        const targetPath = normalizePath(existingTab.path) || '/';
+        // 跟随终端开启时，激活/重挂载以终端 cwd 为准，而不是旧标签路径
+        const tabPath = normalizePath(existingTab.path) || '/';
+        const targetPath = (followTerminalCwdRef.current && preferredTerminalPath)
+          ? preferredTerminalPath
+          : tabPath;
         if (targetPath === currentPathRef.current) {
           displayedTabIdRef.current = existingTab.id;
           setSelectedPaths(nextSelectedPaths);
@@ -2210,50 +2262,32 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           }
         }
       } finally {
-        initializingPathRef.current = false;
+        if (!cancelled) {
+          initializingPathRef.current = false;
+          // 初始化期间积压的 cwd 在此应用
+          const pendingPath = normalizePath(pendingTerminalCwdRef.current);
+          if (pendingPath && followTerminalCwdRef.current && pendingPath !== currentPathRef.current) {
+            void applyTerminalCwdFollow(pendingPath, { force: true, showLoading: false });
+          }
+        }
       }
     })();
     return () => {
       cancelled = true;
       initializingPathRef.current = false;
     };
-  }, [ensureForcedInitialFileManagerTab, isActive, loadDir, normalizePath, resolveNonRememberedInitialPath, sessionId]);
+  }, [applyTerminalCwdFollow, ensureForcedInitialFileManagerTab, isActive, loadDir, normalizePath, resolveNonRememberedInitialPath, sessionId]);
 
+  // 始终订阅终端 cwd（不依赖 isActive），避免面板隐藏时丢事件
   useEffect(() => {
-    if (!followTerminalCwd || !isActive) return undefined;
-    const off = EventsOn(`ssh-terminal-cwd-${sessionId}`, async (cwd) => {
-      const newPath = normalizePath(cwd);
-      if (!newPath) return;
-      if (initializingPathRef.current) {
-        return;
-      }
-      if (skipNextTerminalFollowRef.current) {
-        skipNextTerminalFollowRef.current = false;
-        if (newPath !== currentPathRef.current) {
-          return;
-        }
-      }
-      if (newPath !== currentPathRef.current) {
-        const ok = await loadDir(newPath, {
-          silent: true,
-          preserveView: false,
-          trackDiff: false,
-          showLoading: false,
-          transitionMode: 'directory',
-        });
-        if (!ok) {
-          void loadDir('/', {
-            silent: true,
-            preserveView: false,
-            trackDiff: false,
-            showLoading: false,
-            transitionMode: 'directory',
-          });
-        }
-      }
+    if (!sessionId) return undefined;
+    const off = EventsOn(`ssh-terminal-cwd-${sessionId}`, (cwd) => {
+      void applyTerminalCwdFollow(cwd);
     });
-    return off;
-  }, [followTerminalCwd, isActive, loadDir, normalizePath, sessionId]);
+    return () => {
+      off?.();
+    };
+  }, [applyTerminalCwdFollow, sessionId]);
 
   useEffect(() => {
     const offCompressed = EventsOn(`compressed-upload-progress-${sessionId}`, (payload = {}) => {

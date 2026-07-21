@@ -4243,31 +4243,50 @@ body.theme-light .dashboard-server-editor {
 .split-resizer-v {
   position: relative;
   z-index: 10;
-  width: 4px;
+  width: 0;
   cursor: col-resize;
-  background: var(--border-subtle);
-  transition: background-color 0.25s, box-shadow 0.25s;
+  background: transparent;
+  flex-shrink: 0;
 }
-.split-resizer-v:hover,
-.split-resizer-v.dragging,
-.split-resizer-v.armed {
-  background-color: var(--accent) !important;
-  box-shadow: none;
+/* 视觉 0，热区 ~8px；悬停/拖拽时画 1px 强调线 */
+.split-resizer-v::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  width: 8px;
+  background: transparent;
+  transition: background-color 0.15s;
+}
+.split-resizer-v:hover::after,
+.split-resizer-v.dragging::after,
+.split-resizer-v.armed::after {
+  background: linear-gradient(90deg, transparent 3.5px, var(--accent) 3.5px, var(--accent) 4.5px, transparent 4.5px);
 }
 
 .split-resizer-h {
   position: relative;
   z-index: 10;
-  height: 4px;
+  height: 0;
   cursor: row-resize;
-  background: var(--border-subtle);
-  transition: background-color 0.25s, box-shadow 0.25s;
+  background: transparent;
+  flex-shrink: 0;
 }
-.split-resizer-h:hover,
-.split-resizer-h.dragging,
-.split-resizer-h.armed {
-  background-color: var(--accent) !important;
-  box-shadow: none;
+.split-resizer-h::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -4px;
+  height: 8px;
+  background: transparent;
+  transition: background-color 0.15s;
+}
+.split-resizer-h:hover::after,
+.split-resizer-h.dragging::after,
+.split-resizer-h.armed::after {
+  background: linear-gradient(180deg, transparent 3.5px, var(--accent) 3.5px, var(--accent) 4.5px, transparent 4.5px);
 }
 
 /* ── 终端主题选择卡片 ────────────────────────────────────────── */

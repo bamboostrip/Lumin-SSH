@@ -1063,7 +1063,7 @@ export default function App() {
     }
 
     const previewInset = 10;
-    const resizerThickness = 4;
+    const resizerThickness = 0;
 
     if (target === 'left') {
       const bottomInset = fileManagerPosition === 'bottom' && !fileManagerCollapsed
@@ -5701,7 +5701,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                             style={{
                               position: 'absolute',
                               // 左侧文件管理器打开时，命令面板只占右侧，不盖住文件管理器
-                              left: showLeftFileManager ? `${leftSplitWidth + 4}px` : 0,
+                              left: showLeftFileManager ? `${leftSplitWidth}px` : 0,
                               right: 0,
                               bottom: 0,
                               height: `${bottomSplitHeight}px`,
@@ -5762,7 +5762,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                             aria-label={t('收起文件管理面板')}
                             style={{
                               position: 'absolute',
-                              left: `${leftSplitWidth - 2}px`,
+                              left: `${leftSplitWidth}px`,
                               top: 0,
                               // 底部有命令面板时，竖拖条不要被底部面板盖住
                               bottom: showBottomQuickCommands ? `${bottomSplitHeight}px` : 0,
@@ -5787,7 +5787,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                               position: 'absolute',
                               left: 0,
                               right: 0,
-                              bottom: `${bottomSplitHeight - 2}px`,
+                              bottom: `${bottomSplitHeight}px`,
                               zIndex: Z.PANEL_BUTTON,
                               marginTop: 0,
                               marginBottom: 0,
@@ -5803,8 +5803,8 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                             minWidth: 0,
                             minHeight: 0,
                             overflow: 'hidden',
-                            marginLeft: showLeftFileManager ? `${leftSplitWidth + 4}px` : 0,
-                            marginBottom: showBottomDockPanel ? `${bottomSplitHeight + 4}px` : 0,
+                            marginLeft: showLeftFileManager ? `${leftSplitWidth}px` : 0,
+                            marginBottom: showBottomDockPanel ? `${bottomSplitHeight}px` : 0,
                           }}
                         >
                           <div style={{ display: (contentTab === 'terminal' || s.status !== 'connected') ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0, height: '100%', position: 'relative' }}>

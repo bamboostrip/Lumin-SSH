@@ -393,6 +393,7 @@ export default function SettingsModal({
     paste: 'Ctrl+V',
     clear: 'Ctrl+L',
     newTab: 'Ctrl+T',
+    find: 'Ctrl+F',
     sigint: 'Ctrl+C',
     eof: 'Ctrl+D',
     suspend: 'Ctrl+Z',

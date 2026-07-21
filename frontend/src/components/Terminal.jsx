@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
-import { Copy, Clipboard, Trash2, CheckSquare, Play, Clock, X, Zap, MessageSquarePlus, ExternalLink } from 'lucide-react';
+import { SearchAddon } from '@xterm/addon-search';
+import { Copy, Clipboard, Trash2, CheckSquare, Play, Clock, X, Zap, MessageSquarePlus, ExternalLink, Search, ChevronUp, ChevronDown, CaseSensitive } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/main/App.js';
 import { EventsOn } from '../../wailsjs/runtime/runtime.js';
 import { getModKey, formatShortcut } from '../utils/platform.js';
@@ -25,6 +26,30 @@ import { getResolvedProgramFontPreferences } from '../utils/programFonts.js';
 
 const textDecoder = new TextDecoder();
 const textEncoder = new TextEncoder();
+
+// SearchAddon 要求 #RRGGBB。浅/深完全两套，互不迁就：
+// 浅色：琥珀非当前 + 深橙当前（奶油底上够醒目）
+// 深色：亮蓝非当前 + 亮黄当前（避开绿提示符叠成泥色；不用灰/橙）
+function getTermSearchDecorations() {
+  if (getAppThemeMode() === 'light') {
+    return {
+      matchBackground: '#fbbf24',
+      matchBorder: '#d97706',
+      matchOverviewRuler: '#fbbf24',
+      activeMatchBackground: '#ea580c',
+      activeMatchBorder: '#c2410c',
+      activeMatchColorOverviewRuler: '#ea580c',
+    };
+  }
+  return {
+    matchBackground: '#1f6feb',
+    matchBorder: '#58a6ff',
+    matchOverviewRuler: '#1f6feb',
+    activeMatchBackground: '#ffdf5d',
+    activeMatchBorder: '#ffffff',
+    activeMatchColorOverviewRuler: '#ffdf5d',
+  };
+}
 
 function formatTerminalTimestamp(date = new Date()) {
   const pad = (value) => String(value).padStart(2, '0');
@@ -371,6 +396,8 @@ export default function Terminal({
   const wrapperRef     = useRef(null);
   const termRef        = useRef(null);
   const fitAddonRef    = useRef(null);
+  const searchAddonRef = useRef(null);
+  const termSearchInputRef = useRef(null);
   const wsRef          = useRef(null);
   const statusRef      = useRef(status);
   useEffect(() => { statusRef.current = status; }, [status]);
@@ -389,6 +416,10 @@ export default function Terminal({
   useEffect(() => { historyListRef.current = historyList; }, [historyList]);
   const [historyMode, setHistoryMode]         = useState('server'); // 'server' | 'global'
   const [searchQuery, setSearchQuery]         = useState('');
+  const [showTermSearch, setShowTermSearch]   = useState(false);
+  const [termSearchQuery, setTermSearchQuery] = useState('');
+  const [termSearchCaseSensitive, setTermSearchCaseSensitive] = useState(false);
+  const [termSearchResult, setTermSearchResult] = useState({ resultIndex: -1, resultCount: 0 });
   const cmdInputRef                           = useRef(null);
   const historyBtnRef                         = useRef(null);
   const historyScrollRef                      = useRef(null);
@@ -674,6 +705,8 @@ export default function Terminal({
       cursorWidth:      1,
       scrollback:       5000,
       allowTransparency: true,
+      // SearchAddon 高亮装饰依赖 proposed API
+      allowProposedApi: true,
       fastScrollModifier: 'alt',
       macOptionIsMeta:  true,
       padding:          8,
@@ -684,6 +717,15 @@ export default function Terminal({
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
+    const searchAddon = new SearchAddon({ highlightLimit: 1000 });
+    term.loadAddon(searchAddon);
+    searchAddonRef.current = searchAddon;
+    const searchResultsDisposable = searchAddon.onDidChangeResults((result) => {
+      setTermSearchResult({
+        resultIndex: typeof result?.resultIndex === 'number' ? result.resultIndex : -1,
+        resultCount: typeof result?.resultCount === 'number' ? result.resultCount : 0,
+      });
+    });
     // 点击/手型用 provider；常驻下划线用覆盖层。可见区扫描走 getViewportLinkCache
     const linkProviderDisposable = term.registerLinkProvider({
       provideLinks(bufferLineNumber, callback) {
@@ -828,9 +870,9 @@ export default function Terminal({
     if (shortcutsRef.current === null) {
       try {
         const saved = localStorage.getItem('appShortcuts');
-        shortcutsRef.current = saved ? JSON.parse(saved) : { copy: 'Ctrl+C', paste: 'Ctrl+V', clear: 'Ctrl+L', newTab: 'Ctrl+T' };
+        shortcutsRef.current = saved ? JSON.parse(saved) : { copy: 'Ctrl+C', paste: 'Ctrl+V', clear: 'Ctrl+L', newTab: 'Ctrl+T', find: 'Ctrl+F' };
       } catch (_) {
-        shortcutsRef.current = { copy: 'Ctrl+C', paste: 'Ctrl+V', clear: 'Ctrl+L', newTab: 'Ctrl+T' };
+        shortcutsRef.current = { copy: 'Ctrl+C', paste: 'Ctrl+V', clear: 'Ctrl+L', newTab: 'Ctrl+T', find: 'Ctrl+F' };
       }
     }
 
@@ -899,6 +941,22 @@ export default function Terminal({
       // 新建标签页的快捷键放行给外层 App 处理
       if (pressedStr === customShortcuts.newTab) {
         return true;
+      }
+
+      // ── 查找终端缓冲区（默认 Ctrl+F） ────────────────
+      const findShortcut = customShortcuts.find || 'Ctrl+F';
+      if (pressedStr === findShortcut) {
+        e.preventDefault();
+        const selection = term.getSelection();
+        setShowTermSearch(true);
+        if (selection && !selection.includes('\n') && selection.length <= 200) {
+          setTermSearchQuery(selection);
+        }
+        requestAnimationFrame(() => {
+          termSearchInputRef.current?.focus();
+          termSearchInputRef.current?.select();
+        });
+        return false;
       }
 
       // ── 自定义控制信号（向服务器发送对应的控制字符） ────────────────
@@ -1155,6 +1213,8 @@ export default function Terminal({
       bufferChangeDisposable.dispose();
       resizeDisposable.dispose();
       try { linkProviderDisposable.dispose(); } catch (_) {}
+      try { searchResultsDisposable.dispose(); } catch (_) {}
+      try { searchAddon.dispose(); } catch (_) {}
       if (gutterSyncRAFRef.current !== null) {
         cancelAnimationFrame(gutterSyncRAFRef.current);
         gutterSyncRAFRef.current = null;
@@ -1178,6 +1238,7 @@ export default function Terminal({
       alternateBufferActiveRef.current = false;
       termRef.current     = null;
       fitAddonRef.current = null;
+      searchAddonRef.current = null;
       try { term.dispose(); } catch (_) {}
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1367,7 +1428,7 @@ export default function Terminal({
     setLinkMenu(null);
     const hasSelection = !!(termRef.current && termRef.current.getSelection());
     setContextHasSelection(hasSelection);
-    setContextMenu(clampMenuPosition(e.clientX, e.clientY, 190, 140));
+    setContextMenu(clampMenuPosition(e.clientX, e.clientY, 190, 168));
   };
 
   const closeContextMenu = () => {
@@ -1377,6 +1438,100 @@ export default function Terminal({
   const closeLinkMenu = () => {
     if (linkMenu) setLinkMenu(null);
   };
+
+  const getTermSearchOptions = useCallback((incremental = false) => ({
+    caseSensitive: termSearchCaseSensitive,
+    incremental,
+    decorations: getTermSearchDecorations(),
+  }), [termSearchCaseSensitive, themeToggle]);
+
+  const openTermSearch = useCallback((seedText) => {
+    setShowTermSearch(true);
+    if (typeof seedText === 'string' && seedText && !seedText.includes('\n') && seedText.length <= 200) {
+      setTermSearchQuery(seedText);
+    } else {
+      const selection = termRef.current?.getSelection?.();
+      if (selection && !selection.includes('\n') && selection.length <= 200) {
+        setTermSearchQuery(selection);
+      }
+    }
+    requestAnimationFrame(() => {
+      termSearchInputRef.current?.focus();
+      termSearchInputRef.current?.select();
+    });
+  }, []);
+
+  const closeTermSearch = useCallback(() => {
+    setShowTermSearch(false);
+    setTermSearchResult({ resultIndex: -1, resultCount: 0 });
+    try { searchAddonRef.current?.clearDecorations(); } catch (_) {}
+    termRef.current?.focus();
+  }, []);
+
+  const findTermNext = useCallback((incremental = false) => {
+    const addon = searchAddonRef.current;
+    const query = termSearchQuery;
+    if (!addon || !query) {
+      setTermSearchResult({ resultIndex: -1, resultCount: 0 });
+      return;
+    }
+    addon.findNext(query, getTermSearchOptions(incremental));
+  }, [getTermSearchOptions, termSearchQuery]);
+
+  const findTermPrevious = useCallback(() => {
+    const addon = searchAddonRef.current;
+    const query = termSearchQuery;
+    if (!addon || !query) {
+      setTermSearchResult({ resultIndex: -1, resultCount: 0 });
+      return;
+    }
+    addon.findPrevious(query, getTermSearchOptions(false));
+  }, [getTermSearchOptions, termSearchQuery]);
+
+  // 查找栏打开后：输入变化 / 大小写切换 / 主题切换 → 清旧装饰再搜（避免浅深色装饰残留）
+  useEffect(() => {
+    if (!showTermSearch) return;
+    if (!termSearchQuery) {
+      try { searchAddonRef.current?.clearDecorations(); } catch (_) {}
+      setTermSearchResult({ resultIndex: -1, resultCount: 0 });
+      return;
+    }
+    try { searchAddonRef.current?.clearDecorations(); } catch (_) {}
+    findTermNext(true);
+  }, [showTermSearch, termSearchQuery, termSearchCaseSensitive, themeToggle, findTermNext]);
+
+  // 终端聚焦时 Ctrl+F；输入栏等区域同样可用
+  useEffect(() => {
+    if (!isActive) return undefined;
+    const onKeyDown = (e) => {
+      if (e.defaultPrevented) return;
+      const keys = [];
+      if (getModKey(e)) keys.push('Ctrl');
+      if (e.shiftKey) keys.push('Shift');
+      if (e.altKey) keys.push('Alt');
+      let keyName = e.key;
+      if (keyName === ' ') keyName = 'Space';
+      else if (keyName.length === 1) keyName = keyName.toUpperCase();
+      keys.push(keyName);
+      const pressedStr = keys.join('+');
+      const findShortcut = shortcutsRef.current?.find || 'Ctrl+F';
+      if (pressedStr !== findShortcut) return;
+      const activeEl = document.activeElement;
+      const inWrapper = !!(wrapperRef.current && (
+        wrapperRef.current.contains(activeEl)
+        || wrapperRef.current.contains(e.target)
+      ));
+      // xterm 辅助 textarea 有时不在 wrapper 内层级判断里，再兜一层
+      const inXterm = !!(activeEl?.classList?.contains('xterm-helper-textarea')
+        || e.target?.classList?.contains('xterm-helper-textarea'));
+      if (!inWrapper && !inXterm) return;
+      e.preventDefault();
+      e.stopPropagation();
+      openTermSearch();
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [isActive, openTermSearch]);
 
   const openExternalUrl = (url) => {
     if (!url) return;
@@ -1465,6 +1620,11 @@ export default function Terminal({
         termRef.current.selectAll();
         termRef.current.focus();
         break;
+      case 'find': {
+        const selectedText = termRef.current.getSelection();
+        openTermSearch(selectedText || undefined);
+        break;
+      }
       default:
         termRef.current.focus();
         break;
@@ -2035,6 +2195,125 @@ export default function Terminal({
         </div>
       </div>
 
+      {/* ── 终端内容查找栏 ── */}
+      {showTermSearch && (
+        <div
+          className="term-search-bar"
+          onMouseDown={(e) => e.stopPropagation()}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '6px 10px',
+            borderBottom: '1px solid var(--term-separator)',
+            background: 'var(--term-status-bg)',
+            flexShrink: 0,
+            zIndex: Z.SEARCH_PANEL,
+          }}
+        >
+          <Search size={13} style={{ color: 'var(--term-muted)', flexShrink: 0 }} />
+          <input
+            ref={termSearchInputRef}
+            value={termSearchQuery}
+            onChange={(e) => setTermSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                closeTermSearch();
+                return;
+              }
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.shiftKey) findTermPrevious();
+                else findTermNext(false);
+              }
+            }}
+            placeholder={t('查找...')}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              padding: '4px 8px',
+              background: 'var(--term-input-bg)',
+              border: '1px solid var(--term-btn-border)',
+              borderRadius: 4,
+              color: 'var(--term-input-color)',
+              fontSize: 12,
+              outline: 'none',
+              fontFamily: 'var(--font-ui)',
+            }}
+          />
+          <span
+            style={{
+              fontSize: 11,
+              color: termSearchQuery && termSearchResult.resultCount === 0
+                ? 'var(--danger, #ff7b72)'
+                : 'var(--term-muted)',
+              fontFamily: 'var(--font-mono)',
+              minWidth: 52,
+              textAlign: 'center',
+              flexShrink: 0,
+            }}
+          >
+            {!termSearchQuery
+              ? ''
+              : termSearchResult.resultCount <= 0
+                ? t('无匹配')
+                : termSearchResult.resultIndex < 0
+                  ? `${termSearchResult.resultCount}`
+                  : `${termSearchResult.resultIndex + 1}/${termSearchResult.resultCount}`}
+          </span>
+          <Tiptop text={t('区分大小写')}>
+            <button
+              type="button"
+              onClick={() => setTermSearchCaseSensitive((v) => !v)}
+              aria-label={t('区分大小写')}
+              aria-pressed={termSearchCaseSensitive}
+              className={`term-btn${termSearchCaseSensitive ? ' active' : ''}`}
+              style={{ padding: '4px 6px', minWidth: 28, height: 26 }}
+            >
+              <CaseSensitive size={13} />
+            </button>
+          </Tiptop>
+          <Tiptop text={t('上一个')}>
+            <button
+              type="button"
+              onClick={() => findTermPrevious()}
+              aria-label={t('上一个')}
+              className="term-btn"
+              style={{ padding: '4px 6px', minWidth: 28, height: 26 }}
+              disabled={!termSearchQuery}
+            >
+              <ChevronUp size={13} />
+            </button>
+          </Tiptop>
+          <Tiptop text={t('下一个')}>
+            <button
+              type="button"
+              onClick={() => findTermNext(false)}
+              aria-label={t('下一个')}
+              className="term-btn"
+              style={{ padding: '4px 6px', minWidth: 28, height: 26 }}
+              disabled={!termSearchQuery}
+            >
+              <ChevronDown size={13} />
+            </button>
+          </Tiptop>
+          <Tiptop text={t('关闭')}>
+            <button
+              type="button"
+              onClick={closeTermSearch}
+              aria-label={t('关闭')}
+              className="term-btn"
+              style={{ padding: '4px 6px', minWidth: 28, height: 26 }}
+            >
+              <X size={13} />
+            </button>
+          </Tiptop>
+        </div>
+      )}
+
       {/* ── xterm 渲染层 + 时间轴 ── */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         <div ref={gutterRef} style={{
@@ -2567,6 +2846,7 @@ export default function Terminal({
             { icon: <Clipboard size={13} />, label: t('粘贴'), action: 'paste', shortcut: formatShortcut('Ctrl+V') },
             { type: 'separator' },
             { icon: <CheckSquare size={13} />, label: t('全选'), action: 'selectAll' },
+            { icon: <Search size={13} />, label: t('查找'), action: 'find', shortcut: formatShortcut(shortcutsRef.current?.find || 'Ctrl+F') },
             { icon: <MessageSquarePlus size={13} />, label: t('添加到 AI助手'), action: 'sendToAssistant', disabled: !contextHasSelection },
             { icon: <Trash2 size={13} />, label: t('清空屏幕'), action: 'clear', shortcut: formatShortcut('Ctrl+L') },
           ].map((item, idx) =>

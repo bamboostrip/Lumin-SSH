@@ -6,6 +6,7 @@ const SHORTCUT_ROWS = [
   { labelKey: '粘贴到终端', key: 'paste' },
   { labelKey: '清空终端缓冲区', key: 'clear' },
   { labelKey: '新建本地标签页', key: 'newTab' },
+  { labelKey: '查找终端内容', key: 'find' },
   { labelKey: '打断当前指令 (SIGINT)', key: 'sigint' },
   { labelKey: '结束终端会话 (EOF)', key: 'eof' },
   { labelKey: '后台挂起进程 (SIGTSTP)', key: 'suspend' },

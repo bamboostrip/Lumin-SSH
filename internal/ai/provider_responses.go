@@ -137,11 +137,7 @@ func (a *App) requestResponsesAIChatRound(ctx context.Context, requestID string,
 		if delta == "" {
 			return
 		}
-		a.emitAIChatEvent(map[string]interface{}{
-			"kind":      "reasoning_delta",
-			"requestId": requestID,
-			"delta":     delta,
-		})
+		a.emitAIChatPayloadReasoningDelta(payload, requestID, delta)
 	}
 
 	emitContentDelta := func(delta string) {
@@ -152,14 +148,10 @@ func (a *App) requestResponsesAIChatRound(ctx context.Context, requestID string,
 			firstTokenAt = time.Now()
 		}
 		contentBuilder.WriteString(delta)
-		a.emitAIChatEvent(map[string]interface{}{
-			"kind":      "delta",
-			"requestId": requestID,
-			"delta":     delta,
-		})
+		a.emitAIChatPayloadContentDelta(payload, requestID, delta)
 	}
 
-	systemPrompt := BuildChatSystemPromptWithProfile(a.ctx, payload.ConversationID, payload.SessionID, true, profile)
+	systemPrompt := resolveAISystemPromptForPayload(a.ctx, payload, profile)
 	modelCapability := aiprovider.ResolveModelCapability(profile.Provider, profile.Model)
 	runtimeProfile := toAIProviderRuntimeProfile(profile)
 	promptCacheBypassTimestamp := ""
@@ -175,6 +167,7 @@ func (a *App) requestResponsesAIChatRound(ctx context.Context, requestID string,
 		"instructions": systemPrompt,
 		"stream":       true,
 		"store":        false,
+		"temperature":  0,
 	}
 	if promptCacheKey := aiprovider.BuildResponsesPromptCacheKey(payload.ConversationID, promptCacheBypassTimestamp); promptCacheKey != "" {
 		requestBody["prompt_cache_key"] = promptCacheKey

@@ -109,11 +109,7 @@ func (a *App) requestMessagesAIChatRound(ctx context.Context, requestID string, 
 		if delta == "" {
 			return
 		}
-		a.emitAIChatEvent(map[string]interface{}{
-			"kind":      "reasoning_delta",
-			"requestId": requestID,
-			"delta":     delta,
-		})
+		a.emitAIChatPayloadReasoningDelta(payload, requestID, delta)
 	}
 
 	emitContentDelta := func(delta string) {
@@ -124,14 +120,10 @@ func (a *App) requestMessagesAIChatRound(ctx context.Context, requestID string, 
 			firstTokenAt = time.Now()
 		}
 		contentBuilder.WriteString(delta)
-		a.emitAIChatEvent(map[string]interface{}{
-			"kind":      "delta",
-			"requestId": requestID,
-			"delta":     delta,
-		})
+		a.emitAIChatPayloadContentDelta(payload, requestID, delta)
 	}
 
-	systemPrompt := BuildChatSystemPromptWithProfile(a.ctx, payload.ConversationID, payload.SessionID, true, profile)
+	systemPrompt := resolveAISystemPromptForPayload(a.ctx, payload, profile)
 	modelCapability := aiprovider.ResolveModelCapability(profile.Provider, profile.Model)
 	runtimeProfile := toAIProviderRuntimeProfile(profile)
 	promptCacheStrategy := aiprovider.ResolvePromptCacheStrategy(runtimeProfile, modelCapability)
@@ -146,11 +138,12 @@ func (a *App) requestMessagesAIChatRound(ctx context.Context, requestID string, 
 	}
 
 	requestBody := map[string]any{
-		"model":      profile.Model,
-		"max_tokens": maxOutputTokens,
-		"system":     []map[string]any{systemBlock},
-		"messages":   aiprovider.BuildAnthropicMessages(toAIProviderRuntimeMessages(requestMessages), promptCacheStrategy),
-		"stream":     true,
+		"model":       profile.Model,
+		"max_tokens":  maxOutputTokens,
+		"temperature": 0,
+		"system":      []map[string]any{systemBlock},
+		"messages":    aiprovider.BuildAnthropicMessages(toAIProviderRuntimeMessages(requestMessages), promptCacheStrategy),
+		"stream":      true,
 	}
 
 	if reasoningEffort := aiprovider.GetEffectiveReasoningEffort(runtimeProfile, modelCapability); reasoningEffort != "" {

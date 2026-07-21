@@ -57,6 +57,22 @@ export async function resolveAIChatFollowup(requestId, answer, images = []) {
   await bridge.ResolveAIChatFollowup(requestId, normalizedAnswer, JSON.stringify(normalizedImages))
 }
 
+export async function startAIChatCollaboration(requestId) {
+  const bridge = getAppBridge()
+  if (!bridge?.StartAIChatCollaboration) {
+    return
+  }
+  await bridge.StartAIChatCollaboration(requestId)
+}
+
+export async function disableAIChatCollaboration(requestId) {
+  const bridge = getAppBridge()
+  if (!bridge?.DisableAIChatCollaboration) {
+    return
+  }
+  await bridge.DisableAIChatCollaboration(requestId)
+}
+
 export async function setAIChatSkipNextAutomaticRequest(requestId, enabled) {
   const bridge = getAppBridge()
   if (!bridge?.SetAIChatSkipNextAutomaticRequest) {

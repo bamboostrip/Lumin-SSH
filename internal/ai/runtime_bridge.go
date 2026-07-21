@@ -52,6 +52,8 @@ type App struct {
 	aiPendingToolBatches      map[string]*PendingToolBatch
 	aiPendingFollowupMu       sync.Mutex
 	aiPendingFollowupBatches  map[string]*PendingToolBatch
+	aiCollabMu                sync.Mutex
+	aiCollaborations          map[string]*aiCollaborationState
 	aiToolExecMu              sync.Mutex
 	aiToolExecutions          map[string]*ToolExecutionState
 	aiToolRestoreMu           sync.Mutex
@@ -78,6 +80,7 @@ func NewRuntimeApp(ctx context.Context, configDir string, sessionProvider Sessio
 		aiChatReqCancel:           make(map[string]context.CancelFunc),
 		aiPendingToolBatches:      make(map[string]*PendingToolBatch),
 		aiPendingFollowupBatches:  make(map[string]*PendingToolBatch),
+		aiCollaborations:          make(map[string]*aiCollaborationState),
 		aiToolExecutions:          make(map[string]*ToolExecutionState),
 		aiToolRestoreStates:       make(map[string]*aiToolRestoreState),
 		aiSkipNextAutomaticReqMap: make(map[string]bool),

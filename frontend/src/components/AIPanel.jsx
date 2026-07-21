@@ -7,7 +7,7 @@ import AIPanelHeader from './ai/AIPanelHeader.jsx'
 import AIConversationBackupSettings from './ai/AIConversationBackupSettings.jsx'
 import AIPanelSettingsOverlay from './ai/AIPanelSettingsOverlay.jsx'
 import AIComposer from './ai/AIComposer.jsx'
-import { approveAIChatTools, assignAIChatToolTerminal, cancelAIChat, continueAIChatTool, listAIChatCommandTerminalCandidates, previewAIChatToolRestore, rejectAIChatTools, rejectAIChatToolsForQueuedSubmission, resolveAIChatFollowup, restoreAIChatTool, setAIChatSkipNextAutomaticRequest, startAIChat, terminateAIChatTool } from './ai/aiChatBridge.js'
+import { approveAIChatTools, assignAIChatToolTerminal, cancelAIChat, continueAIChatTool, disableAIChatCollaboration, listAIChatCommandTerminalCandidates, previewAIChatToolRestore, rejectAIChatTools, rejectAIChatToolsForQueuedSubmission, resolveAIChatFollowup, restoreAIChatTool, setAIChatSkipNextAutomaticRequest, startAIChat, startAIChatCollaboration, terminateAIChatTool } from './ai/aiChatBridge.js'
 import { condenseAIConversationContext, createAIConversation, deleteAIConversation, getAIAssistantFirstReply, getAIConversation, listAIConversations, normalizeAIConversationMessageSearchResult, normalizeAIConversationSnapshot, normalizeAIConversationTaskSettings, openAIConversationFolder, preprocessAIConversationLongText, readAIConversationWrappedFile, saveAIConversation, searchAIConversationMessages, subscribeAIConversationChanges } from './ai/aiConversationBridge.js'
 import { buildExecutionContextDetails, getExecutionContextSnapshot } from './ai/aiExecutionContext.js'
 import { getAIGlobalSettings, normalizeAIGlobalSettings, saveAIGlobalSettings } from './ai/aiGlobalSettingsBridge.js'
@@ -17,6 +17,7 @@ import { processRemoteFileMentions } from './ai/aiMentions.js'
 import { expandFirstSlashCommandForPrompt } from './ai/aiSlashCommands.js'
 import AIChatConversation from './ai/chat/AIChatConversation.jsx'
 import { getConversationBranchAnchor } from './ai/chat/aiChatMessageTopology.js'
+import assistantThinkingActiveImg from '../assets/assistant-thinking-active.png'
 
 function formatMessageTime() {
   return new Date().toLocaleTimeString(getLanguage() || 'zh-CN', { hour: '2-digit', minute: '2-digit' })
@@ -161,6 +162,11 @@ function compressTerminalOutputForPrompt(input, lineLimit, characterLimit) {
   return truncateTerminalOutputForPrompt(applyTerminalOutputRunLengthEncoding(processed), lineLimit, characterLimit)
 }
 
+const AI_COLLABORATION_CONTINUE_PREFIX = '[Continue]'
+const AI_COLLABORATION_DONE_PREFIX = '[Done]'
+const AI_COLLABORATION_COMPRESSION_PREFIX = '[Compression]'
+const AI_COLLABORATION_RETRY_PREFIX = '[Retry]'
+
 function createEmptyPanelState() {
   return {
     activeConversationId: '',
@@ -180,6 +186,19 @@ function createEmptyPanelState() {
     contextTokens: 0,
     isCondensingContext: false,
     activeChangeReview: null,
+    collaborationLocked: false,
+    collaborationActive: false,
+    collaborationMode: '',
+    collaborationStreamBuffer: '',
+    collaborationAwaitingManualFollowup: false,
+    collaborationFollowupRequestId: '',
+    collaborationPendingMode: '',
+    collaborationPendingRequestId: '',
+    collaborationInterruptedRequestId: '',
+    collaborationStatusStartedAtMs: 0,
+    collaborationStatusFirstTokenAtMs: 0,
+    collaborationStatusText: '',
+    collaborationStatusReasoningText: '',
   }
 }
 
@@ -400,6 +419,17 @@ function upsertAPIHistoryMessage(apiMessages, rawMessage, currentMessages = []) 
   return list
 }
 
+function trimLatestAssistantAPIHistoryMessage(apiMessages) {
+  const list = Array.isArray(apiMessages) ? [...apiMessages] : []
+  for (let index = list.length - 1; index >= 0; index -= 1) {
+    if (list[index]?.role === 'assistant') {
+      list.splice(index, 1)
+      break
+    }
+  }
+  return list
+}
+
 function buildMetrics(payload) {
   const metrics = []
 
@@ -426,6 +456,48 @@ function buildReasoningDuration(payload) {
     return `${(payload.elapsedMs / 1000).toFixed(1)}s`
   }
   return ''
+}
+
+function normalizeAICollaborationMode(value) {
+  const nextValue = typeof value === 'string' ? value.trim() : ''
+  return nextValue === 'followup' || nextValue === 'completion' ? nextValue : ''
+}
+
+function normalizeAICollaborationDecision(value) {
+  const nextValue = typeof value === 'string' ? value.trim() : ''
+  return ['continue', 'done', 'compression', 'retry', 'fallback_followup', 'fallback_completion'].includes(nextValue) ? nextValue : ''
+}
+
+function parseAICollaborationStreamBuffer(value) {
+  const nextValue = typeof value === 'string' ? value : ''
+  if (nextValue.startsWith(AI_COLLABORATION_CONTINUE_PREFIX)) {
+    return {
+      decision: 'continue',
+      bodyText: nextValue.slice(AI_COLLABORATION_CONTINUE_PREFIX.length).replace(/^\s+/, ''),
+    }
+  }
+  if (nextValue.startsWith(AI_COLLABORATION_DONE_PREFIX)) {
+    return {
+      decision: 'done',
+      bodyText: '',
+    }
+  }
+  if (nextValue.startsWith(AI_COLLABORATION_COMPRESSION_PREFIX)) {
+    return {
+      decision: 'compression',
+      bodyText: '',
+    }
+  }
+  if (nextValue.startsWith(AI_COLLABORATION_RETRY_PREFIX)) {
+    return {
+      decision: 'retry',
+      bodyText: '',
+    }
+  }
+  return {
+    decision: '',
+    bodyText: '',
+  }
 }
 
 function upsertConversationSummary(list, snapshot) {
@@ -939,6 +1011,11 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   const approvalButtonOrder = normalizedGlobalAISettings.approvalButtonOrder
   const commandActionButtonOrder = normalizedGlobalAISettings.commandActionButtonOrder
   const messageActionBarAtBottom = Boolean(normalizedGlobalAISettings.messageActionBarAtBottom)
+  const shouldLockAssistantCollaboration = Boolean(effectiveAutoApprovalSettings.alwaysAllowFollowupQuestions)
+  const collaborationLocked = Boolean(panelState.collaborationLocked) && Boolean(activeConversation)
+  const collaborationActive = Boolean(panelState.collaborationActive)
+  const collaborationFollowupInteractionLocked = collaborationLocked && collaborationActive && panelState.collaborationMode === 'followup'
+  const showAssistantCollaborationActiveImage = collaborationActive && Boolean(activeConversation)
   const playAISound = useCallback((type) => {
     if (normalizedGlobalAISettings.soundEnabled === false) {
       return
@@ -1287,17 +1364,180 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         return
       }
 
+      if (payload.kind === 'collaboration_pending') {
+        let shouldInterruptPendingCollaboration = false
+        setPanelState(matchedPanelKey, (current) => {
+          if (current.collaborationInterruptedRequestId === requestId) {
+            shouldInterruptPendingCollaboration = true
+            return {
+              ...current,
+              collaborationLocked: false,
+              collaborationActive: false,
+              collaborationMode: '',
+              collaborationStreamBuffer: '',
+              collaborationAwaitingManualFollowup: false,
+              collaborationFollowupRequestId: '',
+              collaborationPendingMode: '',
+              collaborationPendingRequestId: '',
+            }
+          }
+          return {
+            ...current,
+            collaborationPendingMode: normalizeAICollaborationMode(payload.mode),
+            collaborationPendingRequestId: requestId,
+          }
+        })
+        if (shouldInterruptPendingCollaboration) {
+          void disableAIChatCollaboration(requestId).catch(() => {})
+        }
+        return
+      }
+
+      if (payload.kind === 'collaboration_started') {
+        setComposerInputValue('')
+        setComposerImages([])
+        setPanelState(matchedPanelKey, (current) => ({
+          ...current,
+          requestPhase: 'idle',
+          activeToolExecution: null,
+          collaborationLocked: true,
+          collaborationActive: true,
+          collaborationMode: normalizeAICollaborationMode(payload.mode),
+          collaborationStreamBuffer: '',
+          collaborationAwaitingManualFollowup: false,
+          collaborationFollowupRequestId: '',
+          collaborationPendingMode: '',
+          collaborationPendingRequestId: '',
+          collaborationInterruptedRequestId: '',
+          collaborationStatusStartedAtMs: Date.now(),
+          collaborationStatusFirstTokenAtMs: 0,
+          collaborationStatusText: '',
+          collaborationStatusReasoningText: '',
+        }))
+        return
+      }
+
+      if (payload.kind === 'collaboration_reasoning_delta') {
+        const nextDelta = typeof payload.delta === 'string' ? payload.delta : ''
+        if (!nextDelta) {
+          return
+        }
+        setPanelState(matchedPanelKey, (current) => ({
+          ...current,
+          collaborationStatusFirstTokenAtMs: current.collaborationStatusFirstTokenAtMs || Date.now(),
+          collaborationStatusReasoningText: `${typeof current.collaborationStatusReasoningText === 'string' ? current.collaborationStatusReasoningText : ''}${nextDelta}`,
+        }))
+        return
+      }
+
+      if (payload.kind === 'collaboration_delta') {
+        let streamedCollaborationText = null
+        setPanelState(matchedPanelKey, (current) => {
+          const nextDelta = typeof payload.delta === 'string' ? payload.delta : ''
+          const nextBuffer = `${typeof current.collaborationStreamBuffer === 'string' ? current.collaborationStreamBuffer : ''}${nextDelta}`
+          const parsedCollaborationBuffer = parseAICollaborationStreamBuffer(nextBuffer)
+          if (parsedCollaborationBuffer.decision === 'continue') {
+            streamedCollaborationText = parsedCollaborationBuffer.bodyText
+          }
+          return {
+            ...current,
+            collaborationStreamBuffer: nextBuffer,
+            collaborationStatusFirstTokenAtMs: current.collaborationStatusFirstTokenAtMs || (nextDelta.trim() ? Date.now() : 0),
+            collaborationStatusText: `${typeof current.collaborationStatusText === 'string' ? current.collaborationStatusText : ''}${nextDelta}`,
+          }
+        })
+        if (streamedCollaborationText !== null) {
+          setComposerInputValue(streamedCollaborationText)
+        }
+        return
+      }
+
+      if (payload.kind === 'collaboration_context_condensed' && payload.snapshot) {
+        const nextSnapshot = normalizeAIConversationSnapshot(payload.snapshot)
+        setConversationList((prev) => upsertConversationSummary(prev, nextSnapshot))
+        setPanelState(matchedPanelKey, (current) => {
+          if (current.activeConversationId !== nextSnapshot.id) {
+            return current
+          }
+          return {
+            ...current,
+            conversation: nextSnapshot,
+            messages: nextSnapshot.messages,
+            apiMessages: nextSnapshot.apiMessages,
+            contextTokens: normalizeAIContextTokensValue(payload.newContextTokens),
+          }
+        })
+        return
+      }
+
+      if (payload.kind === 'collaboration_finished') {
+        const decision = normalizeAICollaborationDecision(payload.decision)
+        const finalCollaborationText = typeof payload.text === 'string' ? payload.text : ''
+        const isFallbackFollowup = decision === 'fallback_followup'
+        setComposerImages([])
+        if (decision === 'continue' && finalCollaborationText.trim()) {
+          setComposerInputValue(finalCollaborationText)
+          setPanelState(matchedPanelKey, (current) => ({
+            ...current,
+            collaborationActive: false,
+            collaborationMode: '',
+            collaborationStreamBuffer: '',
+            collaborationAwaitingManualFollowup: false,
+            collaborationFollowupRequestId: '',
+            collaborationPendingMode: '',
+            collaborationPendingRequestId: '',
+            collaborationInterruptedRequestId: '',
+            collaborationStatusStartedAtMs: 0,
+            collaborationStatusFirstTokenAtMs: 0,
+            collaborationStatusText: '',
+            collaborationStatusReasoningText: '',
+            queuedSubmission: buildAIQueuedSubmission({
+              kind: 'chat',
+              text: finalCollaborationText,
+              images: [],
+            }),
+            isFlushingQueuedSubmission: false,
+          }))
+          return
+        }
+        setComposerInputValue('')
+        setPanelState(matchedPanelKey, (current) => ({
+          ...current,
+          collaborationLocked: isFallbackFollowup ? false : current.collaborationLocked,
+          collaborationActive: false,
+          collaborationMode: '',
+          collaborationStreamBuffer: '',
+          collaborationAwaitingManualFollowup: isFallbackFollowup,
+          collaborationFollowupRequestId: isFallbackFollowup ? requestId : '',
+          collaborationPendingMode: '',
+          collaborationPendingRequestId: '',
+          collaborationInterruptedRequestId: '',
+          collaborationStatusStartedAtMs: 0,
+          collaborationStatusFirstTokenAtMs: 0,
+          collaborationStatusText: '',
+          collaborationStatusReasoningText: '',
+        }))
+        return
+      }
+
       if (payload.kind === 'assistant_retry_reset') {
         const assistantMessageId = typeof payload.messageId === 'string' && payload.messageId.trim()
           ? payload.messageId.trim()
           : (matchedPanel.activeAssistantMessageId || requestId)
-        setPanelState(matchedPanelKey, (current) => ({
-          ...current,
-          activeAssistantMessageId: assistantMessageId,
-          requestPhase: 'streaming',
-          runtimePhase: 'api_request',
-          messages: current.messages
-            .filter((message) => !(message.id === `${assistantMessageId}-reasoning` && message.kind === 'reasoning'))
+        setPanelState(matchedPanelKey, (current) => {
+          const nextMessages = (Array.isArray(current.messages) ? current.messages : [])
+            .filter((message) => {
+              if (!message || typeof message !== 'object') {
+                return true
+              }
+              if (message.id === `${assistantMessageId}-reasoning` && message.kind === 'reasoning') {
+                return false
+              }
+              if (message.id !== assistantMessageId && message.turnId === assistantMessageId) {
+                return false
+              }
+              return true
+            })
             .map((message) => {
               if (message.id !== assistantMessageId || message.kind !== 'assistant') {
                 return message
@@ -1315,8 +1555,17 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
                   errorText: '',
                 },
               }
-            }),
-        }))
+            })
+          const nextApiMessages = trimLatestAssistantAPIHistoryMessage(current.apiMessages)
+          return {
+            ...current,
+            activeAssistantMessageId: assistantMessageId,
+            requestPhase: 'streaming',
+            runtimePhase: 'api_request',
+            messages: nextMessages,
+            apiMessages: nextApiMessages,
+          }
+        })
         return
       }
 
@@ -1719,6 +1968,12 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
             conversation: nextConversation || current.conversation,
             messages: nextMessages,
             activeToolExecution: null,
+            collaborationLocked: false,
+            collaborationActive: false,
+            collaborationMode: '',
+            collaborationStreamBuffer: '',
+            collaborationAwaitingManualFollowup: false,
+            collaborationFollowupRequestId: '',
           }
         })
         if (nextConversation) {
@@ -1739,6 +1994,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       if (payload.kind === 'automatic_request_skipped') {
         let nextConversation = null
         setPanelState(matchedPanelKey, (current) => {
+          const shouldKeepCollaborationLock = current.collaborationLocked && !current.collaborationAwaitingManualFollowup && Boolean(current.queuedSubmission)
           nextConversation = current.conversation
             ? {
                 ...current.conversation,
@@ -1759,6 +2015,12 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
             skipNextAutomaticRequest: false,
             activeChangeReview: null,
             conversation: nextConversation || current.conversation,
+            collaborationLocked: shouldKeepCollaborationLock,
+            collaborationActive: false,
+            collaborationMode: '',
+            collaborationStreamBuffer: '',
+            collaborationAwaitingManualFollowup: current.collaborationAwaitingManualFollowup,
+            collaborationFollowupRequestId: current.collaborationAwaitingManualFollowup ? current.collaborationFollowupRequestId : '',
           }
         })
         if (nextConversation) {
@@ -1905,6 +2167,12 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
           conversation: nextConversation,
           messages: nextMessages,
           apiMessages: nextConversation.apiMessages,
+          collaborationLocked: false,
+          collaborationActive: false,
+          collaborationMode: '',
+          collaborationStreamBuffer: '',
+          collaborationAwaitingManualFollowup: false,
+          collaborationFollowupRequestId: '',
         })
 
         void saveConversationSnapshot(nextConversation, matchedPanelKey)
@@ -1954,6 +2222,12 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
           conversation: nextConversation,
           messages: nextMessages,
           apiMessages: matchedPanel.apiMessages,
+          collaborationLocked: false,
+          collaborationActive: false,
+          collaborationMode: '',
+          collaborationStreamBuffer: '',
+          collaborationAwaitingManualFollowup: false,
+          collaborationFollowupRequestId: '',
         })
 
         void saveConversationSnapshot(nextConversation, matchedPanelKey)
@@ -1992,6 +2266,12 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
           conversation: nextConversation,
           messages: nextMessages,
           apiMessages: matchedPanel.apiMessages,
+          collaborationLocked: false,
+          collaborationActive: false,
+          collaborationMode: '',
+          collaborationStreamBuffer: '',
+          collaborationAwaitingManualFollowup: false,
+          collaborationFollowupRequestId: '',
         })
 
         void saveConversationSnapshot(nextConversation, matchedPanelKey)
@@ -2005,6 +2285,67 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       }
     }
   }, [enrichAIChatCommandMessage, playAISound, saveConversationSnapshot, setPanelState])
+
+  useEffect(() => {
+    const pendingRequestId = typeof panelState.collaborationPendingRequestId === 'string' ? panelState.collaborationPendingRequestId.trim() : ''
+    const pendingMode = typeof panelState.collaborationPendingMode === 'string' ? panelState.collaborationPendingMode.trim() : ''
+    if (!pendingRequestId || pendingRequestId !== panelState.activeRequestId || !activeConversation) {
+      return undefined
+    }
+    const hasRenderedPendingCard = pendingMode === 'followup'
+      ? panelState.messages.some((message) => message?.kind === 'followup' && typeof message?.requestId === 'string' && message.requestId.trim() === pendingRequestId)
+      : pendingMode === 'completion'
+        ? panelState.messages.some((message) => message?.kind === 'completion' && message?.turnId === panelState.activeAssistantMessageId && normalizeAIMessageStatus(message?.status) === '等待处理')
+        : false
+    if (!hasRenderedPendingCard) {
+      return undefined
+    }
+    let disposed = false
+    const frameId = window.requestAnimationFrame(() => {
+      if (disposed) {
+        return
+      }
+      setPanelState(panelInstanceKey, (current) => {
+        if (current.activeRequestId !== pendingRequestId || current.collaborationPendingRequestId !== pendingRequestId) {
+          return current
+        }
+        return {
+          ...current,
+          collaborationPendingMode: '',
+          collaborationPendingRequestId: '',
+        }
+      })
+      void startAIChatCollaboration(pendingRequestId).catch(() => {
+        if (disposed) {
+          return
+        }
+        setPanelState(panelInstanceKey, (current) => {
+          if (current.activeRequestId !== pendingRequestId) {
+            return current
+          }
+          return {
+            ...current,
+            collaborationLocked: false,
+            collaborationActive: false,
+            collaborationMode: '',
+            collaborationStreamBuffer: '',
+            collaborationAwaitingManualFollowup: false,
+            collaborationFollowupRequestId: '',
+            collaborationPendingMode: '',
+            collaborationPendingRequestId: '',
+            collaborationStatusStartedAtMs: 0,
+            collaborationStatusFirstTokenAtMs: 0,
+            collaborationStatusText: '',
+            collaborationStatusReasoningText: '',
+          }
+        })
+      })
+    })
+    return () => {
+      disposed = true
+      window.cancelAnimationFrame(frameId)
+    }
+  }, [activeConversation, panelInstanceKey, panelState.activeAssistantMessageId, panelState.activeRequestId, panelState.collaborationPendingMode, panelState.collaborationPendingRequestId, panelState.messages, setPanelState])
 
   const conversationDiffItems = useMemo(() => {
     const sourceMessages = Array.isArray(panelState.messages) ? panelState.messages : []
@@ -2102,6 +2443,12 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       contextTokens: 0,
       isCondensingContext: false,
       activeChangeReview: null,
+      collaborationLocked: false,
+      collaborationActive: false,
+      collaborationMode: '',
+      collaborationStreamBuffer: '',
+      collaborationAwaitingManualFollowup: false,
+      collaborationFollowupRequestId: '',
     }))
     if (previousRequestId) {
       try {
@@ -2157,6 +2504,12 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       contextTokens: 0,
       isCondensingContext: false,
       activeChangeReview: null,
+      collaborationLocked: false,
+      collaborationActive: false,
+      collaborationMode: '',
+      collaborationStreamBuffer: '',
+      collaborationAwaitingManualFollowup: false,
+      collaborationFollowupRequestId: '',
     })
     if (nextSnapshot !== snapshot) {
       await saveConversationSnapshot(nextSnapshot, panelInstanceKey)
@@ -2192,6 +2545,12 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       contextTokens: 0,
       isCondensingContext: false,
       activeChangeReview: null,
+      collaborationLocked: false,
+      collaborationActive: false,
+      collaborationMode: '',
+      collaborationStreamBuffer: '',
+      collaborationAwaitingManualFollowup: false,
+      collaborationFollowupRequestId: '',
     })
     void refreshAIConversationContextTokens(snapshot, panelInstanceKey)
   }, [panelInstanceKey, refreshAIConversationContextTokens, resetComposerEditState, setPanelState])
@@ -2367,17 +2726,30 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         conversation: nextConversation,
       }))
       await saveConversationSnapshot(nextConversation, panelInstanceKey)
-      return
-    }
-
-    if (!activeConversation && Object.keys(taskPatch).length > 0) {
+    } else if (!activeConversation && Object.keys(taskPatch).length > 0) {
       const nextSettings = await saveAIGlobalSettings({
         ...normalizeAIGlobalSettings(globalAISettings),
         ...taskPatch,
       })
       setGlobalAISettings(nextSettings)
     }
-  }, [activeConversation, globalAISettings, panelInstanceKey, saveConversationSnapshot, setPanelState])
+
+    if (taskPatch.alwaysAllowFollowupQuestions === false) {
+      setComposerInputValue('')
+      setPanelState(panelInstanceKey, (current) => ({
+        ...current,
+        collaborationLocked: false,
+        collaborationActive: false,
+        collaborationMode: '',
+        collaborationStreamBuffer: '',
+        collaborationAwaitingManualFollowup: false,
+        collaborationFollowupRequestId: '',
+      }))
+      if (panelState.activeRequestId) {
+        void disableAIChatCollaboration(panelState.activeRequestId).catch(() => {})
+      }
+    }
+  }, [activeConversation, globalAISettings, panelInstanceKey, panelState.activeRequestId, saveConversationSnapshot, setPanelState])
 
   const handleSaveAIPanelGlobalSettings = useCallback(async (patch) => {
     const nextSettings = await saveAIGlobalSettings({
@@ -2664,6 +3036,17 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       activeToolExecution: null,
       requestPhase: 'streaming',
       runtimePhase: 'api_request',
+      collaborationLocked: shouldLockAssistantCollaboration,
+      collaborationActive: false,
+      collaborationMode: '',
+      collaborationStreamBuffer: '',
+      collaborationAwaitingManualFollowup: false,
+      collaborationFollowupRequestId: '',
+      collaborationInterruptedRequestId: '',
+      collaborationStatusStartedAtMs: 0,
+      collaborationStatusFirstTokenAtMs: 0,
+      collaborationStatusText: '',
+      collaborationStatusReasoningText: '',
     })
 
     await saveConversationSnapshot(persistedConversation, panelInstanceKey, { hydrate: false })
@@ -2717,6 +3100,12 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         runtimePhase: 'ready',
         skipNextAutomaticRequest: false,
         activeChangeReview: null,
+        collaborationLocked: false,
+        collaborationActive: false,
+        collaborationMode: '',
+        collaborationStreamBuffer: '',
+        collaborationAwaitingManualFollowup: false,
+        collaborationFollowupRequestId: '',
       })
       await saveConversationSnapshot(erroredConversation, panelInstanceKey)
       return false
@@ -2731,8 +3120,23 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     if (!requestId) {
       return false
     }
+    const followupImages = normalizeMessageImages(payload.images)
     try {
-      await resolveAIChatFollowup(requestId, payload.answer, [])
+      await resolveAIChatFollowup(requestId, payload.answer, followupImages)
+      setPanelState(panelInstanceKey, (current) => ({
+        ...current,
+        collaborationLocked: shouldLockAssistantCollaboration,
+        collaborationActive: false,
+        collaborationMode: '',
+        collaborationStreamBuffer: '',
+        collaborationAwaitingManualFollowup: false,
+        collaborationFollowupRequestId: '',
+        collaborationInterruptedRequestId: '',
+        collaborationStatusStartedAtMs: 0,
+        collaborationStatusFirstTokenAtMs: 0,
+        collaborationStatusText: '',
+        collaborationStatusReasoningText: '',
+      }))
       return true
     } catch {}
     const currentPanel = terminalPanelsRef.current[panelInstanceKey] || null
@@ -2748,7 +3152,6 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     const currentApiMessages = Array.isArray(currentPanel?.apiMessages) ? currentPanel.apiMessages : (Array.isArray(currentConversation.apiMessages) ? currentConversation.apiMessages : [])
     const followupMessage = findLatestAIFollowupMessageByRequestId(currentMessages, requestId)
     const followupMessageId = typeof followupMessage?.id === 'string' ? followupMessage.id.trim() : ''
-    const followupImages = normalizeMessageImages(payload.images)
     const timestamp = Date.now()
     const userMessageId = `${followupMessageId || requestId}-followup-answer-${timestamp}`
     const userMessage = {
@@ -2827,6 +3230,17 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       skipNextAutomaticRequest: false,
       resumeAfterCancelRequestId: '',
       activeChangeReview: null,
+      collaborationLocked: shouldLockAssistantCollaboration,
+      collaborationActive: false,
+      collaborationMode: '',
+      collaborationStreamBuffer: '',
+      collaborationAwaitingManualFollowup: false,
+      collaborationFollowupRequestId: '',
+      collaborationInterruptedRequestId: '',
+      collaborationStatusStartedAtMs: 0,
+      collaborationStatusFirstTokenAtMs: 0,
+      collaborationStatusText: '',
+      collaborationStatusReasoningText: '',
     })
     await saveConversationSnapshot(persistedConversation, panelInstanceKey, { hydrate: false })
     try {
@@ -2878,19 +3292,46 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         skipNextAutomaticRequest: false,
         resumeAfterCancelRequestId: '',
         activeChangeReview: null,
+        collaborationLocked: false,
+        collaborationActive: false,
+        collaborationMode: '',
+        collaborationStreamBuffer: '',
+        collaborationAwaitingManualFollowup: false,
+        collaborationFollowupRequestId: '',
       })
       await saveConversationSnapshot(erroredConversation, panelInstanceKey)
       return false
     }
-  }, [activeConversation, effectiveAutoApprovalEnabled, isDevilMode, panelInstanceKey, requestConversationSmoothScrollToBottom, saveConversationSnapshot, setPanelState, terminalId])
+  }, [activeConversation, effectiveAutoApprovalEnabled, isDevilMode, panelInstanceKey, requestConversationSmoothScrollToBottom, saveConversationSnapshot, setPanelState, shouldLockAssistantCollaboration, terminalId])
 
   const handleConversationUserMessage = useCallback(async (payload) => {
     if (payload && typeof payload === 'object' && payload.kind === 'followup-response') {
+      if (collaborationFollowupInteractionLocked) {
+        return false
+      }
       return handleFollowupResponse(payload)
     }
     const text = typeof payload === 'string' ? payload : ''
     return handleSendMessage(text, { images: [] })
-  }, [handleFollowupResponse, handleSendMessage])
+  }, [collaborationFollowupInteractionLocked, handleFollowupResponse, handleSendMessage])
+
+  const handleComposerSendMessage = useCallback(async (text, sendOptionsOrEditState = null, explicitEditState = null, runtimeOptions = {}) => {
+    const pendingFollowupRequestId = panelState.collaborationAwaitingManualFollowup ? panelState.collaborationFollowupRequestId : ''
+    if (pendingFollowupRequestId) {
+      const followupImages = normalizeMessageImages(sendOptionsOrEditState?.images)
+      const accepted = await handleFollowupResponse({
+        kind: 'followup-response',
+        requestId: pendingFollowupRequestId,
+        answer: typeof text === 'string' ? text : '',
+        images: followupImages,
+      })
+      if (accepted !== false) {
+        resetComposerEditState()
+      }
+      return accepted
+    }
+    return handleSendMessage(text, sendOptionsOrEditState, explicitEditState, runtimeOptions)
+  }, [handleFollowupResponse, handleSendMessage, panelState.collaborationAwaitingManualFollowup, panelState.collaborationFollowupRequestId, resetComposerEditState])
 
   const handleRetryUserMessage = useCallback(async (messageId, text, images = []) => {
     if (!activeConversation) {
@@ -3003,6 +3444,17 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       activeToolExecution: null,
       requestPhase: 'streaming',
       runtimePhase: 'api_request',
+      collaborationLocked: shouldLockAssistantCollaboration,
+      collaborationActive: false,
+      collaborationMode: '',
+      collaborationStreamBuffer: '',
+      collaborationAwaitingManualFollowup: false,
+      collaborationFollowupRequestId: '',
+      collaborationInterruptedRequestId: '',
+      collaborationStatusStartedAtMs: 0,
+      collaborationStatusFirstTokenAtMs: 0,
+      collaborationStatusText: '',
+      collaborationStatusReasoningText: '',
     })
 
     await saveConversationSnapshot(persistedConversation, panelInstanceKey, { hydrate: false })
@@ -3056,6 +3508,12 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         runtimePhase: 'ready',
         skipNextAutomaticRequest: false,
         activeChangeReview: null,
+        collaborationLocked: false,
+        collaborationActive: false,
+        collaborationMode: '',
+        collaborationStreamBuffer: '',
+        collaborationAwaitingManualFollowup: false,
+        collaborationFollowupRequestId: '',
       })
       await saveConversationSnapshot(erroredConversation, panelInstanceKey)
       return false
@@ -3100,6 +3558,12 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       isFlushingQueuedSubmission: false,
       skipNextAutomaticRequest: false,
       resumeAfterCancelRequestId: '',
+      collaborationLocked: false,
+      collaborationActive: false,
+      collaborationMode: '',
+      collaborationStreamBuffer: '',
+      collaborationAwaitingManualFollowup: false,
+      collaborationFollowupRequestId: '',
     }))
     if (composerEditState.targetMessageId === messageId) {
       resetComposerEditState()
@@ -3186,6 +3650,17 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       isFlushingQueuedSubmission: false,
       skipNextAutomaticRequest: false,
       resumeAfterCancelRequestId: '',
+      collaborationLocked: shouldLockAssistantCollaboration,
+      collaborationActive: false,
+      collaborationMode: '',
+      collaborationStreamBuffer: '',
+      collaborationAwaitingManualFollowup: false,
+      collaborationFollowupRequestId: '',
+      collaborationInterruptedRequestId: '',
+      collaborationStatusStartedAtMs: 0,
+      collaborationStatusFirstTokenAtMs: 0,
+      collaborationStatusText: '',
+      collaborationStatusReasoningText: '',
     })
 
 
@@ -3239,6 +3714,12 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         skipNextAutomaticRequest: false,
         resumeAfterCancelRequestId: '',
         activeChangeReview: null,
+        collaborationLocked: false,
+        collaborationActive: false,
+        collaborationMode: '',
+        collaborationStreamBuffer: '',
+        collaborationAwaitingManualFollowup: false,
+        collaborationFollowupRequestId: '',
       })
       await saveConversationSnapshot(erroredConversation, targetPanelKey)
       return false
@@ -3358,6 +3839,30 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     if (targetRequestId) {
       try {
         await setAIChatSkipNextAutomaticRequest(targetRequestId, Boolean(enabled))
+      } catch {}
+    }
+  }, [panelInstanceKey, setPanelState])
+
+  const handleInterruptCollaboration = useCallback(async () => {
+    let targetRequestId = ''
+    setPanelState(panelInstanceKey, (current) => {
+      targetRequestId = current.activeRequestId || ''
+      return {
+        ...current,
+        collaborationLocked: false,
+        collaborationActive: false,
+        collaborationMode: '',
+        collaborationStreamBuffer: '',
+        collaborationAwaitingManualFollowup: false,
+        collaborationFollowupRequestId: '',
+        collaborationPendingMode: '',
+        collaborationPendingRequestId: '',
+        collaborationInterruptedRequestId: targetRequestId,
+      }
+    })
+    if (targetRequestId) {
+      try {
+        await disableAIChatCollaboration(targetRequestId)
       } catch {}
     }
   }, [panelInstanceKey, setPanelState])
@@ -3863,14 +4368,37 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
                 onDeleteMessage={handleDeleteMessage}
                 onPreviewRestore={handlePreviewRestore}
                 onApplyRestore={handleApplyRestore}
+                followupInteractionLocked={collaborationFollowupInteractionLocked}
                 messageActionBarAtBottom={messageActionBarAtBottom}
                 scrollToBottomSignal={conversationScrollSignal}
               />
             </>
           ) : renderedConversationList}
+          {showAssistantCollaborationActiveImage ? (
+            <img
+              src={assistantThinkingActiveImg}
+              alt=""
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                right: 18,
+                bottom: 0,
+                width: 'min(32%, 180px)',
+                minWidth: 120,
+                maxWidth: '42vw',
+                maxHeight: 280,
+                objectFit: 'contain',
+                pointerEvents: 'none',
+                userSelect: 'none',
+                opacity: 0.96,
+                zIndex: 2,
+                filter: 'drop-shadow(0 10px 24px rgba(0, 0, 0, 0.22))',
+              }}
+            />
+          ) : null}
         </div>
         <AIComposer
-          onSend={handleSendMessage}
+          onSend={handleComposerSendMessage}
           onCancel={handleCancelMessage}
           onStopAndResume={handleStopAndResumeMessage}
           isSending={isStreaming}
@@ -3879,6 +4407,14 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
           terminalSessionId={terminalId}
           queueBlocked={isQueueBlocked || panelState.isFlushingQueuedSubmission}
           queuedSubmissionKind={panelState.queuedSubmission?.kind || ''}
+          collaborationLocked={collaborationLocked}
+          collaborationActive={collaborationActive}
+          collaborationStatus={collaborationActive ? {
+            startedAtMs: panelState.collaborationStatusStartedAtMs,
+            firstTokenAtMs: panelState.collaborationStatusFirstTokenAtMs,
+            text: panelState.collaborationStatusText,
+            reasoningText: panelState.collaborationStatusReasoningText,
+          } : null}
           terminalAssignmentRequired={isAwaitingTerminalAssignment}
           onListCommandTerminalCandidates={handleListCommandTerminalCandidates}
           onAssignToolTerminal={handleAssignToolTerminal}
@@ -3888,6 +4424,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
           persistProviderSelection={shouldPersistProviderSelection}
           autoApprovalSettings={effectiveAutoApprovalSettings}
           onPatchAutoApprovalSettings={handlePatchAutoApprovalSettings}
+          onInterruptCollaboration={handleInterruptCollaboration}
           approvalRequired={isAwaitingToolApproval}
           toolRunning={isToolRunning}
           commandActionRequired={isAwaitingCommandAction}

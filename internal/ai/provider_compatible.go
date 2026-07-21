@@ -145,11 +145,7 @@ func (a *App) requestCompatibleAIChatRound(ctx context.Context, requestID string
 		if delta == "" {
 			return
 		}
-		a.emitAIChatEvent(map[string]interface{}{
-			"kind":      "reasoning_delta",
-			"requestId": requestID,
-			"delta":     delta,
-		})
+		a.emitAIChatPayloadReasoningDelta(payload, requestID, delta)
 	}
 
 	emitContentDelta := func(delta string) {
@@ -160,20 +156,17 @@ func (a *App) requestCompatibleAIChatRound(ctx context.Context, requestID string
 			firstTokenAt = time.Now()
 		}
 		contentBuilder.WriteString(delta)
-		a.emitAIChatEvent(map[string]interface{}{
-			"kind":      "delta",
-			"requestId": requestID,
-			"delta":     delta,
-		})
+		a.emitAIChatPayloadContentDelta(payload, requestID, delta)
 	}
 
-	systemPrompt := BuildChatSystemPromptWithProfile(a.ctx, payload.ConversationID, payload.SessionID, true, profile)
+	systemPrompt := resolveAISystemPromptForPayload(a.ctx, payload, profile)
 	modelCapability := aiprovider.ResolveModelCapability(profile.Provider, profile.Model)
 	runtimeProfile := toAIProviderRuntimeProfile(profile)
 	requestBody := map[string]any{
-		"model":    profile.Model,
-		"stream":   true,
-		"messages": aiprovider.BuildOpenAIChatMessages(systemPrompt, toAIProviderRuntimeMessages(requestMessages), aiprovider.ResolvePromptCacheStrategy(runtimeProfile, modelCapability)),
+		"model":       profile.Model,
+		"stream":      true,
+		"temperature": 0,
+		"messages":    aiprovider.BuildOpenAIChatMessages(systemPrompt, toAIProviderRuntimeMessages(requestMessages), aiprovider.ResolvePromptCacheStrategy(runtimeProfile, modelCapability)),
 	}
 
 	if reasoningEffort := aiprovider.GetEffectiveReasoningEffort(runtimeProfile, modelCapability); reasoningEffort != "" {

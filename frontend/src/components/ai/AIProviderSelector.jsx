@@ -1,5 +1,5 @@
 import { Plus, Search } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation, getLanguage } from '../../i18n.js'
 import AIProviderListRow from './AIProviderListRow.jsx'
 import AIProviderQuickEditOverlay from './AIProviderQuickEditOverlay.jsx'
@@ -46,6 +46,7 @@ function getReasoningEffortLabel(t, value) {
 }
 
 const DEFAULT_EFFORT_REASONING_OPTIONS = ['low', 'medium', 'high', 'xhigh']
+const adaptiveLabelCanvas = typeof document !== 'undefined' ? document.createElement('canvas') : null
 
 function supportsUnifiedEffortReasoning(providerValue) {
   return providerValue === 'Compatible' || providerValue === 'Responses' || providerValue === 'Messages'
@@ -96,6 +97,48 @@ function getProviderModelSummary(t, provider) {
     return model
   }
   return `${model}(${reasoningEffortLabel})`
+}
+
+function measureAdaptiveLabelWidth(text, fontSize, fontWeight = 500, fontFamily = 'sans-serif') {
+  const content = typeof text === 'string' ? text.trim() : ''
+  if (!content) {
+    return 0
+  }
+  const context = adaptiveLabelCanvas?.getContext('2d')
+  if (!context) {
+    return content.length * fontSize
+  }
+  context.font = `${fontWeight} ${fontSize}px ${fontFamily}`
+  return context.measureText(content).width
+}
+
+function resolveAdaptiveLabelFontSize(text, maxWidth, {
+  baseFontSize = 12,
+  minFontSize = 9,
+  fontWeight = 500,
+  fontFamily = 'sans-serif',
+} = {}) {
+  const content = typeof text === 'string' ? text.trim() : ''
+  if (!content || !Number.isFinite(maxWidth) || maxWidth <= 0) {
+    return baseFontSize
+  }
+  for (let size = baseFontSize; size >= minFontSize; size -= 1) {
+    if (measureAdaptiveLabelWidth(content, size, fontWeight, fontFamily) <= maxWidth) {
+      return size
+    }
+  }
+  return minFontSize
+}
+
+function resolveAdaptiveLabelAvailableWidth(element) {
+  const container = element?.parentElement
+  if (!container) {
+    return 0
+  }
+  const computedStyle = window.getComputedStyle(container)
+  const paddingLeft = Number.parseFloat(computedStyle.paddingLeft || '0') || 0
+  const paddingRight = Number.parseFloat(computedStyle.paddingRight || '0') || 0
+  return Math.max(0, container.clientWidth - paddingLeft - paddingRight)
 }
 
 function buildProviderModelOptions(provider) {
@@ -313,6 +356,8 @@ export default function AIProviderSelector({
   const containerRef = useRef(null)
   const iframeRef = useRef(null)
   const tooltipTimerRef = useRef(null)
+  const providerLabelRef = useRef(null)
+  const modelLabelRef = useRef(null)
   const [open, setOpen] = useState(false)
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
   const [reasoningMenuOpen, setReasoningMenuOpen] = useState(false)
@@ -339,6 +384,8 @@ export default function AIProviderSelector({
   const expandLeft = triggerRect ? triggerRect.left + 400 > window.innerWidth - 16 : false
   const tooltipExpandLeft = tooltipTriggerRect ? tooltipTriggerRect.left + 280 > window.innerWidth - 16 : false
   const [editingState, setEditingState] = useState({ open: false, mode: 'edit', provider: null })
+  const [providerLabelFontSize, setProviderLabelFontSize] = useState(12)
+  const [modelLabelFontSize, setModelLabelFontSize] = useState(12)
   const isControlled = typeof currentProviderId === 'string'
   const effectiveSelectedId = isControlled ? currentProviderId : persistedCurrentProviderId
 
@@ -411,6 +458,29 @@ export default function AIProviderSelector({
     { label: t('缓存策略'), value: getCacheStrategyLabel(t, selectedProvider?.cacheStrategy) },
     { label: 'Key', value: getApiKeyPreview(selectedProvider?.apiKey) || '-' },
   ]
+
+  const updateAdaptiveLabelFontSizes = useCallback(() => {
+    const resolveForElement = (element, text, options) => {
+      if (!element) {
+        return options.baseFontSize
+      }
+      const computedStyle = window.getComputedStyle(element)
+      return resolveAdaptiveLabelFontSize(text, resolveAdaptiveLabelAvailableWidth(element), {
+        ...options,
+        fontFamily: computedStyle.fontFamily || 'sans-serif',
+      })
+    }
+    setProviderLabelFontSize(resolveForElement(providerLabelRef.current, selectedProvider?.name || t('选择供应商'), {
+      baseFontSize: 12,
+      minFontSize: 9,
+      fontWeight: 500,
+    }))
+    setModelLabelFontSize(resolveForElement(modelLabelRef.current, quickModelConfig.currentLabel, {
+      baseFontSize: 12,
+      minFontSize: 9,
+      fontWeight: 600,
+    }))
+  }, [quickModelConfig.currentLabel, selectedProvider?.name, t])
 
   const closeTooltip = useCallback(() => {
     if (tooltipTimerRef.current) {
@@ -530,6 +600,34 @@ export default function AIProviderSelector({
       cancelled = true
     }
   }, [persistRegistryState, providers, resolveProviderRegistryState])
+
+  useLayoutEffect(() => {
+    updateAdaptiveLabelFontSizes()
+    const observedElements = [providerLabelRef.current?.parentElement, modelLabelRef.current?.parentElement].filter(Boolean)
+    if (observedElements.length === 0) {
+      return undefined
+    }
+    if (typeof window.ResizeObserver === 'function') {
+      const observer = new window.ResizeObserver(() => {
+        updateAdaptiveLabelFontSizes()
+      })
+      observedElements.forEach((element) => observer.observe(element))
+      window.addEventListener('resize', updateAdaptiveLabelFontSizes)
+      return () => {
+        observer.disconnect()
+        window.removeEventListener('resize', updateAdaptiveLabelFontSizes)
+      }
+    }
+    window.addEventListener('resize', updateAdaptiveLabelFontSizes)
+    return () => window.removeEventListener('resize', updateAdaptiveLabelFontSizes)
+  }, [quickModelConfig.visible, updateAdaptiveLabelFontSizes])
+
+  useLayoutEffect(() => {
+    const frameId = window.requestAnimationFrame(() => {
+      updateAdaptiveLabelFontSizes()
+    })
+    return () => window.cancelAnimationFrame(frameId)
+  }, [selectedProvider?.name, quickModelConfig.currentLabel, updateAdaptiveLabelFontSizes])
 
   useEffect(() => () => closeTooltip(), [closeTooltip])
 
@@ -1151,8 +1249,8 @@ export default function AIProviderSelector({
 
   return (
     <>
-      <div ref={containerRef} style={{ position: 'relative', flexShrink: 0, overflow: 'visible', zIndex: open || modelMenuOpen || reasoningMenuOpen ? 40 : 'auto' }}>
-        <div style={{ display: 'inline-flex', alignItems: 'stretch' }}>
+      <div ref={containerRef} style={{ position: 'relative', flex: '1 1 160px', minWidth: 72, maxWidth: '100%', overflow: 'visible', zIndex: open || modelMenuOpen || reasoningMenuOpen ? 40 : 'auto' }}>
+        <div style={{ display: 'flex', alignItems: 'stretch', width: '100%', minWidth: 0, maxWidth: '100%' }}>
           <button
             type="button"
             onClick={() => {
@@ -1179,12 +1277,28 @@ export default function AIProviderSelector({
               fontWeight: 500,
               transition: 'var(--transition)',
               whiteSpace: 'nowrap',
+              minWidth: 72,
+              maxWidth: '100%',
+              flex: '1 1 96px',
             }}
           >
-            <span>{selectedProvider?.name || t('选择供应商')}</span>
+            <span
+              ref={providerLabelRef}
+              style={{
+                display: 'block',
+                minWidth: 0,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                fontSize: providerLabelFontSize,
+                lineHeight: 1.2,
+              }}
+            >
+              {selectedProvider?.name || t('选择供应商')}
+            </span>
           </button>
           {quickModelConfig.visible ? (
-            <div ref={modelButtonRef} style={{ position: 'relative', marginLeft: -1 }}>
+            <div ref={modelButtonRef} style={{ position: 'relative', marginLeft: -1, minWidth: 0, flex: '0 1 180px' }}>
               <button
                 type="button"
                 onClick={() => {
@@ -1212,9 +1326,23 @@ export default function AIProviderSelector({
                   whiteSpace: 'nowrap',
                   minWidth: 0,
                   maxWidth: 180,
+                  width: '100%',
                 }}
               >
-                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{quickModelConfig.currentLabel}</span>
+                <span
+                  ref={modelLabelRef}
+                  style={{
+                    display: 'block',
+                    minWidth: 0,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    fontSize: modelLabelFontSize,
+                    lineHeight: 1.2,
+                  }}
+                >
+                  {quickModelConfig.currentLabel}
+                </span>
               </button>
               {modelMenuOpen && modelTriggerRect ? (
                 <div

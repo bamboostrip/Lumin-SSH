@@ -526,7 +526,7 @@ export default function FileEditor({
   // 编辑器核心内容
   const editorContent = (
     <>
-      {/* Header：空间够时完整文案；不够时优先换行，再必要时截断 + 悬浮全名 */}
+      {/* Header：最小化/关闭固定右上角；操作行加大右 padding，避免与保存重叠 */}
       <div
         className="modal-header file-editor-toolbar"
         style={{
@@ -536,7 +536,8 @@ export default function FileEditor({
           alignItems: 'center',
           gap: 8,
           rowGap: 6,
-          padding: mode === 'split' ? '8px 48px 6px 12px' : '16px 52px 8px 16px',
+          // 非 split：最小化+关闭；split：仅关闭。留足空隙不压住保存
+          padding: mode === 'split' ? '8px 40px 6px 12px' : '16px 72px 8px 16px',
           position: 'relative',
           minWidth: 0,
         }}
@@ -696,7 +697,6 @@ export default function FileEditor({
                 padding: '4px 8px',
                 fontSize: 11,
                 flexShrink: 0,
-                // 长编辑器名（如 Code - Insiders）限制宽度，悬浮看全名
                 maxWidth: preferredExternalApp ? 110 : undefined,
                 minWidth: 0,
               }}
@@ -736,10 +736,12 @@ export default function FileEditor({
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
+                justifyContent: 'center',
                 gap: 4,
                 padding: '4px 10px',
                 fontSize: 11,
                 flexShrink: 0,
+                minHeight: 28,
               }}
             >
               <Save size={13} style={{ flexShrink: 0 }} />
@@ -747,14 +749,15 @@ export default function FileEditor({
             </button>
           </Tiptop>
         </div>
+
         {mode !== 'split' && (
-          <Tiptop text={t('最小化')} placement="bottom" style={{ position: 'absolute', top: 6, right: 28, zIndex: Z.PANEL_BUTTON }}>
+          <Tiptop text={t('最小化')} placement="bottom" style={{ position: 'absolute', top: 8, right: 36, zIndex: Z.PANEL_BUTTON }}>
             <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setMinimized(true)} aria-label={t('最小化')}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
             </button>
           </Tiptop>
         )}
-        <Tiptop text={t('关闭当前文件')} placement="bottom" style={{ position: 'absolute', top: 6, right: 6, zIndex: Z.PANEL_BUTTON }}>
+        <Tiptop text={t('关闭当前文件')} placement="bottom" style={{ position: 'absolute', top: 8, right: 8, zIndex: Z.PANEL_BUTTON }}>
           <button className="btn btn-ghost btn-icon btn-sm" onClick={handleCloseCurrent} aria-label={t('关闭当前文件')}>
             <X size={14} />
           </button>

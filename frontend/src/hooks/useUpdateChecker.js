@@ -51,59 +51,93 @@ async function getMacArch() {
   return 'amd64';
 }
 
-// 匹配下载资源（便携版/安装版/兜底）
+function isGithubAssetDownloadUrl(url) {
+  if (typeof url !== 'string' || !url.startsWith('https://')) return false;
+  try {
+    const parsed = new URL(url);
+    // 直连与常见 ghproxy 前缀都会落到 github.com/.../releases/download/...
+    return (
+      parsed.hostname === 'github.com' ||
+      parsed.hostname.endsWith('.github.com') ||
+      /\/github\.com\//.test(parsed.pathname)
+    ) && /\/releases\/download\//.test(url);
+  } catch {
+    return false;
+  }
+}
+
+function pickAsset(assets, predicate) {
+  if (!Array.isArray(assets) || assets.length === 0) return null;
+  return assets.find((a) => {
+    const name = typeof a?.name === 'string' ? a.name : '';
+    const url = typeof a?.browser_download_url === 'string' ? a.browser_download_url : '';
+    if (!name || !url || !isGithubAssetDownloadUrl(url)) return false;
+    // 校验文件本身不可作为更新包
+    if (name.toLowerCase().endsWith('.sha256')) return false;
+    return predicate(name);
+  }) || null;
+}
+
+/**
+ * 严格匹配当前平台可安装资产。
+ * 匹配失败返回 null（绝不回退到 Release 页面 html_url + 假文件名），
+ * 避免 Windows 包尚未上传时用错误 URL 触发热替换。
+ */
 async function resolveDownloadAsset(data) {
+  const assets = data?.assets;
+  if (!Array.isArray(assets) || assets.length === 0) {
+    return null;
+  }
+
+  // macOS: Release 使用 DMG 分发，按架构选择对应的 dmg
+  if (isMacOS()) {
+    const arch = await getMacArch();
+    const targetAsset =
+      pickAsset(assets, (name) => name.toLowerCase().includes(`-${arch}.dmg`)) ||
+      pickAsset(assets, (name) => name.toLowerCase().endsWith('.dmg'));
+    if (!targetAsset) return null;
+    return { url: targetAsset.browser_download_url, filename: targetAsset.name };
+  }
+
+  // Linux: 优先选取 .deb 包，其次 .rpm（不拿无扩展名二进制当热更包）
+  if (isLinux()) {
+    const targetAsset =
+      pickAsset(assets, (name) => name.toLowerCase().endsWith('.deb')) ||
+      pickAsset(assets, (name) => name.toLowerCase().endsWith('.rpm'));
+    if (!targetAsset) return null;
+    return { url: targetAsset.browser_download_url, filename: targetAsset.name };
+  }
+
+  // Windows: 便携版 / 安装版
   let isPortable = false;
   if (window?.go?.main?.App?.IsPortableVersion) {
-    isPortable = await window.go.main.App.IsPortableVersion();
-  }
-  if (data.assets && data.assets.length > 0) {
-    let targetAsset = null;
-
-    // macOS: Release 使用 DMG 分发，按架构选择对应的 dmg
-    if (isMacOS()) {
-      const arch = await getMacArch();
-      targetAsset = data.assets.find(a => a.name.toLowerCase().includes(`-${arch}.dmg`));
-      if (!targetAsset) {
-        targetAsset = data.assets.find(a => a.name.toLowerCase().endsWith('.dmg'));
-      }
-      if (targetAsset) {
-        return { url: targetAsset.browser_download_url, filename: targetAsset.name };
-      }
-    }
-
-    // Linux: 优先选取 .deb 包，其次 .rpm
-    if (isLinux()) {
-      targetAsset = data.assets.find(a => a.name.endsWith('.deb'));
-      if (!targetAsset) {
-        targetAsset = data.assets.find(a => a.name.endsWith('.rpm'));
-      }
-      if (targetAsset) {
-        return { url: targetAsset.browser_download_url, filename: targetAsset.name };
-      }
-    }
-
-    // Windows: 原有逻辑
-    if (isPortable) {
-      targetAsset = data.assets.find(a => !/installer|setup/i.test(a.name) && a.name.endsWith('.exe'));
-    } else {
-      targetAsset = data.assets.find(a => /setup|installer/i.test(a.name) && a.name.endsWith('.exe'));
-    }
-    if (!targetAsset) {
-      targetAsset = data.assets.find(a => a.name.endsWith('.exe'));
-    }
-    if (targetAsset) {
-      return { url: targetAsset.browser_download_url, filename: targetAsset.name };
+    try {
+      isPortable = await window.go.main.App.IsPortableVersion();
+    } catch {
+      isPortable = false;
     }
   }
-  const fallbackName = isMacOS() ? 'update.dmg' : (isLinux() ? 'update.deb' : 'update.exe');
-  return { url: data.html_url || '', filename: fallbackName };
+
+  let targetAsset = null;
+  if (isPortable) {
+    // 优先明确 portable 命名，再退到非 installer 的 .exe
+    targetAsset =
+      pickAsset(assets, (name) => /portable\.exe$/i.test(name)) ||
+      pickAsset(assets, (name) => !/installer|setup/i.test(name) && name.toLowerCase().endsWith('.exe'));
+  } else {
+    targetAsset =
+      pickAsset(assets, (name) => /installer\.exe$/i.test(name)) ||
+      pickAsset(assets, (name) => /setup|installer/i.test(name) && name.toLowerCase().endsWith('.exe'));
+  }
+  // 不再用「任意 .exe」兜底：避免误选到错误产物
+  if (!targetAsset) return null;
+  return { url: targetAsset.browser_download_url, filename: targetAsset.name };
 }
 
 /**
  * 自动更新检查 Hook，封装 GitHub Releases 检查、资源匹配、下载进度、应用更新逻辑
  * @param {Object} options
- * @param {Function} [options.onResult] - (result) => void, result = { hasUpdate, latestVersion, url, filename }
+ * @param {Function} [options.onResult] - (result) => void
  * @param {Function} [options.onError] - (err) => void
  */
 export function useUpdateChecker({ onResult, onError } = {}) {
@@ -135,9 +169,43 @@ export function useUpdateChecker({ onResult, onError } = {}) {
       if (!data || !data.tag_name) return null;
 
       const latest = data.tag_name.replace(/^v+/i, '');
-      const { url, filename } = await resolveDownloadAsset(data);
-      const hasUpdate = compareVersions(latest, APP_VERSION);
-      const result = { hasUpdate, latestVersion: latest, url, filename };
+      const versionNewer = compareVersions(latest, APP_VERSION);
+      if (!versionNewer) {
+        const result = {
+          hasUpdate: false,
+          latestVersion: latest,
+          url: '',
+          filename: '',
+          assetReady: true,
+          reason: 'up_to_date',
+        };
+        cbRef.current.onResult?.(result);
+        return result;
+      }
+
+      const asset = await resolveDownloadAsset(data);
+      if (!asset?.url || !asset?.filename) {
+        // 版本更新了，但当前平台安装包尚未上传（例如 Windows 构建较慢）
+        const result = {
+          hasUpdate: false,
+          latestVersion: latest,
+          url: '',
+          filename: '',
+          assetReady: false,
+          reason: 'asset_pending',
+        };
+        cbRef.current.onResult?.(result);
+        return result;
+      }
+
+      const result = {
+        hasUpdate: true,
+        latestVersion: latest,
+        url: asset.url,
+        filename: asset.filename,
+        assetReady: true,
+        reason: 'ready',
+      };
       cbRef.current.onResult?.(result);
       return result;
     } catch (err) {
@@ -147,25 +215,28 @@ export function useUpdateChecker({ onResult, onError } = {}) {
       clearTimeout(timeout);
       setChecking(false);
     }
-  }, []);  // Empty deps - stable reference
+  }, []);
 
   const applyUpdate = useCallback(async (updateInfo) => {
-    if (!updateInfo || !updateInfo.url) return;
-    if (downloadProgress >= 0) return;
-    // 非平台安装包的链接直接打开浏览器
-    const packageName = (updateInfo.filename || updateInfo.url).toLowerCase();
-    if (!/\.(exe|deb|rpm|dmg)$/.test(packageName)) {
-      window.runtime?.BrowserOpenURL(updateInfo.url);
-      return;
+    if (!updateInfo || !updateInfo.url) {
+      throw new Error('当前平台安装包尚未就绪，请稍后再试');
     }
+    if (downloadProgress >= 0) return;
+
+    // 仅允许真实的 GitHub Release 资产下载地址 + 已知安装包后缀
+    const packageName = String(updateInfo.filename || '').toLowerCase();
+    if (!isGithubAssetDownloadUrl(updateInfo.url) || !/\.(exe|deb|rpm|dmg)$/.test(packageName)) {
+      // 非可安装资产：最多打开浏览器，绝不进入热替换
+      if (updateInfo.url) {
+        window.runtime?.BrowserOpenURL(updateInfo.url);
+      }
+      throw new Error('未找到可安装的更新包，已取消自动替换');
+    }
+
     setSharedDownloadProgress(0);
-    let defaultName = 'update.exe';
-    if (updateInfo.url.endsWith('.deb')) defaultName = 'update.deb';
-    else if (updateInfo.url.endsWith('.rpm')) defaultName = 'update.rpm';
-    else if (updateInfo.url.endsWith('.dmg')) defaultName = 'update.dmg';
     try {
       const proxyFirst = localStorage.getItem('updateUseProxy') === 'true';
-      await AppGo.UpdateApp(updateInfo.url, updateInfo.filename || defaultName, proxyFirst);
+      await AppGo.UpdateApp(updateInfo.url, updateInfo.filename, proxyFirst);
     } catch (err) {
       setSharedDownloadProgress(-1);
       throw err;

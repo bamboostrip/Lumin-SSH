@@ -370,6 +370,7 @@ export default {
   "清空当前输入行": "Geçerli giriş satırını temizle",
   "发现新版本: v": "Yeni sürüm bulundu: v",
   "当前已是最新版本": "Şu anda en son sürüm",
+  "新版本安装包尚未就绪，请稍后再试": "Yeni sürüm paketi henüz hazır değil. Lütfen daha sonra tekrar deneyin.",
   "检查更新失败: ": "Güncellemelerin kontrol edilmesi başarısız oldu:",
   "更新失败: ": "Güncelleme başarısız oldu:",
   "更新文件名无效": "Geçersiz güncelleme dosyası adı",

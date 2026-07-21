@@ -102,9 +102,11 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
-      - name: Upload to Release
+      # 先写 draft：/releases/latest 不会暴露未齐套的安装包，避免 Windows 仍在打包时被客户端热更
+      - name: Upload to Draft Release
         uses: softprops/action-gh-release@v2
         with:
+          draft: true
           name: "Lumin SSH Client ${{ github.ref_name }}"
           body: |
             ## 更新日志
@@ -196,9 +198,10 @@ jobs:
           echo "app_dmg=${{ github.workspace }}/build/Lumin-V${VERSION}-${ARCH}.dmg" >> $GITHUB_ENV
           echo "app_sha=${{ github.workspace }}/build/Lumin-V${VERSION}-${ARCH}.dmg.sha256" >> $GITHUB_ENV
 
-      - name: Upload to Release
+      - name: Upload to Draft Release
         uses: softprops/action-gh-release@v2
         with:
+          draft: true
           files: |
             ${{ env.app_dmg }}
             ${{ env.app_sha }}
@@ -254,11 +257,23 @@ jobs:
           echo "installer=${{ github.workspace }}\build\Lumin-V$VERSION-amd64-installer.exe" >> $env:GITHUB_ENV
           echo "installer_sha=${{ github.workspace }}\build\Lumin-V$VERSION-amd64-installer.exe.sha256" >> $env:GITHUB_ENV
 
-      - name: Upload to Release
+      - name: Upload to Draft Release
         uses: softprops/action-gh-release@v2
         with:
+          draft: true
           files: |
             ${{ env.portable }}
             ${{ env.portable_sha }}
             ${{ env.installer }}
             ${{ env.installer_sha }}
+
+  # 全平台产物齐套后再取消 draft，客户端 /releases/latest 才能看到
+  publish-release:
+    needs: [build-linux, build-macos, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          make_latest: true

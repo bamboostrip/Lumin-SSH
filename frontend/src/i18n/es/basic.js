@@ -370,6 +370,7 @@ export default {
   "清空当前输入行": "Limpiar línea de entrada actual",
   "发现新版本: v": "Nueva versión encontrada :v",
   "当前已是最新版本": "Actualmente la última versión",
+  "新版本安装包尚未就绪，请稍后再试": "El paquete de la nueva versión aún no está listo. Inténtelo de nuevo más tarde.",
   "检查更新失败: ": "Error al buscar actualizaciones:",
   "更新失败: ": "La actualización falló:",
   "更新文件名无效": "Nombre de archivo de actualización no válido",

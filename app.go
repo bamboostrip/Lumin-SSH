@@ -2370,17 +2370,60 @@ func (a *App) PingServer(connId string, mode string) map[string]interface{} {
 	return PingServer(resolvedConn, mode)
 }
 
+// isAllowedUpdateDownloadURL 仅允许 GitHub Release 资产下载地址（含常见 ghproxy 前缀）。
+// 拒绝 html_url / 网页 / 非 download 路径，避免把 Release 页面当安装包热替换。
+func isAllowedUpdateDownloadURL(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if !strings.HasPrefix(raw, "https://") {
+		return false
+	}
+	// 允许直连与常见镜像前缀：镜像通常是 https://proxy/https://github.com/...
+	// 统一在完整字符串里找 github.com/.../releases/download/
+	lower := strings.ToLower(raw)
+	idx := strings.Index(lower, "github.com/")
+	if idx < 0 {
+		return false
+	}
+	rest := lower[idx+len("github.com/"):]
+	// 期望: owner/repo/releases/download/...
+	if !strings.Contains(rest, "/releases/download/") {
+		return false
+	}
+	// 拒绝 .sha256 自身
+	if strings.HasSuffix(lower, ".sha256") {
+		return false
+	}
+	return true
+}
+
+func isAllowedUpdateFilename(filename string) bool {
+	name := strings.ToLower(strings.TrimSpace(filename))
+	if name == "" || name == "." || name == ".." {
+		return false
+	}
+	if strings.HasSuffix(name, ".sha256") {
+		return false
+	}
+	return strings.HasSuffix(name, ".exe") ||
+		strings.HasSuffix(name, ".deb") ||
+		strings.HasSuffix(name, ".rpm") ||
+		strings.HasSuffix(name, ".dmg")
+}
+
 // UpdateApp downloads a platform update package, verifies it, and starts the
 // platform-specific installation or executable replacement flow.
 func (a *App) UpdateApp(downloadUrl string, filename string, proxyFirst bool) error {
-	// 1. 强制 HTTPS，防止明文下载可执行文件被篡改
+	// 1. 强制 HTTPS + 仅允许 GitHub Release 资产下载地址
 	if !strings.HasPrefix(downloadUrl, "https://") {
 		return fmt.Errorf("更新地址必须使用 HTTPS")
 	}
+	if !isAllowedUpdateDownloadURL(downloadUrl) {
+		return fmt.Errorf("更新地址无效：仅允许 GitHub Release 安装包下载链接")
+	}
 	// Release asset names must not escape the temporary/download directory.
 	filename = filepath.Base(strings.TrimSpace(filename))
-	if filename == "." || filename == "" {
-		return fmt.Errorf("更新文件名无效")
+	if !isAllowedUpdateFilename(filename) {
+		return fmt.Errorf("更新文件名无效或不受支持: %s", filename)
 	}
 	// 2. 下载新文件（带超时，防止慢网络永久阻塞）
 	// ponytail: 对每个 URL 尝试完整的 下载→写入磁盘 流程，失败再试下一个。

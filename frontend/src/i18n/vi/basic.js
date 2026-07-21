@@ -370,6 +370,7 @@ export default {
   "清空当前输入行": "Xóa dòng nhập hiện tại",
   "发现新版本: v": "Đã tìm thấy phiên bản mới :v",
   "当前已是最新版本": "Hiện nay phiên bản mới nhất",
+  "新版本安装包尚未就绪，请稍后再试": "Gói phiên bản mới chưa sẵn sàng. Vui lòng thử lại sau.",
   "检查更新失败: ": "Kiểm tra cập nhật không thành công:",
   "更新失败: ": "Cập nhật không thành công:",
   "更新文件名无效": "Tên tệp cập nhật không hợp lệ",

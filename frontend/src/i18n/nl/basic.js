@@ -370,6 +370,7 @@ export default {
   "清空当前输入行": "Huidige invoerregel wissen",
   "发现新版本: v": "Nieuwe versie gevonden: v",
   "当前已是最新版本": "Momenteel de nieuwste versie",
+  "新版本安装包尚未就绪，请稍后再试": "Het nieuwe versiepakket is nog niet gereed. Probeer het later opnieuw.",
   "检查更新失败: ": "Controleren op updates is mislukt:",
   "更新失败: ": "Update mislukt:",
   "更新文件名无效": "Ongeldige updatebestandsnaam",

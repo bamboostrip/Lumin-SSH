@@ -370,6 +370,7 @@ export default {
   "清空当前输入行": "Vymazat aktuální vstupní řádek",
   "发现新版本: v": "Nalezena nová verze: v",
   "当前已是最新版本": "Aktuálně nejnovější verze",
+  "新版本安装包尚未就绪，请稍后再试": "Balíček nové verze ještě není připraven. Zkuste to prosím později.",
   "检查更新失败: ": "Kontrola aktualizací se nezdařila:",
   "更新失败: ": "Aktualizace se nezdařila:",
   "更新文件名无效": "Neplatný název souboru aktualizace",

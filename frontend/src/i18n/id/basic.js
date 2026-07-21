@@ -370,6 +370,7 @@ export default {
   "清空当前输入行": "Bersihkan baris masukan saat ini",
   "发现新版本: v": "Versi baru ditemukan: v",
   "当前已是最新版本": "Saat ini versi terbaru",
+  "新版本安装包尚未就绪，请稍后再试": "Paket versi baru belum siap. Coba lagi nanti.",
   "检查更新失败: ": "Gagal memeriksa pembaruan:",
   "更新失败: ": "Pembaruan gagal:",
   "更新文件名无效": "Nama file pembaruan tidak valid",

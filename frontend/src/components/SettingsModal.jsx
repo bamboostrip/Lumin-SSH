@@ -246,9 +246,15 @@ export default function SettingsModal({
           filename: result.filename,
         });
         addToast($t('发现新版本: v') + result.latestVersion, 'success');
-      } else {
-        addToast($t('当前已是最新版本'), 'info');
+        return;
       }
+      setUpdateInfo(null);
+      // 远端 tag 已更新但本平台安装包尚未上传（如 Windows 仍在打包）
+      if (result?.reason === 'asset_pending') {
+        addToast($t('新版本安装包尚未就绪，请稍后再试'), 'info');
+        return;
+      }
+      addToast($t('当前已是最新版本'), 'info');
     },
     onError: (err) => {
       addToast($t('检查更新失败: ') + (err?.message || err), 'error');

@@ -370,6 +370,7 @@ export default {
   "清空当前输入行": "Golește linia de intrare curentă",
   "发现新版本: v": "Versiune nouă găsită: v",
   "当前已是最新版本": "Momentan cea mai recentă versiune",
+  "新版本安装包尚未就绪，请稍后再试": "Pachetul noii versiuni nu este încă gata. Încercați din nou mai târziu.",
   "检查更新失败: ": "Verificarea actualizărilor a eșuat:",
   "更新失败: ": "Actualizarea a eșuat:",
   "更新文件名无效": "Nume de fișier de actualizare nevalid",

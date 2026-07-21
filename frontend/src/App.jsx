@@ -34,7 +34,7 @@ import ImportExportDialog from './components/ImportExportDialog.jsx';
 import ExportSelectedDialog from './components/ExportSelectedDialog.jsx';
 import Tiptop from './components/Tiptop.jsx';
 import { restoreAIChatTool } from './components/ai/aiChatBridge.js';
-import { Bot, Settings, House, Minus, Square, X, Plus, Monitor, RefreshCw, Folder, ScrollText, Cpu, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Search, Globe, Rocket, Copy, Sun, Moon } from 'lucide-react';
+import { Bot, Settings, House, Minus, Square, X, Plus, Monitor, RefreshCw, Folder, ScrollText, Cpu, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Search, Globe, Rocket, Copy, PenLine, Sun, Moon } from 'lucide-react';
 import { Z } from './constants/zIndex';
 
 import logoImg from './assets/logo.png';
@@ -3280,6 +3280,46 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     }
   }, [addToast, markWorkspaceRestoreNavigationOverride, t]);
 
+  const handleRenameTerminalTab = useCallback(async (sessionId, terminalId) => {
+    const session = sessionsRef.current.find((item) => item.id === sessionId);
+    const currentTerminals = Array.isArray(session?.terminals) && session.terminals.length > 0
+      ? session.terminals
+      : (session ? [{ id: session.id, label: `${t('终端')}1` }] : []);
+    const targetTerminal = currentTerminals.find((item) => item.id === terminalId);
+    if (!session || !targetTerminal) {
+      return;
+    }
+    const currentLabel = String(targetTerminal.label || '').trim() || t('终端');
+    const nextLabel = await window.luminDialog?.prompt(`${t('标签标题')}: ${currentLabel}`);
+    if (nextLabel === null || nextLabel === undefined) {
+      return;
+    }
+    const trimmedLabel = String(nextLabel).trim();
+    if (!trimmedLabel || trimmedLabel === currentLabel) {
+      return;
+    }
+    const nextSessions = sessionsRef.current.map((item) => (
+      item.id === sessionId
+        ? {
+            ...item,
+            terminals: (Array.isArray(item.terminals) && item.terminals.length > 0 ? item.terminals : currentTerminals).map((term) => (
+              term.id === terminalId
+                ? { ...term, label: trimmedLabel }
+                : term
+            )),
+          }
+        : item
+    ));
+    sessionsRef.current = nextSessions;
+    setSessions(nextSessions);
+    persistWorkspaceSnapshotRef.current({
+      sessions: nextSessions,
+      activeSessionId: activeSessionIdRef.current,
+      activeTerminalId: activeTerminalIdRef.current,
+      terminalPaneLayouts: terminalPaneLayoutsRef.current,
+    });
+  }, [t]);
+
   // ── 关闭单个终端标签 ──────────────────────────────────────
   const closeTerminal = useCallback((sessionId, terminalId, e) => {
     e?.stopPropagation();
@@ -6475,6 +6515,18 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                 </div>
               );
             })}
+            {terminalTabContextMenu.type === 'terminal' && (
+              <div
+                className="tab-context-menu-item"
+                onClick={() => {
+                  const { sessionId, terminalId } = terminalTabContextMenu;
+                  setTerminalTabContextMenu(null);
+                  void handleRenameTerminalTab(sessionId, terminalId);
+                }}
+              >
+                <PenLine size={14} /> {t('重命名标签标题')}
+              </div>
+            )}
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
             <div
               className="tab-context-menu-item"

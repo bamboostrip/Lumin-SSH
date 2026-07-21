@@ -1200,8 +1200,6 @@ export default {
   "本地数据已同步到云端": "Yerel veriler bulutla senkronize edildi",
   "偏好设置": "Tercihler",
   "文件管理器": "Dosya Yöneticisi",
-  "文件管理器跟随终端目录": "Dosya yöneticisi terminal dizinini takip eder",
-  "终端 cd 切换目录时自动同步文件管理器路径": "Terminal cd, dizinleri değiştirirken dosya yöneticisi yolunu otomatik olarak senkronize eder",
   "压缩传输": "Sıkıştırılmış iletim",
   "多文件或文件夹上传时先在本机打包为 tar.gz，上传后远端自动解压": "Birden fazla dosya veya klasör yüklerken, önce bunları yerel olarak tar.gz'ye paketleyin ve yükleme sonrasında otomatik olarak uzaktan sıkıştırılmış dosyaları açın.",
   "发起传输任务时自动打开传输队列": "Bir iletim görevini başlatırken iletim kuyruğunu otomatik olarak aç",

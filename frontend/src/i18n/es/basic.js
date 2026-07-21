@@ -1200,8 +1200,6 @@ export default {
   "本地数据已同步到云端": "Los datos locales se han sincronizado con la nube.",
   "偏好设置": "Preferencias",
   "文件管理器": "Gestor de archivos",
-  "文件管理器跟随终端目录": "El administrador de archivos sigue el directorio de la terminal",
-  "终端 cd 切换目录时自动同步文件管理器路径": "Terminal cd sincroniza automáticamente la ruta del administrador de archivos al cambiar de directorio",
   "压缩传输": "Transmisión comprimida",
   "多文件或文件夹上传时先在本机打包为 tar.gz，上传后远端自动解压": "Al cargar varios archivos o carpetas, primero empaquetelos en tar.gz localmente y luego descomprímalos automáticamente de forma remota después de cargarlos.",
   "发起传输任务时自动打开传输队列": "Abrir automáticamente la cola de transmisión al iniciar una tarea de transmisión",

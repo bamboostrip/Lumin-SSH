@@ -1200,8 +1200,6 @@ export default {
   "本地数据已同步到云端": "Lokale gegevens zijn gesynchroniseerd met de cloud",
   "偏好设置": "Voorkeuren",
   "文件管理器": "Bestandsbeheer",
-  "文件管理器跟随终端目录": "Bestandsbeheer volgt de terminalmap",
-  "终端 cd 切换目录时自动同步文件管理器路径": "Terminal cd synchroniseert automatisch het bestandsbeheerpad bij het schakelen tussen mappen",
   "压缩传输": "Gecomprimeerde transmissie",
   "多文件或文件夹上传时先在本机打包为 tar.gz，上传后远端自动解压": "Wanneer u meerdere bestanden of mappen uploadt, verpakt u deze eerst lokaal in tar.gz en decomprimeert u ze vervolgens automatisch op afstand na het uploaden.",
   "发起传输任务时自动打开传输队列": "Open automatisch de verzendwachtrij bij het starten van een verzendtaak",

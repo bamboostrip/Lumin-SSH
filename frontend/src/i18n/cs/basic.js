@@ -1200,8 +1200,6 @@ export default {
   "本地数据已同步到云端": "Místní data byla synchronizována do cloudu",
   "偏好设置": "Předvolby",
   "文件管理器": "Správce souborů",
-  "文件管理器跟随终端目录": "Správce souborů následuje adresář terminálu",
-  "终端 cd 切换目录时自动同步文件管理器路径": "Terminál cd automaticky synchronizuje cestu správce souborů při přepínání adresářů",
   "压缩传输": "Stlačený převod",
   "多文件或文件夹上传时先在本机打包为 tar.gz，上传后远端自动解压": "Při nahrávání více souborů nebo složek je nejprve lokálně zabalte do tar.gz a poté je po nahrání automaticky vzdáleně dekomprimujte.",
   "发起传输任务时自动打开传输队列": "Automaticky otevřít přenosovou frontu při zahájení přenosové úlohy",

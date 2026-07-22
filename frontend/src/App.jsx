@@ -514,13 +514,15 @@ export default function App() {
   const [hideSensitive, setHideSensitive] = useState(localStorage.getItem('hideSensitive') === 'true');
   const [fileManagerPosition, setFileManagerPosition] = useState(() => {
     const saved = localStorage.getItem('fileManagerPosition') || 'tab';
-    return saved === 'tab' || saved === 'left' || saved === 'bottom' ? saved : 'tab';
-  }); // 'tab' | 'left' | 'bottom'
+    return saved === 'tab' || saved === 'left' || saved === 'right' || saved === 'bottom' ? saved : 'tab';
+  }); // 'tab' | 'left' | 'right' | 'bottom'
   const [fileManagerSplitPosition, setFileManagerSplitPosition] = useState(() => {
     const savedPosition = localStorage.getItem('fileManagerPosition');
     const savedSplitPosition = localStorage.getItem('fileManagerSplitPosition');
-    if (savedPosition === 'left' || savedPosition === 'bottom') return savedPosition;
-    return savedSplitPosition === 'left' || savedSplitPosition === 'bottom' ? savedSplitPosition : 'bottom';
+    if (savedPosition === 'left' || savedPosition === 'right' || savedPosition === 'bottom') return savedPosition;
+    return savedSplitPosition === 'left' || savedSplitPosition === 'right' || savedSplitPosition === 'bottom'
+      ? savedSplitPosition
+      : 'bottom';
   });
   const [fileManagerCollapsed, setFileManagerCollapsed] = useState(() => localStorage.getItem('fileManagerCollapsed') === 'true');
   const [showQuickCommands, setShowQuickCommands] = useState(false);
@@ -1111,7 +1113,7 @@ export default function App() {
     };
   }, []);
   const getFileManagerDockPreviewRect = useCallback((target) => {
-    if (target !== 'left' && target !== 'bottom') {
+    if (target !== 'left' && target !== 'right' && target !== 'bottom') {
       return null;
     }
     const container = document.getElementById('session-editor-container');
@@ -1125,15 +1127,21 @@ export default function App() {
 
     const previewInset = 10;
     const resizerThickness = 0;
+    const sideWidth = Math.max(FILE_MANAGER_LEFT_MIN, Math.min(800, leftSplitWidthRef.current));
+    const bottomInset = fileManagerPosition === 'bottom' && !fileManagerCollapsed
+      ? bottomSplitHeightRef.current + resizerThickness + previewInset
+      : previewInset;
+    const leftInset = fileManagerPosition === 'left' && !fileManagerCollapsed
+      ? leftSplitWidthRef.current + resizerThickness + previewInset
+      : previewInset;
+    const rightInset = fileManagerPosition === 'right' && !fileManagerCollapsed
+      ? leftSplitWidthRef.current + resizerThickness + previewInset
+      : previewInset;
 
     if (target === 'left') {
-      const bottomInset = fileManagerPosition === 'bottom' && !fileManagerCollapsed
-        ? bottomSplitHeightRef.current + resizerThickness + previewInset
-        : previewInset;
-      const width = Math.max(FILE_MANAGER_LEFT_MIN, Math.min(800, leftSplitWidthRef.current));
       const left = rect.left + previewInset;
       const top = rect.top + previewInset;
-      const right = left + width;
+      const right = left + sideWidth;
       const bottom = rect.bottom - bottomInset;
       if (right <= left || bottom <= top) {
         return null;
@@ -1147,17 +1155,36 @@ export default function App() {
           left: previewInset,
           top: previewInset,
           bottom: bottomInset,
-          width: `${width}px`,
+          width: `${sideWidth}px`,
         },
       };
     }
 
-    const leftInset = fileManagerPosition === 'left' && !fileManagerCollapsed
-      ? leftSplitWidthRef.current + resizerThickness + previewInset
-      : previewInset;
+    if (target === 'right') {
+      const right = rect.right - previewInset;
+      const left = right - sideWidth;
+      const top = rect.top + previewInset;
+      const bottom = rect.bottom - bottomInset;
+      if (right <= left || bottom <= top) {
+        return null;
+      }
+      return {
+        left,
+        top,
+        right,
+        bottom,
+        style: {
+          right: previewInset,
+          top: previewInset,
+          bottom: bottomInset,
+          width: `${sideWidth}px`,
+        },
+      };
+    }
+
     const height = Math.max(FILE_MANAGER_BOTTOM_MIN, Math.min(600, bottomSplitHeightRef.current));
     const left = rect.left + leftInset;
-    const right = rect.right - previewInset;
+    const right = rect.right - rightInset;
     const bottom = rect.bottom - previewInset;
     const top = bottom - height;
     if (right <= left || bottom <= top) {
@@ -1170,7 +1197,7 @@ export default function App() {
       bottom,
       style: {
         left: leftInset,
-        right: previewInset,
+        right: rightInset,
         bottom: previewInset,
         height: `${height}px`,
       },
@@ -1198,14 +1225,22 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     const container = document.getElementById('session-editor-container');
     const containerRect = container?.getBoundingClientRect();
     const edgeInset = 12;
-    if (target === 'left') {
+    if (target === 'left' || target === 'right') {
       const previewWidth = previewRect.right - previewRect.left;
-      const left = previewRect.left + edgeInset;
       const top = previewRect.top + edgeInset;
-      const right = Math.min(previewRect.right - edgeInset, left + Math.min(80, Math.max(46, previewWidth * 0.34)));
       const bottom = fileManagerPosition === 'bottom' && !fileManagerCollapsed && containerRect
         ? containerRect.bottom - edgeInset
         : previewRect.bottom - edgeInset;
+      if (target === 'left') {
+        const left = previewRect.left + edgeInset;
+        const right = Math.min(previewRect.right - edgeInset, left + Math.min(80, Math.max(46, previewWidth * 0.34)));
+        if (right <= left || bottom <= top) {
+          return null;
+        }
+        return { left, top, right, bottom };
+      }
+      const right = previewRect.right - edgeInset;
+      const left = Math.max(previewRect.left + edgeInset, right - Math.min(80, Math.max(46, previewWidth * 0.34)));
       if (right <= left || bottom <= top) {
         return null;
       }
@@ -1213,10 +1248,14 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     }
 
     const previewHeight = previewRect.bottom - previewRect.top;
-    const left = fileManagerPosition === 'left' && !fileManagerCollapsed && containerRect
-      ? containerRect.left + edgeInset
-      : previewRect.left + edgeInset;
-    const right = previewRect.right - edgeInset;
+    let left = previewRect.left + edgeInset;
+    let right = previewRect.right - edgeInset;
+    if (fileManagerPosition === 'left' && !fileManagerCollapsed && containerRect) {
+      left = containerRect.left + edgeInset;
+    }
+    if (fileManagerPosition === 'right' && !fileManagerCollapsed && containerRect) {
+      right = containerRect.right - edgeInset;
+    }
     const bottom = previewRect.bottom - edgeInset;
     const top = Math.max(previewRect.top + edgeInset, bottom - Math.min(80, Math.max(46, previewHeight * 0.38)));
     if (right <= left || bottom <= top) {
@@ -1252,7 +1291,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
   }, [getFileManagerDockConfirmRect]);
 
   useEffect(() => {
-    if (fileManagerPosition === 'left' || fileManagerPosition === 'bottom') {
+    if (fileManagerPosition === 'left' || fileManagerPosition === 'right' || fileManagerPosition === 'bottom') {
       setFileManagerSplitPosition(prev => prev === fileManagerPosition ? prev : fileManagerPosition);
       localStorage.setItem('fileManagerSplitPosition', fileManagerPosition);
     }
@@ -1265,9 +1304,10 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
       return;
     }
 
-    const nextSplitPosition = (fileManagerPosition === 'left' || fileManagerPosition === 'bottom')
+    const isSplitPos = (p) => p === 'left' || p === 'right' || p === 'bottom';
+    const nextSplitPosition = isSplitPos(fileManagerPosition)
       ? fileManagerPosition
-      : (fileManagerSplitPosition === 'left' || fileManagerSplitPosition === 'bottom' ? fileManagerSplitPosition : 'bottom');
+      : (isSplitPos(fileManagerSplitPosition) ? fileManagerSplitPosition : 'bottom');
 
     setFileManagerSplitPosition(nextSplitPosition);
     setFileManagerPosition(nextSplitPosition);
@@ -1280,7 +1320,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
   }, [contentTab, fileManagerPosition, fileManagerSplitPosition]);
 
   const handleFileManagerSplitPositionChange = useCallback((position) => {
-    if (position !== 'left' && position !== 'bottom') return;
+    if (position !== 'left' && position !== 'right' && position !== 'bottom') return;
     setFileManagerSplitPosition(position);
     localStorage.setItem('fileManagerSplitPosition', position);
     setFileManagerPosition(position);
@@ -1391,13 +1431,15 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     const startProbeWidth = probePanelWidthRef.current;
     const startAiWidth = aiPanelWidthRef.current;
     const dockTargets = direction === 'tab'
-      ? ['left', 'bottom']
+      ? ['left', 'right', 'bottom']
       : direction === 'left'
-        ? ['bottom', 'tab']
+        ? ['right', 'bottom', 'tab']
+        : direction === 'right'
+          ? ['left', 'bottom', 'tab']
         : direction === 'bottom'
-          ? ['left', 'tab']
+          ? ['left', 'right', 'tab']
           : [];
-    const isFileManagerResizer = direction === 'left' || direction === 'bottom';
+    const isFileManagerResizer = direction === 'left' || direction === 'right' || direction === 'bottom';
     const isFileManagerDockDrag = dockTargets.length > 0;
     let moved = false;
 
@@ -1413,6 +1455,14 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     const getSnapshot = (clientX, clientY) => {
       if (direction === 'left') {
         const rawSize = startWidth + (clientX - startX);
+        return {
+          clampedSize: Math.max(FILE_MANAGER_LEFT_MIN, Math.min(800, rawSize)),
+          armed: rawSize <= FILE_MANAGER_LEFT_MIN - COLLAPSE_ARMED_SIZE,
+        };
+      }
+      if (direction === 'right') {
+        // 右侧：向左拖变宽，向右拖变窄
+        const rawSize = startWidth + (startX - clientX);
         return {
           clampedSize: Math.max(FILE_MANAGER_LEFT_MIN, Math.min(800, rawSize)),
           armed: rawSize <= FILE_MANAGER_LEFT_MIN - COLLAPSE_ARMED_SIZE,
@@ -1472,7 +1522,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
         return;
       }
 
-      if (direction === 'left') {
+      if (direction === 'left' || direction === 'right') {
         updateLeftSplitWidth(snapshot.clampedSize);
       } else if (direction === 'probe') {
         updateProbePanelWidth(snapshot.clampedSize);
@@ -1482,7 +1532,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
         updateBottomSplitHeight(snapshot.clampedSize);
       }
 
-      if (direction === 'left' || direction === 'bottom' || direction === 'probe' || direction === 'ai') {
+      if (direction === 'left' || direction === 'right' || direction === 'bottom' || direction === 'probe' || direction === 'ai') {
         updateCollapseDragIntent(snapshot.armed ? direction : null);
       } else {
         updateCollapseDragIntent(null);
@@ -1503,7 +1553,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
         updateFileManagerDockConfirmTarget(null);
 
         if (activeDockTarget) {
-          if (direction === 'left') {
+          if (direction === 'left' || direction === 'right') {
             updateLeftSplitWidth(startWidth);
             localStorage.setItem('leftSplitWidth', startWidth.toString());
           } else if (direction === 'bottom') {
@@ -1516,7 +1566,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
           } else {
             handleFileManagerSplitPositionChange(activeDockTarget);
           }
-        } else if (direction === 'left') {
+        } else if (direction === 'left' || direction === 'right') {
           if (shouldCollapse) {
             updateLeftSplitWidth(startWidth);
             setFileManagerCollapsedPersistent(true);
@@ -4356,11 +4406,13 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
   }, [clearTerminalDockLongPressTimer]);
   const fileManagerDockDropzones = useMemo(() => {
     const dockTargets = fileManagerDockPreview === 'tab'
-      ? ['left', 'bottom']
+      ? ['left', 'right', 'bottom']
       : fileManagerDockPreview === 'left'
-        ? ['bottom', 'tab']
+        ? ['right', 'bottom', 'tab']
+        : fileManagerDockPreview === 'right'
+          ? ['left', 'bottom', 'tab']
         : fileManagerDockPreview === 'bottom'
-          ? ['left', 'tab']
+          ? ['left', 'right', 'tab']
           : [];
     return dockTargets.map((target) => {
       const rect = getFileManagerDockConfirmRect(target);
@@ -5775,7 +5827,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                   </button>
                 )}
                 <div className="terminal-sub-tab-actions" ref={terminalSubTabActionsRef}>
-                  {fileManagerPosition !== 'tab' && (fileManagerDockPreview === 'left' || fileManagerDockPreview === 'bottom') && (
+                  {fileManagerPosition !== 'tab' && (fileManagerDockPreview === 'left' || fileManagerDockPreview === 'right' || fileManagerDockPreview === 'bottom') && (
                     <div ref={fileManagerDockTabAnchorRef} className="file-manager-tab-dock-placeholder" aria-hidden="true">
                       <div className={`file-manager-dock-preview-dropzone file-manager-dock-preview-dropzone-inline${fileManagerDockConfirmTarget === 'tab' ? ' active' : ''}`} />
                     </div>
@@ -5847,6 +5899,8 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                       && contentTab === 'files';
                     const sessionConnectingServer = connectingServers.find((item) => item.sessionId === s.id) || null;
                     const showLeftFileManager = showSplitFileManager && fileManagerPosition === 'left' && !fileManagerCollapsed;
+                    const showRightFileManager = showSplitFileManager && fileManagerPosition === 'right' && !fileManagerCollapsed;
+                    const showSideFileManager = showLeftFileManager || showRightFileManager;
                     const showBottomFileManager = showSplitFileManager && fileManagerPosition === 'bottom' && !fileManagerCollapsed;
                     const showBottomQuickCommands = showQuickCommands
                       && s.status === 'connected'
@@ -5854,8 +5908,9 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                       && contentTab === 'terminal';
                     const showBottomDockPanel = showBottomFileManager || showBottomQuickCommands;
                     const showLeftCollapseStrip = showSplitFileManager && fileManagerPosition === 'left' && fileManagerCollapsed;
+                    const showRightCollapseStrip = showSplitFileManager && fileManagerPosition === 'right' && fileManagerCollapsed;
                     const showBottomCollapseStrip = showSplitFileManager && fileManagerPosition === 'bottom' && fileManagerCollapsed && !showBottomQuickCommands;
-                    const showFileManagerPanel = showTabFileManager || showLeftFileManager || showBottomFileManager;
+                    const showFileManagerPanel = showTabFileManager || showSideFileManager || showBottomFileManager;
                     return (
                       <div
                         key={s.id}
@@ -5875,6 +5930,17 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                             style={{ position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: Z.PANEL_BUTTON + 1 }}
                           >
                             <ChevronRight size={14} />
+                          </button>
+                        )}
+                        {showRightCollapseStrip && (
+                          <button
+                            type="button"
+                            className="panel-collapse-strip panel-collapse-strip-vertical panel-collapse-strip-right no-drag"
+                            onClick={() => setFileManagerCollapsedPersistent(false)}
+                            aria-label={t('展开文件管理面板')}
+                            style={{ position: 'absolute', right: 0, top: 0, bottom: 0, zIndex: Z.PANEL_BUTTON + 1 }}
+                          >
+                            <ChevronLeft size={14} />
                           </button>
                         )}
                         {showBottomCollapseStrip && (
@@ -5914,6 +5980,14 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                                 minWidth: `${FILE_MANAGER_LEFT_MIN}px`,
                                 borderRight: '1px solid var(--border)',
                               } : {}),
+                              ...(showRightFileManager ? {
+                                right: 0,
+                                top: 0,
+                                bottom: 0,
+                                width: `${leftSplitWidth}px`,
+                                minWidth: `${FILE_MANAGER_LEFT_MIN}px`,
+                                borderLeft: '1px solid var(--border)',
+                              } : {}),
                               ...(showBottomFileManager ? {
                                 left: 0,
                                 right: 0,
@@ -5932,6 +6006,11 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                                 <ChevronLeft size={14} />
                               </div>
                             )}
+                            {showRightFileManager && collapseDragIntent === 'right' && (
+                              <div className="panel-collapse-armed-zone panel-collapse-armed-zone-vertical panel-collapse-armed-zone-left">
+                                <ChevronRight size={14} />
+                              </div>
+                            )}
                             {showBottomFileManager && !showBottomQuickCommands && collapseDragIntent === 'bottom' && (
                               <div className="panel-collapse-armed-zone panel-collapse-armed-zone-horizontal panel-collapse-armed-zone-top">
                                 <ChevronDown size={14} />
@@ -5946,9 +6025,9 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                             onClick={(e) => e.stopPropagation()}
                             style={{
                               position: 'absolute',
-                              // 左侧文件管理器打开时，命令面板只占右侧，不盖住文件管理器
+                              // 侧栏文件管理器打开时，命令面板不盖住文件管理器
                               left: showLeftFileManager ? `${leftSplitWidth}px` : 0,
-                              right: 0,
+                              right: showRightFileManager ? `${leftSplitWidth}px` : 0,
                               bottom: 0,
                               height: `${bottomSplitHeight}px`,
                               minHeight: `${FILE_MANAGER_BOTTOM_MIN}px`,
@@ -6018,6 +6097,26 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                             }}
                           />
                         )}
+                        {showRightFileManager && (
+                          <div
+                            className={`split-resizer-v${collapseDragIntent === 'right' ? ' armed' : ''}`}
+                            onMouseDown={(e) => startDrag(e, 'right')}
+                            onClick={() => {
+                              if (shouldIgnoreResizerClick()) return;
+                              setFileManagerCollapsedPersistent(true);
+                            }}
+                            aria-label={t('收起文件管理面板')}
+                            style={{
+                              position: 'absolute',
+                              right: `${leftSplitWidth}px`,
+                              top: 0,
+                              bottom: showBottomQuickCommands ? `${bottomSplitHeight}px` : 0,
+                              zIndex: Z.PANEL_BUTTON + 5,
+                              marginLeft: 0,
+                              marginRight: 0,
+                            }}
+                          />
+                        )}
                         {/* 仅文件管理器底部模式用外部分隔条；快捷命令用面板内拖条 */}
                         {showBottomFileManager && !showBottomQuickCommands && (
                           <div
@@ -6031,8 +6130,8 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                             aria-label={t('收起文件管理面板')}
                             style={{
                               position: 'absolute',
-                              left: 0,
-                              right: 0,
+                              left: showLeftFileManager ? `${leftSplitWidth}px` : 0,
+                              right: showRightFileManager ? `${leftSplitWidth}px` : 0,
                               bottom: `${bottomSplitHeight}px`,
                               zIndex: Z.PANEL_BUTTON,
                               marginTop: 0,
@@ -6049,7 +6148,8 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                             minWidth: 0,
                             minHeight: 0,
                             overflow: 'hidden',
-                            marginLeft: showLeftFileManager ? `${leftSplitWidth}px` : 0,
+                            marginLeft: showLeftFileManager ? `${leftSplitWidth}px` : (showLeftCollapseStrip ? 12 : 0),
+                            marginRight: showRightFileManager ? `${leftSplitWidth}px` : (showRightCollapseStrip ? 12 : 0),
                             // 底部收起条 12px，给终端输入栏留空，避免挡「历史」按钮
                             marginBottom: showBottomDockPanel
                               ? `${bottomSplitHeight}px`

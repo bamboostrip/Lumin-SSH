@@ -134,6 +134,70 @@ export default function ServerList({
   const [showMoveGroupDropdown, setShowMoveGroupDropdown] = useState(false);
   const moveGroupMenuRef = useRef(null);
 
+  // 用指针位移区分「点击连接」与「拖选复制」：
+  // - 几乎没移动 → 视为点击，连接时清掉浏览器误选
+  // - 明显滑动 → 视为选中文字，不触发连接
+  const pointerGestureRef = useRef({ x: 0, y: 0, moved: false, active: false });
+  const DRAG_SELECT_THRESHOLD_PX = 5;
+
+  const clearTextSelection = () => {
+    try { window.getSelection?.()?.removeAllRanges?.(); } catch {}
+  };
+
+  const hasMeaningfulTextSelection = () => {
+    try {
+      const sel = window.getSelection?.();
+      return !!(sel && String(sel.toString() || '').trim());
+    } catch {
+      return false;
+    }
+  };
+
+  const markPointerDown = (e) => {
+    if (e.button != null && e.button !== 0) return;
+    pointerGestureRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      moved: false,
+      active: true,
+    };
+  };
+
+  const markPointerMove = (e) => {
+    const g = pointerGestureRef.current;
+    if (!g.active || g.moved) return;
+    const dx = Math.abs(e.clientX - g.x);
+    const dy = Math.abs(e.clientY - g.y);
+    if (dx > DRAG_SELECT_THRESHOLD_PX || dy > DRAG_SELECT_THRESHOLD_PX) {
+      g.moved = true;
+    }
+  };
+
+  const markPointerUp = () => {
+    // 保留 moved 供紧随其后的 click 读取
+    pointerGestureRef.current.active = false;
+  };
+
+  const wasDragSelect = () => pointerGestureRef.current.moved;
+
+  const tryConnect = (server) => {
+    if (!server || typeof onConnect !== 'function') return;
+    // 拖选过：只保留文字选中，不连接
+    if (wasDragSelect()) return;
+    // 当前有选区（例如上次拖选残留）：不连接
+    if (hasMeaningfulTextSelection()) return;
+    // 点击连接：清掉浏览器默认误选高亮
+    clearTextSelection();
+    onConnect(server);
+  };
+
+  const pointerSelectHandlers = {
+    onPointerDown: markPointerDown,
+    onPointerMove: markPointerMove,
+    onPointerUp: markPointerUp,
+    onPointerCancel: markPointerUp,
+  };
+
   // 预计算已连接会话的 Map，将 O(n×m) 查找优化为 O(1)
   const connectedSessionMap = useMemo(() => {
     const m = new Map();
@@ -402,9 +466,10 @@ export default function ServerList({
         } else {
           handleServerClick(server, flatIdx);
         }
-      } else {
-        onConnect(server);
+        return;
       }
+      // 拖选复制：不连接；纯点击：连接
+      tryConnect(server);
     };
 
     return (
@@ -413,6 +478,7 @@ export default function ServerList({
           key={`${server.id}-${rowToken || 'stable'}`}
           data-server-update-id={server.id}
           className={`server-card ${active ? 'active' : ''}${rowToken ? ' save-flow-hit' : ''}${selectionMode && isChecked ? 'selected' : ''}`}
+          {...pointerSelectHandlers}
           onClick={handleCardClick}
           onContextMenu={(e) => handleContextMenu(e, server)}
           onMouseEnter={() => setHoveredId(server.id)}
@@ -681,9 +747,9 @@ export default function ServerList({
                    } else {
                      handleServerClick(server, idx);
                    }
-                 } else {
-                   onConnect(server);
+                   return;
                  }
+                 tryConnect(server);
                };
 
                return (
@@ -691,6 +757,7 @@ export default function ServerList({
                    key={`${server.id}-${rowToken || 'stable'}`}
                    data-server-update-id={server.id}
                    className={`server-table-row ${active ? 'active' : ''}${rowToken ? ' save-flow-hit' : ''}${selectionMode && isChecked ? 'selected' : ''}`}
+                   {...pointerSelectHandlers}
                    onClick={handleTableRowClick}
                    onContextMenu={(e) => handleContextMenu(e, server)}
                   onMouseEnter={() => setHoveredId(server.id)}

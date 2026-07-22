@@ -138,6 +138,7 @@ func defaultAIConversationTaskSettings(globalSettings AIGlobalSettings) AIConver
 		AlwaysAllowMcp:                      globalSettings.AlwaysAllowMcp,
 		AlwaysAllowModeSwitch:               globalSettings.AlwaysAllowModeSwitch,
 		AlwaysAllowSubtasks:                 globalSettings.AlwaysAllowSubtasks,
+		AlwaysAllowFollowupQuestions:        globalSettings.AlwaysAllowFollowupQuestions,
 	}
 }
 

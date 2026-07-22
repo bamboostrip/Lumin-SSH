@@ -26,6 +26,8 @@ import {
   normalizeAISlashCommands,
 } from './aiSlashCommands.js'
 import { compressImage } from './aiImageCompression.js'
+import AIChatReasoningBlock from './chat/AIChatReasoningBlock.jsx'
+import AIChatRequestStatusRow from './chat/AIChatRequestStatusRow.jsx'
 
 const maxComposerImages = 20
 
@@ -258,6 +260,7 @@ export default function AIComposer({
   persistProviderSelection = true,
   autoApprovalSettings,
   onPatchAutoApprovalSettings,
+  onInterruptCollaboration,
   approvalRequired = false,
   toolRunning = false,
   commandActionRequired = false,
@@ -283,6 +286,9 @@ export default function AIComposer({
   editModeLabel = '',
   slashCommands = [],
   onCancelEdit,
+  collaborationLocked = false,
+  collaborationActive = false,
+  collaborationStatus = null,
   dismissSignal = 0,
 }) {
   const { t } = useTranslation()
@@ -343,19 +349,56 @@ export default function AIComposer({
         { key: 'terminate', icon: X, label: t('终止工具'), onClick: onTerminateTool, primary: false },
         { key: 'continue', icon: ListEnd, label: t('强制继续'), onClick: onContinueTool, primary: true },
       ]
-  const isQueuedSubmissionBlocked = queueBlocked && typeof queuedSubmissionKind === 'string' && queuedSubmissionKind.trim().length > 0
+  const isCollaborationBlocked = collaborationLocked === true
+  const isQueuedSubmissionBlocked = isCollaborationBlocked || (queueBlocked && typeof queuedSubmissionKind === 'string' && queuedSubmissionKind.trim().length > 0)
   const recommendedTerminalCandidate = terminalAssignmentCandidates.find((candidate) => candidate?.recommended) || terminalAssignmentCandidates[0] || null
   const secondaryTerminalCandidates = recommendedTerminalCandidate
     ? terminalAssignmentCandidates.filter((candidate) => candidate?.sessionId !== recommendedTerminalCandidate.sessionId)
     : terminalAssignmentCandidates
   const activeTerminalAssignmentCandidate = terminalAssignmentCandidates[terminalAssignmentSelectedIndex] || recommendedTerminalCandidate || null
-  const queuedSubmissionVisualLabel = queuedSubmissionKind === 'edit'
-    ? t('已排队编辑')
-    : queuedSubmissionKind === 'retry_assistant' || queuedSubmissionKind === 'retry_user'
-      ? t('已排队重试')
-      : t('已排队发送')
-  const queuedSubmissionCancelHint = t('再次点击取消')
+  const queuedSubmissionVisualLabel = isCollaborationBlocked
+    ? (collaborationActive ? `${t('助理协同')} · ${t('执行中')}` : t('助理协同'))
+    : queuedSubmissionKind === 'edit'
+      ? t('已排队编辑')
+      : queuedSubmissionKind === 'retry_assistant' || queuedSubmissionKind === 'retry_user'
+        ? t('已排队重试')
+        : t('已排队发送')
+  const alwaysAllowAssistantCollaboration = Boolean(autoApprovalSettings?.alwaysAllowFollowupQuestions)
+  const canToggleAssistantCollaboration = typeof onPatchAutoApprovalSettings === 'function'
+  const canInterruptAssistantCollaboration = alwaysAllowAssistantCollaboration && collaborationLocked === true && typeof onInterruptCollaboration === 'function'
+  const queuedSubmissionCancelHint = isCollaborationBlocked
+    ? (canInterruptAssistantCollaboration ? t('打断') : '')
+    : t('再次点击取消')
   const skipNextAutomaticRequestTitle = skipNextAutomaticRequest ? t('取消跳过下一次自动请求') : t('跳过下一次自动请求')
+  const canClickQueuedSubmissionOverlay = isCollaborationBlocked ? canInterruptAssistantCollaboration : typeof onCancelQueuedSubmission === 'function'
+
+  const collaborationStatusAssistant = useMemo(() => {
+    const startedAtMs = Number(collaborationStatus?.startedAtMs)
+    if (!collaborationActive || !Number.isFinite(startedAtMs) || startedAtMs <= 0) {
+      return null
+    }
+    return {
+      id: 'composer-collaboration-status',
+      text: typeof collaborationStatus?.text === 'string' ? collaborationStatus.text : '',
+      streaming: true,
+      extra: {
+        requestStatusLive: true,
+        statusStartedAtMs: startedAtMs,
+        firstTokenAtMs: Number(collaborationStatus?.firstTokenAtMs) || 0,
+      },
+    }
+  }, [collaborationActive, collaborationStatus])
+
+  const collaborationStatusReasoning = useMemo(() => {
+    if (!collaborationActive || typeof collaborationStatus?.reasoningText !== 'string' || !collaborationStatus.reasoningText) {
+      return []
+    }
+    return [{
+      id: 'composer-collaboration-reasoning',
+      text: collaborationStatus.reasoningText,
+      duration: '',
+    }]
+  }, [collaborationActive, collaborationStatus])
 
   const mentionTopLevelItems = createTopLevelMentionItems(currentCwd)
 
@@ -1340,6 +1383,41 @@ export default function AIComposer({
         </div>
       ) : null}
       <div data-ai-composer-root="true" style={{ width: '100%', border: 'none', borderRadius: 0, background: 'var(--surface-raised)', boxShadow: 'none' }}>
+        {collaborationStatusAssistant ? (
+          collaborationStatusReasoning.length > 0 ? (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'minmax(0, 1fr) auto',
+                alignItems: 'start',
+                gap: 12,
+                padding: '8px 12px 0',
+              }}>
+              <div style={{ minWidth: 0, maxWidth: 'min(52%, 360px)' }}>
+                <AIChatReasoningBlock
+                  text={collaborationStatusReasoning[0]?.text || ''}
+                  duration=""
+                  isStreaming={true}
+                  isLast={true}
+                />
+              </div>
+              <div style={{ justifySelf: 'end', alignSelf: 'start' }}>
+                <AIChatRequestStatusRow assistant={collaborationStatusAssistant} reasoning={collaborationStatusReasoning} />
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                minHeight: 48,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                padding: '0 12px',
+              }}>
+              <AIChatRequestStatusRow assistant={collaborationStatusAssistant} reasoning={collaborationStatusReasoning} />
+            </div>
+          )
+        ) : null}
         <input
           ref={fileInputRef}
           type="file"
@@ -1481,7 +1559,8 @@ export default function AIComposer({
           {isQueuedSubmissionBlocked ? (
             <button
               type="button"
-              onClick={onCancelQueuedSubmission}
+              disabled={!canClickQueuedSubmissionOverlay}
+              onClick={isCollaborationBlocked ? (() => onInterruptCollaboration?.()) : onCancelQueuedSubmission}
               style={{
                 position: 'absolute',
                 inset: 0,
@@ -1494,7 +1573,7 @@ export default function AIComposer({
                 padding: '0 24px',
                 textAlign: 'center',
                 color: 'var(--text-primary)',
-                cursor: 'pointer',
+                cursor: canClickQueuedSubmissionOverlay ? 'pointer' : 'default',
               }}>
               <span style={{
                 display: 'inline-flex',
@@ -1512,9 +1591,11 @@ export default function AIComposer({
                 <span style={{ color: 'var(--accent)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {queuedSubmissionVisualLabel}
                 </span>
-                <span style={{ borderLeft: '1px solid var(--border-subtle)', paddingLeft: 8, color: 'var(--text-tertiary)', fontSize: 11, whiteSpace: 'nowrap' }}>
-                  {queuedSubmissionCancelHint}
-                </span>
+                {queuedSubmissionCancelHint ? (
+                  <span style={{ borderLeft: '1px solid var(--border-subtle)', paddingLeft: 8, color: 'var(--text-tertiary)', fontSize: 11, whiteSpace: 'nowrap' }}>
+                    {queuedSubmissionCancelHint}
+                  </span>
+                ) : null}
               </span>
             </button>
           ) : null}
@@ -1671,7 +1752,7 @@ export default function AIComposer({
             <ActionButton
               title={isSending ? t('停止生成') : t('发送')}
               primary={true}
-              disabled={!isSending && !canSend}
+              disabled={isQueuedSubmissionBlocked || (!isSending && !canSend)}
               onClick={isSending ? onCancel : handleSubmit}
               onContextMenu={isSending && typeof onStopAndResume === 'function'
                 ? (event) => {
@@ -1684,7 +1765,7 @@ export default function AIComposer({
           </div>
         </div>
         <div style={{ height: 40, borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px 0 12px', position: 'relative', zIndex: 20, overflow: 'visible' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, overflow: 'visible' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '1 1 0', width: 0, minWidth: 0, overflow: 'visible' }}>
             <AIProviderSelector
               currentProviderId={currentProviderId}
               onCurrentProviderChange={onCurrentProviderChange}
@@ -1697,6 +1778,56 @@ export default function AIComposer({
               disabled={false}
               dismissSignal={dismissSignal}
             />
+            <Tiptop text={t('建议长程任务开启')}>
+              <button
+                type="button"
+                aria-label={t('助理协同')}
+                aria-pressed={alwaysAllowAssistantCollaboration}
+                disabled={!canToggleAssistantCollaboration}
+                onClick={() => onPatchAutoApprovalSettings?.({ alwaysAllowFollowupQuestions: !alwaysAllowAssistantCollaboration })}
+                style={{
+                  height: 28,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '0 10px',
+                  borderRadius: 8,
+                  border: `1px solid ${alwaysAllowAssistantCollaboration ? 'var(--accent-border)' : 'var(--border)'}`,
+                  background: alwaysAllowAssistantCollaboration ? 'rgba(var(--accent-rgb), 0.12)' : 'transparent',
+                  color: alwaysAllowAssistantCollaboration ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  transition: 'var(--transition)',
+                  whiteSpace: 'nowrap',
+                  opacity: canToggleAssistantCollaboration ? 1 : 0.45,
+                  cursor: canToggleAssistantCollaboration ? 'pointer' : 'not-allowed',
+                }}>
+                <span>{t('助理协同')}</span>
+                <span
+                  style={{
+                    position: 'relative',
+                    width: 26,
+                    height: 16,
+                    borderRadius: 999,
+                    background: alwaysAllowAssistantCollaboration ? 'var(--accent)' : 'var(--border)',
+                    transition: 'var(--transition)',
+                    flexShrink: 0,
+                  }}>
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: 2,
+                      left: alwaysAllowAssistantCollaboration ? 12 : 2,
+                      width: 12,
+                      height: 12,
+                      borderRadius: 999,
+                      background: '#fff',
+                      transition: 'var(--transition)',
+                    }}
+                  />
+                </span>
+              </button>
+            </Tiptop>
           </div>
         </div>
       </div>

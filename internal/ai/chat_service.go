@@ -31,6 +31,8 @@ type AIChatRequestPayload struct {
 	SkipNextAutomaticRequest bool                   `json:"skipNextAutomaticRequest"`
 	AssistantFirstReplyText  string                 `json:"assistantFirstReplyText,omitempty"`
 	IsDemon                  bool                   `json:"isDemon,omitempty"`
+	SystemPromptOverride     string                 `json:"systemPromptOverride,omitempty"`
+	StreamEventPrefix        string                 `json:"streamEventPrefix,omitempty"`
 	Messages                 []AIChatRequestMessage `json:"messages"`
 }
 
@@ -60,6 +62,8 @@ type PendingToolBatch struct {
 	RequestMessages                []AIChatRequestMessage
 	ParsedTools                    []aiParsedToolUse
 	NextToolIndex                  int
+	AssistantRetryCount            int
+	CollaborationRetryCount        int
 	SuppressNextCommandActionSound bool
 	AutoApprovalSettings           AIConversationTaskSettings
 }
@@ -73,6 +77,8 @@ const (
 	aiApprovalDecisionAutoDeny    aiApprovalDecision = "auto_deny"
 	aiApprovalDecisionAskUser     aiApprovalDecision = "ask_user"
 	aiChatRequestMaxAttempts                         = 3
+	aiAssistantRetryMaxAttempts                      = 2
+	aiCollaborationRetryMaxAttempts                  = 2
 )
 
 var aiSupportedToolNames = []string{
@@ -1688,6 +1694,10 @@ func (a *App) finishAIChatRequest(requestID string) {
 	}
 	a.popAIChatPendingToolBatch(requestID)
 	a.popAIChatPendingFollowupBatch(requestID)
+	collaborationState := a.popAIChatCollaborationState(requestID)
+	if collaborationState != nil && collaborationState.Cancel != nil {
+		collaborationState.Cancel()
+	}
 	a.popAIChatRequestCancel(requestID)
 	a.setAIChatSkipNextAutomaticRequest(requestID, false)
 }
@@ -1909,9 +1919,16 @@ func (a *App) CancelAIChat(requestID string) {
 			execution.Cancel()
 		}
 	}
+	collaborationState := a.popAIChatCollaborationState(trimmedRequestID)
+	if collaborationState != nil {
+		collaborationState.markFinished()
+		if collaborationState.Cancel != nil {
+			collaborationState.Cancel()
+		}
+	}
 	pendingBatch := a.popAIChatPendingToolBatch(trimmedRequestID)
 	pendingFollowup := a.popAIChatPendingFollowupBatch(trimmedRequestID)
-	if pendingBatch != nil || pendingFollowup != nil {
+	if pendingBatch != nil || pendingFollowup != nil || collaborationState != nil {
 		a.emitAIChatRuntimePhase(trimmedRequestID, "ready")
 		a.emitAIChatEvent(map[string]interface{}{
 			"kind":      "cancelled",
@@ -2085,6 +2102,8 @@ func titleForParsedToolUse(tool aiParsedToolUse) string {
 		return "应用差异"
 	case "execute_command":
 		return "执行命令"
+	case "ask_followup_question":
+		return "追问"
 	case "attempt_completion":
 		return "任务完成"
 	case "list_files":
@@ -2297,12 +2316,11 @@ func (a *App) continueCompatibleAIChatAfterTools(ctx context.Context, requestID 
 		"messageId": nextAssistantMessageID,
 	})
 
-	a.runCompatibleAIChatLoop(ctx, requestID, batch.Payload, batch.Profile, requestMessages, batch.AutoApprovalSettings, nextAssistantMessageID)
+	a.runCompatibleAIChatLoop(ctx, requestID, batch.Payload, batch.Profile, requestMessages, batch.AutoApprovalSettings, nextAssistantMessageID, batch.AssistantRetryCount, batch.CollaborationRetryCount)
 }
 
-func (a *App) runCompatibleAIChatLoop(ctx context.Context, requestID string, payload AIChatRequestPayload, profile AIProviderProfile, requestMessages []AIChatRequestMessage, autoApprovalSettings AIConversationTaskSettings, assistantMessageID string) {
+func (a *App) runCompatibleAIChatLoop(ctx context.Context, requestID string, payload AIChatRequestPayload, profile AIProviderProfile, requestMessages []AIChatRequestMessage, autoApprovalSettings AIConversationTaskSettings, assistantMessageID string, assistantRetryCount int, collaborationRetryCount int) {
 	consecutiveNoToolCount := 0
-	consecutiveNoAssistantCount := 0
 	for round := 0; round < 6; round++ {
 		var roundResult aiChatRoundResult
 		var err error
@@ -2364,9 +2382,9 @@ func (a *App) runCompatibleAIChatLoop(ctx context.Context, requestID string, pay
 
 		trimmedText := strings.TrimSpace(roundResult.Text)
 		if trimmedText == "" {
-			consecutiveNoAssistantCount++
+			assistantRetryCount++
 			consecutiveNoToolCount = 0
-			if consecutiveNoAssistantCount >= 2 {
+			if assistantRetryCount > aiAssistantRetryMaxAttempts {
 				a.emitAIChatRuntimePhase(requestID, "ready")
 				a.emitAIChatEvent(map[string]interface{}{
 					"kind":      "error",
@@ -2390,8 +2408,8 @@ func (a *App) runCompatibleAIChatLoop(ctx context.Context, requestID string, pay
 				"kind":        "assistant_retry_reset",
 				"requestId":   requestID,
 				"messageId":   assistantMessageID,
-				"attempt":     round + 2,
-				"maxAttempts": 6,
+				"attempt":     assistantRetryCount + 1,
+				"maxAttempts": aiAssistantRetryMaxAttempts + 1,
 			})
 			continue
 		}
@@ -2458,7 +2476,6 @@ func (a *App) runCompatibleAIChatLoop(ctx context.Context, requestID string, pay
 			}
 
 			consecutiveNoToolCount++
-			consecutiveNoAssistantCount = 0
 			protocolRetryPrompt := buildInvalidToolProtocolRetryMessage(payload.ConversationID, parseErr.Error())
 			if consecutiveNoToolCount == 1 {
 				nextRequestMessages := buildAINextRequestMessagesWithAssistant(requestMessages, roundResult)
@@ -2585,7 +2602,6 @@ func (a *App) runCompatibleAIChatLoop(ctx context.Context, requestID string, pay
 		}
 
 		consecutiveNoToolCount = 0
-		consecutiveNoAssistantCount = 0
 
 		visibleText := stripAssistantToolXML(roundResult.Text)
 		assistantCacheObjects := extractAILatestAssistantCacheObjects(roundResult.NextRequestMessages)
@@ -2624,14 +2640,16 @@ func (a *App) runCompatibleAIChatLoop(ctx context.Context, requestID string, pay
 		requestMessages = nextRequestMessages
 
 		batch := &aiPendingToolBatch{
-			RequestID:            requestID,
-			AssistantMessageID:   assistantMessageID,
-			Payload:              payload,
-			Profile:              profile,
-			RequestMessages:      requestMessages,
-			ParsedTools:          parsedTools,
-			NextToolIndex:        0,
-			AutoApprovalSettings: autoApprovalSettings,
+			RequestID:               requestID,
+			AssistantMessageID:      assistantMessageID,
+			Payload:                 payload,
+			Profile:                 profile,
+			RequestMessages:         requestMessages,
+			ParsedTools:             parsedTools,
+			NextToolIndex:           0,
+			AssistantRetryCount:     assistantRetryCount,
+			CollaborationRetryCount: collaborationRetryCount,
+			AutoApprovalSettings:    autoApprovalSettings,
 		}
 		a.advanceAIChatToolBatch(requestID, batch)
 		return
@@ -2668,5 +2686,5 @@ func (a *App) runCompatibleAIChat(ctx context.Context, requestID string, payload
 	})
 	a.emitAIChatRuntimePhase(requestID, "api_request")
 
-	a.runCompatibleAIChatLoop(ctx, requestID, payload, profile, requestMessages, autoApprovalSettings, requestID)
+	a.runCompatibleAIChatLoop(ctx, requestID, payload, profile, requestMessages, autoApprovalSettings, requestID, 0, 0)
 }

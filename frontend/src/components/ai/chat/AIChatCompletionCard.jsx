@@ -14,11 +14,28 @@ export default function AIChatCompletionCard({ title = completionTitleKey, summa
   const normalizedSummary = typeof summary === 'string' ? summary.trim() : ''
   const normalizedResult = typeof result === 'string' ? result.trim() : ''
   const normalizedStatus = normalizeAICompletionStatus(status)
+  const statusPalette = normalizedStatus === completionStatusKey
+    ? {
+        border: '1px solid rgba(var(--success-rgb), 0.35)',
+        background: 'rgba(var(--success-rgb), 0.08)',
+        color: 'var(--success)',
+      }
+    : normalizedStatus === '等待处理'
+      ? {
+          border: '1px solid rgba(var(--warning-rgb), 0.35)',
+          background: 'rgba(var(--warning-rgb), 0.08)',
+          color: 'var(--warning)',
+        }
+      : {
+          border: '1px solid rgba(var(--accent-rgb), 0.35)',
+          background: 'rgba(var(--accent-rgb), 0.08)',
+          color: 'var(--accent)',
+        }
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 12 }}>
         <div style={{ minWidth: 0, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <CheckCircle2 size={14} color="var(--success)" />
+          <CheckCircle2 size={14} color={normalizedStatus === completionStatusKey ? 'var(--success)' : 'var(--accent)'} />
           <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{t(title)}</span>
         </div>
         {normalizedStatus ? (
@@ -29,9 +46,7 @@ export default function AIChatCompletionCard({ title = completionTitleKey, summa
               fontSize: 11,
               fontWeight: 600,
               whiteSpace: 'nowrap',
-              border: '1px solid rgba(var(--success-rgb), 0.35)',
-              background: 'rgba(var(--success-rgb), 0.08)',
-              color: 'var(--success)',
+              ...statusPalette,
             }}>
             {t(normalizedStatus)}
           </div>

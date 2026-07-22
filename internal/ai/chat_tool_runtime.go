@@ -1234,7 +1234,7 @@ func (a *App) continueCompatibleAIChatAfterResolvedTools(ctx context.Context, re
 		"requestId": requestID,
 		"messageId": nextAssistantMessageID,
 	})
-	a.runCompatibleAIChatLoop(ctx, requestID, batch.Payload, batch.Profile, append([]AIChatRequestMessage{}, batch.RequestMessages...), batch.AutoApprovalSettings, nextAssistantMessageID)
+	a.runCompatibleAIChatLoop(ctx, requestID, batch.Payload, batch.Profile, append([]AIChatRequestMessage{}, batch.RequestMessages...), batch.AutoApprovalSettings, nextAssistantMessageID, batch.AssistantRetryCount, batch.CollaborationRetryCount)
 }
 
 func (a *App) resumeAIChatAfterToolBatch(requestID string, batch *aiPendingToolBatch) {
@@ -1365,6 +1365,9 @@ func (a *App) startAIChatFollowup(requestID string, batch *aiPendingToolBatch) {
 		"message":   message,
 		"sound":     "notification",
 	})
+	if a.shouldUseAIChatCollaboration(batch) {
+		a.queueAIChatCollaboration(requestID, batch)
+	}
 }
 
 func (a *App) startAIChatToolExecution(requestID string, batch *aiPendingToolBatch) {
@@ -1458,17 +1461,24 @@ func (a *App) runAIChatAttemptCompletionExecution(execution *aiToolExecutionStat
 	if execution.Cancel != nil {
 		execution.Cancel()
 	}
-	resultText := sanitizeAIToolResultText(strings.TrimSpace(execution.Tool.Params["result"]))
-	statusText := "已完成"
-	toolResultText := "Done"
-	if resultText == "" {
-		resultText = "任务已完成"
-	}
 	if execution.isTerminated() {
-		statusText = "已终止"
-		resultText = "工具已终止"
-		toolResultText = "工具已终止"
+		a.emitAICollaborationCompletionCard(execution.RequestID, execution.Batch, "已终止", "")
+		a.emitAIChatToolExecutionPersistRequested(execution.RequestID)
+		a.emitAIChatRuntimePhase(execution.RequestID, "ready")
+		a.emitAIChatEvent(map[string]interface{}{
+			"kind":      "automatic_request_skipped",
+			"requestId": execution.RequestID,
+		})
+		a.finishAIChatRequest(execution.RequestID)
+		return
 	}
+	if a.shouldUseAIChatCollaboration(execution.Batch) {
+		a.emitAICollaborationCompletionCard(execution.RequestID, execution.Batch, "等待处理", "")
+		a.emitAIChatToolExecutionPersistRequested(execution.RequestID)
+		a.queueAIChatCollaboration(execution.RequestID, execution.Batch)
+		return
+	}
+	resultText := resolveAICollaborationCompletionResult(execution.Tool)
 	a.emitAIChatEvent(map[string]interface{}{
 		"kind":      "upsert_message",
 		"requestId": execution.RequestID,
@@ -1480,10 +1490,9 @@ func (a *App) runAIChatAttemptCompletionExecution(execution *aiToolExecutionStat
 			"title":   titleForParsedToolUse(execution.Tool),
 			"summary": "",
 			"result":  resultText,
-			"status":  statusText,
+			"status":  "已完成",
 		},
 	})
-	a.emitAIChatToolResultMessage(execution.RequestID, execution, toolResultText)
 	a.emitAIChatToolExecutionPersistRequested(execution.RequestID)
 	a.emitAIChatRuntimePhase(execution.RequestID, "ready")
 	a.emitAIChatEvent(map[string]interface{}{

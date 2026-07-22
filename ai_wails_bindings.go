@@ -76,6 +76,14 @@ func (b *AIBindings) ResolveAIChatFollowup(requestID string, answer string, imag
 	return b.runtime().ResolveAIChatFollowup(requestID, answer, imagesJSON)
 }
 
+func (b *AIBindings) StartAIChatCollaboration(requestID string) error {
+	return b.runtime().StartAIChatCollaboration(requestID)
+}
+
+func (b *AIBindings) DisableAIChatCollaboration(requestID string) error {
+	return b.runtime().DisableAIChatCollaboration(requestID)
+}
+
 func (b *AIBindings) SetAIChatSkipNextAutomaticRequest(requestID string, enabled bool) {
 	b.runtime().SetAIChatSkipNextAutomaticRequest(requestID, enabled)
 }

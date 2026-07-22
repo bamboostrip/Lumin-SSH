@@ -90,8 +90,9 @@ type FileManagerSettings struct {
 }
 
 type AppSettings struct {
-	WebviewGpuDisabled bool                `json:"webviewGpuDisabled,omitempty"`
-	RuntimeEnvironment runtimeenv.Settings `json:"runtimeEnvironment,omitempty"`
+	WebviewGpuDisabled bool                 `json:"webviewGpuDisabled,omitempty"`
+	RuntimeEnvironment runtimeenv.Settings  `json:"runtimeEnvironment,omitempty"`
+	ThemePackages      ThemePackageSettings `json:"themePackages,omitempty"`
 }
 
 type WorkspacePrefs struct {

@@ -1523,6 +1523,59 @@ func (a *App) GetProgramDirectory() string {
 	return getProgramDirectory()
 }
 
+func (a *App) GetThemePackagesDirectory() (string, error) {
+	return a.configManager.GetThemePackagesDirectory()
+}
+
+func (a *App) GetThemePackageSettings() map[string]interface{} {
+	return themePackageSettingsToMap(a.configManager.GetThemePackageSettings())
+}
+
+func (a *App) SaveThemePackageSettings(payload map[string]string) error {
+	return a.configManager.SaveThemePackageSettings(ThemePackageSettings{
+		ThemeMode:           payload["themeMode"],
+		LightThemePackageID: payload["lightThemePackageId"],
+		DarkThemePackageID:  payload["darkThemePackageId"],
+	})
+}
+
+func (a *App) ListThemePackages() ([]map[string]interface{}, error) {
+	items, err := a.configManager.ListThemePackages()
+	if err != nil {
+		return nil, err
+	}
+	result := make([]map[string]interface{}, 0, len(items))
+	for _, item := range items {
+		result = append(result, themePackageSummaryToMap(item))
+	}
+	return result, nil
+}
+
+func (a *App) SelectThemePackageFiles() ([]string, error) {
+	return runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "选择主题包文件",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "主题包 (*.json)", Pattern: "*.json"},
+		},
+	})
+}
+
+func (a *App) ImportThemePackageFiles(paths []string) ([]map[string]interface{}, error) {
+	items, err := a.configManager.ImportThemePackageFiles(paths)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]map[string]interface{}, 0, len(items))
+	for _, item := range items {
+		result = append(result, themePackageSummaryToMap(item))
+	}
+	return result, nil
+}
+
+func (a *App) DeleteThemePackage(themeID string) error {
+	return a.configManager.DeleteThemePackage(themeID)
+}
+
 func getGitHubContributorsOnce(client *http.Client) ([]GitHubContributor, error) {
 	request, err := http.NewRequest(http.MethodGet, githubContributorsAPIURL, nil)
 	if err != nil {

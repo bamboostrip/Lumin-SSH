@@ -12,6 +12,7 @@ import { condenseAIConversationContext, createAIConversation, deleteAIConversati
 import { buildExecutionContextDetails, getExecutionContextSnapshot } from './ai/aiExecutionContext.js'
 import { getAIGlobalSettings, normalizeAIGlobalSettings, saveAIGlobalSettings } from './ai/aiGlobalSettingsBridge.js'
 import { getAIProviderState, getAIProviderTokenGroup } from './ai/aiProviderBridge.js'
+import { clearThemeToolPreviewPackage, loadThemePackages, setThemeToolPreviewPackage } from '../utils/theme.js'
 import { getMCPSettingsState, saveMCPGlobalServer, reloadMCPGlobalServers, deleteMCPGlobalServer, restartMCPClientServer, toggleMCPClientServer, toggleMCPClientServerDisabledForPrompts, updateMCPClientServerTimeout } from './ai/mcpClientBridge.js'
 import { processRemoteFileMentions } from './ai/aiMentions.js'
 import { expandFirstSlashCommandForPrompt } from './ai/aiSlashCommands.js'
@@ -235,7 +236,7 @@ function isAIQueueBlocked(runtimePhase) {
   return normalizeAIRuntimePhase(runtimePhase) !== 'ready'
 }
 
-function buildAIQueuedSubmission({ kind, text = '', images = [], targetMessageId = '', targetMessageText = '' }) {
+function buildAIQueuedSubmission({ kind, text = '', images = [], targetMessageId = '', targetMessageText = '', toolScope = '', toolScopeSlot = '', forceNewConversation = false }) {
   return {
     id: `queued-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     kind,
@@ -243,6 +244,9 @@ function buildAIQueuedSubmission({ kind, text = '', images = [], targetMessageId
     images: normalizeMessageImages(images),
     targetMessageId: typeof targetMessageId === 'string' ? targetMessageId : '',
     targetMessageText: typeof targetMessageText === 'string' ? targetMessageText : '',
+    toolScope: typeof toolScope === 'string' ? toolScope : '',
+    toolScopeSlot: typeof toolScopeSlot === 'string' ? toolScopeSlot : '',
+    forceNewConversation: forceNewConversation === true,
     queuedAt: Date.now(),
   }
 }
@@ -900,6 +904,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       : message
   }, [terminalLabelMap])
   const activeConversation = panelState.conversation
+  const isThemeTuningConversation = activeConversation?.transient === true
   const runtimePhase = normalizeAIRuntimePhase(panelState.runtimePhase)
   const isStreaming = panelState.requestPhase === 'streaming'
   const isAwaitingToolApproval = panelState.requestPhase === 'awaiting_tool_approval'
@@ -1249,9 +1254,20 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   }, [panelInstanceKey, setPanelState, terminalId])
 
   const saveConversationSnapshot = useCallback(async (snapshot, targetPanelKey = panelInstanceKey, options = {}) => {
-    const saved = await saveAIConversation(snapshot)
     const shouldHydrate = options?.hydrate === true
-    setConversationList((prev) => upsertConversationSummary(prev, saved))
+    const isTransientConversation = snapshot?.transient === true
+    const saved = isTransientConversation
+      ? {
+          ...snapshot,
+          updatedAt: typeof snapshot?.updatedAt === 'number' ? snapshot.updatedAt : Date.now(),
+          messageCount: typeof snapshot?.messageCount === 'number'
+            ? snapshot.messageCount
+            : Array.isArray(snapshot?.messages) ? snapshot.messages.length : 0,
+        }
+      : await saveAIConversation(snapshot)
+    if (!isTransientConversation) {
+      setConversationList((prev) => upsertConversationSummary(prev, saved))
+    }
     setPanelState(targetPanelKey, (current) => {
       if (current.activeConversationId !== saved.id) {
         return current
@@ -1306,6 +1322,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     }
     const requestId = panel.activeRequestId
     setPanelState(panelInstanceKey, createEmptyPanelState())
+    clearThemeToolPreviewPackage()
     clearRestorePreview()
     resetComposerEditState()
     resetGlobalSearchState()
@@ -1361,6 +1378,22 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
           ...current,
           runtimePhase: normalizeAIRuntimePhase(payload.phase),
         }))
+        return
+      }
+
+      if (payload.kind === 'theme_tool_preview' && payload.theme) {
+        setThemeToolPreviewPackage(payload.theme)
+        return
+      }
+
+      if (payload.kind === 'theme_tool_reverted') {
+        clearThemeToolPreviewPackage()
+        return
+      }
+
+      if (payload.kind === 'theme_tool_committed') {
+        clearThemeToolPreviewPackage()
+        void loadThemePackages().catch(() => {})
         return
       }
 
@@ -2417,6 +2450,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         },
       }))
     }
+    clearThemeToolPreviewPackage()
     clearRestorePreview()
     setShowSettingsPanel(false)
     setPopupDismissVersion((current) => current + 1)
@@ -2469,6 +2503,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   }, [panelInstanceKey])
 
   const handleOpenConversation = useCallback(async (conversationId) => {
+    clearThemeToolPreviewPackage()
     clearRestorePreview()
     resetComposerEditState()
     resetGlobalSearchState()
@@ -2522,6 +2557,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     if (!snapshot?.id) {
       return
     }
+    clearThemeToolPreviewPackage()
     clearRestorePreview()
     resetComposerEditState()
     resetGlobalSearchState()
@@ -2628,6 +2664,9 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   }, [handleOpenConversation, locateConversationMessage, panelState.activeConversationId, resetGlobalSearchState])
 
   const handleDeleteConversation = useCallback(async (conversationId) => {
+    if (panelState.activeConversationId === conversationId) {
+      clearThemeToolPreviewPackage()
+    }
     clearRestorePreview()
     const confirmed = await requestDeleteConfirmation(t('确定删除这条对话吗？此操作不可撤销。'))
     if (!confirmed) {
@@ -2858,7 +2897,19 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
 
     clearRestorePreview()
 
-    let targetConversationSnapshot = activeConversation
+    const activeConversationToolScope = typeof activeConversation?.toolScope === 'string' ? activeConversation.toolScope.trim() : ''
+    const activeConversationToolScopeSlot = typeof activeConversation?.toolScopeSlot === 'string' ? activeConversation.toolScopeSlot.trim() : ''
+    const effectiveToolScope = typeof runtimeOptions?.toolScope === 'string' && runtimeOptions.toolScope.trim()
+      ? runtimeOptions.toolScope.trim()
+      : activeConversationToolScope
+    const effectiveToolScopeSlot = typeof runtimeOptions?.toolScopeSlot === 'string' && runtimeOptions.toolScopeSlot.trim()
+      ? runtimeOptions.toolScopeSlot.trim()
+      : activeConversationToolScopeSlot
+    const isThemeTuningConversation = effectiveToolScope === 'theme_tuning'
+    let targetConversationSnapshot = runtimeOptions?.forceNewConversation === true ? null : activeConversation
+    if (targetConversationSnapshot?.transient === true && !effectiveToolScope) {
+      targetConversationSnapshot = null
+    }
     const activeComposerState = overrideEditState || composerEditState
     const isEditingExistingMessage = activeComposerState?.mode === 'edit' && activeComposerState?.targetMessageId
     const isRetryingMessage = activeComposerState?.mode === 'retry' && activeComposerState?.targetMessageId
@@ -2889,7 +2940,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         conversation: nextConversationSnapshot,
       }))
       await saveConversationSnapshot(nextConversationSnapshot, panelInstanceKey)
-    } else if (!targetConversationSnapshot) {
+    } else if (!targetConversationSnapshot && !isThemeTuningConversation) {
       const currentGlobalProviderId = typeof latestProviderState?.currentProviderId === 'string' ? latestProviderState.currentProviderId.trim() : ''
       if (resolvedProviderId && resolvedProviderId !== currentGlobalProviderId) {
         const nextSettings = await saveAIGlobalSettings({
@@ -2911,6 +2962,9 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         images: messageImages,
         targetMessageId: activeComposerState?.targetMessageId || '',
         targetMessageText: activeComposerState?.targetMessageText || nextText,
+        toolScope: effectiveToolScope,
+        toolScopeSlot: effectiveToolScopeSlot,
+        forceNewConversation: runtimeOptions?.forceNewConversation === true,
       })
       setPanelState(panelInstanceKey, (current) => ({
         ...current,
@@ -2927,8 +2981,29 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
 
     let targetConversation = targetConversationSnapshot
     if (!targetConversation) {
-      targetConversation = await createAIConversation(truncateConversationTitle(nextText))
-      setConversationList((prev) => upsertConversationSummary(prev, targetConversation))
+      if (isThemeTuningConversation) {
+        const now = Date.now()
+        targetConversation = {
+          id: `theme-tuning-${now}-${Math.random().toString(36).slice(2, 8)}`,
+          title: translate('AI调色'),
+          createdAt: now,
+          updatedAt: now,
+          status: 'idle',
+          toolProtocol: 'xml',
+          messageCount: 0,
+          messages: [],
+          apiMessages: [],
+          settings: normalizeAIConversationTaskSettings({
+            currentProviderId: resolvedProviderId,
+          }),
+          transient: true,
+          toolScope: effectiveToolScope,
+          toolScopeSlot: effectiveToolScopeSlot,
+        }
+      } else {
+        targetConversation = await createAIConversation(truncateConversationTitle(nextText))
+        setConversationList((prev) => upsertConversationSummary(prev, targetConversation))
+      }
     }
 
     const executionContextSnapshot = getExecutionContextSnapshot({
@@ -3025,7 +3100,9 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
 
     resetComposerEditState()
     requestConversationSmoothScrollToBottom()
-    setConversationList((prev) => upsertConversationSummary(prev, persistedConversation))
+    if (!targetConversation.transient) {
+      setConversationList((prev) => upsertConversationSummary(prev, persistedConversation))
+    }
     setPanelState(panelInstanceKey, {
       activeConversationId: targetConversation.id,
       conversation: nextConversation,
@@ -3059,6 +3136,8 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         skipNextAutomaticRequest: Boolean(panelState.skipNextAutomaticRequest),
         assistantFirstReplyText: assistantFirstReplyText || undefined,
         isDemon: Boolean(isDevilMode),
+        toolScope: effectiveToolScope || undefined,
+        toolScopeSlot: effectiveToolScopeSlot || undefined,
         messages: requestMessages,
       })
       return true
@@ -3141,6 +3220,8 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     } catch {}
     const currentPanel = terminalPanelsRef.current[panelInstanceKey] || null
     const currentConversation = currentPanel?.conversation || activeConversation
+    const currentConversationToolScope = typeof currentConversation?.toolScope === 'string' ? currentConversation.toolScope.trim() : ''
+    const currentConversationToolScopeSlot = typeof currentConversation?.toolScopeSlot === 'string' ? currentConversation.toolScopeSlot.trim() : ''
     if (!currentConversation?.id) {
       return false
     }
@@ -3213,7 +3294,9 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       messages: [...nextMessages, assistantMessage],
     }
     requestConversationSmoothScrollToBottom()
-    setConversationList((prev) => upsertConversationSummary(prev, persistedConversation))
+    if (!currentConversation.transient) {
+      setConversationList((prev) => upsertConversationSummary(prev, persistedConversation))
+    }
     setPanelState(panelInstanceKey, {
       activeConversationId: currentConversation.id,
       conversation: nextConversation,
@@ -3250,6 +3333,8 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         autoApprove: effectiveAutoApprovalEnabled,
         skipNextAutomaticRequest: false,
         isDemon: Boolean(isDevilMode),
+        toolScope: currentConversationToolScope || undefined,
+        toolScopeSlot: currentConversationToolScopeSlot || undefined,
         messages: requestMessages,
       })
       return true
@@ -3332,6 +3417,31 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     }
     return handleSendMessage(text, sendOptionsOrEditState, explicitEditState, runtimeOptions)
   }, [handleFollowupResponse, handleSendMessage, panelState.collaborationAwaitingManualFollowup, panelState.collaborationFollowupRequestId, resetComposerEditState])
+
+  useEffect(() => {
+    const handleStartThemeTuning = (event) => {
+      const targetSessionId = typeof event?.detail?.sessionId === 'string' ? event.detail.sessionId.trim() : ''
+      const targetTerminalId = typeof event?.detail?.terminalId === 'string' ? event.detail.terminalId.trim() : ''
+      const slot = typeof event?.detail?.slot === 'string' ? event.detail.slot.trim() : ''
+      if ((sessionId || '').trim() !== targetSessionId || (terminalId || '').trim() !== targetTerminalId) {
+        return
+      }
+      if (slot !== 'light' && slot !== 'dark') {
+        return
+      }
+      clearThemeToolPreviewPackage()
+      const starterText = slot === 'light'
+        ? '请帮我实时调整当前浅色主题包的配色,先调用 help,随后只用 preview 或 inspect 逐步预览,满意后再 commit.'
+        : '请帮我实时调整当前深色主题包的配色,先调用 help,随后只用 preview 或 inspect 逐步预览,满意后再 commit.'
+      void handleSendMessage(starterText, { images: [] }, null, {
+        toolScope: 'theme_tuning',
+        toolScopeSlot: slot,
+        forceNewConversation: true,
+      })
+    }
+    window.addEventListener('ai-theme-tuning-start', handleStartThemeTuning)
+    return () => window.removeEventListener('ai-theme-tuning-start', handleStartThemeTuning)
+  }, [handleSendMessage, sessionId, terminalId])
 
   const handleRetryUserMessage = useCallback(async (messageId, text, images = []) => {
     if (!activeConversation) {
@@ -3433,7 +3543,9 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
 
     resetComposerEditState()
     requestConversationSmoothScrollToBottom()
-    setConversationList((prev) => upsertConversationSummary(prev, persistedConversation))
+    if (!activeConversation.transient) {
+      setConversationList((prev) => upsertConversationSummary(prev, persistedConversation))
+    }
     setPanelState(panelInstanceKey, {
       activeConversationId: activeConversation.id,
       conversation: nextConversation,
@@ -3467,6 +3579,8 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         skipNextAutomaticRequest: Boolean(panelState.skipNextAutomaticRequest),
         assistantFirstReplyText: assistantFirstReplyText || undefined,
         isDemon: Boolean(isDevilMode),
+        toolScope: typeof activeConversation?.toolScope === 'string' && activeConversation.toolScope.trim() ? activeConversation.toolScope.trim() : undefined,
+        toolScopeSlot: typeof activeConversation?.toolScopeSlot === 'string' && activeConversation.toolScopeSlot.trim() ? activeConversation.toolScopeSlot.trim() : undefined,
         messages: requestMessages,
       })
       return true
@@ -3635,7 +3749,9 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     }
 
     requestConversationSmoothScrollToBottom()
-    setConversationList((prev) => upsertConversationSummary(prev, nextConversation))
+    if (!conversationSnapshot.transient) {
+      setConversationList((prev) => upsertConversationSummary(prev, nextConversation))
+    }
     setPanelState(targetPanelKey, {
       activeConversationId: conversationSnapshot.id,
       conversation: nextConversation,
@@ -3671,6 +3787,8 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         autoApprove: effectiveAutoApprovalEnabled,
         skipNextAutomaticRequest: false,
         isDemon: Boolean(isDevilMode),
+        toolScope: typeof conversationSnapshot?.toolScope === 'string' && conversationSnapshot.toolScope.trim() ? conversationSnapshot.toolScope.trim() : undefined,
+        toolScopeSlot: typeof conversationSnapshot?.toolScopeSlot === 'string' && conversationSnapshot.toolScopeSlot.trim() ? conversationSnapshot.toolScopeSlot.trim() : undefined,
         messages: requestMessages,
       })
       return true
@@ -3909,7 +4027,12 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
                   targetMessageId: queuedSubmission.targetMessageId,
                   targetMessageText: queuedSubmission.targetMessageText,
                 },
-            { forceImmediate: true },
+            {
+              forceImmediate: true,
+              toolScope: queuedSubmission.toolScope,
+              toolScopeSlot: queuedSubmission.toolScopeSlot,
+              forceNewConversation: queuedSubmission.forceNewConversation === true,
+            },
           ) !== false
         }
       } finally {
@@ -4260,6 +4383,31 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         <div data-ai-chat-stage="true" style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {activeConversation ? (
             <>
+              {isThemeTuningConversation ? (
+                <div
+                  style={{
+                    padding: '8px 12px',
+                    borderBottom: '1px solid var(--accent-border)',
+                    background: 'rgba(var(--accent-rgb), 0.08)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                    {t('当前处于配色模式,对话记录不会保存')}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => { void handleGoHome() }}
+                    style={{ flexShrink: 0 }}
+                  >
+                    {t('退出配色模式')}
+                  </button>
+                </div>
+              ) : null}
               {conversationSearchOpen ? (
                 <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', background: 'var(--surface-raised)', display: 'grid', gridTemplateColumns: '1fr auto auto auto auto', gap: 8, alignItems: 'center' }}>
                   <input

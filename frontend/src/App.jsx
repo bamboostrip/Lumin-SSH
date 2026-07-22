@@ -504,6 +504,65 @@ export default function App() {
   const connectingServersRef = useRef([]);
   useEffect(() => { connectingServersRef.current = connectingServers; }, [connectingServers]);
   const [toasts, setToasts] = useState([]);
+  const TOAST_EXIT_DURATION = 1080;
+  const toastIdRef = useRef(0);
+  const toastAutoDismissTimersRef = useRef(new Map());
+  const toastExitTimersRef = useRef(new Map());
+  const clearToastTimer = useCallback((timersRef, id) => {
+    const timer = timersRef.current.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      timersRef.current.delete(id);
+    }
+  }, []);
+  const removeToastImmediately = useCallback((id) => {
+    clearToastTimer(toastAutoDismissTimersRef, id);
+    clearToastTimer(toastExitTimersRef, id);
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, [clearToastTimer]);
+  const removeToast = useCallback((id) => {
+    clearToastTimer(toastAutoDismissTimersRef, id);
+    clearToastTimer(toastExitTimersRef, id);
+    let shouldAnimate = false;
+    setToasts((prev) => prev.map((t) => {
+      if (t.id !== id) {
+        return t;
+      }
+      if (t.closing) {
+        return t;
+      }
+      shouldAnimate = true;
+      return { ...t, closing: true };
+    }));
+    if (!shouldAnimate) {
+      return;
+    }
+    const exitTimer = setTimeout(() => {
+      if (mountedRef.current) {
+        removeToastImmediately(id);
+      }
+    }, TOAST_EXIT_DURATION);
+    toastExitTimersRef.current.set(id, exitTimer);
+  }, [clearToastTimer, removeToastImmediately]);
+  const addToast = useCallback((message, type = 'info', duration = 3000) => {
+    const id = ++toastIdRef.current;
+    const text = message instanceof Error ? message.message : String(message ?? '');
+    setToasts((prev) => [...prev, { id, message: text, type, closing: false }]);
+    if (duration > 0) {
+      const autoTimer = setTimeout(() => {
+        if (mountedRef.current) {
+          removeToast(id);
+        }
+      }, duration);
+      toastAutoDismissTimersRef.current.set(id, autoTimer);
+    }
+  }, [removeToast]);
+  useEffect(() => () => {
+    toastAutoDismissTimersRef.current.forEach((timer) => clearTimeout(timer));
+    toastAutoDismissTimersRef.current.clear();
+    toastExitTimersRef.current.forEach((timer) => clearTimeout(timer));
+    toastExitTimersRef.current.clear();
+  }, []);
   const [changeReviewQueues, setChangeReviewQueues] = useState({});
   const [restorePreviewReviews, setRestorePreviewReviews] = useState({});
   const [conversationDiffPanels, setConversationDiffPanels] = useState({});
@@ -1716,6 +1775,46 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     };
   }, [markWorkspaceRestoreNavigationOverride, resolveSessionRootTerminalId, setAIPanelVisibility]);
 
+  useEffect(() => {
+    const handleAIThemeTuningRequest = (event) => {
+      const slot = typeof event?.detail?.slot === 'string' ? event.detail.slot.trim() : '';
+      if (slot !== 'light' && slot !== 'dark') {
+        return;
+      }
+      const connectedSessionList = sessionsRef.current.filter((session) => session.status === 'connected');
+      const preferredSession = activeSessionIdRef.current
+        ? connectedSessionList.find((session) => session.id === activeSessionIdRef.current)
+        : null;
+      const targetSession = preferredSession || connectedSessionList[0] || null;
+      if (!targetSession) {
+        addToast(t('需要先连接一个终端会话后再使用 AI 调色'), 'warning', 3200);
+        return;
+      }
+      const targetTerminalId = resolveSessionRootTerminalId(
+        targetSession,
+        targetSession.id === activeSessionIdRef.current ? activeTerminalIdRef.current : (lastTerminalRef.current[targetSession.id] || targetSession.activeTerminalId),
+        terminalPaneLayoutsRef.current,
+        targetSession.activeTerminalLabel || '',
+      ) || targetSession.id;
+      markWorkspaceRestoreNavigationOverride();
+      setAIPanelVisibility(true);
+      setActiveSessionId(targetSession.id);
+      setActiveTerminalId(targetTerminalId);
+      setContentTab('terminal');
+      window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('ai-theme-tuning-start', {
+          detail: {
+            sessionId: targetSession.id,
+            terminalId: targetTerminalId,
+            slot,
+          },
+        }));
+      }, 40);
+    };
+    window.addEventListener('ai-theme-tuning-request', handleAIThemeTuningRequest);
+    return () => window.removeEventListener('ai-theme-tuning-request', handleAIThemeTuningRequest);
+  }, [addToast, markWorkspaceRestoreNavigationOverride, resolveSessionRootTerminalId, setAIPanelVisibility, t]);
+
   const pingTimerRef = useRef(null);
   const pingInFlightRef = useRef(false);
   const mountedRef = useRef(true);
@@ -1896,66 +1995,6 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     await pingAll();
     setTimeout(() => { if (mountedRef.current) setIsRefreshingPing(false); }, 800);
   };
-
-  const TOAST_EXIT_DURATION = 1080;
-  const toastIdRef = useRef(0);
-  const toastAutoDismissTimersRef = useRef(new Map());
-  const toastExitTimersRef = useRef(new Map());
-  const clearToastTimer = useCallback((timersRef, id) => {
-    const timer = timersRef.current.get(id);
-    if (timer) {
-      clearTimeout(timer);
-      timersRef.current.delete(id);
-    }
-  }, []);
-  const removeToastImmediately = useCallback((id) => {
-    clearToastTimer(toastAutoDismissTimersRef, id);
-    clearToastTimer(toastExitTimersRef, id);
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, [clearToastTimer]);
-  const removeToast = useCallback((id) => {
-    clearToastTimer(toastAutoDismissTimersRef, id);
-    clearToastTimer(toastExitTimersRef, id);
-    let shouldAnimate = false;
-    setToasts((prev) => prev.map((t) => {
-      if (t.id !== id) {
-        return t;
-      }
-      if (t.closing) {
-        return t;
-      }
-      shouldAnimate = true;
-      return { ...t, closing: true };
-    }));
-    if (!shouldAnimate) {
-      return;
-    }
-    const exitTimer = setTimeout(() => {
-      if (mountedRef.current) {
-        removeToastImmediately(id);
-      }
-    }, TOAST_EXIT_DURATION);
-    toastExitTimersRef.current.set(id, exitTimer);
-  }, [clearToastTimer, removeToastImmediately]);
-  const addToast = useCallback((message, type = 'info', duration = 3000) => {
-    const id = ++toastIdRef.current;
-    const text = message instanceof Error ? message.message : String(message ?? '');
-    setToasts((prev) => [...prev, { id, message: text, type, closing: false }]);
-    if (duration > 0) {
-      const autoTimer = setTimeout(() => {
-        if (mountedRef.current) {
-          removeToast(id);
-        }
-      }, duration);
-      toastAutoDismissTimersRef.current.set(id, autoTimer);
-    }
-  }, [removeToast]);
-  useEffect(() => () => {
-    toastAutoDismissTimersRef.current.forEach((timer) => clearTimeout(timer));
-    toastAutoDismissTimersRef.current.clear();
-    toastExitTimersRef.current.forEach((timer) => clearTimeout(timer));
-    toastExitTimersRef.current.clear();
-  }, []);
 
   const activeWorkspaceTerminalKey = useMemo(() => buildAIWorkspaceTerminalPanelKey(activeSessionId, activeTerminalId), [activeSessionId, activeTerminalId]);
   const activeChangeReviewQueue = useMemo(() => (

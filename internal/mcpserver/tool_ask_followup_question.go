@@ -7,8 +7,13 @@ import (
 )
 
 type askFollowupQuestionPayload struct {
-	Questions   []askFollowupQuestionQuestion   `xml:"question"`
-	Suggestions []askFollowupQuestionSuggestion `xml:"suggest"`
+	Questions        []askFollowupQuestionQuestion         `xml:"question"`
+	Suggestions      []askFollowupQuestionSuggestion       `xml:"suggest"`
+	ThemePreferences []askFollowupQuestionThemePreferences `xml:"theme_preferences"`
+}
+
+type askFollowupQuestionThemePreferences struct {
+	QuestionBlocks []askFollowupQuestionQuestion `xml:"question_block"`
 }
 
 type askFollowupQuestionQuestion struct {
@@ -32,6 +37,17 @@ type askFollowupQuestionSuggestion struct {
 	Text string `xml:",chardata"`
 }
 
+func normalizeAskFollowupQuestionType(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "multiple", "multi_select":
+		return "multiple"
+	case "free_text", "text":
+		return "free_text"
+	default:
+		return "single"
+	}
+}
+
 func askFollowupQuestionToolDefinition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "ask_followup_question",
@@ -52,6 +68,10 @@ func askFollowupQuestionToolDefinition() ToolDefinition {
 			"additionalProperties": false,
 		},
 	}
+}
+
+func AskFollowupQuestionToolDefinition() ToolDefinition {
+	return askFollowupQuestionToolDefinition()
 }
 
 func (c *Catalog) callAskFollowupQuestion(arguments map[string]any) (any, error) {
@@ -95,9 +115,15 @@ func parseAskFollowupPayload(raw string, fallbackQuestion string) ([]map[string]
 	if err := xml.Unmarshal([]byte(payload), &parsed); err != nil {
 		return nil, nil, fmt.Errorf("argument follow_up must be valid XML: %w", err)
 	}
-	if len(parsed.Questions) > 0 {
-		questions := make([]map[string]any, 0, len(parsed.Questions))
-		for questionIndex, item := range parsed.Questions {
+	questionItems := append([]askFollowupQuestionQuestion{}, parsed.Questions...)
+	if len(questionItems) == 0 {
+		for _, item := range parsed.ThemePreferences {
+			questionItems = append(questionItems, item.QuestionBlocks...)
+		}
+	}
+	if len(questionItems) > 0 {
+		questions := make([]map[string]any, 0, len(questionItems))
+		for questionIndex, item := range questionItems {
 			questionID := strings.TrimSpace(item.ID)
 			if questionID == "" {
 				questionID = fmt.Sprintf("question-%d", questionIndex+1)
@@ -117,9 +143,14 @@ func parseAskFollowupPayload(raw string, fallbackQuestion string) ([]map[string]
 					questionText = fmt.Sprintf("Question %d", questionIndex+1)
 				}
 			}
-			questionType := "single"
-			if strings.EqualFold(rawQuestionType, "multiple") {
-				questionType = "multiple"
+			questionType := normalizeAskFollowupQuestionType(rawQuestionType)
+			if questionType == "free_text" {
+				questions = append(questions, map[string]any{
+					"id":   questionID,
+					"text": questionText,
+					"type": questionType,
+				})
+				continue
 			}
 			options := make([]map[string]any, 0, len(item.Options))
 			for optionIndex, option := range item.Options {
@@ -159,7 +190,7 @@ func parseAskFollowupPayload(raw string, fallbackQuestion string) ([]map[string]
 			})
 		}
 		if len(questions) == 0 {
-			return nil, nil, fmt.Errorf("argument follow_up must contain at least one question with options")
+			return nil, nil, fmt.Errorf("argument follow_up must contain at least one valid question")
 		}
 		return questions, nil, nil
 	}

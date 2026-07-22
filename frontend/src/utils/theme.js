@@ -1,14 +1,22 @@
-// ── 终端主题定义（深色/浅色两套配色） ──────────────────────────────────────────────
-// 四个主题：Lumin Default / Tokyo Night / Catppuccin / Dracula
-// 每个主题含 dark 和 light 两套变体，自动跟随 App 浅色/深色模式切换
+import * as AppGo from '../../wailsjs/go/main/App.js';
 
-const TERMINAL_THEMES = {
-  'lumin': {
-    name: 'Lumin Default',
-    swatches: ['#22c55e', '#58a6ff', '#bc8cff', '#0d1117'],
+const THEME_PACKAGE_SCHEMA_VERSION = 1;
+const DEFAULT_LIGHT_THEME_PACKAGE_ID = 'lumin-light';
+const DEFAULT_DARK_THEME_PACKAGE_ID = 'lumin-dark';
+
+const LEGACY_THEME_PACKAGE_MAP = {
+  lumin: { light: 'lumin-light', dark: 'lumin-dark' },
+  'tokyo-night': { light: 'tokyo-night-light', dark: 'tokyo-night-dark' },
+  catppuccin: { light: 'catppuccin-light', dark: 'catppuccin-dark' },
+  dracula: { light: 'dracula-light', dark: 'dracula-dark' },
+};
+
+const TERMINAL_THEME_FAMILIES = {
+  lumin: {
+    name: 'Lumin',
     dark: {
+      accent: '#4d9eff',
       xterm: {
-        // 深色：黄/白/亮色提高饱和度，重点色更醒目
         background: '#00000000', foreground: '#e6edf3', cursor: '#4d9eff',
         cursorAccent: '#0e1218', selectionBackground: '#2563eb',
         selectionForeground: '#ffffff',
@@ -20,7 +28,6 @@ const TERMINAL_THEMES = {
         brightCyan: '#5ce1e6', brightWhite: '#ffffff',
       },
       container: {
-        // 冷蓝黑 + 蓝调 tint
         containerBg: '#0b111a',
         tint: 'rgba(77, 158, 255, 0.10)',
         statusBarBg: 'rgba(12, 28, 48, 0.96)', statusBarBorder: '1px solid rgba(77,158,255,0.42)',
@@ -36,8 +43,8 @@ const TERMINAL_THEMES = {
       },
     },
     light: {
+      accent: '#2563eb',
       xterm: {
-        // 浅色：作背景时黑字要清楚 → 色块用更亮的中亮色；black 保持近黑
         background: '#00000000', foreground: '#0f172a', cursor: '#2563eb',
         cursorAccent: '#ffffff', selectionBackground: '#2563eb',
         selectionForeground: '#ffffff',
@@ -49,7 +56,6 @@ const TERMINAL_THEMES = {
         brightCyan: '#67e8f9', brightWhite: '#f8fafc',
       },
       container: {
-        // 暖白 + 蓝：Lumin 浅色
         containerBg: '#f7f9fc', tint: 'rgba(37, 99, 235, 0.10)',
         statusBarBg: 'rgba(232, 240, 254, 0.98)', statusBarBorder: '1px solid rgba(37,99,235,0.38)',
         statusBarColor: '#1d4ed8', serverNameColor: '#0f172a',
@@ -66,8 +72,8 @@ const TERMINAL_THEMES = {
   },
   'tokyo-night': {
     name: 'Tokyo Night',
-    swatches: ['#7aa2f7', '#bb9af7', '#73daca', '#1a1b26'],
     dark: {
+      accent: '#7aa2f7',
       xterm: {
         background: '#00000000', foreground: '#c0caf5', cursor: '#7aa2f7',
         cursorAccent: '#1a1b26', selectionBackground: '#3d59a1',
@@ -80,7 +86,6 @@ const TERMINAL_THEMES = {
         brightCyan: '#89ddff', brightWhite: '#ffffff',
       },
       container: {
-        // 靛蓝夜色 + 靛蓝 tint
         containerBg: '#161821',
         tint: 'rgba(122, 162, 247, 0.12)',
         statusBarBg: 'rgba(28, 32, 58, 0.97)', statusBarBorder: '1px solid rgba(122,162,247,0.48)',
@@ -96,6 +101,7 @@ const TERMINAL_THEMES = {
       },
     },
     light: {
+      accent: '#1d4ed8',
       xterm: {
         background: '#00000000', foreground: '#1f2335', cursor: '#1d4ed8',
         cursorAccent: '#ffffff', selectionBackground: '#1d4ed8',
@@ -108,7 +114,6 @@ const TERMINAL_THEMES = {
         brightCyan: '#67e8f9', brightWhite: '#f4f5f9',
       },
       container: {
-        // 冷蓝灰 + 靛蓝：Tokyo 浅色
         containerBg: '#e8ecf7', tint: 'rgba(61, 89, 161, 0.14)',
         statusBarBg: 'rgba(214, 222, 245, 0.98)', statusBarBorder: '1px solid rgba(61,89,161,0.42)',
         statusBarColor: '#1d4ed8', serverNameColor: '#1f2335',
@@ -123,10 +128,10 @@ const TERMINAL_THEMES = {
       },
     },
   },
-  'catppuccin': {
+  catppuccin: {
     name: 'Catppuccin',
-    swatches: ['#cba6f7', '#89b4fa', '#a6e3a1', '#1e1e2e'],
     dark: {
+      accent: '#cba6f7',
       xterm: {
         background: '#00000000', foreground: '#cdd6f4', cursor: '#f5c2e7',
         cursorAccent: '#1e1e2e', selectionBackground: '#7c3aed',
@@ -139,7 +144,6 @@ const TERMINAL_THEMES = {
         brightCyan: '#a6f0e2', brightWhite: '#ffffff',
       },
       container: {
-        // 深咖啡紫 + 粉紫 tint
         containerBg: '#181825',
         tint: 'rgba(203, 166, 247, 0.12)',
         statusBarBg: 'rgba(36, 28, 52, 0.97)', statusBarBorder: '1px solid rgba(203,166,247,0.50)',
@@ -155,8 +159,8 @@ const TERMINAL_THEMES = {
       },
     },
     light: {
+      accent: '#8839ef',
       xterm: {
-        // Catppuccin 浅色：原先粉紫底 + 淡色字整盘发虚，整体加对比
         background: '#00000000', foreground: '#2c2f3a', cursor: '#d20f39',
         cursorAccent: '#ffffff', selectionBackground: '#1e66f5',
         selectionForeground: '#ffffff',
@@ -168,7 +172,6 @@ const TERMINAL_THEMES = {
         brightCyan: '#209fb5', brightWhite: '#eff1f5',
       },
       container: {
-        // 更实的米白底 + 更深紫状态栏，减少「整屏粉雾」
         containerBg: '#eff1f5', tint: 'rgba(136, 57, 239, 0.06)',
         statusBarBg: 'rgba(220, 214, 240, 0.98)', statusBarBorder: '1px solid rgba(136,57,239,0.45)',
         statusBarColor: '#8839ef', serverNameColor: '#2c2f3a',
@@ -183,10 +186,10 @@ const TERMINAL_THEMES = {
       },
     },
   },
-  'dracula': {
+  dracula: {
     name: 'Dracula',
-    swatches: ['#ff79c6', '#bd93f9', '#50fa7b', '#282a36'],
     dark: {
+      accent: '#ff79c6',
       xterm: {
         background: '#00000000', foreground: '#f8f8f2', cursor: '#f8f8f2',
         cursorAccent: '#282a36', selectionBackground: '#bd93f9',
@@ -199,7 +202,6 @@ const TERMINAL_THEMES = {
         brightCyan: '#a4ffff', brightWhite: '#ffffff',
       },
       container: {
-        // 偏紫灰 + 粉 tint：最跳一档
         containerBg: '#2b2d3a',
         tint: 'rgba(255, 121, 198, 0.10)',
         statusBarBg: 'rgba(52, 42, 66, 0.97)', statusBarBorder: '1px solid rgba(255,121,198,0.48)',
@@ -215,8 +217,8 @@ const TERMINAL_THEMES = {
       },
     },
     light: {
+      accent: '#be185d',
       xterm: {
-        // Dracula 浅色：色块底用中亮色 + 近黑字；亮白底必须浅（不能当深色字用）
         background: '#00000000', foreground: '#1f1f2e', cursor: '#be185d',
         cursorAccent: '#ffffff', selectionBackground: '#7c3aed',
         selectionForeground: '#ffffff',
@@ -228,8 +230,8 @@ const TERMINAL_THEMES = {
         brightCyan: '#0891b2', brightWhite: '#f3f4f6',
       },
       container: {
-        // 近中性浅灰底，粉只留在状态栏识别，减少整屏粉雾
-        containerBg: '#f4f4f5', tint: 'rgba(219, 39, 119, 0.03)',
+        containerBg: '#f4f4f5',
+        tint: 'rgba(219, 39, 119, 0.03)',
         statusBarBg: 'rgba(253, 242, 248, 0.98)', statusBarBorder: '1px solid rgba(190,24,93,0.40)',
         statusBarColor: '#be185d', serverNameColor: '#1f1f2e',
         inputBarBg: 'rgba(253, 242, 248, 0.98)', inputBarBorder: '1px solid rgba(124,58,237,0.32)',
@@ -245,52 +247,658 @@ const TERMINAL_THEMES = {
   },
 };
 
-// 检测 App 浅色/深色模式
-export function getAppThemeMode() {
-  if (typeof window !== 'undefined' && window.__luminForceDarkTheme === true) {
-    return 'dark';
-  }
-  const mode = localStorage.getItem('themeMode') || 'dark';
-  if (mode === 'system') {
-    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-  }
-  return mode;
+function normalizeThemeModePreference(value) {
+  if (value === 'light' || value === 'system') return value;
+  return 'dark';
 }
 
-export function getTerminalTheme() {
-  const key = localStorage.getItem('terminalColorTheme') || 'lumin';
-  const theme = TERMINAL_THEMES[key] || TERMINAL_THEMES['lumin'];
-  const mode = getAppThemeMode() === 'light' ? 'light' : 'dark';
-  return theme[mode] || theme.dark;
+function normalizeModeHint(value) {
+  return value === 'light' ? 'light' : 'dark';
 }
 
-/** 设置页主题列表：名称 + 终端真实会用到的颜色（非装饰用四色点） */
-export function listTerminalThemes() {
-  const mode = getAppThemeMode() === 'light' ? 'light' : 'dark';
-  return Object.entries(TERMINAL_THEMES).map(([key, def]) => {
-    const t = def[mode] || def.dark;
-    const x = t.xterm || {};
-    const c = t.container || {};
-    return {
-      key,
-      name: def.name || key,
-      // 与终端实际界面一致：底、状态栏、前景、光标、连接点（不做多余 ANSI 色条）
-      preview: {
-        containerBg: c.containerBg || '#0e1218',
-        statusBarBg: c.statusBarBg || c.containerBg || '#141a23',
-        statusBarColor: c.statusBarColor || x.cursor || '#4d9eff',
-        foreground: x.foreground || '#cdd9e5',
-        cursor: x.cursor || '#4d9eff',
-        green: x.green || '#3fb950',
-      },
-    };
-  });
-}
-
-// ponytail: hex 颜色转 "r, g, b" 字符串，供 CSS rgba() 使用
-export function hexToRgb(hex) {
+function rgbTripletFromHexColor(hex, fallback = '37, 99, 235') {
+  if (!/^#[\da-fA-F]{6}$/.test(String(hex || '').trim())) return fallback;
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
   return `${r}, ${g}, ${b}`;
 }
+
+function rgbaFromHexColor(hex, alpha, fallback) {
+  if (!/^#[\da-fA-F]{6}$/.test(String(hex || '').trim())) return fallback;
+  return `rgba(${rgbTripletFromHexColor(hex, '0, 0, 0')}, ${alpha})`;
+}
+
+function buildBaseThemeTokens(modeHint, accent) {
+  if (normalizeModeHint(modeHint) === 'light') {
+    return {
+      surfaceBase: '#f3f4f6',
+      surfaceRaised: '#ffffff',
+      surfaceOverlay: '#ffffff',
+      surfaceSunken: '#e9ecef',
+      surfaceHover: '#e2e6eb',
+      surfaceActive: '#d6dbe2',
+      border: 'rgba(28, 35, 45, 0.14)',
+      borderLight: 'rgba(28, 35, 45, 0.08)',
+      borderSubtle: 'rgba(28, 35, 45, 0.10)',
+      borderFocus: accent,
+      textPrimary: '#111827',
+      textSecondary: '#334155',
+      textTertiary: '#526176',
+      textMuted: '#6b7a8f',
+      probeLabel: '#1f2937',
+      probeDetail: '#334155',
+      probeFaint: '#526176',
+      accent,
+      accentRgb: rgbTripletFromHexColor(accent, '37, 99, 235'),
+      accentHover: accent,
+      accentDim: rgbaFromHexColor(accent, 0.08, 'rgba(37, 99, 235, 0.08)'),
+      accentBorder: rgbaFromHexColor(accent, 0.22, 'rgba(37, 99, 235, 0.22)'),
+      success: '#16a34a',
+      successRgb: '22, 163, 74',
+      successDim: 'rgba(22, 163, 74, 0.08)',
+      danger: '#dc2626',
+      dangerRgb: '220, 38, 38',
+      dangerDim: 'rgba(220, 38, 38, 0.08)',
+      warning: '#ca8a04',
+      warningRgb: '202, 138, 4',
+      warningDim: 'rgba(202, 138, 4, 0.08)',
+      info: '#7c3aed',
+      infoRgb: '124, 58, 237',
+      infoDim: 'rgba(124, 58, 237, 0.08)',
+      fileIconShell: '#15803d',
+    };
+  }
+  return {
+    surfaceBase: '#0f1319',
+    surfaceRaised: '#141a23',
+    surfaceOverlay: '#1a2130',
+    surfaceSunken: '#1b2230',
+    surfaceHover: '#243042',
+    surfaceActive: '#2c384c',
+    border: 'rgba(72, 86, 110, 0.55)',
+    borderLight: 'rgba(72, 86, 110, 0.28)',
+    borderSubtle: 'rgba(72, 86, 110, 0.32)',
+    borderFocus: accent,
+    textPrimary: '#eef3f9',
+    textSecondary: '#c8d1dd',
+    textTertiary: '#a0aabc',
+    textMuted: '#7a8698',
+    probeLabel: '#d8e0ea',
+    probeDetail: '#b9c4d2',
+    probeFaint: '#93a0b2',
+    accent,
+    accentRgb: rgbTripletFromHexColor(accent, '77, 158, 255'),
+    accentHover: accent,
+    accentDim: rgbaFromHexColor(accent, 0.12, 'rgba(77, 158, 255, 0.12)'),
+    accentBorder: rgbaFromHexColor(accent, 0.28, 'rgba(77, 158, 255, 0.28)'),
+    success: '#3fb950',
+    successRgb: '63, 185, 80',
+    successDim: 'rgba(63, 185, 80, 0.12)',
+    danger: '#f87171',
+    dangerRgb: '248, 113, 113',
+    dangerDim: 'rgba(248, 113, 113, 0.12)',
+    warning: '#d9a434',
+    warningRgb: '217, 164, 52',
+    warningDim: 'rgba(217, 164, 52, 0.12)',
+    info: '#a78bfa',
+    infoRgb: '167, 139, 250',
+    infoDim: 'rgba(167, 139, 250, 0.12)',
+    fileIconShell: '#89e051',
+  };
+}
+
+function buildTabsComponent(modeHint) {
+  if (normalizeModeHint(modeHint) === 'light') {
+    return {
+      inactiveBg: '#e4e8ee',
+      inactiveBgHover: '#d8dee6',
+      inactiveBorder: 'rgba(28, 35, 45, 0.16)',
+      inactiveText: '#1f2937',
+      activeBg: 'color-mix(in srgb, var(--accent) 14%, #ffffff)',
+      activeBorder: 'color-mix(in srgb, var(--accent) 42%, var(--border))',
+      activeText: '#0f172a',
+      radius: '0',
+    };
+  }
+  return {
+    inactiveBg: 'var(--surface-active)',
+    inactiveBgHover: 'color-mix(in srgb, var(--surface-active) 82%, var(--accent) 8%)',
+    inactiveBorder: 'color-mix(in srgb, var(--border) 88%, #6b7a90)',
+    inactiveText: 'var(--text-primary)',
+    activeBg: 'color-mix(in srgb, var(--accent) 18%, var(--surface-raised))',
+    activeBorder: 'color-mix(in srgb, var(--accent) 48%, var(--border))',
+    activeText: 'var(--text-primary)',
+    radius: '0',
+  };
+}
+
+function buildDerivedComponentDefaults(modeHint, tokens = {}, terminalContainer = {}) {
+  const isLight = normalizeModeHint(modeHint) === 'light';
+  const fileManager = {
+    panelBg: tokens.surfaceBase || (isLight ? '#f3f4f6' : '#0f1319'),
+    toolbarBg: tokens.surfaceRaised || (isLight ? '#ffffff' : '#141a23'),
+    borderColor: tokens.borderSubtle || (isLight ? 'rgba(28, 35, 45, 0.10)' : 'rgba(72, 86, 110, 0.32)'),
+    rowHoverBg: isLight ? 'rgba(37, 99, 235, 0.08)' : 'rgba(77, 158, 255, 0.08)',
+    selectedRowBg: isLight ? 'rgba(37, 99, 235, 0.16)' : 'rgba(77, 158, 255, 0.16)',
+    textColor: tokens.textPrimary || (isLight ? '#111827' : '#eef3f9'),
+    secondaryTextColor: tokens.textSecondary || (isLight ? '#334155' : '#c8d1dd'),
+    mutedTextColor: tokens.textMuted || (isLight ? '#6b7a8f' : '#7a8698'),
+    headerTextColor: tokens.textTertiary || (isLight ? '#526176' : '#a0aabc'),
+    pathBg: tokens.surfaceSunken || (isLight ? '#e9ecef' : '#1b2230'),
+    pathTextColor: tokens.textPrimary || (isLight ? '#111827' : '#eef3f9'),
+    folderTextColor: tokens.accent || (isLight ? '#2563eb' : '#4d9eff'),
+  };
+  const topbar = {
+    background: tokens.surfaceRaised || (isLight ? '#ffffff' : '#141a23'),
+    borderBottomColor: tokens.borderSubtle || (isLight ? 'rgba(28, 35, 45, 0.10)' : 'rgba(72, 86, 110, 0.32)'),
+    titleColor: tokens.textPrimary || (isLight ? '#111827' : '#eef3f9'),
+  };
+  const quickCommands = {
+    panelBg: terminalContainer.popupBg || tokens.surfaceOverlay || (isLight ? '#ffffff' : '#1a2130'),
+    borderColor: terminalContainer.popupBorder || tokens.borderSubtle || (isLight ? 'rgba(28, 35, 45, 0.10)' : 'rgba(72, 86, 110, 0.32)'),
+    textColor: terminalContainer.inputColor || tokens.textPrimary || (isLight ? '#111827' : '#eef3f9'),
+    secondaryTextColor: terminalContainer.statusBarColor || tokens.textSecondary || (isLight ? '#334155' : '#c8d1dd'),
+    mutedTextColor: terminalContainer.mutedColor || tokens.textMuted || (isLight ? '#6b7a8f' : '#7a8698'),
+    inputBg: terminalContainer.inputBg || tokens.surfaceSunken || (isLight ? '#e9ecef' : '#1b2230'),
+    inputBorderColor: terminalContainer.btnBorder || tokens.border || (isLight ? 'rgba(28, 35, 45, 0.14)' : 'rgba(72, 86, 110, 0.55)'),
+    menuBg: terminalContainer.contextBg || terminalContainer.popupBg || tokens.surfaceOverlay || (isLight ? '#ffffff' : '#1a2130'),
+    menuBorderColor: terminalContainer.contextBorder || terminalContainer.popupBorder || tokens.borderSubtle || (isLight ? 'rgba(28, 35, 45, 0.10)' : 'rgba(72, 86, 110, 0.32)'),
+    separatorColor: terminalContainer.separator || tokens.borderSubtle || (isLight ? 'rgba(28, 35, 45, 0.10)' : 'rgba(72, 86, 110, 0.32)'),
+  };
+  quickCommands.popupBg = quickCommands.panelBg;
+  quickCommands.btnBorder = quickCommands.inputBorderColor;
+  quickCommands.inputColor = quickCommands.textColor;
+  quickCommands.statusBarColor = quickCommands.secondaryTextColor;
+  quickCommands.mutedColor = quickCommands.mutedTextColor;
+  quickCommands.separator = quickCommands.separatorColor;
+  const connectingCard = {
+    overlayBg: 'rgba(0, 0, 0, 0.42)',
+    cardBg: terminalContainer.popupBg || tokens.surfaceOverlay || (isLight ? '#ffffff' : '#1a2130'),
+    borderColor: terminalContainer.btnBorder || tokens.borderSubtle || (isLight ? 'rgba(28, 35, 45, 0.10)' : 'rgba(72, 86, 110, 0.32)'),
+    titleColor: terminalContainer.inputColor || tokens.textPrimary || (isLight ? '#111827' : '#eef3f9'),
+    secondaryTextColor: terminalContainer.statusBarColor || tokens.textSecondary || (isLight ? '#334155' : '#c8d1dd'),
+    mutedTextColor: terminalContainer.mutedColor || tokens.textMuted || (isLight ? '#6b7a8f' : '#7a8698'),
+    buttonBg: tokens.surfaceHover || (isLight ? '#e2e6eb' : '#243042'),
+    buttonTextColor: terminalContainer.statusBarColor || tokens.textSecondary || (isLight ? '#334155' : '#c8d1dd'),
+    progressTrackColor: terminalContainer.separator || tokens.borderSubtle || (isLight ? 'rgba(28, 35, 45, 0.10)' : 'rgba(72, 86, 110, 0.32)'),
+    shadow: terminalContainer.contextShadow || '',
+  };
+  connectingCard.popupBg = connectingCard.cardBg;
+  connectingCard.btnBorder = connectingCard.borderColor;
+  connectingCard.contextShadow = connectingCard.shadow;
+  connectingCard.inputColor = connectingCard.titleColor;
+  connectingCard.statusBarColor = connectingCard.secondaryTextColor;
+  connectingCard.mutedColor = connectingCard.mutedTextColor;
+  connectingCard.separator = connectingCard.progressTrackColor;
+  return { fileManager, topbar, quickCommands, connectingCard };
+}
+
+function getResolvedThemeComponentTheme(themePackage, name) {
+  const defaults = buildDerivedComponentDefaults(
+    themePackage?.modeHint || 'dark',
+    themePackage?.tokens || {},
+    themePackage?.components?.terminal?.container || {},
+  );
+  return {
+    ...(defaults[name] || {}),
+    ...(themePackage?.components?.[name] || {}),
+  };
+}
+
+function applyComponentThemeVariables(themePackage) {
+  if (typeof document === 'undefined') return;
+  const target = document.body;
+  if (!target) return;
+  const fileManager = getResolvedThemeComponentTheme(themePackage, 'fileManager');
+  const topbar = getResolvedThemeComponentTheme(themePackage, 'topbar');
+  const mappings = {
+    '--file-manager-panel-bg': fileManager.panelBg,
+    '--file-manager-toolbar-bg': fileManager.toolbarBg,
+    '--file-manager-border-color': fileManager.borderColor,
+    '--file-manager-row-hover-bg': fileManager.rowHoverBg,
+    '--file-manager-row-selected-bg': fileManager.selectedRowBg,
+    '--file-manager-text-color': fileManager.textColor,
+    '--file-manager-secondary-text-color': fileManager.secondaryTextColor,
+    '--file-manager-muted-text-color': fileManager.mutedTextColor,
+    '--file-manager-header-text-color': fileManager.headerTextColor,
+    '--file-manager-path-bg': fileManager.pathBg,
+    '--file-manager-path-text-color': fileManager.pathTextColor,
+    '--file-manager-folder-text-color': fileManager.folderTextColor,
+    '--topbar-bg': topbar.background,
+    '--topbar-border-color': topbar.borderBottomColor,
+    '--topbar-title-color': topbar.titleColor,
+  };
+  Object.entries(mappings).forEach(([cssVar, value]) => {
+    if (value) {
+      target.style.setProperty(cssVar, value);
+    }
+  });
+}
+
+function buildBuiltinThemePackages() {
+  return Object.entries(TERMINAL_THEME_FAMILIES).flatMap(([familyKey, family]) => (
+    ['dark', 'light'].map((modeHint) => {
+      const themeKey = `${familyKey}-${modeHint}`;
+      const modeTheme = family[modeHint];
+      return {
+        schemaVersion: THEME_PACKAGE_SCHEMA_VERSION,
+        id: themeKey,
+        name: `${family.name} ${modeHint === 'light' ? 'Light' : 'Dark'}`,
+        description: `${family.name} ${modeHint === 'light' ? '浅色' : '深色'}主题包`,
+        modeHint,
+        source: 'builtin',
+        path: '',
+        tokens: buildBaseThemeTokens(modeHint, modeTheme.accent),
+        components: {
+          tabs: buildTabsComponent(modeHint),
+          terminal: {
+            xterm: { ...modeTheme.xterm },
+            container: { ...modeTheme.container },
+          },
+        },
+        resources: {},
+      };
+    })
+  ));
+}
+
+function buildThemePackagePreview(themePackage) {
+  const preview = themePackage?.preview;
+  if (preview && typeof preview === 'object') {
+    return {
+      surfaceBase: preview.surfaceBase || themePackage?.tokens?.surfaceBase || '',
+      surfaceRaised: preview.surfaceRaised || themePackage?.tokens?.surfaceRaised || '',
+      accent: preview.accent || themePackage?.tokens?.accent || '',
+      textPrimary: preview.textPrimary || themePackage?.tokens?.textPrimary || '',
+      terminalBg: preview.terminalBg || themePackage?.components?.terminal?.container?.containerBg || '',
+      terminalFg: preview.terminalFg || themePackage?.components?.terminal?.xterm?.foreground || '',
+      terminalStatusBg: preview.terminalStatusBg || themePackage?.components?.terminal?.container?.statusBarBg || '',
+      terminalStatusColor: preview.terminalStatusColor || themePackage?.components?.terminal?.container?.statusBarColor || '',
+    };
+  }
+  return {
+    surfaceBase: themePackage?.tokens?.surfaceBase || '',
+    surfaceRaised: themePackage?.tokens?.surfaceRaised || '',
+    accent: themePackage?.tokens?.accent || '',
+    textPrimary: themePackage?.tokens?.textPrimary || '',
+    terminalBg: themePackage?.components?.terminal?.container?.containerBg || '',
+    terminalFg: themePackage?.components?.terminal?.xterm?.foreground || '',
+    terminalStatusBg: themePackage?.components?.terminal?.container?.statusBarBg || '',
+    terminalStatusColor: themePackage?.components?.terminal?.container?.statusBarColor || '',
+  };
+}
+
+const BUILTIN_THEME_PACKAGES = buildBuiltinThemePackages();
+
+function buildThemePackageMap(packages) {
+  return new Map((Array.isArray(packages) ? packages : []).map((item) => [item.id, item]));
+}
+
+function getFallbackThemePackageId(modeHint) {
+  return normalizeModeHint(modeHint) === 'light'
+    ? DEFAULT_LIGHT_THEME_PACKAGE_ID
+    : DEFAULT_DARK_THEME_PACKAGE_ID;
+}
+
+function mergeLegacyThemePackageSettings(rawSettings) {
+  const next = { ...(rawSettings || {}) };
+  if (next.lightThemePackageId && next.darkThemePackageId) {
+    return next;
+  }
+  const legacyFamilyKey = localStorage.getItem('terminalColorTheme') || 'lumin';
+  const mapped = LEGACY_THEME_PACKAGE_MAP[legacyFamilyKey] || LEGACY_THEME_PACKAGE_MAP.lumin;
+  return {
+    ...next,
+    lightThemePackageId: next.lightThemePackageId || mapped.light,
+    darkThemePackageId: next.darkThemePackageId || mapped.dark,
+  };
+}
+
+function readThemePackageSettingsFromLocalStorage() {
+  if (typeof window === 'undefined') {
+    return {
+      themeMode: 'dark',
+      lightThemePackageId: DEFAULT_LIGHT_THEME_PACKAGE_ID,
+      darkThemePackageId: DEFAULT_DARK_THEME_PACKAGE_ID,
+    };
+  }
+  return mergeLegacyThemePackageSettings({
+    themeMode: localStorage.getItem('themeMode') || 'dark',
+    lightThemePackageId: localStorage.getItem('lightThemePackageId') || '',
+    darkThemePackageId: localStorage.getItem('darkThemePackageId') || '',
+  });
+}
+
+function normalizeThemePackageRecord(record) {
+  if (!record || typeof record !== 'object') return null;
+  const id = String(record.id || '').trim();
+  if (!id) return null;
+  const builtin = BUILTIN_THEME_PACKAGES.find((item) => item.id === id);
+  const modeHint = normalizeModeHint(record.modeHint || builtin?.modeHint || (id.endsWith('-light') ? 'light' : 'dark'));
+  const tokens = { ...(builtin?.tokens || {}), ...(record.tokens || {}) };
+  const builtinTabs = builtin?.components?.tabs || {};
+  const builtinTerminal = builtin?.components?.terminal || {};
+  const components = {
+    ...(builtin?.components || {}),
+    ...(record.components || {}),
+    tabs: {
+      ...builtinTabs,
+      ...(record?.components?.tabs || {}),
+    },
+    terminal: {
+      ...builtinTerminal,
+      ...(record?.components?.terminal || {}),
+      xterm: {
+        ...(builtinTerminal.xterm || {}),
+        ...(record?.components?.terminal?.xterm || {}),
+      },
+      container: {
+        ...(builtinTerminal.container || {}),
+        ...(record?.components?.terminal?.container || {}),
+      },
+    },
+  };
+  return {
+    schemaVersion: Number(record.schemaVersion || builtin?.schemaVersion || THEME_PACKAGE_SCHEMA_VERSION),
+    id,
+    name: String(record.name || builtin?.name || id).trim() || id,
+    description: String(record.description || builtin?.description || '').trim(),
+    modeHint,
+    source: String(record.source || builtin?.source || 'builtin').trim() || 'builtin',
+    path: String(record.path || '').trim(),
+    tokens,
+    components,
+    resources: { ...(builtin?.resources || {}), ...(record.resources || {}) },
+    preview: buildThemePackagePreview({
+      ...builtin,
+      ...record,
+      tokens,
+      components,
+    }),
+  };
+}
+
+let themePackagesCache = BUILTIN_THEME_PACKAGES.map((item) => normalizeThemePackageRecord(item)).filter(Boolean);
+let themePackageMapCache = buildThemePackageMap(themePackagesCache);
+let themePackageSettingsCache = null;
+let themeRuntimeListenersBound = false;
+let systemThemeChangeUnbind = null;
+let themeToolPreviewPackageCache = null;
+
+function normalizeThemePackageSettings(settings, packageMap = themePackageMapCache) {
+  const next = mergeLegacyThemePackageSettings({
+    themeMode: settings?.themeMode,
+    lightThemePackageId: settings?.lightThemePackageId ?? settings?.LightThemePackageID,
+    darkThemePackageId: settings?.darkThemePackageId ?? settings?.DarkThemePackageID,
+  });
+  const themeMode = normalizeThemeModePreference(next.themeMode);
+  let lightThemePackageId = String(next.lightThemePackageId || '').trim();
+  let darkThemePackageId = String(next.darkThemePackageId || '').trim();
+  if (!packageMap.has(lightThemePackageId) || packageMap.get(lightThemePackageId)?.modeHint !== 'light') {
+    lightThemePackageId = getFallbackThemePackageId('light');
+  }
+  if (!packageMap.has(darkThemePackageId) || packageMap.get(darkThemePackageId)?.modeHint !== 'dark') {
+    darkThemePackageId = getFallbackThemePackageId('dark');
+  }
+  return {
+    themeMode,
+    lightThemePackageId,
+    darkThemePackageId,
+  };
+}
+
+function persistThemePackageSettingsToLocalStorage(settings) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem('themeMode', settings.themeMode);
+  localStorage.setItem('lightThemePackageId', settings.lightThemePackageId);
+  localStorage.setItem('darkThemePackageId', settings.darkThemePackageId);
+}
+
+function getSystemThemeMode() {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'dark';
+  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
+export function getThemePackageSettings() {
+  if (!themePackageSettingsCache) {
+    themePackageSettingsCache = normalizeThemePackageSettings(readThemePackageSettingsFromLocalStorage());
+  }
+  return { ...themePackageSettingsCache };
+}
+
+export function getAppThemeMode() {
+  if (typeof window !== 'undefined' && window.__luminForceDarkTheme === true) {
+    return 'dark';
+  }
+  if (themeToolPreviewPackageCache?.modeHint) {
+    return normalizeModeHint(themeToolPreviewPackageCache.modeHint);
+  }
+  const settings = getThemePackageSettings();
+  return settings.themeMode === 'system'
+    ? getSystemThemeMode()
+    : normalizeModeHint(settings.themeMode);
+}
+
+function getActiveThemePackageId(mode = getAppThemeMode()) {
+  const settings = getThemePackageSettings();
+  return mode === 'light'
+    ? settings.lightThemePackageId
+    : settings.darkThemePackageId;
+}
+
+function getActiveThemePackage(mode = getAppThemeMode()) {
+  if (themeToolPreviewPackageCache) {
+    return themeToolPreviewPackageCache;
+  }
+  const id = getActiveThemePackageId(mode);
+  return themePackageMapCache.get(id) || themePackageMapCache.get(getFallbackThemePackageId(mode)) || themePackagesCache[0];
+}
+
+function toCssVarName(key) {
+  return `--${String(key || '').replace(/[A-Z]/g, (match) => `-${match.toLowerCase()}`)}`;
+}
+
+function applyTabsThemeComponent(themePackage) {
+  if (typeof document === 'undefined') return;
+  const target = document.body;
+  if (!target) return;
+  const tabs = themePackage?.components?.tabs || {};
+  const mappings = {
+    inactiveBg: '--tab-inactive-bg',
+    inactiveBgHover: '--tab-inactive-bg-hover',
+    inactiveBorder: '--tab-inactive-border',
+    inactiveText: '--tab-inactive-text',
+    activeBg: '--tab-active-bg',
+    activeBorder: '--tab-active-border',
+    activeText: '--tab-active-text',
+    radius: '--tab-radius',
+  };
+  Object.entries(mappings).forEach(([sourceKey, cssVar]) => {
+    const value = tabs[sourceKey];
+    if (value) {
+      target.style.setProperty(cssVar, value);
+    }
+  });
+}
+
+export function applyStoredThemePackage() {
+  if (typeof document === 'undefined') return;
+  if (!themePackageSettingsCache) {
+    themePackageSettingsCache = normalizeThemePackageSettings(readThemePackageSettingsFromLocalStorage());
+  }
+  persistThemePackageSettingsToLocalStorage(themePackageSettingsCache);
+  const resolvedMode = getAppThemeMode();
+  const activeThemePackage = getActiveThemePackage(resolvedMode);
+  const target = document.body;
+  if (!target) return;
+  target.classList.toggle('theme-light', resolvedMode === 'light' && window.__luminForceDarkTheme !== true);
+  Object.entries(activeThemePackage?.tokens || {}).forEach(([key, value]) => {
+    if (value) {
+      target.style.setProperty(toCssVarName(key), value);
+    }
+  });
+  applyComponentThemeVariables(activeThemePackage);
+  applyTabsThemeComponent(activeThemePackage);
+}
+
+async function syncThemePackageSettingsToBackend(settings) {
+  const normalizedSettings = normalizeThemePackageSettings(settings);
+  try {
+    await AppGo.SaveThemePackageSettings({
+      themeMode: normalizedSettings.themeMode,
+      lightThemePackageId: normalizedSettings.lightThemePackageId,
+      darkThemePackageId: normalizedSettings.darkThemePackageId,
+    });
+  } catch (_) {}
+}
+
+function mergeThemePackagesFromBackend(records) {
+  if (!Array.isArray(records) || records.length === 0) {
+    return themePackagesCache;
+  }
+  const normalized = records
+    .map((record) => normalizeThemePackageRecord(record))
+    .filter(Boolean);
+  return normalized.length > 0 ? normalized : themePackagesCache;
+}
+
+function handleThemeRuntimeRefresh({ syncBackend = false } = {}) {
+  const nextSettings = normalizeThemePackageSettings(readThemePackageSettingsFromLocalStorage());
+  const changed = JSON.stringify(nextSettings) !== JSON.stringify(themePackageSettingsCache || {});
+  themePackageSettingsCache = nextSettings;
+  persistThemePackageSettingsToLocalStorage(nextSettings);
+  applyStoredThemePackage();
+  if (syncBackend && changed) {
+    void syncThemePackageSettingsToBackend(nextSettings);
+  }
+}
+
+function bindThemeRuntimeListeners() {
+  if (themeRuntimeListenersBound || typeof window === 'undefined') return;
+  themeRuntimeListenersBound = true;
+  window.addEventListener('theme-mode-changed', () => {
+    handleThemeRuntimeRefresh({ syncBackend: true });
+  });
+  window.addEventListener('theme-package-changed', () => {
+    handleThemeRuntimeRefresh({ syncBackend: true });
+  });
+  if (typeof window.matchMedia === 'function') {
+    const media = window.matchMedia('(prefers-color-scheme: light)');
+    const handler = () => {
+      if (getThemePackageSettings().themeMode === 'system') {
+        applyStoredThemePackage();
+        window.dispatchEvent(new CustomEvent('terminal-theme-changed'));
+      }
+    };
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', handler);
+      systemThemeChangeUnbind = () => media.removeEventListener('change', handler);
+    } else if (typeof media.addListener === 'function') {
+      media.addListener(handler);
+      systemThemeChangeUnbind = () => media.removeListener(handler);
+    }
+  }
+}
+
+export async function loadThemePackages() {
+  bindThemeRuntimeListeners();
+  themePackageSettingsCache = normalizeThemePackageSettings(readThemePackageSettingsFromLocalStorage());
+  persistThemePackageSettingsToLocalStorage(themePackageSettingsCache);
+  applyStoredThemePackage();
+  try {
+    const [packageSettings, packageRecords] = await Promise.all([
+      AppGo.GetThemePackageSettings().catch(() => null),
+      AppGo.ListThemePackages().catch(() => []),
+    ]);
+    themePackagesCache = mergeThemePackagesFromBackend(packageRecords);
+    themePackageMapCache = buildThemePackageMap(themePackagesCache);
+    themePackageSettingsCache = normalizeThemePackageSettings(packageSettings || themePackageSettingsCache, themePackageMapCache);
+    persistThemePackageSettingsToLocalStorage(themePackageSettingsCache);
+    applyStoredThemePackage();
+    await syncThemePackageSettingsToBackend(themePackageSettingsCache);
+  } catch (_) {
+    themePackagesCache = BUILTIN_THEME_PACKAGES.map((item) => normalizeThemePackageRecord(item)).filter(Boolean);
+    themePackageMapCache = buildThemePackageMap(themePackagesCache);
+    themePackageSettingsCache = normalizeThemePackageSettings(themePackageSettingsCache, themePackageMapCache);
+    persistThemePackageSettingsToLocalStorage(themePackageSettingsCache);
+    applyStoredThemePackage();
+  }
+  return {
+    packages: listThemePackages(),
+    settings: getThemePackageSettings(),
+  };
+}
+
+export async function saveThemePackageSettings(nextSettings) {
+  bindThemeRuntimeListeners();
+  themePackageSettingsCache = normalizeThemePackageSettings({
+    ...getThemePackageSettings(),
+    ...(nextSettings || {}),
+  }, themePackageMapCache);
+  persistThemePackageSettingsToLocalStorage(themePackageSettingsCache);
+  applyStoredThemePackage();
+  await syncThemePackageSettingsToBackend(themePackageSettingsCache);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('theme-package-changed', { detail: { ...themePackageSettingsCache } }));
+    window.dispatchEvent(new CustomEvent('theme-mode-changed', { detail: themePackageSettingsCache.themeMode }));
+    window.dispatchEvent(new CustomEvent('terminal-theme-changed'));
+  }
+  return { ...themePackageSettingsCache };
+}
+
+export function listThemePackages() {
+  return themePackagesCache.map((item) => ({ ...item }));
+}
+
+export function getThemeComponentTheme(name) {
+  return getResolvedThemeComponentTheme(getActiveThemePackage(), String(name || '').trim());
+}
+
+export function setThemeToolPreviewPackage(record) {
+  const normalized = normalizeThemePackageRecord(record);
+  if (!normalized) {
+    return;
+  }
+  themeToolPreviewPackageCache = normalized;
+  applyStoredThemePackage();
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('theme-preview-changed', { detail: { id: normalized.id, modeHint: normalized.modeHint } }));
+    window.dispatchEvent(new CustomEvent('terminal-theme-changed'));
+  }
+}
+
+export function clearThemeToolPreviewPackage() {
+  if (!themeToolPreviewPackageCache) {
+    return;
+  }
+  themeToolPreviewPackageCache = null;
+  applyStoredThemePackage();
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('theme-preview-changed', { detail: { id: '', modeHint: '' } }));
+    window.dispatchEvent(new CustomEvent('terminal-theme-changed'));
+  }
+}
+
+export function getTerminalTheme() {
+  const activeThemePackage = getActiveThemePackage();
+  return activeThemePackage?.components?.terminal || {
+    xterm: {},
+    container: {},
+  };
+}
+
+export function hexToRgb(hex) {
+  if (!/^#[\da-fA-F]{6}$/.test(String(hex || '').trim())) {
+    return '0, 0, 0';
+  }
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `${r}, ${g}, ${b}`;
+}
+
+bindThemeRuntimeListeners();
+themePackageSettingsCache = normalizeThemePackageSettings(readThemePackageSettingsFromLocalStorage(), themePackageMapCache);
+persistThemePackageSettingsToLocalStorage(themePackageSettingsCache);
+applyStoredThemePackage();

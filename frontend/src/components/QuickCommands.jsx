@@ -5,7 +5,7 @@ import * as AppGo from '../../wailsjs/go/main/App.js';
 import { useTranslation } from '../i18n.js';
 import Tiptop from './Tiptop.jsx';
 import { Z } from '../constants/zIndex';
-import { getTerminalTheme } from '../utils/theme.js';
+import { getThemeComponentTheme } from '../utils/theme.js';
 
 // ── 加载命令数据（从 Go 后端文件）────────────────────
 async function loadCommands() {
@@ -886,7 +886,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, addToast, c
   };
 
   // ── 通用样式 ──────────────────────────────────────
-  const C = getTerminalTheme().container;
+  const C = getThemeComponentTheme('quickCommands');
   const inputStyle = {
     padding: '5px 8px', fontSize: 12, borderRadius: 3,
     background: C.inputBg, border: '1px solid ' + C.btnBorder,

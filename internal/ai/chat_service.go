@@ -33,6 +33,8 @@ type AIChatRequestPayload struct {
 	IsDemon                  bool                   `json:"isDemon,omitempty"`
 	SystemPromptOverride     string                 `json:"systemPromptOverride,omitempty"`
 	StreamEventPrefix        string                 `json:"streamEventPrefix,omitempty"`
+	ToolScope                string                 `json:"toolScope,omitempty"`
+	ToolScopeSlot            string                 `json:"toolScopeSlot,omitempty"`
 	Messages                 []AIChatRequestMessage `json:"messages"`
 }
 
@@ -90,6 +92,7 @@ var aiSupportedToolNames = []string{
 	"transfer_batch",
 	"transfer_list",
 	"execute_command",
+	"theme_tool",
 	"ask_followup_question",
 	"attempt_completion",
 	"search_replace",
@@ -103,6 +106,7 @@ var aiAlwaysAutoApprovedToolNames = map[string]struct{}{
 	"list_connected_sessions": {},
 	"get_work_path":           {},
 	"live_search":             {},
+	"theme_tool":              {},
 }
 
 var aiSupportedToolParamNames = []string{
@@ -137,6 +141,9 @@ var aiSupportedToolParamNames = []string{
 	"query",
 	"question",
 	"follow_up",
+	"action",
+	"request",
+	"slot",
 	"result",
 	"server_name",
 	"tool_name",
@@ -1373,7 +1380,7 @@ func parseAssistantToolUses(content string) ([]aiParsedToolUse, error) {
 
 func isAIStandaloneOnlyBatchTool(name string) bool {
 	switch strings.TrimSpace(name) {
-	case "ask_followup_question", "attempt_completion":
+	case "ask_followup_question", "attempt_completion", aiThemeToolName:
 		return true
 	default:
 		return false
@@ -1882,6 +1889,11 @@ func (a *App) StartAIChat(requestID string, messagesJSON string) error {
 	if len(payload.Messages) == 0 {
 		return fmt.Errorf("消息内容为空")
 	}
+	payload.ToolScope = normalizeAIToolScope(payload.ToolScope)
+	payload.ToolScopeSlot = normalizeAIThemeToolSlot(payload.ToolScopeSlot)
+	if payload.SystemPromptOverride == "" && payload.ToolScope == aiThemeToolScope {
+		payload.SystemPromptOverride = buildAIThemeToolSystemPrompt(payload)
+	}
 
 	profile, err := a.getAIProviderProfileForConversation(payload.ConversationID)
 	if err != nil {
@@ -2080,6 +2092,11 @@ func convertToolArguments(tool aiParsedToolUse, sessionID string) map[string]any
 }
 
 func summarizeParsedToolUse(tool aiParsedToolUse) string {
+	if strings.TrimSpace(tool.Name) == aiThemeToolName {
+		if action := strings.TrimSpace(tool.Params["action"]); action != "" {
+			return action
+		}
+	}
 	for _, key := range []string{"path", "file_path", "command", "query", "purpose", "result"} {
 		if value := strings.TrimSpace(tool.Params[key]); value != "" {
 			return value
@@ -2102,6 +2119,8 @@ func titleForParsedToolUse(tool aiParsedToolUse) string {
 		return "应用差异"
 	case "execute_command":
 		return "执行命令"
+	case aiThemeToolName:
+		return "主题调色"
 	case "ask_followup_question":
 		return "追问"
 	case "attempt_completion":
@@ -2415,6 +2434,9 @@ func (a *App) runCompatibleAIChatLoop(ctx context.Context, requestID string, pay
 		}
 
 		parsedTools, parseErr := parseAssistantToolUses(roundResult.Text)
+		if parseErr == nil {
+			parseErr = validateAIParsedToolScope(payload.ToolScope, parsedTools)
+		}
 		if parseErr != nil {
 			visibleText := strings.TrimSpace(roundResult.Text)
 

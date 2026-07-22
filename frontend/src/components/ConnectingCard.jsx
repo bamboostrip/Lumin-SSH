@@ -1,10 +1,10 @@
 import { Monitor, Radio, Loader2 } from 'lucide-react';
 import { Z } from '../constants/zIndex';
-import { getTerminalTheme } from '../utils/theme.js';
+import { getThemeComponentTheme } from '../utils/theme.js';
 
 export default function ConnectingCard({ connectingServer, t, onCancel }) {
   if (!connectingServer) return null;
-  const C = getTerminalTheme().container;
+  const C = getThemeComponentTheme('connectingCard');
   const server = connectingServer.server;
   const host = server.host;
   const port = server.port || 22;
@@ -15,7 +15,7 @@ export default function ConnectingCard({ connectingServer, t, onCancel }) {
     <div style={{
       position: 'absolute', inset: 0, zIndex: Z.FULLSCREEN_OVERLAY,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'rgba(0,0,0,0.42)',
+      background: C.overlayBg,
     }}>
       <div style={{
         width: 380, borderRadius: 16, overflow: 'hidden',
@@ -43,8 +43,8 @@ export default function ConnectingCard({ connectingServer, t, onCancel }) {
             <button
               style={{
                 padding: '5px 14px', fontSize: 12, borderRadius: 8, cursor: 'pointer',
-                background: 'var(--surface-hover)', border: '1px solid ' + C.btnBorder,
-                color: C.statusBarColor,
+                background: C.buttonBg, border: '1px solid ' + C.btnBorder,
+                color: C.buttonTextColor,
               }}
               onClick={onCancel}
             >

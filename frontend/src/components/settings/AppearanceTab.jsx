@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { t as $t } from '../../i18n.js';
 import { Sun, Monitor, Moon, Trash2 } from 'lucide-react';
 import { ToggleSwitch } from './SharedComponents';
+import { listTerminalThemes } from '../../utils/theme.js';
 
 export default function AppearanceTab({
   programFonts,
@@ -244,27 +245,11 @@ export default function AppearanceTab({
         <h3 style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 12, fontWeight: 600 }}>{$t('终端颜色主题')}</h3>
         <div className="form-group" style={{ background: 'var(--surface-overlay)', padding: 16, borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
           <div style={{ color: 'var(--text-tertiary)', fontSize: 11, marginBottom: 12 }}>{$t('选择终端的配色风格，即时生效')}</div>
-          <div className="theme-palette-grid">
-            {[
-              { key: 'lumin', name: 'Lumin Default', swatches: ['var(--success)', '#58a6ff', '#bc8cff', '#0d1117'] },
-              { key: 'tokyo-night', name: 'Tokyo Night', swatches: ['#7aa2f7', '#bb9af7', '#73daca', '#1a1b26'] },
-              { key: 'catppuccin', name: 'Catppuccin', swatches: ['#cba6f7', '#89b4fa', '#a6e3a1', '#1e1e2e'] },
-              { key: 'dracula', name: 'Dracula', swatches: ['#ff79c6', '#bd93f9', '#50fa7b', '#282a36'] },
-            ].map(({ key, name, swatches }) => (
-              <div
-                key={key}
-                className={`theme-palette-card${terminalColorTheme === key ? ' active' : ''}`}
-                onClick={() => onTerminalColorThemeChange(key)}
-              >
-                <div className="theme-palette-swatches">
-                  {swatches.map((c, i) => (
-                    <div key={i} className="theme-palette-swatch" style={{ background: c }} />
-                  ))}
-                </div>
-                <div className="theme-palette-name">{name}</div>
-              </div>
-            ))}
-          </div>
+          <TerminalThemePalette
+            terminalColorTheme={terminalColorTheme}
+            onTerminalColorThemeChange={onTerminalColorThemeChange}
+            themeMode={themeMode}
+          />
         </div>
       </div>
 
@@ -407,6 +392,53 @@ export default function AppearanceTab({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** 主题卡片：预览终端真实会用的底色/状态栏/字色/ANSI，而非无关四色点 */
+function TerminalThemePalette({ terminalColorTheme, onTerminalColorThemeChange, themeMode }) {
+  const themes = useMemo(() => listTerminalThemes(), [themeMode]);
+  return (
+    <div className="theme-palette-grid">
+      {themes.map(({ key, name, preview }) => (
+        <div
+          key={key}
+          className={`theme-palette-card${terminalColorTheme === key ? ' active' : ''}`}
+          onClick={() => onTerminalColorThemeChange(key)}
+        >
+          <div
+            className="theme-palette-term-preview"
+            style={{
+              background: preview.containerBg,
+              borderColor: preview.statusBarColor,
+            }}
+          >
+            <div
+              className="theme-palette-term-statusbar"
+              style={{
+                background: preview.statusBarBg,
+                color: preview.statusBarColor,
+                borderBottomColor: preview.statusBarColor,
+              }}
+            >
+              <span className="theme-palette-term-dot" style={{ background: preview.green }} />
+              <span className="theme-palette-term-host" style={{ color: preview.foreground }}>host</span>
+              <span style={{ marginLeft: 'auto', opacity: 0.9 }}>●</span>
+            </div>
+            <div className="theme-palette-term-body" style={{ color: preview.foreground }}>
+              <span>$</span>
+              {' '}
+              <span>echo</span>
+              {' '}
+              <span>ok</span>
+              {/* 与 Terminal.jsx 一致：cursorStyle bar + cursorWidth 1 */}
+              <span className="theme-palette-term-cursor" style={{ background: preview.cursor }} />
+            </div>
+          </div>
+          <div className="theme-palette-name">{name}</div>
+        </div>
+      ))}
     </div>
   );
 }

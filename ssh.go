@@ -2958,7 +2958,7 @@ func (m *SSHManager) DeleteItemContext(ctx context.Context, sessionId string, pa
 	return sftpClient.Remove(path)
 }
 
-// DeleteItemShell 用 rm -rf 删除（和 FinalShell 一致）
+// DeleteItemShell 用 rm -rf 删除
 func (m *SSHManager) DeleteItemShell(sessionId string, path string) error {
 	return m.DeleteItemShellContext(context.Background(), sessionId, path)
 }

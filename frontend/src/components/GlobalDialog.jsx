@@ -117,31 +117,70 @@ function DialogContent({ current, onClose, onConfirm, onChoice }) {
   const [inputValue, setInputValue] = useState(current.defaultValue || '');
   const [checked, setChecked] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  // confirm: 默认落在「取消」，避免回车误关连接；左右切换后回车确认
+  const [focusAction, setFocusAction] = useState(() => (
+    current.type === 'confirm' ? 'cancel' : current.type === 'choice' ? 0 : 'confirm'
+  ));
   const messageText = typeof current.message === 'string' ? current.message : String(current.message ?? '');
   const showCopyButton = current.copyable === true && !!messageText;
   const isPasswordInput = current.inputType === 'password' || !!current.checkboxLabel;
   const isLongTextAlert = current.type === 'alert' && (messageText.includes('\n') || messageText.length > 160);
+  const choiceCount = current.type === 'choice' ? (current.buttons?.length || 0) : 0;
+
+  useEffect(() => {
+    if (current.type === 'confirm') {
+      setFocusAction('cancel');
+    } else if (current.type === 'choice') {
+      const primaryIdx = current.buttons?.findIndex((btn) => btn.primary);
+      setFocusAction(primaryIdx >= 0 ? primaryIdx : 0);
+    } else {
+      setFocusAction('confirm');
+    }
+  }, [current.id, current.type]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         onClose();
-      } else if (e.key === 'Enter') {
+        return;
+      }
+
+      // confirm / choice：左右选中按钮
+      if (current.type === 'confirm' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        e.preventDefault();
+        setFocusAction((prev) => (prev === 'cancel' ? 'confirm' : 'cancel'));
+        return;
+      }
+      if (current.type === 'choice' && choiceCount > 0 && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        e.preventDefault();
+        setFocusAction((prev) => {
+          const i = typeof prev === 'number' ? prev : 0;
+          if (e.key === 'ArrowLeft') return (i - 1 + choiceCount) % choiceCount;
+          return (i + 1) % choiceCount;
+        });
+        return;
+      }
+
+      if (e.key === 'Enter') {
         const tagName = document.activeElement?.tagName;
-        if (tagName === 'BUTTON' || tagName === 'TEXTAREA') {
+        // prompt 输入框内回车 = 提交；按钮上回车走原生 click
+        if (tagName === 'TEXTAREA') {
+          return;
+        }
+        if (tagName === 'BUTTON' && current.type !== 'confirm' && current.type !== 'choice') {
           return;
         }
         e.preventDefault();
         if (current.type === 'prompt') {
           onConfirm(inputValue, checked);
         } else if (current.type === 'confirm') {
-          onConfirm(true, checked);
+          if (focusAction === 'cancel') onClose();
+          else onConfirm(true, checked);
         } else if (current.type === 'choice') {
-          const primaryBtn = current.buttons?.find(btn => btn.primary);
-          if (primaryBtn) {
-            onChoice(primaryBtn.value, checked);
-          }
+          const idx = typeof focusAction === 'number' ? focusAction : 0;
+          const btn = current.buttons?.[idx] || current.buttons?.find((b) => b.primary) || current.buttons?.[0];
+          if (btn) onChoice(btn.value, checked);
         } else {
           onClose();
         }
@@ -149,7 +188,7 @@ function DialogContent({ current, onClose, onConfirm, onChoice }) {
     };
     window.addEventListener('keydown', handleKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
-  }, [current, inputValue, checked, onClose, onConfirm, onChoice]);
+  }, [current, inputValue, checked, focusAction, choiceCount, onClose, onConfirm, onChoice]);
 
   const handleCopyMessage = async () => {
     if (!messageText) {
@@ -319,7 +358,15 @@ function DialogContent({ current, onClose, onConfirm, onChoice }) {
               key={i}
               className={btn.primary ? 'btn btn-primary' : btn.secondary ? 'btn btn-secondary' : 'btn btn-secondary'}
               onClick={() => onChoice(btn.value, checked)}
-              style={{ flex: 1, padding: '10px 0', justifyContent: 'center', whiteSpace: 'nowrap' }}
+              onMouseEnter={() => setFocusAction(i)}
+              style={{
+                flex: 1,
+                padding: '10px 0',
+                justifyContent: 'center',
+                whiteSpace: 'nowrap',
+                outline: focusAction === i ? '2px solid var(--accent)' : 'none',
+                outlineOffset: 2,
+              }}
             >
               {btn.label}
             </button>
@@ -342,7 +389,20 @@ function DialogContent({ current, onClose, onConfirm, onChoice }) {
       )}
       <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
         {current.type !== 'alert' && (
-          <button className="btn btn-secondary" onClick={onClose} style={{ flex: 1, padding: '10px 0', justifyContent: 'center' }}>{t('取消')}</button>
+          <button
+            className="btn btn-secondary"
+            onClick={onClose}
+            onMouseEnter={() => current.type === 'confirm' && setFocusAction('cancel')}
+            style={{
+              flex: 1,
+              padding: '10px 0',
+              justifyContent: 'center',
+              outline: current.type === 'confirm' && focusAction === 'cancel' ? '2px solid var(--accent)' : 'none',
+              outlineOffset: 2,
+            }}
+          >
+            {t('取消')}
+          </button>
         )}
         <button
           className="btn btn-primary"
@@ -351,7 +411,14 @@ function DialogContent({ current, onClose, onConfirm, onChoice }) {
             else if (current.type === 'confirm') onConfirm(true, checked);
             else onClose();
           }}
-          style={current.type === 'alert' ? { minWidth: 120, justifyContent: 'center' } : { flex: 1, padding: '10px 0', justifyContent: 'center' }}
+          onMouseEnter={() => current.type === 'confirm' && setFocusAction('confirm')}
+          style={{
+            ...(current.type === 'alert'
+              ? { minWidth: 120, justifyContent: 'center' }
+              : { flex: 1, padding: '10px 0', justifyContent: 'center' }),
+            outline: current.type === 'confirm' && focusAction === 'confirm' ? '2px solid var(--accent)' : 'none',
+            outlineOffset: 2,
+          }}
         >
           {current.type === 'alert' ? t('我知道了') : t('确定')}
         </button>

@@ -359,6 +359,14 @@ function buildWrappedMultiLineCommand(command) {
   return `bash <<'${marker}'\n${source}\n${marker}\n`
 }
 
+/** 粘贴到终端：统一成单个 \\r 换行，避免 Windows \\r\\n 把 \\ 续行拆成空行/多条命令 */
+function normalizeTerminalPasteText(text) {
+  return String(text ?? '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\n/g, '\r')
+}
+
 // 命令栏按钮样式辅助函数
 const btnStyle = (color) => ({
   border: '1px solid var(--border)',
@@ -692,6 +700,7 @@ export default function Terminal({
     const fontSize = parseInt(localStorage.getItem('terminalFontSize') || '13', 10);
 
     const term = new XTerm({
+      // background 保持透明，让底层主题色 + 壁纸透出来
       theme:            T.xterm,
       fontFamily:       getResolvedProgramFontPreferences().terminalFontFamily,
       fontSize:         fontSize,
@@ -921,8 +930,9 @@ export default function Terminal({
         e.preventDefault();
         navigator.clipboard.readText().then((text) => {
           if (text && wsRef.current?.readyState === WebSocket.OPEN) {
-            pendingCmdRef.current += text.replace(/[\x00-\x1F\x7F]/g, '');
-            wsRef.current.send(textEncoder.encode(text));
+            const payload = normalizeTerminalPasteText(text);
+            pendingCmdRef.current += payload.replace(/[\x00-\x1F\x7F]/g, '');
+            wsRef.current.send(textEncoder.encode(payload));
           }
         }).catch((err) => {
           console.error('Clipboard read failed:', err);
@@ -1126,18 +1136,33 @@ export default function Terminal({
         return;
       }
 
+      // 粘贴等多字符输入：把 \\r\\n / \\n 收成单个 \\r，保证 bash 的 \\ 续行不断
+      let out = data;
+      if (out.length > 1 && /[\r\n]/.test(out)) {
+        out = normalizeTerminalPasteText(out);
+      }
+
       if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(textEncoder.encode(data));
+        wsRef.current.send(textEncoder.encode(out));
       }
 
       // ── 命令记录：回车时优先用逐字符累加的命令（用户真实输入），
       // 累加为空才 fallback 到 xterm buffer（方向键调历史 / Tab 补全 / 粘贴）。
       // ponytail: buffer 提取用 $/# 切提示符，交互脚本输出也含 $ 导致误抓整行，
       // 优先用 pendingCmdRef 可排除 y/1/3 等单字符脚本应答。
-      if (data.includes('\r') || data.includes('\n')) {
-        const nlIdx = data.search(/[\r\n]/);
-        if (nlIdx > 0) {
-          pendingCmdRef.current += data.slice(0, nlIdx).replace(/[\x00-\x1F\x7F]/g, '');
+      if (out.includes('\r') || out.includes('\n')) {
+        // 多行粘贴：只把最后一行之前的可见内容并入历史，避免把整段 paste 拆烂
+        const lines = out.split(/\r/).filter((line, i, arr) => i < arr.length - 1 || line.length > 0);
+        if (lines.length > 1) {
+          for (const line of lines) {
+            const piece = line.replace(/[\x00-\x1F\x7F]/g, '');
+            if (piece) pendingCmdRef.current += (pendingCmdRef.current ? ' ' : '') + piece;
+          }
+        } else {
+          const nlIdx = out.search(/[\r\n]/);
+          if (nlIdx > 0) {
+            pendingCmdRef.current += out.slice(0, nlIdx).replace(/[\x00-\x1F\x7F]/g, '');
+          }
         }
         let cmd = pendingCmdRef.current.trim();
         if (!cmd) {
@@ -1158,11 +1183,11 @@ export default function Terminal({
         }
         awaitingPasswordRef.current = false;
         pendingCmdRef.current = '';
-      } else if (data === '\x7F' || data === '\b') {
+      } else if (out === '\x7F' || out === '\b') {
         pendingCmdRef.current = pendingCmdRef.current.slice(0, -1);
-      } else if (!/[\x00-\x1F\x7F]/.test(data)) {
-        pendingCmdRef.current += data;
-      } else if (data === '\x03' || data === '\x04') {
+      } else if (!/[\x00-\x1F\x7F]/.test(out)) {
+        pendingCmdRef.current += out;
+      } else if (out === '\x03' || out === '\x04') {
         pendingCmdRef.current = '';
         awaitingPasswordRef.current = false; // Ctrl+C/D 取消当前输入，重置密码等待状态，避免下一条普通命令被误跳过
       }
@@ -1170,23 +1195,23 @@ export default function Terminal({
       // Local Echo 逻辑 (恢复默认开启)
       if (localEchoRef.current) {
         // 如果输入中不包含控制字符（如方向键、Esc、退格等），则视作常规可见输入（支持多字符连击或粘贴）
-        if (!/[\x00-\x1F\x7F]/.test(data)) {
+        if (!/[\x00-\x1F\x7F]/.test(out)) {
           // 由于 JavaScript 中部分多字节字符的 length 表现，这里按照字符串常规长度累加是安全的。
           // 因为退格也是按字符来删的。
-          localInputLength += data.length;
-          for (let i = 0; i < data.length; i++) {
-            pendingEchoes.push(data[i]);
+          localInputLength += out.length;
+          for (let i = 0; i < out.length; i++) {
+            pendingEchoes.push(out[i]);
           }
-          term.write(data);
-        } else if (data === '\x7F') { // Backspace
+          term.write(out);
+        } else if (out === '\x7F') { // Backspace
           // 仅当我们确信这是用户刚刚输入的字符时，才在本地执行退格预测。
           // 否则（localInputLength <= 0），将退格完全交还给服务器，保护提示符不被删除。
           if (localInputLength > 0) {
             localInputLength--;
-            pendingEchoes.push(data);
+            pendingEchoes.push(out);
             term.write('\b \b'); // 本地立即执行退格效果
           }
-        } else if (data === '\r' || data === '\n' || data === '\r\n') {
+        } else if (out === '\r' || out === '\n' || out === '\r\n' || (out.length > 1 && /[\r\n]/.test(out))) {
           localInputLength = 0;
         } else {
           // 遇到方向键、Ctrl快捷键（如 Ctrl+C/D/Z）等控制符，
@@ -1355,16 +1380,24 @@ export default function Terminal({
 
   // T 更新后同步 xterm 主题 + 容器 CSS 变量
   useEffect(() => {
-    if (termRef.current) {
-      termRef.current.options.theme = T.xterm;
+    const term = termRef.current;
+    if (term) {
+      // xterm 背景保持透明，底色由 wrapper(--term-container-bg) 提供，壁纸才能叠在上面
+      term.options.theme = T.xterm;
       // ponytail: 透明背景下自动对比度补偿以 #000 为背景计算，浅色主题反杀文字亮度，深色可正常增强
-      termRef.current.options.minimumContrastRatio = getAppThemeMode() === 'light' ? 0 : 3;
+      term.options.minimumContrastRatio = getAppThemeMode() === 'light' ? 0 : 3;
+      // 强制重绘已有缓冲，否则 ANSI 色板切换后旧行不更新
+      try {
+        const rows = Math.max(0, (term.rows || 1) - 1);
+        term.refresh(0, rows);
+      } catch (_) {}
     }
     // ponytail: container 颜色走 CSS 变量，JSX 中不再直接引用 T.container
     const el = wrapperRef.current;
     if (el) {
       const c = T.container;
       el.style.setProperty('--term-container-bg', c.containerBg);
+      el.style.setProperty('--term-tint', c.tint || 'transparent');
       el.style.setProperty('--term-status-bg', c.statusBarBg);
       el.style.setProperty('--term-status-border', c.statusBarBorder);
       el.style.setProperty('--term-status-color', c.statusBarColor);
@@ -1588,8 +1621,9 @@ export default function Terminal({
       case 'paste':
         navigator.clipboard.readText().then(text => {
           if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            pendingCmdRef.current += text.replace(/[\x00-\x1F\x7F]/g, '');
-            wsRef.current.send(textEncoder.encode(text));
+            const payload = normalizeTerminalPasteText(text);
+            pendingCmdRef.current += payload.replace(/[\x00-\x1F\x7F]/g, '');
+            wsRef.current.send(textEncoder.encode(payload));
           }
           termRef.current.focus();
         }).catch(err => {
@@ -2142,20 +2176,29 @@ export default function Terminal({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        background: bgInfo.image ? 'transparent' : 'var(--term-container-bg)',
+        // 主题底色 + 色调层；壁纸半透明叠在上面
+        background: 'var(--term-container-bg)',
         overflow: 'hidden',
       }}
     >
-      {/* 底层壁纸 */}
+      {/* 主题色调层：深色下拉开 Lumin/Tokyo/Catppuccin/Dracula 差异 */}
+      <div style={{
+        position: 'absolute',
+        inset: 0,
+        background: 'var(--term-tint, transparent)',
+        pointerEvents: 'none',
+        zIndex: Z.BG,
+      }} />
+      {/* 壁纸层：正常叠加，保留质感 */}
       <div style={{
         position: 'absolute',
         inset: 0,
         backgroundImage: `url(${bgInfo.image || defaultTermBg})`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
-        opacity: bgInfo.opacity,
+        opacity: Number.isFinite(bgInfo.opacity) ? bgInfo.opacity : 0.15,
         pointerEvents: 'none',
-        zIndex: Z.BG
+        zIndex: Z.BG,
       }} />
       
       {/* 内容层（置于背景之上) */}

@@ -826,7 +826,7 @@ func (a *App) DeleteItem(sessionId string, path string, isDir bool) error {
 	return a.sshManager.DeleteItem(sessionId, path, isDir)
 }
 
-// DeleteItemShell 用 rm -rf 删除（和 FinalShell 一致）
+// DeleteItemShell 用 rm -rf 删除
 func (a *App) DeleteItemShell(sessionId string, path string) error {
 	return a.sshManager.DeleteItemShell(sessionId, path)
 }

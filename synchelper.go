@@ -36,6 +36,12 @@ type RemoteStorage interface {
 	DeleteFile(name string) error
 }
 
+// remoteDirEnsurer 可选：远端根目录被删除时，可主动重建后再同步。
+// WebDAV/SFTP/FTP 支持；R2 等对象存储通常不需要。
+type remoteDirEnsurer interface {
+	EnsureRemoteDir() error
+}
+
 // maxBackupsProvider 是可选接口：后端若实现 MaxBackups()，syncFromProvider 在
 // 同步后触发备份时会使用该值清理旧备份。未实现者（如 webdavStorage）保持原行为（不清理）。
 type maxBackupsProvider interface {
@@ -2400,11 +2406,27 @@ func (c *ConfigManager) AutoSync() {
 
 // RetrySync 前端手动重试同步，返回错误信息供前端展示
 func (c *ConfigManager) RetrySync() string {
+	return c.retrySync(false)
+}
+
+// EnsureRemoteDirAndRetrySync 先尝试重建远端同步目录，再重试同步。
+// 用于「远程目录 404/被删除」场景；返回空字符串表示成功。
+func (c *ConfigManager) EnsureRemoteDirAndRetrySync() string {
+	return c.retrySync(true)
+}
+
+func (c *ConfigManager) retrySync(ensureDir bool) string {
 	providers, failures := c.getSyncProviders()
 	if c.GetSyncMode() == "all" {
 		if err := providerFailuresError(failures); err != nil {
 			closeProviders(providers)
 			return err.Error()
+		}
+		if ensureDir {
+			if err := ensureProvidersRemoteDirs(providers); err != nil {
+				closeProviders(providers)
+				return err.Error()
+			}
 		}
 		_, err := c.syncAllProviders(providers, c.GetRecoveryPassword())
 		if err != nil {
@@ -2421,6 +2443,14 @@ func (c *ConfigManager) RetrySync() string {
 			if cl, ok := p.storage.(storageCloser); ok {
 				defer cl.Close()
 			}
+			if ensureDir {
+				if ensurer, ok := p.storage.(remoteDirEnsurer); ok {
+					if err := ensurer.EnsureRemoteDir(); err != nil {
+						errs = append(errs, fmt.Sprintf("%s: 重建远程目录失败: %v", p.provider, err))
+						return
+					}
+				}
+			}
 			if err := c.autoSyncProvider(p.storage, p.maxBackups, p.provider); err != nil {
 				errs = append(errs, fmt.Sprintf("%T: %v", p.storage, err))
 			}
@@ -2430,6 +2460,23 @@ func (c *ConfigManager) RetrySync() string {
 		return strings.Join(errs, "; ")
 	}
 	return ""
+}
+
+func ensureProvidersRemoteDirs(providers []providerEntry) error {
+	var errs []string
+	for _, p := range providers {
+		ensurer, ok := p.storage.(remoteDirEnsurer)
+		if !ok {
+			continue
+		}
+		if err := ensurer.EnsureRemoteDir(); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: 重建远程目录失败: %v", p.provider, err))
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("%s", strings.Join(errs, "; "))
+	}
+	return nil
 }
 
 // cmdKey 生成去重键：名称+命令（命令相同的项视为重复）

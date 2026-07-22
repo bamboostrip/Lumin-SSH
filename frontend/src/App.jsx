@@ -5883,9 +5883,18 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                             className="panel-collapse-strip panel-collapse-strip-horizontal panel-collapse-strip-bottom no-drag"
                             onClick={() => setFileManagerCollapsedPersistent(false)}
                             aria-label={t('展开文件管理面板')}
-                            style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: Z.PANEL_BUTTON + 1 }}
+                            // 贴在会话区底边细条，zIndex 低于终端输入栏提示，避免挡住「历史/命令」
+                            style={{
+                              position: 'absolute',
+                              left: 0,
+                              right: 0,
+                              bottom: 0,
+                              zIndex: 1,
+                              height: 12,
+                              minHeight: 12,
+                            }}
                           >
-                            <ChevronUp size={14} />
+                            <ChevronUp size={12} />
                           </button>
                         )}
                         {shouldMountFileManager && (
@@ -6041,7 +6050,10 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
                             minHeight: 0,
                             overflow: 'hidden',
                             marginLeft: showLeftFileManager ? `${leftSplitWidth}px` : 0,
-                            marginBottom: showBottomDockPanel ? `${bottomSplitHeight}px` : 0,
+                            // 底部收起条 12px，给终端输入栏留空，避免挡「历史」按钮
+                            marginBottom: showBottomDockPanel
+                              ? `${bottomSplitHeight}px`
+                              : (showBottomCollapseStrip ? 12 : 0),
                           }}
                         >
                           <div style={{ display: (contentTab === 'terminal' || s.status !== 'connected') ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0, height: '100%', position: 'relative' }}>
@@ -6610,66 +6622,112 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
       />
 
       {/* ── 云端同步失败弹窗 ──────────────────────────── */}
-      {syncFailed && (
-        <div style={{
-          position: 'fixed', bottom: 24, right: 24, zIndex: Z.TOAST,
-          width: 380, background: 'var(--surface-raised)',
-          border: '1px solid var(--border)',
-          boxShadow: 'var(--shadow-md)',
-          borderRadius: 10, padding: '16px 20px',
-          animation: 'slideUp 0.18s ease'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-            <div style={{ fontSize: 28, lineHeight: 1 }}>⚠</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
-                {t('云端同步失败')}
-              </div>
-              <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 6 }}>
-                {syncFailed.category === 'trust'
-                  ? t('服务器身份信息已变化，请前往“设置 → 同步与云”核对后恢复同步。')
-                  : t('数据未能上传到云端，本地数据不受影响。')}
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--danger)', background: 'rgba(var(--danger-rgb), 0.08)', padding: '6px 10px', borderRadius: 8, marginBottom: 14, wordBreak: 'break-all', lineHeight: 1.5 }}>
-                {syncFailed.error}
-              </div>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button
-                  style={{ padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500, background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', transition: 'all 0.2s' }}
-                  onClick={() => setSyncFailed(null)}
-                  onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.background = 'var(--surface-hover)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.background = 'transparent'; }}
-                >
-                  {t('忽略')}
-                </button>
-                <button
-                  style={{ padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: 'var(--primary)', border: 'none', color: '#fff', cursor: 'pointer', transition: 'all 0.2s' }}
-                  onClick={async () => {
-                    if (syncFailed.category === 'trust') {
-                      setSyncFailed(null);
-                      setSettingsInitialTab('sync');
-                      setShowSettings(true);
-                      return;
-                    }
-                    const failedSync = syncFailed;
-                    setSyncFailed(null);
-                    const err = await AppGo.RetrySync();
-                    if (err) {
-                      setSyncFailed({ ...failedSync, error: err });
-                    } else {
-                      addToast(t('同步成功'), 'success', 3000);
-                    }
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
-                  onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-                >
-                  {syncFailed.category === 'trust' ? t('前往同步与云') : t('重试')}
-                </button>
+      {syncFailed && (() => {
+        const errText = String(syncFailed.error || '');
+        // 仅「远程同步目录不存在」才显示「重新创建」。
+        // DNS/网络错误（no such host、timeout、connection refused 等）即使带 PROPFIND/ReadDir 文案，也不能重建。
+        const networkOrDnsError = /no such host|lookup |dial tcp|i\/o timeout|timeout|connection refused|network is unreachable|temporary failure|Name or service not known|getaddrinfo|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|certificate|x509|tls|unauthorized|401|403|forbidden|authentication|invalid credentials/i.test(errText);
+        const looksLikeMissingRemoteDir = (
+          // 明确 HTTP 404
+          /\b404\b/.test(errText)
+          // 路径不存在类
+          || /No such file|no such file|not found|目录不存在|does not exist|is not a directory/i.test(errText)
+          // 中文/后端包装：读取远程目录失败 + 404/不存在（排除上面网络类）
+          || (/读取远程目录失败|PROPFIND/i.test(errText) && /\b404\b|No such file|not found|目录不存在|does not exist/i.test(errText))
+        );
+        const canRecreateRemoteDir = syncFailed.category !== 'trust'
+          && !networkOrDnsError
+          && looksLikeMissingRemoteDir;
+        const runRetry = async (recreateDir) => {
+          if (syncFailed.category === 'trust') {
+            setSyncFailed(null);
+            setSettingsInitialTab('sync');
+            setShowSettings(true);
+            return;
+          }
+          const failedSync = syncFailed;
+          setSyncFailed(null);
+          try {
+            const err = recreateDir
+              ? await AppGo.EnsureRemoteDirAndRetrySync()
+              : await AppGo.RetrySync();
+            if (err) {
+              setSyncFailed({ ...failedSync, error: err });
+            } else {
+              addToast(recreateDir ? t('远程目录已重建并同步成功') : t('同步成功'), 'success', 3000);
+            }
+          } catch (e) {
+            setSyncFailed({ ...failedSync, error: String(e?.message || e) });
+          }
+        };
+        return (
+          <div
+            className="sync-failed-toast"
+            style={{
+              position: 'fixed', bottom: 24, right: 24, zIndex: Z.TOAST,
+              width: 400, maxWidth: 'calc(100vw - 32px)',
+              background: 'var(--surface-raised)',
+              border: '1px solid var(--border)',
+              boxShadow: 'var(--shadow-lg, var(--shadow-md))',
+              borderRadius: 10, padding: '16px 20px',
+              animation: 'slideUp 0.18s ease',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+              <div style={{ fontSize: 28, lineHeight: 1, color: 'var(--warning)', flexShrink: 0 }} aria-hidden>⚠</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
+                  {t('云端同步失败')}
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 6 }}>
+                  {syncFailed.category === 'trust'
+                    ? t('服务器身份信息已变化，请前往“设置 → 同步与云”核对后恢复同步。')
+                    : t('数据未能上传到云端，本地数据不受影响。')}
+                </div>
+                <div style={{
+                  fontSize: 12,
+                  color: 'var(--danger)',
+                  background: 'rgba(var(--danger-rgb), 0.10)',
+                  border: '1px solid rgba(var(--danger-rgb), 0.22)',
+                  padding: '6px 10px',
+                  borderRadius: 8,
+                  marginBottom: 14,
+                  wordBreak: 'break-all',
+                  lineHeight: 1.5,
+                }}>
+                  {syncFailed.error}
+                </div>
+                <div className="sync-failed-toast-actions" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary sync-failed-btn-ignore"
+                    onClick={() => setSyncFailed(null)}
+                  >
+                    {t('忽略')}
+                  </button>
+                  {canRecreateRemoteDir && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary sync-failed-btn-ignore"
+                      title={t('在云端重建同步目录后再次同步')}
+                      onClick={() => runRetry(true)}
+                    >
+                      {t('重新创建并重试')}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-primary sync-failed-btn-retry"
+                    onClick={() => runRetry(false)}
+                  >
+                    {syncFailed.category === 'trust' ? t('前往同步与云') : t('重试')}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       <GlobalContextMenu />
 

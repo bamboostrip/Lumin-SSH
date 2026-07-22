@@ -1995,6 +1995,11 @@ func (a *App) RetrySync() string {
 	return a.configManager.RetrySync()
 }
 
+// EnsureRemoteDirAndRetrySync 先重建远端同步目录再重试同步（目录 404/被删时使用）
+func (a *App) EnsureRemoteDirAndRetrySync() string {
+	return a.configManager.EnsureRemoteDirAndRetrySync()
+}
+
 // GetQuickCommands 获取快捷命令列表
 func (a *App) GetQuickCommands() string {
 	return a.configManager.GetQuickCommands()

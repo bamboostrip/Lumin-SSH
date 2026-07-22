@@ -1541,8 +1541,8 @@ body.theme-light .batch-operation-bar {
 
 .panel-collapse-strip-horizontal {
   width: 100%;
-  height: 16px;
-  min-height: 16px;
+  height: 12px;
+  min-height: 12px;
 }
 
 .panel-collapse-strip-left {

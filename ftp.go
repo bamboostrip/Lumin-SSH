@@ -583,6 +583,14 @@ func (s *ftpStorage) Close() error {
 
 func (s *ftpStorage) MaxBackups() int { return s.maxBackups }
 
+// EnsureRemoteDir 重建 FTP 同步根目录。
+func (s *ftpStorage) EnsureRemoteDir() error {
+	if s.c == nil || s.client == nil {
+		return fmt.Errorf("FTP 未初始化")
+	}
+	return s.c.ensureFTPDir(s.client)
+}
+
 func (s *ftpStorage) ListFiles() ([]RemoteFile, error) {
 	// newFTPStorage 已切换到 remoteDir；列出当前目录可兼容不支持 MLSD/LIST 绝对路径的服务器。
 	entries, err := s.client.List("")

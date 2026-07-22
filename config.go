@@ -1490,6 +1490,25 @@ func (s *webdavStorage) ListFiles() ([]RemoteFile, error) {
 	return result, nil
 }
 
+// EnsureRemoteDir 重建 WebDAV 同步根目录（目录被删/404 时由前端「重新创建并重试」调用）。
+func (s *webdavStorage) EnsureRemoteDir() error {
+	path := strings.TrimSpace(s.remotePath)
+	if path == "" || path == "/" || path == "." {
+		return nil
+	}
+	if _, err := s.client.ReadDir(path); err == nil {
+		return nil
+	}
+	if err := s.client.MkdirAll(path, 0755); err != nil {
+		// 并发创建时可能已存在，再读一次确认
+		if _, rerr := s.client.ReadDir(path); rerr == nil {
+			return nil
+		}
+		return fmt.Errorf("创建远程目录 %s 失败: %w", path, err)
+	}
+	return nil
+}
+
 func (s *webdavStorage) ReadFile(name string) ([]byte, error) {
 	path := filepath.ToSlash(filepath.Join(s.remotePath, name))
 	return s.client.Read(path)
@@ -1499,7 +1518,9 @@ func (s *webdavStorage) WriteFile(name string, data []byte) error {
 	path := filepath.ToSlash(filepath.Join(s.remotePath, name))
 	// ensure dir exists
 	if _, err := s.client.ReadDir(s.remotePath); err != nil {
-		s.client.MkdirAll(s.remotePath, 0755)
+		if mkErr := s.client.MkdirAll(s.remotePath, 0755); mkErr != nil {
+			return fmt.Errorf("创建远程目录 %s 失败: %w", s.remotePath, mkErr)
+		}
 	}
 	return s.client.Write(path, data, 0644)
 }

@@ -441,6 +441,11 @@ func (s *sftpStorage) Close() error {
 
 func (s *sftpStorage) MaxBackups() int { return s.maxBackups }
 
+// EnsureRemoteDir 重建 SFTP 同步根目录。
+func (s *sftpStorage) EnsureRemoteDir() error {
+	return ensureSFTPDir(s.client, s.remoteDir)
+}
+
 func (s *sftpStorage) ListFiles() ([]RemoteFile, error) {
 	files, err := s.client.ReadDir(s.remoteDir)
 	if err != nil {

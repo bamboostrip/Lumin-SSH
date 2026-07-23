@@ -954,6 +954,7 @@ export default {
   "拒绝": "menolak",
   "强制继续": "Paksa untuk melanjutkan",
   "终止工具": "Alat penghentian",
+  "继续任务": "melanjutkan tugas",
   "已排队编辑": "Mengantri untuk diedit",
   "已排队重试": "Mengantri untuk mencoba lagi",
   "已排队发送": "Mengantri untuk dikirim",

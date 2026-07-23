@@ -1243,6 +1243,20 @@ func (a *App) skipCompatibleAIChatAfterResolvedTools(requestID string) {
 	a.finishAIChatRequest(strings.TrimSpace(requestID))
 }
 
+func (a *App) finishAIChatAfterTerminatedTool(requestID string) {
+	trimmedRequestID := strings.TrimSpace(requestID)
+	if a == nil || trimmedRequestID == "" {
+		return
+	}
+	a.emitAIChatRuntimePhase(trimmedRequestID, "ready")
+	a.emitAIChatEvent(map[string]interface{}{
+		"kind":      "tool_execution_terminated",
+		"requestId": trimmedRequestID,
+		"text":      "已终止当前工具，等待恢复任务",
+	})
+	a.finishAIChatRequest(trimmedRequestID)
+}
+
 func (a *App) continueCompatibleAIChatAfterResolvedTools(ctx context.Context, requestID string, batch *aiPendingToolBatch) {
 	if a == nil || batch == nil {
 		return
@@ -1618,6 +1632,10 @@ func (a *App) runAIChatGenericToolExecution(execution *aiToolExecutionState) {
 
 	if stopAfterThisTool {
 		execution.Batch.NextToolIndex = len(execution.Batch.ParsedTools)
+		if execution.isTerminated() {
+			a.finishAIChatAfterTerminatedTool(execution.RequestID)
+			return
+		}
 		a.resumeAIChatAfterToolBatch(execution.RequestID, execution.Batch)
 		return
 	}
@@ -1732,6 +1750,10 @@ func (a *App) runAIChatLiveSearchToolExecution(execution *aiToolExecutionState) 
 
 	if stopAfterThisTool {
 		execution.Batch.NextToolIndex = len(execution.Batch.ParsedTools)
+		if execution.isTerminated() {
+			a.finishAIChatAfterTerminatedTool(execution.RequestID)
+			return
+		}
 		a.resumeAIChatAfterToolBatch(execution.RequestID, execution.Batch)
 		return
 	}
@@ -1914,6 +1936,10 @@ func (a *App) runAIChatCommandToolExecution(execution *aiToolExecutionState) {
 
 	if stopAfterThisTool {
 		execution.Batch.NextToolIndex = len(execution.Batch.ParsedTools)
+		if execution.isTerminated() {
+			a.finishAIChatAfterTerminatedTool(execution.RequestID)
+			return
+		}
 		a.resumeAIChatAfterToolBatch(execution.RequestID, execution.Batch)
 		return
 	}
@@ -2062,8 +2088,7 @@ func (a *App) terminateAIChatToolExecutionImmediately(execution *aiToolExecution
 
 	a.emitAIChatToolResultMessage(execution.RequestID, execution, resultText)
 	a.emitAIChatToolExecutionPersistRequested(execution.RequestID)
-	execution.Batch.NextToolIndex = len(execution.Batch.ParsedTools)
-	a.resumeAIChatAfterToolBatch(execution.RequestID, execution.Batch)
+	a.finishAIChatAfterTerminatedTool(execution.RequestID)
 	return nil
 }
 

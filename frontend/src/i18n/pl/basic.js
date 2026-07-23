@@ -954,6 +954,7 @@ export default {
   "拒绝": "odrzucić",
   "强制继续": "Zmuszaj do kontynuowania",
   "终止工具": "Narzędzie do zakończenia",
+  "继续任务": "kontynuować zadanie",
   "已排队编辑": "W kolejce do edycji",
   "已排队重试": "W kolejce do ponownej próby",
   "已排队发送": "W kolejce do wysłania",

@@ -954,6 +954,7 @@ export default {
   "拒绝": "từ chối",
   "强制继续": "Buộc phải tiếp tục",
   "终止工具": "Công cụ chấm dứt",
+  "继续任务": "tiếp tục nhiệm vụ",
   "已排队编辑": "Xếp hàng chờ chỉnh sửa",
   "已排队重试": "Xếp hàng để thử lại",
   "已排队发送": "Xếp hàng để gửi",

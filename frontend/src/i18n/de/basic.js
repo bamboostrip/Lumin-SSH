@@ -954,6 +954,7 @@ export default {
   "拒绝": "ablehnen",
   "强制继续": "Erzwinge, weiterzumachen",
   "终止工具": "Terminierungstool",
+  "继续任务": "Aufgabe fortsetzen",
   "已排队编辑": "Zur Bearbeitung in der Warteschlange",
   "已排队重试": "In der Warteschlange für einen erneuten Versuch",
   "已排队发送": "In der Warteschlange zum Senden",

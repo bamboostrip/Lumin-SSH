@@ -184,6 +184,7 @@ function createEmptyPanelState() {
     isFlushingQueuedSubmission: false,
     skipNextAutomaticRequest: false,
     resumeAfterCancelRequestId: '',
+    recoverableToolStopReason: '',
     contextTokens: 0,
     isCondensingContext: false,
     activeChangeReview: null,
@@ -1023,6 +1024,45 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   const collaborationActive = Boolean(panelState.collaborationActive)
   const collaborationFollowupInteractionLocked = collaborationLocked && collaborationActive && panelState.collaborationMode === 'followup'
   const showAssistantCollaborationActiveImage = collaborationActive && Boolean(activeConversation)
+  const lastAssistantTurnId = useMemo(() => {
+    const messages = Array.isArray(panelState.messages) ? panelState.messages : []
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index]
+      const kind = typeof message?.kind === 'string' ? message.kind.trim() : ''
+      if (kind !== 'assistant') {
+        continue
+      }
+      const turnId = typeof message?.turnId === 'string' ? message.turnId.trim() : ''
+      const messageId = typeof message?.id === 'string' ? message.id.trim() : ''
+      return turnId || messageId
+    }
+    return ''
+  }, [panelState.messages])
+  const lastBusinessMessageKind = useMemo(() => {
+    if (!lastAssistantTurnId) {
+      return ''
+    }
+    const messages = Array.isArray(panelState.messages) ? panelState.messages : []
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index]
+      const turnId = typeof message?.turnId === 'string' ? message.turnId.trim() : ''
+      if (turnId !== lastAssistantTurnId) {
+        continue
+      }
+      const kind = typeof message?.kind === 'string' ? message.kind.trim() : ''
+      if (!kind || kind === 'assistant' || kind === 'reasoning') {
+        continue
+      }
+      return kind
+    }
+    return ''
+  }, [lastAssistantTurnId, panelState.messages])
+  const toolResumeAvailable = Boolean(activeConversation)
+    && panelState.requestPhase === 'idle'
+    && runtimePhase === 'ready'
+    && !panelState.queuedSubmission
+    && !panelState.isFlushingQueuedSubmission
+    && (!lastBusinessMessageKind || (lastBusinessMessageKind !== 'completion' && lastBusinessMessageKind !== 'followup'))
   const playAISound = useCallback((type) => {
     if (normalizedGlobalAISettings.soundEnabled === false) {
       return
@@ -2049,11 +2089,43 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       }
 
       if (payload.kind === 'tool_execution_terminated') {
-        setPanelState(matchedPanelKey, (current) => ({
-          ...current,
-          activeToolExecution: null,
-          requestPhase: 'idle',
-        }))
+        let nextConversation = null
+        setPanelState(matchedPanelKey, (current) => {
+          nextConversation = current.conversation
+            ? {
+                ...current.conversation,
+                updatedAt: Date.now(),
+                status: 'idle',
+                messages: Array.isArray(current.messages) ? [...current.messages] : [],
+                apiMessages: Array.isArray(current.apiMessages) ? [...current.apiMessages] : [],
+              }
+            : null
+          return {
+            ...current,
+            activeRequestId: '',
+            activeAssistantMessageId: '',
+            activeToolExecution: null,
+            requestPhase: 'idle',
+            toolApprovalMode: '',
+            runtimePhase: 'ready',
+            skipNextAutomaticRequest: false,
+            resumeAfterCancelRequestId: '',
+            activeChangeReview: null,
+            conversation: nextConversation || current.conversation,
+            messages: nextConversation ? nextConversation.messages : current.messages,
+            apiMessages: nextConversation ? nextConversation.apiMessages : current.apiMessages,
+            recoverableToolStopReason: 'terminated',
+            collaborationLocked: false,
+            collaborationActive: false,
+            collaborationMode: '',
+            collaborationStreamBuffer: '',
+            collaborationAwaitingManualFollowup: false,
+            collaborationFollowupRequestId: '',
+          }
+        })
+        if (nextConversation) {
+          void saveConversationSnapshot(nextConversation, matchedPanelKey)
+        }
         return
       }
 
@@ -2105,6 +2177,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
             conversation: nextConversation || current.conversation,
             messages: nextMessages,
             activeToolExecution: null,
+            recoverableToolStopReason: 'rejected',
             collaborationLocked: false,
             collaborationActive: false,
             collaborationMode: '',
@@ -2152,6 +2225,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
             skipNextAutomaticRequest: false,
             activeChangeReview: null,
             conversation: nextConversation || current.conversation,
+            recoverableToolStopReason: '',
             collaborationLocked: shouldKeepCollaborationLock,
             collaborationActive: false,
             collaborationMode: '',
@@ -2304,6 +2378,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
           conversation: nextConversation,
           messages: nextMessages,
           apiMessages: nextConversation.apiMessages,
+          recoverableToolStopReason: '',
           collaborationLocked: false,
           collaborationActive: false,
           collaborationMode: '',
@@ -2359,6 +2434,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
           conversation: nextConversation,
           messages: nextMessages,
           apiMessages: matchedPanel.apiMessages,
+          recoverableToolStopReason: '',
           collaborationLocked: false,
           collaborationActive: false,
           collaborationMode: '',
@@ -2403,6 +2479,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
           conversation: nextConversation,
           messages: nextMessages,
           apiMessages: matchedPanel.apiMessages,
+          recoverableToolStopReason: '',
           collaborationLocked: false,
           collaborationActive: false,
           collaborationMode: '',
@@ -2578,6 +2655,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       isFlushingQueuedSubmission: false,
       skipNextAutomaticRequest: false,
       resumeAfterCancelRequestId: '',
+      recoverableToolStopReason: '',
       contextTokens: 0,
       isCondensingContext: false,
       activeChangeReview: null,
@@ -2640,6 +2718,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       isFlushingQueuedSubmission: false,
       skipNextAutomaticRequest: false,
       resumeAfterCancelRequestId: '',
+      recoverableToolStopReason: '',
       contextTokens: 0,
       isCondensingContext: false,
       activeChangeReview: null,
@@ -2683,6 +2762,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       isFlushingQueuedSubmission: false,
       skipNextAutomaticRequest: false,
       resumeAfterCancelRequestId: '',
+      recoverableToolStopReason: '',
       contextTokens: 0,
       isCondensingContext: false,
       activeChangeReview: null,
@@ -3230,6 +3310,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       activeRequestId: requestId,
       activeAssistantMessageId: requestId,
       activeToolExecution: null,
+      recoverableToolStopReason: '',
       requestPhase: 'streaming',
       runtimePhase: 'api_request',
       collaborationLocked: shouldLockAssistantCollaboration,
@@ -3299,6 +3380,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         activeRequestId: '',
         activeAssistantMessageId: '',
         activeToolExecution: null,
+        recoverableToolStopReason: '',
         requestPhase: 'idle',
         toolApprovalMode: '',
         runtimePhase: 'ready',
@@ -3437,6 +3519,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       isFlushingQueuedSubmission: false,
       skipNextAutomaticRequest: false,
       resumeAfterCancelRequestId: '',
+      recoverableToolStopReason: '',
       activeChangeReview: null,
       collaborationLocked: shouldLockAssistantCollaboration,
       collaborationActive: false,
@@ -3501,6 +3584,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         isFlushingQueuedSubmission: false,
         skipNextAutomaticRequest: false,
         resumeAfterCancelRequestId: '',
+        recoverableToolStopReason: '',
         activeChangeReview: null,
         collaborationLocked: false,
         collaborationActive: false,
@@ -3679,6 +3763,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       activeRequestId: requestId,
       activeAssistantMessageId: requestId,
       activeToolExecution: null,
+      recoverableToolStopReason: '',
       requestPhase: 'streaming',
       runtimePhase: 'api_request',
       collaborationLocked: shouldLockAssistantCollaboration,
@@ -3742,6 +3827,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         activeRequestId: '',
         activeAssistantMessageId: '',
         activeToolExecution: null,
+        recoverableToolStopReason: '',
         requestPhase: 'idle',
         toolApprovalMode: '',
         runtimePhase: 'ready',
@@ -3797,6 +3883,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       isFlushingQueuedSubmission: false,
       skipNextAutomaticRequest: false,
       resumeAfterCancelRequestId: '',
+      recoverableToolStopReason: '',
       collaborationLocked: false,
       collaborationActive: false,
       collaborationMode: '',
@@ -3840,7 +3927,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     }
   }, [activeConversation, panelInstanceKey, panelState.isCondensingContext, rebuildAIConversationTokenLedger, runtimePhase, setPanelState, terminalId])
 
-  const resumeAIChatFromConversation = useCallback(async (conversationSnapshot, targetPanelKey = panelInstanceKey) => {
+  const resumeAIChatFromConversation = useCallback(async (conversationSnapshot, targetPanelKey = panelInstanceKey, recoverableToolStopReason = '') => {
     if (!conversationSnapshot || !effectiveProviderId) {
       return false
     }
@@ -3892,6 +3979,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       isFlushingQueuedSubmission: false,
       skipNextAutomaticRequest: false,
       resumeAfterCancelRequestId: '',
+      recoverableToolStopReason: '',
       collaborationLocked: shouldLockAssistantCollaboration,
       collaborationActive: false,
       collaborationMode: '',
@@ -3957,6 +4045,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         isFlushingQueuedSubmission: false,
         skipNextAutomaticRequest: false,
         resumeAfterCancelRequestId: '',
+        recoverableToolStopReason,
         activeChangeReview: null,
         collaborationLocked: false,
         collaborationActive: false,
@@ -3995,6 +4084,16 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       }))
     }
   }, [activeConversation, panelInstanceKey, panelState.activeRequestId, setPanelState])
+
+  const handleResumeTask = useCallback(async () => {
+    const currentPanel = terminalPanelsRef.current[panelInstanceKey] || null
+    const conversationSnapshot = currentPanel?.conversation || activeConversation
+    const recoverableToolStopReason = typeof currentPanel?.recoverableToolStopReason === 'string' ? currentPanel.recoverableToolStopReason : ''
+    if (!conversationSnapshot) {
+      return false
+    }
+    return resumeAIChatFromConversation(conversationSnapshot, panelInstanceKey, recoverableToolStopReason)
+  }, [activeConversation, panelInstanceKey, resumeAIChatFromConversation])
 
   const handleApproveTools = useCallback(async () => {
     if (!panelState.activeRequestId) {
@@ -4692,6 +4791,8 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
             reasoningText: panelState.collaborationStatusReasoningText,
           } : null}
           terminalAssignmentRequired={isAwaitingTerminalAssignment}
+          toolResumeAvailable={toolResumeAvailable}
+          onResumeTask={handleResumeTask}
           onListCommandTerminalCandidates={handleListCommandTerminalCandidates}
           onAssignToolTerminal={handleAssignToolTerminal}
           onCancelQueuedSubmission={handleCancelQueuedSubmission}

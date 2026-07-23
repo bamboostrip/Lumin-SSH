@@ -1,4 +1,4 @@
-import { Check, ChevronUp, ChevronsUpDown, ImagePlus, ListEnd, Monitor, SendHorizonal, Square, X } from 'lucide-react'
+import { Check, ChevronUp, ChevronsUpDown, ImagePlus, ListEnd, Monitor, Play, SendHorizonal, Square, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as AppGo from '../../../wailsjs/go/main/App.js'
 import { ClipboardGetText } from '../../../wailsjs/runtime/runtime.js'
@@ -265,6 +265,8 @@ export default function AIComposer({
   toolRunning = false,
   commandActionRequired = false,
   terminalAssignmentRequired = false,
+  toolResumeAvailable = false,
+  onResumeTask,
   onApproveTools,
   onRejectTools,
   onContinueTool,
@@ -371,6 +373,7 @@ export default function AIComposer({
     : t('再次点击取消')
   const skipNextAutomaticRequestTitle = skipNextAutomaticRequest ? t('取消跳过下一次自动请求') : t('跳过下一次自动请求')
   const canClickQueuedSubmissionOverlay = isCollaborationBlocked ? canInterruptAssistantCollaboration : typeof onCancelQueuedSubmission === 'function'
+  const showToolResumeBar = toolResumeAvailable === true && typeof onResumeTask === 'function'
 
   const collaborationStatusAssistant = useMemo(() => {
     const startedAtMs = Number(collaborationStatus?.startedAtMs)
@@ -1225,6 +1228,20 @@ export default function AIComposer({
 
   return (
     <div style={{ flexShrink: 0, padding: 0, borderTop: '1px solid var(--border)', background: 'var(--surface-raised)' }}>
+      {showToolResumeBar ? (
+        <div
+          style={{
+            minHeight: 48,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '10px 12px',
+            borderBottom: '1px solid var(--border)',
+            background: 'var(--surface-overlay)',
+          }}>
+          <ApprovalButton icon={Play} label={t('继续任务')} onClick={onResumeTask} primary={true} fullWidth={true} />
+        </div>
+      ) : null}
       {(approvalRequired || commandActionRequired || toolRunning || terminalAssignmentRequired) ? (
         <div
           style={{

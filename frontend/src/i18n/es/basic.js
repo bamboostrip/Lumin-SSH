@@ -954,6 +954,7 @@ export default {
   "拒绝": "rechazar",
   "强制继续": "Fuerza para continuar",
   "终止工具": "herramienta de terminación",
+  "继续任务": "continuar tarea",
   "已排队编辑": "En cola para editar",
   "已排队重试": "En cola para volver a intentarlo",
   "已排队发送": "En cola para enviar",

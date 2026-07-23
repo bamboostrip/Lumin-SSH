@@ -6,6 +6,7 @@ import MCPServersView from './MCPServersView.jsx'
 import AISlashCommandsSettings from './AISlashCommandsSettings.jsx'
 import AIConversationBackupSettings from './AIConversationBackupSettings.jsx'
 import Tiptop from '../Tiptop.jsx'
+import { handleInputDragSelectAll } from './inputDragSelect.js'
 
 function formatTokenCountInMillions(value) {
   return `${(value / 1000000).toFixed(6)}M`
@@ -554,6 +555,7 @@ export default function AIPanelSettingsOverlay({
                           void onSaveGlobalAISettings?.({ toolResultTokenThreshold: nextValue })
                         }
                       }}
+                      onMouseLeave={handleInputDragSelectAll}
                       style={{
                         width: '100%',
                         borderRadius: 8,

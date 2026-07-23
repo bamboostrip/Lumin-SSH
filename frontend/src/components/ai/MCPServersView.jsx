@@ -2,6 +2,7 @@ import { RotateCcw, Save, Trash2, Eye, EyeOff } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from '../../i18n.js'
 import Tiptop from '../Tiptop.jsx'
+import { handleInputDragSelectAll } from './inputDragSelect.js'
 
 const defaultConfigText = '{\n  "mcpServers": {}\n}'
 
@@ -313,6 +314,7 @@ export default function MCPServersView({
                       max={3600}
                       value={String(timeoutValue)}
                       onChange={(event) => void onUpdateServerTimeout?.(server.name, server.source, parseInt(event.target.value || '0', 10) || 0)}
+                      onMouseLeave={handleInputDragSelectAll}
                       style={{
                         width: 92,
                         height: 32,

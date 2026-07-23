@@ -2,6 +2,7 @@ import { Pencil, Plus, Save, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation, t as translate } from '../../i18n.js'
 import { normalizeAISlashCommands, normalizeSlashCommandName } from './aiSlashCommands.js'
+import { handleInputDragSelectAll } from './inputDragSelect.js'
 
 function buildDraftCommands(commands) {
   return normalizeAISlashCommands(commands).map((command, index) => ({
@@ -230,6 +231,7 @@ export default function AISlashCommandsSettings({ slashCommands, onSaveGlobalAIS
               type="text"
               value={editingCommand.name}
               onChange={(event) => handlePatchEditingCommand({ name: event.target.value })}
+              onMouseLeave={handleInputDragSelectAll}
               placeholder={t('例如 summarize')}
               style={{
                 width: '100%',

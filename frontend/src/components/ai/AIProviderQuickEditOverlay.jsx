@@ -10,6 +10,7 @@ import {
   canUseDedicatedWebSearchCandidate,
   getAIProviderDefinition,
 } from './providers/index.js'
+import { handleInputDragSelectAll } from './inputDragSelect.js'
 
 const cacheOptions = [
   { value: 'model', labelKey: '基于模型能力' },
@@ -1242,6 +1243,7 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
                 value={draft.name}
                 disabled={builtinProvider}
                 onChange={(event) => setDraft((prev) => ({ ...prev, name: event.target.value }))}
+                onMouseLeave={handleInputDragSelectAll}
                 placeholder={t('输入配置名')}
                 style={{
                   height: 34,
@@ -1309,6 +1311,7 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
               value={draft.baseUrl}
               disabled={builtinProvider}
               onChange={(event) => setDraft((prev) => ({ ...prev, baseUrl: event.target.value }))}
+              onMouseLeave={handleInputDragSelectAll}
               placeholder="https://api.example.com/v1"
               style={{
                 height: 34,
@@ -1408,6 +1411,7 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
               value={draft.apiKey}
               onChange={(event) => setDraft((prev) => ({ ...prev, apiKey: event.target.value }))}
               onPaste={handleAPIKeyPaste}
+              onMouseLeave={handleInputDragSelectAll}
               placeholder={t('输入 API Key')}
               style={{
                 height: 34,
@@ -1594,6 +1598,7 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
                           <input
                             value={dedicatedProviderSearch}
                             onChange={(event) => setDedicatedProviderSearch(event.target.value)}
+                            onMouseLeave={handleInputDragSelectAll}
                             placeholder={t('搜索全局配置')}
                             style={{
                               width: '100%',
@@ -1847,6 +1852,7 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
             <input
               value={modelQuery}
               onChange={(event) => setModelQuery(event.target.value)}
+              onMouseLeave={handleInputDragSelectAll}
               placeholder={t('筛选模型或输入以指定模型')}
               style={{
                 height: 34,

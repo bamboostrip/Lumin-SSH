@@ -257,6 +257,7 @@ export default function AIComposer({
   isSending = false,
   currentProviderId,
   onCurrentProviderChange,
+  providerBalanceRefreshSignal = 0,
   persistProviderSelection = true,
   autoApprovalSettings,
   onPatchAutoApprovalSettings,
@@ -1811,6 +1812,7 @@ export default function AIComposer({
             <AIProviderSelector
               currentProviderId={currentProviderId}
               onCurrentProviderChange={onCurrentProviderChange}
+              balanceRefreshSignal={providerBalanceRefreshSignal}
               persistSelectedProviderId={persistProviderSelection}
               dismissSignal={dismissSignal}
             />

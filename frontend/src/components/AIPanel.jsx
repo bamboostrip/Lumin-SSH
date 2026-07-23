@@ -768,6 +768,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   const [composerImages, setComposerImages] = useState([])
   const [composerEditState, setComposerEditState] = useState({ mode: 'new', targetMessageId: '', targetMessageText: '' })
   const [conversationScrollSignal, setConversationScrollSignal] = useState(0)
+  const [providerBalanceRefreshSignal, setProviderBalanceRefreshSignal] = useState(0)
   const [hoveredConversationActionKey, setHoveredConversationActionKey] = useState('')
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false)
   const [globalSearchQuery, setGlobalSearchQuery] = useState('')
@@ -1822,6 +1823,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
             messages: nextMessages,
           }
         })
+        setProviderBalanceRefreshSignal((current) => current + 1)
         if (snapshotBeforeAssistantMessagePersist) {
           void saveConversationSnapshot(snapshotBeforeAssistantMessagePersist, matchedPanelKey, { hydrate: false })
         }
@@ -2436,6 +2438,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         })
 
         void saveConversationSnapshot(nextConversation, matchedPanelKey)
+        setProviderBalanceRefreshSignal((current) => current + 1)
         return
       }
 
@@ -4838,6 +4841,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
           isSending={isStreaming}
           currentProviderId={effectiveProviderId}
           onCurrentProviderChange={handleProviderChange}
+          providerBalanceRefreshSignal={providerBalanceRefreshSignal}
           terminalSessionId={terminalId}
           queueBlocked={isQueueBlocked || panelState.isFlushingQueuedSubmission}
           queuedSubmissionKind={panelState.queuedSubmission?.kind || ''}

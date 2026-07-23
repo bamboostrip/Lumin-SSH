@@ -402,6 +402,88 @@ function resolveURLOrigin(value) {
   }
 }
 
+function resolveAIProviderBaseOrigin(value) {
+  const rawBaseURL = typeof value === 'string' ? value.trim() : ''
+  if (!rawBaseURL) {
+    return ''
+  }
+  const candidates = /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(rawBaseURL) ? [rawBaseURL] : [rawBaseURL, `https://${rawBaseURL}`]
+  for (const candidate of candidates) {
+    try {
+      return new URL(candidate).origin
+    } catch {}
+  }
+  return ''
+}
+
+function isAIProviderBalanceLabelEnabled(provider) {
+  const origin = resolveAIProviderBaseOrigin(provider?.baseUrl)
+  if (!origin) {
+    return false
+  }
+  try {
+    return new URL(origin).hostname.toLowerCase() === 'newapi.callmy.vip'
+  } catch {
+    return false
+  }
+}
+
+function normalizeAIProviderBalanceValue(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value)
+  }
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim()
+  }
+  return ''
+}
+
+function stripAIProviderBalanceCurrencyPrefix(value) {
+  const normalizedValue = normalizeAIProviderBalanceValue(value)
+  if (!normalizedValue) {
+    return ''
+  }
+  return normalizedValue.replace(/^[\s$¥￥]+/, '').trim()
+}
+
+function formatAIProviderBalanceLabel(value) {
+  const normalizedValue = stripAIProviderBalanceCurrencyPrefix(value)
+  if (!normalizedValue) {
+    return '¥--'
+  }
+  return `¥${normalizedValue}`
+}
+
+function extractAIProviderBalanceValue(payload) {
+  if (typeof payload === 'string' && payload.trim()) {
+    try {
+      return extractAIProviderBalanceValue(JSON.parse(payload))
+    } catch {
+      return normalizeAIProviderBalanceValue(payload)
+    }
+  }
+  if (!payload || typeof payload !== 'object') {
+    return ''
+  }
+  const candidates = [
+    payload?.display_balance,
+    payload?.data?.display_balance,
+    payload?.user?.display_balance,
+    payload?.data?.user?.display_balance,
+    payload?.quota,
+    payload?.data?.quota,
+    payload?.user?.quota,
+    payload?.data?.user?.quota,
+  ]
+  for (const candidate of candidates) {
+    const normalizedValue = normalizeAIProviderBalanceValue(candidate)
+    if (normalizedValue) {
+      return normalizedValue
+    }
+  }
+  return ''
+}
+
 function buildEmbeddedBrowserAuthRequest(context) {
   if (!context || typeof context !== 'object') {
     return null
@@ -423,6 +505,7 @@ export default function AIProviderSelector({
   providers = defaultProviders,
   currentProviderId,
   onCurrentProviderChange,
+  balanceRefreshSignal = 0,
   persistSelectedProviderId = true,
   dismissSignal = 0,
 }) {
@@ -430,6 +513,7 @@ export default function AIProviderSelector({
   const containerRef = useRef(null)
   const iframeRef = useRef(null)
   const tooltipTimerRef = useRef(null)
+  const balanceRequestRef = useRef(0)
   const providerLabelRef = useRef(null)
   const modelLabelRef = useRef(null)
   const reasoningButtonRef = useRef(null)
@@ -451,6 +535,7 @@ export default function AIProviderSelector({
   const [tokenStoreFrameURL, setTokenStoreFrameURL] = useState('')
   const [tokenStoreViewTitle, setTokenStoreViewTitle] = useState('')
   const [embeddedBrowserContext, setEmbeddedBrowserContext] = useState(null)
+  const [providerBalanceLabel, setProviderBalanceLabel] = useState('')
   const [quickModelOptions, setQuickModelOptions] = useState([])
   const [quickModelLoading, setQuickModelLoading] = useState(false)
   const [quickModelError, setQuickModelError] = useState('')
@@ -528,6 +613,8 @@ export default function AIProviderSelector({
       currentLabel: getReasoningEffortLabel(t, currentValue) || t('无'),
     }
   }, [selectedProvider, t])
+  const providerBalanceLabelEnabled = isAIProviderBalanceLabelEnabled(selectedProvider)
+  const providerTriggerText = providerBalanceLabelEnabled ? (providerBalanceLabel || '¥ --') : (selectedProvider?.name || t('选择供应商'))
   const providerSummaryRows = [
     { label: t('供应商'), value: selectedProvider?.name || t('选择供应商') },
     { label: t('模型'), value: getProviderModelSummary(t, selectedProvider) },
@@ -537,7 +624,7 @@ export default function AIProviderSelector({
   ]
 
   const updateAdaptiveLabelFontSizes = useCallback(() => {
-    const providerText = selectedProvider?.name || t('选择供应商')
+    const providerText = providerTriggerText
     const modelText = quickModelConfig.visible ? quickModelConfig.currentLabel : ''
     const providerFontFamily = providerLabelRef.current
       ? (window.getComputedStyle(providerLabelRef.current).fontFamily || 'sans-serif')
@@ -562,7 +649,7 @@ export default function AIProviderSelector({
     setModelLabelFontSize(layout.modelFontSize)
     setProviderTriggerWidth(layout.providerWidth)
     setModelTriggerWidth(layout.modelWidth)
-  }, [quickModelConfig.currentLabel, quickModelConfig.visible, quickReasoningConfig.visible, selectedProvider?.name, t])
+  }, [providerTriggerText, quickModelConfig.currentLabel, quickModelConfig.visible, quickReasoningConfig.visible])
 
   const closeTooltip = useCallback(() => {
     if (tooltipTimerRef.current) {
@@ -709,7 +796,7 @@ export default function AIProviderSelector({
       updateAdaptiveLabelFontSizes()
     })
     return () => window.cancelAnimationFrame(frameId)
-  }, [selectedProvider?.name, quickModelConfig.currentLabel, quickReasoningConfig.currentLabel, updateAdaptiveLabelFontSizes])
+  }, [providerTriggerText, quickModelConfig.currentLabel, quickReasoningConfig.currentLabel, updateAdaptiveLabelFontSizes])
 
   useLayoutEffect(() => {
     const availableWidth = resolveAdaptiveSelectorAvailableWidth(containerRef.current)
@@ -759,8 +846,55 @@ export default function AIProviderSelector({
     quickModelConfig.currentLabel,
     quickModelConfig.visible,
     quickReasoningConfig.visible,
-    selectedProvider?.name,
+    providerTriggerText,
   ])
+
+  useEffect(() => {
+    if (!selectedProvider || !providerBalanceLabelEnabled) {
+      setProviderBalanceLabel('')
+      return undefined
+    }
+    const origin = resolveAIProviderBaseOrigin(selectedProvider.baseUrl)
+    const apiKey = typeof selectedProvider.apiKey === 'string' ? selectedProvider.apiKey.trim() : ''
+    if (!origin || !apiKey) {
+      setProviderBalanceLabel('¥ --')
+      return undefined
+    }
+    const requestId = balanceRequestRef.current + 1
+    balanceRequestRef.current = requestId
+    const controller = new AbortController()
+    setProviderBalanceLabel('¥ --')
+    void fetch(`${origin}/api/usage/token/user-balance?apikey=${encodeURIComponent(apiKey)}`, {
+      method: 'GET',
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`)
+        }
+        const contentType = typeof response.headers?.get === 'function' ? response.headers.get('content-type') || '' : ''
+        if (contentType.toLowerCase().includes('application/json')) {
+          return response.json()
+        }
+        return response.text()
+      })
+      .then((payload) => {
+        if (balanceRequestRef.current !== requestId) {
+          return
+        }
+        const balanceValue = extractAIProviderBalanceValue(payload)
+        setProviderBalanceLabel(formatAIProviderBalanceLabel(balanceValue))
+      })
+      .catch(() => {
+        if (balanceRequestRef.current !== requestId) {
+          return
+        }
+        setProviderBalanceLabel('¥ --')
+      })
+    return () => {
+      controller.abort()
+    }
+  }, [balanceRefreshSignal, providerBalanceLabelEnabled, selectedProvider?.apiKey, selectedProvider?.baseUrl, selectedProvider?.id])
 
   useEffect(() => () => closeTooltip(), [closeTooltip])
 
@@ -1428,7 +1562,7 @@ export default function AIProviderSelector({
                 lineHeight: 1.2,
               }}
             >
-              {selectedProvider?.name || t('选择供应商')}
+              {providerTriggerText}
             </span>
           </button>
           {quickModelConfig.visible ? (

@@ -5,6 +5,25 @@ import Tiptop from '../Tiptop.jsx'
 
 const defaultConfigText = '{\n  "mcpServers": {}\n}'
 
+function handleInputDragSelectAll(event) {
+  if (event.buttons === 1) {
+    const input = event.currentTarget || event.target
+    if (input) {
+      input.select()
+      const originalPointerEvents = input.style.pointerEvents
+      input.style.pointerEvents = 'none'
+
+      const handleGlobalMouseUp = () => {
+        input.style.pointerEvents = originalPointerEvents
+        window.removeEventListener('mouseup', handleGlobalMouseUp)
+        window.removeEventListener('blur', handleGlobalMouseUp)
+      }
+      window.addEventListener('mouseup', handleGlobalMouseUp)
+      window.addEventListener('blur', handleGlobalMouseUp)
+    }
+  }
+}
+
 function ToggleSwitch({ checked, onChange, disabled = false }) {
   return (
     <button
@@ -313,6 +332,7 @@ export default function MCPServersView({
                       max={3600}
                       value={String(timeoutValue)}
                       onChange={(event) => void onUpdateServerTimeout?.(server.name, server.source, parseInt(event.target.value || '0', 10) || 0)}
+                      onMouseLeave={handleInputDragSelectAll}
                       style={{
                         width: 92,
                         height: 32,

@@ -3,6 +3,25 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation, t as translate } from '../../i18n.js'
 import { normalizeAISlashCommands, normalizeSlashCommandName } from './aiSlashCommands.js'
 
+function handleInputDragSelectAll(event) {
+  if (event.buttons === 1) {
+    const input = event.currentTarget || event.target
+    if (input) {
+      input.select()
+      const originalPointerEvents = input.style.pointerEvents
+      input.style.pointerEvents = 'none'
+
+      const handleGlobalMouseUp = () => {
+        input.style.pointerEvents = originalPointerEvents
+        window.removeEventListener('mouseup', handleGlobalMouseUp)
+        window.removeEventListener('blur', handleGlobalMouseUp)
+      }
+      window.addEventListener('mouseup', handleGlobalMouseUp)
+      window.addEventListener('blur', handleGlobalMouseUp)
+    }
+  }
+}
+
 function buildDraftCommands(commands) {
   return normalizeAISlashCommands(commands).map((command, index) => ({
     id: `slash-${index}-${command.name}`,
@@ -230,6 +249,7 @@ export default function AISlashCommandsSettings({ slashCommands, onSaveGlobalAIS
               type="text"
               value={editingCommand.name}
               onChange={(event) => handlePatchEditingCommand({ name: event.target.value })}
+              onMouseLeave={handleInputDragSelectAll}
               placeholder={t('例如 summarize')}
               style={{
                 width: '100%',

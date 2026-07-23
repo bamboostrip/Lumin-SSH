@@ -7,6 +7,25 @@ import AISlashCommandsSettings from './AISlashCommandsSettings.jsx'
 import AIConversationBackupSettings from './AIConversationBackupSettings.jsx'
 import Tiptop from '../Tiptop.jsx'
 
+function handleInputDragSelectAll(event) {
+  if (event.buttons === 1) {
+    const input = event.currentTarget || event.target
+    if (input) {
+      input.select()
+      const originalPointerEvents = input.style.pointerEvents
+      input.style.pointerEvents = 'none'
+
+      const handleGlobalMouseUp = () => {
+        input.style.pointerEvents = originalPointerEvents
+        window.removeEventListener('mouseup', handleGlobalMouseUp)
+        window.removeEventListener('blur', handleGlobalMouseUp)
+      }
+      window.addEventListener('mouseup', handleGlobalMouseUp)
+      window.addEventListener('blur', handleGlobalMouseUp)
+    }
+  }
+}
+
 function formatTokenCountInMillions(value) {
   return `${(value / 1000000).toFixed(6)}M`
 }
@@ -554,6 +573,7 @@ export default function AIPanelSettingsOverlay({
                           void onSaveGlobalAISettings?.({ toolResultTokenThreshold: nextValue })
                         }
                       }}
+                      onMouseLeave={handleInputDragSelectAll}
                       style={{
                         width: '100%',
                         borderRadius: 8,

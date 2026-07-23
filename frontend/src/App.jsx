@@ -4530,32 +4530,36 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
       })}
     </div>
   ) : null;
-  const aiPanelNode = isActiveSessionConnected && sessions.length > 0 ? (
+  // ponytail: AI 面板按会话保活，不依赖当前 active 是否 connected。
+  // 否则首页连新服务器 / 重连时 active 会短暂变成 connecting，整棵 AI 树卸载并取消后台执行。
+  // connecting 也保活，避免重连瞬间把正在跑的会话拆掉。
+  const aiKeepAliveSessions = sessions.filter((s) => s.status === 'connected' || s.status === 'connecting');
+  const aiPanelNode = aiKeepAliveSessions.length > 0 ? (
     <div
       style={{
         width: aiPanelWidth,
         minWidth: aiPanelWidth,
         height: '100%',
-        display: showAIPanel ? 'flex' : 'none',
+        display: showAIPanel && isActiveSessionConnected ? 'flex' : 'none',
         flexShrink: 0,
         position: 'relative',
         overflow: 'hidden',
       }}
     >
-      {collapseDragIntent === 'ai' && (
+      {collapseDragIntent === 'ai' && isActiveSessionConnected && (
         <div
           className={`panel-collapse-armed-zone panel-collapse-armed-zone-vertical ${probePanelPosition === 'left' ? 'panel-collapse-armed-zone-left' : 'panel-collapse-armed-zone-right'}`}
         >
           {probePanelPosition === 'left' ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </div>
       )}
-      {sessions.map((s) => (
+      {aiKeepAliveSessions.map((s) => (
         getEffectiveTerminals(s).map((t) => {
           const isPanelActive =
             showAIPanel
+            && isActiveSessionConnected
             && activeSessionId === s.id
-            && activeTerminalId === t.id
-            && s.status === 'connected';
+            && activeTerminalId === t.id;
 
           return (
             <div

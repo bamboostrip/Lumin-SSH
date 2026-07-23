@@ -14,7 +14,7 @@ function openExternalLink(event, href) {
   }
 }
 
-export default function AIChatUserMessage({ message, onRetry, onEdit, onDelete, messageActionBarAtBottom = false }) {
+export default function AIChatUserMessage({ message, onRetry, onEdit, onDelete, messageActionBarAtBottom = false, perfMetricsText = '' }) {
   const text = typeof message?.text === 'string' ? message.text : ''
   const time = typeof message?.time === 'string' ? message.time : ''
   const messageId = typeof message?.id === 'string' ? message.id : ''
@@ -34,6 +34,9 @@ export default function AIChatUserMessage({ message, onRetry, onEdit, onDelete, 
     { key: 'edit', onClick: () => onEdit?.(messageId, text, images) },
     { key: 'delete', onClick: () => onDelete?.(messageId) },
   ]
+  const handleCopyPerfMetrics = perfMetricsText
+    ? () => navigator.clipboard.writeText(perfMetricsText).catch(() => {})
+    : undefined
 
   const renderActionBar = () => (
     <AIChatMessageActionBar
@@ -41,6 +44,8 @@ export default function AIChatUserMessage({ message, onRetry, onEdit, onDelete, 
       title={userTitleKey}
       time={time}
       actions={messageActions}
+      onTitleIconClick={handleCopyPerfMetrics}
+      titleIconClickTitle="复制本次发送耗时"
     />
   )
 

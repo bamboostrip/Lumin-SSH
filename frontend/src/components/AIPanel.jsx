@@ -716,6 +716,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   const terminalPanelsRef = useRef({})
   const panelMountedRef = useRef(true)
   const tokenLedgerRef = useRef(new Map())
+  const sendPerfMetricsRef = useRef(new Map())
   const panelInstanceKey = `${sessionId || 'session'}::${terminalId || 'terminal'}`
   const globalSearchRequestRef = useRef(0)
   const globalSearchInputRef = useRef(null)
@@ -2987,6 +2988,13 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   }, [saveMCPOutputCompressionSettings, terminalOutputLineLimit])
 
   const handleSendMessage = useCallback(async (text, sendOptionsOrEditState = null, explicitEditState = null, runtimeOptions = {}) => {
+    const perfStages = []
+    let perfLastMark = performance.now()
+    const recordPerfStage = (label) => {
+      const now = performance.now()
+      perfStages.push({ label, ms: now - perfLastMark })
+      perfLastMark = now
+    }
     let sendOptions = null
     let overrideEditState = explicitEditState
     if (sendOptionsOrEditState && typeof sendOptionsOrEditState === 'object' && (sendOptionsOrEditState.mode === 'edit' || sendOptionsOrEditState.mode === 'retry')) {
@@ -3024,6 +3032,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       currentProviderId: typeof aiProviderState?.currentProviderId === 'string' ? aiProviderState.currentProviderId.trim() : '',
       providers: availableAIProviders,
     }))
+    recordPerfStage('获取供应商状态')
     const latestProviders = Array.isArray(latestProviderState?.providers) ? latestProviderState.providers : []
     const preferredProviderId = targetConversationSnapshot
       ? targetConversationSnapshot?.settings?.currentProviderId
@@ -3124,6 +3133,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     const preprocessedPromptText = slashExpandedPromptText && targetConversation?.id
       ? await preprocessAIConversationLongText(targetConversation.id, slashExpandedPromptText)
       : (slashExpandedPromptText || '')
+    recordPerfStage('长文本预处理')
     const baseUserPromptText = preprocessedPromptText
       ? `<user_message>\n${preprocessedPromptText}\n</user_message>`
       : ''
@@ -3140,6 +3150,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
           readLocalWrappedFile: (localPath) => readAIConversationWrappedFile(targetConversation.id, localPath),
         })
       : ''
+    recordPerfStage('远程@提及')
     const processedPromptText = [promptWithMentions, environmentDetailsBlock]
       .filter((item) => typeof item === 'string' && item.trim())
       .join('\n\n')
@@ -3171,6 +3182,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       }),
     ]
     const requestMessages = buildRequestMessages(nextApiMessages)
+    recordPerfStage('净化构建')
     const assistantMessage = {
       id: requestId,
       turnId: requestId,
@@ -3203,6 +3215,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     if (shouldInjectAssistantFirstReply) {
       assistantFirstReplyText = (await getAIAssistantFirstReply(getLanguage())).trim()
     }
+    recordPerfStage('首字预取')
 
     resetComposerEditState()
     requestConversationSmoothScrollToBottom()
@@ -3233,6 +3246,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     })
 
     await saveConversationSnapshot(persistedConversation, panelInstanceKey, { hydrate: false })
+    recordPerfStage('落库快照')
 
     try {
       await startAIChat(requestId, {
@@ -3246,6 +3260,11 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         toolScopeSlot: effectiveToolScopeSlot || undefined,
         messages: requestMessages,
       })
+      recordPerfStage('发起请求')
+      const perfTotal = perfStages.reduce((sum, stage) => sum + stage.ms, 0)
+      const perfRecord = { stages: perfStages, total: perfTotal, at: Date.now() }
+      sendPerfMetricsRef.current.set(userMessage.id, perfRecord)
+      sendPerfMetricsRef.current.set(requestId, perfRecord)
       return true
     } catch (error) {
       const errorText = error instanceof Error ? error.message : translate('请求失败')
@@ -4627,6 +4646,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
                 followupInteractionLocked={collaborationFollowupInteractionLocked}
                 messageActionBarAtBottom={messageActionBarAtBottom}
                 scrollToBottomSignal={conversationScrollSignal}
+                sendPerfMetricsRef={sendPerfMetricsRef}
               />
             </>
           ) : renderedConversationList}

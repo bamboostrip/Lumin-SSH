@@ -9,6 +9,28 @@ import AIChatToolSessionPane from './AIChatToolSessionPane.jsx'
 import AIChatUserMessage from './AIChatUserMessage.jsx'
 import { groupConversationMessages } from './aiChatMessageTopology.js'
 
+function formatSendPerfMetrics(record) {
+  if (!record || !Array.isArray(record.stages) || record.stages.length === 0) {
+    return ''
+  }
+  const total = Number(record.total) || 0
+  const lines = record.stages.map((stage, index) => {
+    const ms = Number(stage.ms) || 0
+    const percent = total > 0 ? ((ms / total) * 100).toFixed(1) : '0.0'
+    return `${index + 1}.${stage.label} -> ${ms.toFixed(1)}ms (${percent}%)`
+  })
+  lines.push(`总计 -> ${total.toFixed(1)}ms`)
+  return lines.join('\n')
+}
+
+function resolveSendPerfMetrics(sendPerfMetricsRef, messageId) {
+  const normalizedId = typeof messageId === 'string' ? messageId.trim() : ''
+  if (!normalizedId || !sendPerfMetricsRef?.current) {
+    return ''
+  }
+  return formatSendPerfMetrics(sendPerfMetricsRef.current.get(normalizedId))
+}
+
 function renderGroupedEntry(entry, handlers, entryMeta = {}) {
   switch (entry.type) {
     case 'user':
@@ -19,6 +41,7 @@ function renderGroupedEntry(entry, handlers, entryMeta = {}) {
           onEdit={handlers.onEditUserMessage}
           onDelete={handlers.onDeleteMessage}
           messageActionBarAtBottom={Boolean(handlers.messageActionBarAtBottom)}
+          perfMetricsText={resolveSendPerfMetrics(handlers.sendPerfMetricsRef, entry.message?.id)}
         />
       )
     case 'assistant-turn':
@@ -36,6 +59,7 @@ function renderGroupedEntry(entry, handlers, entryMeta = {}) {
           onApplyRestore={handlers.onApplyRestore}
           followupInteractionLocked={Boolean(handlers.followupInteractionLocked)}
           messageActionBarAtBottom={Boolean(handlers.messageActionBarAtBottom)}
+          perfMetricsText={resolveSendPerfMetrics(handlers.sendPerfMetricsRef, entry.assistant?.id)}
         />
       )
     case 'reasoning':
@@ -142,7 +166,7 @@ function getTouchClientY(event) {
   return Number.isFinite(value) ? value : null
 }
 
-export default function AIChatConversation({ messages = [], sessionId = '', terminalId = '', onSendUserMessage, onRetryUserMessage, onRetryAssistantMessage, onEditUserMessage, onDeleteMessage, onPreviewRestore, onApplyRestore, followupInteractionLocked = false, messageActionBarAtBottom = false, scrollToBottomSignal = 0 }) {
+export default function AIChatConversation({ messages = [], sessionId = '', terminalId = '', onSendUserMessage, onRetryUserMessage, onRetryAssistantMessage, onEditUserMessage, onDeleteMessage, onPreviewRestore, onApplyRestore, followupInteractionLocked = false, messageActionBarAtBottom = false, scrollToBottomSignal = 0, sendPerfMetricsRef = null }) {
   const { t } = useTranslation()
   const containerRef = useRef(null)
   const virtuosoRef = useRef(null)
@@ -479,6 +503,7 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
                 onApplyRestore,
                 followupInteractionLocked,
                 messageActionBarAtBottom,
+                sendPerfMetricsRef,
               }, {
                 isLastAssistantTurn: index === lastAssistantTurnIndex,
                 hasSubsequentAssistantMessage: hasSubsequentAssistantTurn(groupedMessages, index),

@@ -954,6 +954,7 @@ export default {
   "拒绝": "odmítnout",
   "强制继续": "Přinutit pokračovat",
   "终止工具": "Ukončovací nástroj",
+  "继续任务": "pokračovat v úkolu",
   "已排队编辑": "Čeká na úpravy",
   "已排队重试": "Ve frontě k opakování",
   "已排队发送": "Ve frontě k odeslání",

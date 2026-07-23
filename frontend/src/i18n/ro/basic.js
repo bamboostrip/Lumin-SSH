@@ -954,6 +954,7 @@ export default {
   "拒绝": "respinge",
   "强制继续": "Forța să continue",
   "终止工具": "Instrument de terminare",
+  "继续任务": "continua sarcina",
   "已排队编辑": "În coadă pentru editare",
   "已排队重试": "În coadă pentru a reîncerca",
   "已排队发送": "În coadă pentru a trimite",

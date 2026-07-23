@@ -954,6 +954,7 @@ export default {
   "拒绝": "reddetmek",
   "强制继续": "Devam etmeye zorla",
   "终止工具": "Sonlandırma aracı",
+  "继续任务": "göreve devam et",
   "已排队编辑": "Düzenleme için sıraya alındı",
   "已排队重试": "Yeniden denemek için sıraya alındı",
   "已排队发送": "Gönderilmek üzere sıraya alındı",

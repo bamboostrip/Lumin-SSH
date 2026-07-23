@@ -954,6 +954,7 @@ export default {
   "拒绝": "Reject",
   "强制继续": "Force Continue",
   "终止工具": "Terminate Tool",
+  "继续任务": "continue task",
   "已排队编辑": "Edit queued",
   "已排队重试": "Retry queued",
   "已排队发送": "Send queued",

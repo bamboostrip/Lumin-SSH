@@ -954,6 +954,7 @@ export default {
   "拒绝": "afwijzen",
   "强制继续": "Dwing om door te gaan",
   "终止工具": "Beëindigingsinstrument",
+  "继续任务": "taak voortzetten",
   "已排队编辑": "In wachtrij voor bewerking",
   "已排队重试": "Staat in de wachtrij om opnieuw te proberen",
   "已排队发送": "In de wachtrij om te verzenden",

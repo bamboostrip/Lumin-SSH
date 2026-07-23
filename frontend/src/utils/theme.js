@@ -42,11 +42,11 @@ const TERMINAL_THEMES = {
         cursorAccent: '#ffffff', selectionBackground: '#2563eb',
         selectionForeground: '#ffffff',
         selectionInactiveBackground: '#2563eb',
-        black: '#0a0f1a', red: '#ef4444', green: '#22c55e', yellow: '#eab308',
-        blue: '#3b82f6', magenta: '#a855f7', cyan: '#06b6d4', white: '#e2e8f0',
-        brightBlack: '#64748b', brightRed: '#f87171', brightGreen: '#4ade80',
-        brightYellow: '#facc15', brightBlue: '#93c5fd', brightMagenta: '#c084fc',
-        brightCyan: '#67e8f9', brightWhite: '#f8fafc',
+        black: '#0a0f1a', red: '#b91c1c', green: '#15803d', yellow: '#854d0e',
+        blue: '#1d4ed8', magenta: '#7e22ce', cyan: '#0f766e', white: '#e2e8f0',
+        brightBlack: '#475569', brightRed: '#dc2626', brightGreen: '#16a34a',
+        brightYellow: '#a16207', brightBlue: '#2563eb', brightMagenta: '#9333ea',
+        brightCyan: '#0891b2', brightWhite: '#f8fafc',
       },
       container: {
         // 暖白 + 蓝：Lumin 浅色

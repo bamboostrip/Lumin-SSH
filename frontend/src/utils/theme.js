@@ -101,11 +101,11 @@ const TERMINAL_THEMES = {
         cursorAccent: '#ffffff', selectionBackground: '#1d4ed8',
         selectionForeground: '#ffffff',
         selectionInactiveBackground: '#1d4ed8',
-        black: '#0c0e18', red: '#ef4444', green: '#65a30d', yellow: '#eab308',
-        blue: '#3b82f6', magenta: '#8b5cf6', cyan: '#06b6d4', white: '#d5d9e8',
-        brightBlack: '#5b6388', brightRed: '#f87171', brightGreen: '#84cc16',
-        brightYellow: '#facc15', brightBlue: '#93c5fd', brightMagenta: '#a78bfa',
-        brightCyan: '#67e8f9', brightWhite: '#f4f5f9',
+        black: '#0c0e18', red: '#b8344e', green: '#286214', yellow: '#724905',
+        blue: '#1d57c4', magenta: '#7a30cb', cyan: '#005b76', white: '#d5d9e8',
+        brightBlack: '#444b6a', brightRed: '#cf2d4c', brightGreen: '#387a21',
+        brightYellow: '#8f5e15', brightBlue: '#245fcb', brightMagenta: '#8536f5',
+        brightCyan: '#007197', brightWhite: '#f4f5f9',
       },
       container: {
         // 冷蓝灰 + 靛蓝：Tokyo 浅色

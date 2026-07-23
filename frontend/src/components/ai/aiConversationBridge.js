@@ -49,13 +49,18 @@ function normalizeAIFollowUpQuestion(question, index = 0, fallbackQuestion = '')
     : index === 0 && typeof fallbackQuestion === 'string' && fallbackQuestion.trim()
       ? fallbackQuestion.trim()
       : `Question ${index + 1}`
-  const type = String(question?.type || '').trim().toLowerCase() === 'multiple' ? 'multiple' : 'single'
+  const rawType = String(question?.type || '').trim().toLowerCase()
+  const type = rawType === 'multiple' || rawType === 'multi_select'
+    ? 'multiple'
+    : rawType === 'free_text' || rawType === 'text'
+      ? 'free_text'
+      : 'single'
   const options = Array.isArray(question?.options)
     ? question.options
       .map((item, optionIndex) => normalizeAIFollowUpOption(item, optionIndex, id))
       .filter(Boolean)
     : []
-  if (options.length === 0) {
+  if (type !== 'free_text' && options.length === 0) {
     return null
   }
   return {

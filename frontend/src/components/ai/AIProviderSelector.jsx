@@ -112,33 +112,107 @@ function measureAdaptiveLabelWidth(text, fontSize, fontWeight = 500, fontFamily 
   return context.measureText(content).width
 }
 
-function resolveAdaptiveLabelFontSize(text, maxWidth, {
-  baseFontSize = 12,
-  minFontSize = 9,
+function measureAdaptiveLabelTriggerWidth(text, fontSize, {
   fontWeight = 500,
   fontFamily = 'sans-serif',
+  horizontalPadding = 20,
+  minWidth = 36,
 } = {}) {
-  const content = typeof text === 'string' ? text.trim() : ''
-  if (!content || !Number.isFinite(maxWidth) || maxWidth <= 0) {
-    return baseFontSize
+  const contentWidth = measureAdaptiveLabelWidth(text, fontSize, fontWeight, fontFamily)
+  if (contentWidth <= 0) {
+    return minWidth
   }
-  for (let size = baseFontSize; size >= minFontSize; size -= 1) {
-    if (measureAdaptiveLabelWidth(content, size, fontWeight, fontFamily) <= maxWidth) {
-      return size
-    }
-  }
-  return minFontSize
+  return Math.max(minWidth, Math.ceil(contentWidth + horizontalPadding))
 }
 
-function resolveAdaptiveLabelAvailableWidth(element) {
-  const container = element?.parentElement
-  if (!container) {
-    return 0
+function resolveAdaptiveLabelLayout({
+  providerText,
+  modelText,
+  availableWidth,
+  providerFontFamily = 'sans-serif',
+  modelFontFamily = 'sans-serif',
+  fixedWidth = 0,
+  baseFontSize = 12,
+  minFontSize = 9,
+} = {}) {
+  const normalizedProviderText = typeof providerText === 'string' ? providerText.trim() : ''
+  const normalizedModelText = typeof modelText === 'string' ? modelText.trim() : ''
+  const normalizedAvailableWidth = Number.isFinite(availableWidth) && availableWidth > 0 ? availableWidth : 0
+  const sizeOptions = []
+  for (let size = baseFontSize; size >= minFontSize; size -= 1) {
+    sizeOptions.push(size)
   }
-  const computedStyle = window.getComputedStyle(container)
-  const paddingLeft = Number.parseFloat(computedStyle.paddingLeft || '0') || 0
-  const paddingRight = Number.parseFloat(computedStyle.paddingRight || '0') || 0
-  return Math.max(0, container.clientWidth - paddingLeft - paddingRight)
+  const modelSizeOptions = normalizedModelText ? sizeOptions : [baseFontSize]
+  let bestLayout = null
+  for (const providerFontSize of sizeOptions) {
+    for (const modelFontSize of modelSizeOptions) {
+      const providerWidth = measureAdaptiveLabelTriggerWidth(normalizedProviderText, providerFontSize, {
+        fontWeight: 500,
+        fontFamily: providerFontFamily,
+      })
+      const modelWidth = normalizedModelText
+        ? measureAdaptiveLabelTriggerWidth(normalizedModelText, modelFontSize, {
+            fontWeight: 600,
+            fontFamily: modelFontFamily,
+            minWidth: 32,
+          })
+        : 0
+      const totalWidth = providerWidth + modelWidth + fixedWidth
+      if (normalizedAvailableWidth > 0 && totalWidth > normalizedAvailableWidth) {
+        continue
+      }
+      if (
+        !bestLayout
+        || providerFontSize + modelFontSize > bestLayout.providerFontSize + bestLayout.modelFontSize
+        || (
+          providerFontSize + modelFontSize === bestLayout.providerFontSize + bestLayout.modelFontSize
+          && totalWidth < bestLayout.totalWidth
+        )
+      ) {
+        bestLayout = {
+          providerFontSize,
+          modelFontSize,
+          providerWidth,
+          modelWidth,
+          totalWidth,
+        }
+      }
+    }
+  }
+  if (bestLayout) {
+    return bestLayout
+  }
+  return {
+    providerFontSize: minFontSize,
+    modelFontSize: normalizedModelText ? minFontSize : baseFontSize,
+    providerWidth: measureAdaptiveLabelTriggerWidth(normalizedProviderText, minFontSize, {
+      fontWeight: 500,
+      fontFamily: providerFontFamily,
+    }),
+    modelWidth: normalizedModelText
+      ? measureAdaptiveLabelTriggerWidth(normalizedModelText, minFontSize, {
+          fontWeight: 600,
+          fontFamily: modelFontFamily,
+          minWidth: 32,
+        })
+      : 0,
+    totalWidth: 0,
+  }
+}
+
+function resolveAdaptiveSelectorAvailableWidth(container) {
+  const row = container?.parentElement
+  if (!container || !row) {
+    return container?.clientWidth || 0
+  }
+  const computedStyle = window.getComputedStyle(row)
+  const gap = Number.parseFloat(computedStyle.columnGap || computedStyle.gap || '0') || 0
+  const children = Array.from(row.children)
+  const siblingsWidth = children
+    .filter((child) => child !== container)
+    .reduce((total, child) => total + child.getBoundingClientRect().width, 0)
+  const totalGap = gap * Math.max(0, children.length - 1)
+  return Math.max(0, Math.max(container.clientWidth, row.clientWidth - siblingsWidth - totalGap))
 }
 
 function buildProviderModelOptions(provider) {
@@ -358,6 +432,7 @@ export default function AIProviderSelector({
   const tooltipTimerRef = useRef(null)
   const providerLabelRef = useRef(null)
   const modelLabelRef = useRef(null)
+  const reasoningButtonRef = useRef(null)
   const [open, setOpen] = useState(false)
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
   const [reasoningMenuOpen, setReasoningMenuOpen] = useState(false)
@@ -386,6 +461,8 @@ export default function AIProviderSelector({
   const [editingState, setEditingState] = useState({ open: false, mode: 'edit', provider: null })
   const [providerLabelFontSize, setProviderLabelFontSize] = useState(12)
   const [modelLabelFontSize, setModelLabelFontSize] = useState(12)
+  const [providerTriggerWidth, setProviderTriggerWidth] = useState(0)
+  const [modelTriggerWidth, setModelTriggerWidth] = useState(0)
   const isControlled = typeof currentProviderId === 'string'
   const effectiveSelectedId = isControlled ? currentProviderId : persistedCurrentProviderId
 
@@ -460,27 +537,32 @@ export default function AIProviderSelector({
   ]
 
   const updateAdaptiveLabelFontSizes = useCallback(() => {
-    const resolveForElement = (element, text, options) => {
-      if (!element) {
-        return options.baseFontSize
-      }
-      const computedStyle = window.getComputedStyle(element)
-      return resolveAdaptiveLabelFontSize(text, resolveAdaptiveLabelAvailableWidth(element), {
-        ...options,
-        fontFamily: computedStyle.fontFamily || 'sans-serif',
-      })
-    }
-    setProviderLabelFontSize(resolveForElement(providerLabelRef.current, selectedProvider?.name || t('选择供应商'), {
-      baseFontSize: 12,
-      minFontSize: 9,
-      fontWeight: 500,
-    }))
-    setModelLabelFontSize(resolveForElement(modelLabelRef.current, quickModelConfig.currentLabel, {
-      baseFontSize: 12,
-      minFontSize: 9,
-      fontWeight: 600,
-    }))
-  }, [quickModelConfig.currentLabel, selectedProvider?.name, t])
+    const providerText = selectedProvider?.name || t('选择供应商')
+    const modelText = quickModelConfig.visible ? quickModelConfig.currentLabel : ''
+    const providerFontFamily = providerLabelRef.current
+      ? (window.getComputedStyle(providerLabelRef.current).fontFamily || 'sans-serif')
+      : 'sans-serif'
+    const modelFontFamily = modelLabelRef.current
+      ? (window.getComputedStyle(modelLabelRef.current).fontFamily || 'sans-serif')
+      : providerFontFamily
+    const reasoningWidth = quickReasoningConfig.visible && reasoningButtonRef.current
+      ? Math.ceil(reasoningButtonRef.current.getBoundingClientRect().width)
+      : 0
+    const overlapWidth = (quickModelConfig.visible ? 1 : 0) + (quickReasoningConfig.visible ? 1 : 0)
+    const layout = resolveAdaptiveLabelLayout({
+      providerText,
+      modelText,
+      availableWidth: resolveAdaptiveSelectorAvailableWidth(containerRef.current),
+      providerFontFamily,
+      modelFontFamily,
+      fixedWidth: reasoningWidth - overlapWidth,
+      minFontSize: 6,
+    })
+    setProviderLabelFontSize(layout.providerFontSize)
+    setModelLabelFontSize(layout.modelFontSize)
+    setProviderTriggerWidth(layout.providerWidth)
+    setModelTriggerWidth(layout.modelWidth)
+  }, [quickModelConfig.currentLabel, quickModelConfig.visible, quickReasoningConfig.visible, selectedProvider?.name, t])
 
   const closeTooltip = useCallback(() => {
     if (tooltipTimerRef.current) {
@@ -603,7 +685,7 @@ export default function AIProviderSelector({
 
   useLayoutEffect(() => {
     updateAdaptiveLabelFontSizes()
-    const observedElements = [providerLabelRef.current?.parentElement, modelLabelRef.current?.parentElement].filter(Boolean)
+    const observedElements = [containerRef.current, containerRef.current?.parentElement, reasoningButtonRef.current].filter(Boolean)
     if (observedElements.length === 0) {
       return undefined
     }
@@ -620,14 +702,65 @@ export default function AIProviderSelector({
     }
     window.addEventListener('resize', updateAdaptiveLabelFontSizes)
     return () => window.removeEventListener('resize', updateAdaptiveLabelFontSizes)
-  }, [quickModelConfig.visible, updateAdaptiveLabelFontSizes])
+  }, [quickModelConfig.visible, quickReasoningConfig.visible, updateAdaptiveLabelFontSizes])
 
   useLayoutEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
       updateAdaptiveLabelFontSizes()
     })
     return () => window.cancelAnimationFrame(frameId)
-  }, [selectedProvider?.name, quickModelConfig.currentLabel, updateAdaptiveLabelFontSizes])
+  }, [selectedProvider?.name, quickModelConfig.currentLabel, quickReasoningConfig.currentLabel, updateAdaptiveLabelFontSizes])
+
+  useLayoutEffect(() => {
+    const availableWidth = resolveAdaptiveSelectorAvailableWidth(containerRef.current)
+    if (availableWidth <= 0) {
+      return
+    }
+    const providerLabelElement = providerLabelRef.current
+    const modelLabelElement = modelLabelRef.current
+    const reasoningWidth = quickReasoningConfig.visible && reasoningButtonRef.current
+      ? Math.ceil(reasoningButtonRef.current.getBoundingClientRect().width)
+      : 0
+    const overlapWidth = (quickModelConfig.visible ? 1 : 0) + (quickReasoningConfig.visible ? 1 : 0)
+    const currentProviderWidth = providerTriggerWidth > 0 ? providerTriggerWidth : 0
+    const currentModelWidth = quickModelConfig.visible && modelTriggerWidth > 0 ? modelTriggerWidth : 0
+    const currentTotalWidth = currentProviderWidth + currentModelWidth + reasoningWidth - overlapWidth
+    const spareWidth = Math.max(0, availableWidth - currentTotalWidth)
+    const providerOverflow = providerLabelElement
+      ? Math.max(0, Math.ceil(providerLabelElement.scrollWidth - providerLabelElement.clientWidth))
+      : 0
+    const modelOverflow = quickModelConfig.visible && modelLabelElement
+      ? Math.max(0, Math.ceil(modelLabelElement.scrollWidth - modelLabelElement.clientWidth))
+      : 0
+    if (spareWidth <= 0 || (providerOverflow <= 0 && modelOverflow <= 0)) {
+      return
+    }
+    let remainingWidth = spareWidth
+    let nextModelWidth = currentModelWidth
+    let nextProviderWidth = currentProviderWidth
+    if (modelOverflow > 0 && remainingWidth > 0) {
+      const extraWidth = Math.min(modelOverflow + 2, remainingWidth)
+      nextModelWidth += extraWidth
+      remainingWidth -= extraWidth
+    }
+    if (providerOverflow > 0 && remainingWidth > 0) {
+      const extraWidth = Math.min(providerOverflow + 2, remainingWidth)
+      nextProviderWidth += extraWidth
+    }
+    if (nextProviderWidth !== currentProviderWidth) {
+      setProviderTriggerWidth(nextProviderWidth)
+    }
+    if (nextModelWidth !== currentModelWidth) {
+      setModelTriggerWidth(nextModelWidth)
+    }
+  }, [
+    modelTriggerWidth,
+    providerTriggerWidth,
+    quickModelConfig.currentLabel,
+    quickModelConfig.visible,
+    quickReasoningConfig.visible,
+    selectedProvider?.name,
+  ])
 
   useEffect(() => () => closeTooltip(), [closeTooltip])
 
@@ -1249,7 +1382,7 @@ export default function AIProviderSelector({
 
   return (
     <>
-      <div ref={containerRef} style={{ position: 'relative', flex: '1 1 160px', minWidth: 72, maxWidth: '100%', overflow: 'visible', zIndex: open || modelMenuOpen || reasoningMenuOpen ? 40 : 'auto' }}>
+      <div ref={containerRef} style={{ position: 'relative', flex: '1 1 0', width: 0, minWidth: 0, maxWidth: '100%', overflow: 'visible', zIndex: open || modelMenuOpen || reasoningMenuOpen ? 40 : 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'stretch', width: '100%', minWidth: 0, maxWidth: '100%' }}>
           <button
             type="button"
@@ -1277,9 +1410,10 @@ export default function AIProviderSelector({
               fontWeight: 500,
               transition: 'var(--transition)',
               whiteSpace: 'nowrap',
-              minWidth: 72,
+              minWidth: 0,
               maxWidth: '100%',
-              flex: '1 1 96px',
+              flex: '0 0 auto',
+              ...(providerTriggerWidth > 0 ? { width: providerTriggerWidth } : {}),
             }}
           >
             <span
@@ -1298,7 +1432,16 @@ export default function AIProviderSelector({
             </span>
           </button>
           {quickModelConfig.visible ? (
-            <div ref={modelButtonRef} style={{ position: 'relative', marginLeft: -1, minWidth: 0, flex: '0 1 180px' }}>
+            <div
+              ref={modelButtonRef}
+              style={{
+                position: 'relative',
+                marginLeft: -1,
+                minWidth: 0,
+                maxWidth: '100%',
+                flex: '0 0 auto',
+                ...(modelTriggerWidth > 0 ? { width: modelTriggerWidth } : {}),
+              }}>
               <button
                 type="button"
                 onClick={() => {
@@ -1325,7 +1468,7 @@ export default function AIProviderSelector({
                   transition: 'var(--transition)',
                   whiteSpace: 'nowrap',
                   minWidth: 0,
-                  maxWidth: 180,
+                  maxWidth: '100%',
                   width: '100%',
                 }}
               >
@@ -1407,7 +1550,7 @@ export default function AIProviderSelector({
             </div>
           ) : null}
           {quickReasoningConfig.visible ? (
-            <div style={{ position: 'relative', marginLeft: -1 }}>
+            <div ref={reasoningButtonRef} style={{ position: 'relative', marginLeft: -1 }}>
               <button
                 type="button"
                 onClick={() => {

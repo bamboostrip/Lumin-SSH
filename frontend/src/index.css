@@ -156,6 +156,22 @@ svg[class*="lucide"] {
   --tab-active-text: var(--text-primary);
   --tab-radius: 0;
 
+  --file-manager-panel-bg: var(--surface-base);
+  --file-manager-toolbar-bg: var(--surface-raised);
+  --file-manager-border-color: var(--border-subtle);
+  --file-manager-row-hover-bg: var(--surface-hover);
+  --file-manager-row-selected-bg: color-mix(in srgb, var(--accent) 15%, var(--surface-base));
+  --file-manager-text-color: var(--text-primary);
+  --file-manager-secondary-text-color: var(--text-secondary);
+  --file-manager-muted-text-color: var(--text-muted);
+  --file-manager-header-text-color: var(--text-tertiary);
+  --file-manager-path-bg: var(--surface-sunken);
+  --file-manager-path-text-color: var(--text-primary);
+  --file-manager-folder-text-color: var(--accent);
+  --topbar-bg: var(--surface-raised);
+  --topbar-border-color: var(--border-subtle);
+  --topbar-title-color: var(--text-primary);
+
   /* Shell script file icon (dark: vivid green) */
   --file-icon-shell: #89e051;
 }
@@ -326,8 +342,8 @@ textarea:focus:not(:focus-visible) {
   display: flex;
   align-items: center;
   height: var(--topbar-h);
-  background: var(--surface-raised);
-  border-bottom: 1px solid var(--border-subtle);
+  background: var(--topbar-bg, var(--surface-raised));
+  border-bottom: 1px solid var(--topbar-border-color, var(--border-subtle));
   padding: 0 var(--space-2);
   --wails-draggable: drag;
   flex-shrink: 0;
@@ -368,7 +384,7 @@ textarea:focus:not(:focus-visible) {
 .topbar-title {
   font-size: var(--text-sm);
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--topbar-title-color, var(--text-primary));
   letter-spacing: -0.1px;
 }
 
@@ -2289,6 +2305,7 @@ body.theme-light .batch-operation-bar {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  background: var(--file-manager-panel-bg, var(--surface-base));
 }
 
 .file-toolbar {
@@ -2296,8 +2313,8 @@ body.theme-light .batch-operation-bar {
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--surface-raised);
+  border-bottom: 1px solid var(--file-manager-border-color, var(--border-subtle));
+  background: var(--file-manager-toolbar-bg, var(--surface-raised));
   flex-shrink: 0;
   flex-wrap: wrap;
   min-height: 0;
@@ -2380,10 +2397,10 @@ body.theme-light .batch-operation-bar {
   min-width: 0;
   height: 28px;
   padding: 2px var(--space-2);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--file-manager-border-color, var(--border-subtle));
   border-radius: var(--radius-sm);
-  background: var(--surface-sunken);
-  color: var(--text-primary);
+  background: var(--file-manager-path-bg, var(--surface-sunken));
+  color: var(--file-manager-path-text-color, var(--text-primary));
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   outline: none;
@@ -2402,6 +2419,7 @@ body.theme-light .batch-operation-bar {
   -webkit-user-select: none;
   -moz-user-select: none;
   position: relative;
+  background: var(--file-manager-panel-bg, var(--surface-base));
   --file-list-header-height: 30px;
 }
 
@@ -2508,13 +2526,13 @@ body.theme-light .batch-operation-bar {
     var(--file-col-actions, 110px);
   min-width: var(--file-list-min-width, 500px);
   padding: 5px 8px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--file-manager-border-color, var(--border-subtle));
   font-size: var(--text-xs);
   font-weight: 600;
-  color: var(--text-tertiary);
+  color: var(--file-manager-header-text-color, var(--text-tertiary));
   text-transform: none;
   letter-spacing: 0;
-  background: var(--surface-sunken);
+  background: var(--file-manager-toolbar-bg, var(--surface-sunken));
   position: sticky;
   top: 0;
   margin-bottom: calc(var(--file-list-header-height) * -1);
@@ -2531,7 +2549,7 @@ body.theme-light .batch-operation-bar {
     var(--file-col-actions, 110px);
   min-width: var(--file-list-min-width, 500px);
   padding: 4px 8px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--file-manager-border-color, var(--border-subtle));
   cursor: pointer;
   transition: var(--transition-fast);
   align-items: center;
@@ -2539,9 +2557,9 @@ body.theme-light .batch-operation-bar {
   overflow: hidden;
   transform-origin: top center;
 }
-.file-item:hover { background: var(--surface-hover); }
-.file-item.selected { background: color-mix(in srgb, var(--accent) 15%, var(--surface-base)); }
-.file-item.selected:hover { background: color-mix(in srgb, var(--accent) 22%, var(--surface-hover)); }
+.file-item:hover { background: var(--file-manager-row-hover-bg, var(--surface-hover)); }
+.file-item.selected { background: var(--file-manager-row-selected-bg, color-mix(in srgb, var(--accent) 15%, var(--surface-base))); }
+.file-item.selected:hover { background: var(--file-manager-row-selected-bg, color-mix(in srgb, var(--accent) 22%, var(--surface-hover))); }
 .file-item.clipboard-copy {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 58%, transparent);
 }
@@ -2613,25 +2631,25 @@ body.theme-light .batch-operation-bar {
 }
 .file-name {
   font-size: var(--text-base);
-  color: var(--text-primary);
+  color: var(--file-manager-text-color, var(--text-primary));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.file-name.is-dir { color: var(--accent); font-weight: 500; }
+.file-name.is-dir { color: var(--file-manager-folder-text-color, var(--accent)); font-weight: 500; }
 
-.file-size { font-size: var(--text-sm); color: var(--text-secondary); font-family: var(--font-mono); }
+.file-size { font-size: var(--text-sm); color: var(--file-manager-secondary-text-color, var(--text-secondary)); font-family: var(--font-mono); }
 .file-permission {
   font-size: var(--text-sm);
-  color: var(--text-secondary);
+  color: var(--file-manager-secondary-text-color, var(--text-secondary));
   font-family: var(--font-mono);
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.file-permission:hover { color: var(--accent); }
-.file-date { font-size: var(--text-sm); color: var(--text-secondary); }
+.file-permission:hover { color: var(--file-manager-text-color, var(--accent)); }
+.file-date { font-size: var(--text-sm); color: var(--file-manager-secondary-text-color, var(--text-secondary)); }
 .file-actions { opacity: 0; display: flex; gap: var(--space-1); justify-content: flex-end; }
 
 /* ── 右键菜单 ───────────────────────────────────────────────── */

@@ -5,6 +5,7 @@ import { initializeI18n, t } from './i18n.js';
 import { AlertTriangle } from 'lucide-react';
 import './index.css';
 import { applyProgramFontPreferences } from './utils/programFonts.js';
+import { applyStoredThemePackage, loadThemePackages } from './utils/theme.js';
 
 // 全局错误边界，防止渲染错误导致白屏
 class ErrorBoundary extends React.Component {
@@ -45,16 +46,8 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// Load initial theme
-const savedTheme = localStorage.getItem('themeMode') || 'dark';
-
-const isSystemLight = window.matchMedia('(prefers-color-scheme: light)').matches;
-const applyLight = savedTheme === 'light' || (savedTheme === 'system' && isSystemLight);
-if (applyLight) {
-  document.body.classList.add('theme-light');
-} else {
-  document.body.classList.remove('theme-light');
-}
+// Load initial theme package synchronously from localStorage to avoid startup flash
+applyStoredThemePackage();
 
 // 禁用浏览器默认右键菜单（完全拦截，以便使用统一的自定义玻璃菜单）
 document.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -69,6 +62,7 @@ window.addEventListener('unhandledrejection', (e) => {
 
 async function bootstrap() {
   await initializeI18n();
+  await loadThemePackages().catch(() => {});
   await applyProgramFontPreferences().catch(() => {});
   ReactDOM.createRoot(document.getElementById('root')).render(
     <ErrorBoundary>

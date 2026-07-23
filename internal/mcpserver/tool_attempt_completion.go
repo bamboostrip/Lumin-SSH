@@ -18,6 +18,10 @@ func attemptCompletionToolDefinition() ToolDefinition {
 	}
 }
 
+func AttemptCompletionToolDefinition() ToolDefinition {
+	return attemptCompletionToolDefinition()
+}
+
 func (c *Catalog) callAttemptCompletion(arguments map[string]any) (any, error) {
 	if err := validateAllowedArguments(arguments, "result"); err != nil {
 		return nil, err

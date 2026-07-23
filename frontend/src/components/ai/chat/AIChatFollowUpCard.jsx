@@ -86,6 +86,17 @@ function normalizeLegacySuggestions(question, suggestions) {
   }]
 }
 
+function normalizeFollowUpQuestionType(value) {
+  const normalizedValue = String(value || '').trim().toLowerCase()
+  if (normalizedValue === 'multiple' || normalizedValue === 'multi_select') {
+    return 'multiple'
+  }
+  if (normalizedValue === 'free_text' || normalizedValue === 'text') {
+    return 'free_text'
+  }
+  return 'single'
+}
+
 function normalizeFollowUpQuestions(question, questions, suggestions) {
   if (Array.isArray(questions) && questions.length > 0) {
     return questions
@@ -96,7 +107,7 @@ function normalizeFollowUpQuestions(question, questions, suggestions) {
           : questionIndex === 0 && typeof question === 'string' && question.trim()
             ? question.trim()
             : `Question ${questionIndex + 1}`
-        const type = String(item?.type || '').trim().toLowerCase() === 'multiple' ? 'multiple' : 'single'
+        const type = normalizeFollowUpQuestionType(item?.type)
         const options = Array.isArray(item?.options)
           ? item.options
             .map((option, optionIndex) => {
@@ -114,7 +125,7 @@ function normalizeFollowUpQuestions(question, questions, suggestions) {
             })
             .filter(Boolean)
           : []
-        if (options.length === 0) {
+        if (type !== 'free_text' && options.length === 0) {
           return null
         }
         return { id, text, type, options }
@@ -148,21 +159,33 @@ function buildFollowUpSessionIdentity(requestId, questions) {
   })
 }
 
-function buildFollowUpReadableText(questions, answers) {
+function buildFollowUpReadableText(questions, answers, textAnswers) {
   return questions
     .map((question) => {
+      if (question.type === 'free_text') {
+        const textAnswer = String(textAnswers?.[question.id] || '').trim()
+        return textAnswer ? `${question.text}: ${textAnswer}` : ''
+      }
       const selectedIds = answers[question.id] || []
-      const selectedAnswers = question.options.filter((option) => selectedIds.includes(option.id)).map((option) => option.answer)
+      const selectedAnswers = (question.options || []).filter((option) => selectedIds.includes(option.id)).map((option) => option.answer)
       return selectedAnswers.length > 0 ? `${question.text}: ${selectedAnswers.join(', ')}` : ''
     })
     .filter(Boolean)
     .join('\n')
 }
 
-function buildFollowUpResponse(questions, answers) {
+function buildFollowUpResponse(questions, answers, textAnswers) {
   const formattedAnswers = questions.map((question) => {
+    if (question.type === 'free_text') {
+      return {
+        questionId: question.id,
+        question: question.text,
+        type: question.type,
+        textAnswer: String(textAnswers?.[question.id] || '').trim(),
+      }
+    }
     const selectedOptionIds = answers[question.id] || []
-    const selectedAnswers = question.options.filter((option) => selectedOptionIds.includes(option.id)).map((option) => option.answer)
+    const selectedAnswers = (question.options || []).filter((option) => selectedOptionIds.includes(option.id)).map((option) => option.answer)
     return {
       questionId: question.id,
       question: question.text,
@@ -173,9 +196,9 @@ function buildFollowUpResponse(questions, answers) {
   })
   const mode = questions
     .filter((question) => question.type === 'single')
-    .flatMap((question) => question.options.filter((option) => (answers[question.id] || []).includes(option.id) && option.mode))[0]?.mode
+    .flatMap((question) => (question.options || []).filter((option) => (answers[question.id] || []).includes(option.id) && option.mode))[0]?.mode
   return {
-    readableText: buildFollowUpReadableText(questions, answers),
+    readableText: buildFollowUpReadableText(questions, answers, textAnswers),
     answers: formattedAnswers,
     ...(mode ? { mode } : {}),
   }
@@ -269,12 +292,14 @@ export default function AIChatFollowUpCard({ question, questions, suggestions, r
   )
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [answers, setAnswers] = useState({})
+  const [textAnswers, setTextAnswers] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [isFrozen, setIsFrozen] = useState(false)
   const [transitionDirection, setTransitionDirection] = useState('next')
   const [transitionTick, setTransitionTick] = useState(0)
   const currentQuestionIndexRef = useRef(0)
   const answersRef = useRef({})
+  const textAnswersRef = useRef({})
   const submittingRef = useRef(false)
   const freezeTimeoutRef = useRef(0)
 
@@ -299,8 +324,10 @@ export default function AIChatFollowUpCard({ question, questions, suggestions, r
   useEffect(() => {
     currentQuestionIndexRef.current = 0
     answersRef.current = {}
+    textAnswersRef.current = {}
     setCurrentQuestionIndex(0)
     setAnswers({})
+    setTextAnswers({})
     setSubmitting(false)
     setIsFrozen(false)
     submittingRef.current = false
@@ -317,17 +344,18 @@ export default function AIChatFollowUpCard({ question, questions, suggestions, r
   const totalLabel = String(totalQuestions).padStart(2, '0')
   const canGoPrevious = currentQuestionIndex > 0
   const selectedIds = currentQuestion ? (answers[currentQuestion.id] || []) : []
-  const canGoNext = selectedIds.length > 0
+  const currentTextAnswer = currentQuestion ? (textAnswers[currentQuestion.id] || '') : ''
+  const canGoNext = currentQuestion?.type === 'free_text' ? true : selectedIds.length > 0
   const isLastQuestion = currentQuestionIndex === totalQuestions - 1
 
-  const submitResponse = useCallback(async (nextAnswers) => {
+  const submitResponse = useCallback(async (nextAnswers, nextTextAnswers = textAnswersRef.current || {}) => {
     if (!requestId || typeof onSelectSuggestion !== 'function' || submittingRef.current || isFrozen) {
       return false
     }
-    if (!normalizedQuestions.every((item) => Array.isArray(nextAnswers[item.id]) && nextAnswers[item.id].length > 0)) {
+    if (!normalizedQuestions.every((item) => item.type === 'free_text' || (Array.isArray(nextAnswers[item.id]) && nextAnswers[item.id].length > 0))) {
       return false
     }
-    const payload = buildFollowUpResponse(normalizedQuestions, nextAnswers)
+    const payload = buildFollowUpResponse(normalizedQuestions, nextAnswers, nextTextAnswers)
     submittingRef.current = true
     setSubmitting(true)
     try {
@@ -342,8 +370,10 @@ export default function AIChatFollowUpCard({ question, questions, suggestions, r
         return false
       }
       answersRef.current = {}
+      textAnswersRef.current = {}
       currentQuestionIndexRef.current = 0
       setAnswers({})
+      setTextAnswers({})
       setCurrentQuestionIndex(0)
       setTransitionDirection('next')
       setTransitionTick((current) => current + 1)
@@ -392,6 +422,21 @@ export default function AIChatFollowUpCard({ question, questions, suggestions, r
       }
       answersRef.current = nextAnswers
       return nextAnswers
+    })
+  }, [isFrozen, submitting])
+
+  const handleFreeTextChange = useCallback((questionItem, value) => {
+    if (!questionItem || submitting || isFrozen) {
+      return
+    }
+    const nextValue = typeof value === 'string' ? value : ''
+    setTextAnswers((current) => {
+      const nextTextAnswers = {
+        ...current,
+        [questionItem.id]: nextValue,
+      }
+      textAnswersRef.current = nextTextAnswers
+      return nextTextAnswers
     })
   }, [isFrozen, submitting])
 
@@ -483,7 +528,26 @@ export default function AIChatFollowUpCard({ question, questions, suggestions, r
           animation: `${transitionDirection === 'next' ? 'ai-followup-slide-next' : 'ai-followup-slide-prev'} 180ms ease`,
         }}
       >
-        {currentQuestion.options.map((option) => {
+        {currentQuestion.type === 'free_text' ? (
+          <textarea
+            value={currentTextAnswer}
+            onChange={(event) => handleFreeTextChange(currentQuestion, event.target.value)}
+            disabled={submitting || isFrozen}
+            style={{
+              minHeight: 140,
+              resize: 'vertical',
+              borderRadius: 12,
+              border: '1px solid var(--border)',
+              background: 'var(--surface-overlay)',
+              color: 'var(--text-primary)',
+              padding: '12px 14px',
+              boxSizing: 'border-box',
+              fontSize: 13,
+              lineHeight: 1.6,
+              outline: 'none',
+            }}
+          />
+        ) : currentQuestion.options.map((option) => {
           const checked = selectedIds.includes(option.id)
           const disabled = submitting || isFrozen || option.disabled === true
           const optionType = currentQuestion.type === 'multiple' ? 'multiple' : 'single'

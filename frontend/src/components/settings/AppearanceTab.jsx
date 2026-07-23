@@ -2,7 +2,6 @@ import React, { useMemo } from 'react';
 import { t as $t } from '../../i18n.js';
 import { Sun, Monitor, Moon, Trash2 } from 'lucide-react';
 import { ToggleSwitch } from './SharedComponents';
-import { listTerminalThemes } from '../../utils/theme.js';
 
 export default function AppearanceTab({
   programFonts,
@@ -23,8 +22,17 @@ export default function AppearanceTab({
   terminalFontSize, onTerminalFontSizeChange,
   terminalLocalEcho, onTerminalLocalEchoChange,
   terminalTimestamps, onTerminalTimestampsChange,
-  terminalColorTheme, onTerminalColorThemeChange,
+  themePackages,
+  themePackageSettings,
   themeMode, onThemeChange,
+  onSelectLightThemePackage,
+  onSelectDarkThemePackage,
+  onReloadThemePackages,
+  onOpenThemePackagesDirectory,
+  onImportThemePackages,
+  onTuneActiveThemeWithAI,
+  onDeleteThemePackage,
+  themePackageBusy,
   showThemeQuickEntry, onToggleThemeQuickEntry,
   probePanelPosition, onProbePanelPositionChange,
   termBgImage, onTermBgUpload, onTermBgReset,
@@ -63,6 +71,10 @@ export default function AppearanceTab({
       fileName: fontAssignments.aiFileName || '',
     },
   ];
+
+  const normalizedThemePackages = Array.isArray(themePackages) ? themePackages : [];
+  const lightThemePackages = normalizedThemePackages.filter((themePackage) => themePackage?.modeHint === 'light');
+  const darkThemePackages = normalizedThemePackages.filter((themePackage) => themePackage?.modeHint !== 'light');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -242,24 +254,12 @@ export default function AppearanceTab({
       </div>
 
       <div>
-        <h3 style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 12, fontWeight: 600 }}>{$t('终端颜色主题')}</h3>
-        <div className="form-group" style={{ background: 'var(--surface-overlay)', padding: 16, borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
-          <div style={{ color: 'var(--text-tertiary)', fontSize: 11, marginBottom: 12 }}>{$t('选择终端的配色风格，即时生效')}</div>
-          <TerminalThemePalette
-            terminalColorTheme={terminalColorTheme}
-            onTerminalColorThemeChange={onTerminalColorThemeChange}
-            themeMode={themeMode}
-          />
-        </div>
-      </div>
-
-      <div>
-        <h3 style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 12, fontWeight: 600 }}>{$t('界面主题')}</h3>
+        <h3 style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 12, fontWeight: 600 }}>{$t('主题包')}</h3>
         <div className="form-group" style={{ background: 'var(--surface-overlay)', padding: 16, borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <div>
               <div style={{ color: 'var(--text-primary)', fontSize: 13 }}>{$t('主题')}</div>
-              <div style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{$t('选择浅色、深色或跟随系统设置')}</div>
+              <div style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{$t('浅色、深色和系统模式分别决定当前应用哪一套主题包')}</div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <button
@@ -319,6 +319,38 @@ export default function AppearanceTab({
               </div>
             </div>
           </div>
+
+          <div className="divider" style={{ margin: '12px 0', borderTop: '1px solid var(--border)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn btn-secondary btn-sm" onClick={onReloadThemePackages} disabled={themePackageBusy}>{$t('重新扫描')}</button>
+              <button className="btn btn-secondary btn-sm" onClick={onOpenThemePackagesDirectory} disabled={themePackageBusy}>{$t('打开目录')}</button>
+              <button className="btn btn-secondary btn-sm" onClick={onImportThemePackages} disabled={themePackageBusy}>{$t('导入JSON')}</button>
+            </div>
+            <button className="btn btn-secondary btn-sm" onClick={onTuneActiveThemeWithAI} disabled={themePackageBusy}>{$t('AI调色')}</button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
+            <ThemePackagePalette
+              title={$t('浅色主题包')}
+              description={$t('当主题为浅色或系统切换到浅色时使用')}
+              packages={lightThemePackages}
+              selectedThemePackageId={themePackageSettings?.lightThemePackageId}
+              onSelectThemePackage={onSelectLightThemePackage}
+              onDeleteThemePackage={onDeleteThemePackage}
+              themePackageBusy={themePackageBusy}
+            />
+            <ThemePackagePalette
+              title={$t('深色主题包')}
+              description={$t('当主题为深色或系统切换到深色时使用')}
+              packages={darkThemePackages}
+              selectedThemePackageId={themePackageSettings?.darkThemePackageId}
+              onSelectThemePackage={onSelectDarkThemePackage}
+              onDeleteThemePackage={onDeleteThemePackage}
+              themePackageBusy={themePackageBusy}
+            />
+          </div>
+
           <div className="divider" style={{ margin: '12px 0', borderTop: '1px solid var(--border)' }} />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
@@ -396,49 +428,99 @@ export default function AppearanceTab({
   );
 }
 
-/** 主题卡片：预览终端真实会用的底色/状态栏/字色/ANSI，而非无关四色点 */
-function TerminalThemePalette({ terminalColorTheme, onTerminalColorThemeChange, themeMode }) {
-  const themes = useMemo(() => listTerminalThemes(), [themeMode]);
+function ThemePackagePalette({
+  title,
+  description,
+  packages,
+  selectedThemePackageId,
+  onSelectThemePackage,
+  onDeleteThemePackage,
+  themePackageBusy,
+}) {
+  const normalizedPackages = Array.isArray(packages) ? packages : [];
+  const palettePackages = useMemo(() => normalizedPackages.map((themePackage) => ({
+    ...themePackage,
+    preview: themePackage?.preview || {},
+  })), [normalizedPackages]);
+
   return (
-    <div className="theme-palette-grid">
-      {themes.map(({ key, name, preview }) => (
-        <div
-          key={key}
-          className={`theme-palette-card${terminalColorTheme === key ? ' active' : ''}`}
-          onClick={() => onTerminalColorThemeChange(key)}
-        >
-          <div
-            className="theme-palette-term-preview"
-            style={{
-              background: preview.containerBg,
-              borderColor: preview.statusBarColor,
-            }}
-          >
-            <div
-              className="theme-palette-term-statusbar"
-              style={{
-                background: preview.statusBarBg,
-                color: preview.statusBarColor,
-                borderBottomColor: preview.statusBarColor,
-              }}
-            >
-              <span className="theme-palette-term-dot" style={{ background: preview.green }} />
-              <span className="theme-palette-term-host" style={{ color: preview.foreground }}>host</span>
-              <span style={{ marginLeft: 'auto', opacity: 0.9 }}>●</span>
-            </div>
-            <div className="theme-palette-term-body" style={{ color: preview.foreground }}>
-              <span>$</span>
-              {' '}
-              <span>echo</span>
-              {' '}
-              <span>ok</span>
-              {/* 与 Terminal.jsx 一致：cursorStyle bar + cursorWidth 1 */}
-              <span className="theme-palette-term-cursor" style={{ background: preview.cursor }} />
-            </div>
-          </div>
-          <div className="theme-palette-name">{name}</div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 600 }}>{title}</div>
+        <div style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{description}</div>
+      </div>
+      {palettePackages.length === 0 ? (
+        <div style={{ padding: 12, borderRadius: 'var(--radius-md)', border: '1px dashed var(--border)', color: 'var(--text-tertiary)', fontSize: 12 }}>
+          {$t('当前没有可用的主题包')}
         </div>
-      ))}
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {palettePackages.map((themePackage) => {
+            const isActive = selectedThemePackageId === themePackage.id;
+            const canDelete = themePackage.source === 'user';
+            return (
+              <div
+                key={themePackage.id}
+                onClick={() => onSelectThemePackage(themePackage.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '10px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  border: `1px solid ${isActive ? 'var(--accent)' : 'var(--border)'}`,
+                  background: isActive ? 'rgba(var(--accent-rgb), 0.08)' : 'var(--surface-base)',
+                  boxShadow: isActive ? '0 0 0 1px rgba(var(--accent-rgb), 0.18) inset' : 'none',
+                  cursor: 'pointer',
+                  minWidth: 0,
+                  transition: 'var(--transition-fast)',
+                }}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: isActive ? 'var(--accent)' : 'var(--text-tertiary)',
+                    flexShrink: 0,
+                  }}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: isActive ? 700 : 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {themePackage.name}
+                  </div>
+                  {themePackage.description ? (
+                    <div style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.5, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {themePackage.description}
+                    </div>
+                  ) : null}
+                </div>
+                <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 999, border: '1px solid var(--border)', color: 'var(--text-tertiary)', flexShrink: 0 }}>
+                  {themePackage.source === 'builtin' ? $t('内置') : $t('用户')}
+                </span>
+                {canDelete ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-icon"
+                    aria-label={$t('删除主题包')}
+                    title={$t('删除主题包')}
+                    disabled={themePackageBusy}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onDeleteThemePackage?.(themePackage);
+                    }}
+                    style={{ width: 24, height: 24, color: 'var(--danger)', flexShrink: 0 }}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

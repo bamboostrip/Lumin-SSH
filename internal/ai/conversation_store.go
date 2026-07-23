@@ -195,11 +195,16 @@ func normalizeAIConversationFollowUpQuestions(questions []AIConversationFollowUp
 			}
 		}
 		questionType := strings.ToLower(strings.TrimSpace(question.Type))
-		if questionType != "multiple" {
+		switch questionType {
+		case "multiple", "multi_select":
+			questionType = "multiple"
+		case "free_text", "text":
+			questionType = "free_text"
+		default:
 			questionType = "single"
 		}
 		options := normalizeAIConversationFollowUpOptions(question.Options, questionID)
-		if len(options) == 0 {
+		if questionType != "free_text" && len(options) == 0 {
 			continue
 		}
 		normalized = append(normalized, AIConversationFollowUpQuestion{

@@ -44,6 +44,7 @@ func (b *AIBindings) runtime() *ai.App {
 	}
 	if b.app != nil {
 		b.runtimeApp.SetContext(b.app.ctx)
+		b.runtimeApp.SetThemeToolDelegate(b.app)
 	}
 	return b.runtimeApp
 }

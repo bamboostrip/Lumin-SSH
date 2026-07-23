@@ -46,6 +46,7 @@ type App struct {
 	sshManager                *SSHManager
 	configManager             *ConfigManager
 	sessionProvider           SessionProviderDelegate
+	themeToolDelegate         ThemeToolDelegate
 	aiChatReqMu               sync.Mutex
 	aiChatReqCancel           map[string]context.CancelFunc
 	aiPendingToolMu           sync.Mutex
@@ -92,6 +93,13 @@ func (a *App) SetContext(ctx context.Context) {
 		return
 	}
 	a.ctx = ctx
+}
+
+func (a *App) SetThemeToolDelegate(delegate ThemeToolDelegate) {
+	if a == nil {
+		return
+	}
+	a.themeToolDelegate = delegate
 }
 
 func atomicWriteFile(path string, data []byte, perm os.FileMode) error {

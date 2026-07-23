@@ -70,8 +70,13 @@ type AIChatCommandTerminalCandidate struct {
 type aiToolExecutionState = ToolExecutionState
 
 type aiFollowupXMLPayload struct {
-	Questions   []aiFollowupXMLQuestion   `xml:"question"`
-	Suggestions []aiFollowupXMLSuggestion `xml:"suggest"`
+	Questions        []aiFollowupXMLQuestion         `xml:"question"`
+	Suggestions      []aiFollowupXMLSuggestion       `xml:"suggest"`
+	ThemePreferences []aiFollowupXMLThemePreferences `xml:"theme_preferences"`
+}
+
+type aiFollowupXMLThemePreferences struct {
+	QuestionBlocks []aiFollowupXMLQuestion `xml:"question_block"`
 }
 
 type aiFollowupXMLQuestion struct {
@@ -96,10 +101,14 @@ type aiFollowupXMLSuggestion struct {
 }
 
 func normalizeAIFollowupQuestionType(value string) string {
-	if strings.EqualFold(strings.TrimSpace(value), "multiple") {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "multiple", "multi_select":
 		return "multiple"
+	case "free_text", "text":
+		return "free_text"
+	default:
+		return "single"
 	}
-	return "single"
 }
 
 func parseAIFollowupDisabled(value string) bool {
@@ -132,9 +141,15 @@ func parseAIFollowupPayload(raw string, fallbackQuestion string) ([]AIConversati
 	if err := xml.Unmarshal([]byte(payload), &parsed); err != nil {
 		return nil, nil, fmt.Errorf("追问建议格式无效")
 	}
-	if len(parsed.Questions) > 0 {
-		questions := make([]AIConversationFollowUpQuestion, 0, len(parsed.Questions))
-		for questionIndex, item := range parsed.Questions {
+	questionItems := append([]aiFollowupXMLQuestion{}, parsed.Questions...)
+	if len(questionItems) == 0 {
+		for _, item := range parsed.ThemePreferences {
+			questionItems = append(questionItems, item.QuestionBlocks...)
+		}
+	}
+	if len(questionItems) > 0 {
+		questions := make([]AIConversationFollowUpQuestion, 0, len(questionItems))
+		for questionIndex, item := range questionItems {
 			questionID := strings.TrimSpace(item.ID)
 			if questionID == "" {
 				questionID = fmt.Sprintf("question-%d", questionIndex+1)
@@ -153,6 +168,15 @@ func parseAIFollowupPayload(raw string, fallbackQuestion string) ([]AIConversati
 				} else {
 					questionText = fmt.Sprintf("Question %d", questionIndex+1)
 				}
+			}
+			questionType := normalizeAIFollowupQuestionType(rawQuestionType)
+			if questionType == "free_text" {
+				questions = append(questions, AIConversationFollowUpQuestion{
+					ID:   questionID,
+					Text: questionText,
+					Type: questionType,
+				})
+				continue
 			}
 			options := make([]AIConversationFollowUpOption, 0, len(item.Options))
 			for optionIndex, option := range item.Options {
@@ -178,12 +202,12 @@ func parseAIFollowupPayload(raw string, fallbackQuestion string) ([]AIConversati
 			questions = append(questions, AIConversationFollowUpQuestion{
 				ID:      questionID,
 				Text:    questionText,
-				Type:    normalizeAIFollowupQuestionType(rawQuestionType),
+				Type:    questionType,
 				Options: options,
 			})
 		}
 		if len(questions) == 0 {
-			return nil, nil, fmt.Errorf("缺少追问问题")
+			return nil, nil, fmt.Errorf("缺少有效追问问题")
 		}
 		return questions, nil, nil
 	}
@@ -1431,6 +1455,10 @@ func (a *App) startAIChatToolExecution(requestID string, batch *aiPendingToolBat
 	}
 	a.emitAIChatToolExecutionStarted(requestID, execution, message)
 
+	if tool.Name == aiThemeToolName {
+		go a.runAIChatThemeToolExecution(execution)
+		return
+	}
 	if tool.Name == "attempt_completion" {
 		go a.runAIChatAttemptCompletionExecution(execution)
 		return
@@ -1951,6 +1979,9 @@ func (a *App) ResolveAIChatFollowup(requestID string, answer string, imagesJSON 
 		Content: followupContent,
 		Images:  followupImages,
 	})
+	if isAIThemeToolScope(batch.Payload.ToolScope) && a.themeToolDelegate != nil {
+		a.themeToolDelegate.MarkThemeToolConversationUserConfirmed(batch.Payload.ConversationID)
+	}
 	a.emitAIChatEvent(map[string]interface{}{
 		"kind":      "api_message_append",
 		"requestId": trimmedRequestID,

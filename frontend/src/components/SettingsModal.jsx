@@ -9,6 +9,7 @@ import { Sun, Monitor, Moon, Keyboard, Cloud, Info, Database, Folder, X, Refresh
 import { Z } from '../constants/zIndex';
 import { EventsOn, WindowSetSize, WindowUnmaximise } from '../../wailsjs/runtime/runtime.js';
 import { deleteProgramFont, getProgramFontAssignmentSnapshot, listProgramFonts, selectAndImportProgramFontFiles, setProgramFontPreference } from '../utils/programFonts.js';
+import { getAppThemeMode, getThemePackageSettings as getStoredThemePackageSettings, listThemePackages, loadThemePackages, saveThemePackageSettings } from '../utils/theme.js';
 import { syncWithRecoveryPassword } from '../utils/recoveryPasswordSync.js';
 import AppTab from './settings/AppTab';
 import GeneralTab from './settings/GeneralTab';
@@ -368,12 +369,14 @@ export default function SettingsModal({
   const [pingMode, setPingMode] = useState(localStorage.getItem('pingMode') || 'auto');
 
   // Appearance state
-  const [themeMode, setThemeMode] = useState(localStorage.getItem('themeMode') || 'dark');
+  const [themePackageSettings, setThemePackageSettings] = useState(() => getStoredThemePackageSettings());
+  const [themePackages, setThemePackages] = useState(() => listThemePackages());
+  const [themePackageBusy, setThemePackageBusy] = useState(false);
+  const [themeMode, setThemeMode] = useState(getStoredThemePackageSettings().themeMode || 'dark');
   const [language, setLanguage] = useState(localStorage.getItem('appLanguage') || 'zh-CN');
   const [terminalFontSize, setTerminalFontSize] = useState(parseInt(localStorage.getItem('terminalFontSize') || '13', 10));
   const [termBgImage, setTermBgImage] = useState(localStorage.getItem('termBgImage') || '');
   const [termBgOpacity, setTermBgOpacity] = useState(parseFloat(localStorage.getItem('termBgOpacity') || '0.15'));
-  const [terminalColorTheme, setTerminalColorTheme] = useState(localStorage.getItem('terminalColorTheme') || 'lumin');
   const [terminalLocalEcho, setTerminalLocalEcho] = useState(localStorage.getItem('terminalLocalEcho') === 'true');
   const [terminalTimestamps, setTerminalTimestamps] = useState(localStorage.getItem('terminalTimestamps') === 'true');
   const [rememberWindowSize, setRememberWindowSize] = useState(localStorage.getItem('rememberWindowSize') !== 'false');
@@ -466,17 +469,32 @@ export default function SettingsModal({
     }
   }, [initialTab])
 
-  const handleThemeChange = (mode) => {
+  const refreshThemePackages = useCallback(async () => {
+    await loadThemePackages();
+    const nextSettings = getStoredThemePackageSettings();
+    setThemePackageSettings(nextSettings);
+    setThemePackages(listThemePackages());
+    setThemeMode(nextSettings.themeMode || 'dark');
+  }, []);
+
+  const handleThemeChange = async (mode) => {
     if (forceDarkTheme) {
       return;
     }
-    setThemeMode(mode);
-    localStorage.setItem('themeMode', mode);
-    const isSystemLight = window.matchMedia('(prefers-color-scheme: light)').matches;
-    const applyLight = mode === 'light' || (mode === 'system' && isSystemLight);
-    if (applyLight) document.body.classList.add('theme-light');
-    else document.body.classList.remove('theme-light');
-    window.dispatchEvent(new CustomEvent('theme-mode-changed'));
+    setThemePackageBusy(true);
+    try {
+      const nextSettings = await saveThemePackageSettings({
+        ...themePackageSettings,
+        themeMode: mode,
+      });
+      setThemePackageSettings(nextSettings);
+      setThemePackages(listThemePackages());
+      setThemeMode(nextSettings.themeMode || 'dark');
+    } catch (err) {
+      addToast($t('主题包设置保存失败') + `: ${err}`, 'error');
+    } finally {
+      setThemePackageBusy(false);
+    }
   };
 
   const handleToggleThemeQuickEntry = () => {
@@ -485,6 +503,104 @@ export default function SettingsModal({
     localStorage.setItem('showThemeQuickEntry', String(next));
     window.dispatchEvent(new CustomEvent('theme-quick-entry-changed'));
   };
+
+  const handleSelectThemePackage = async (slot, packageId) => {
+    if (!packageId) {
+      return;
+    }
+    setThemePackageBusy(true);
+    try {
+      const nextSettings = await saveThemePackageSettings({
+        ...themePackageSettings,
+        ...(slot === 'light'
+          ? { lightThemePackageId: packageId }
+          : { darkThemePackageId: packageId }),
+      });
+      setThemePackageSettings(nextSettings);
+      setThemePackages(listThemePackages());
+      setThemeMode(nextSettings.themeMode || 'dark');
+    } catch (err) {
+      addToast($t('主题包设置保存失败') + `: ${err}`, 'error');
+    } finally {
+      setThemePackageBusy(false);
+    }
+  };
+
+  const handleReloadThemePackages = async () => {
+    setThemePackageBusy(true);
+    try {
+      await refreshThemePackages();
+      addToast($t('主题包已重新扫描'), 'success');
+    } catch (err) {
+      addToast($t('重新扫描主题包失败') + `: ${err}`, 'error');
+    } finally {
+      setThemePackageBusy(false);
+    }
+  };
+
+  const handleOpenThemePackagesDirectory = async () => {
+    try {
+      const dirPath = await AppGo.GetThemePackagesDirectory();
+      if (!dirPath) {
+        return;
+      }
+      await AppGo.OpenLocalPathInExplorer(dirPath, true);
+    } catch (err) {
+      addToast($t('打开主题包目录失败') + `: ${err}`, 'error');
+    }
+  };
+
+  const handleImportThemePackages = async () => {
+    try {
+      const selectedPaths = await AppGo.SelectThemePackageFiles();
+      if (!Array.isArray(selectedPaths) || selectedPaths.length === 0) {
+        return;
+      }
+      setThemePackageBusy(true);
+      await AppGo.ImportThemePackageFiles(selectedPaths);
+      await refreshThemePackages();
+      addToast($t('主题包已导入'), 'success');
+    } catch (err) {
+      addToast($t('主题包导入失败') + `: ${err}`, 'error');
+    } finally {
+      setThemePackageBusy(false);
+    }
+  };
+
+  const handleDeleteThemePackage = async (themePackage) => {
+    if (!themePackage?.id || themePackage.source === 'builtin') {
+      return;
+    }
+    const ok = await window.luminDialog?.confirm?.(`${$t('确定删除')}${themePackage.name}${$t('？此操作不可撤销')}`);
+    if (!ok) {
+      return;
+    }
+    setThemePackageBusy(true);
+    try {
+      await AppGo.DeleteThemePackage(themePackage.id);
+      await refreshThemePackages();
+      addToast($t('主题包已删除'), 'success');
+    } catch (err) {
+      addToast($t('主题包删除失败') + `: ${err}`, 'error');
+    } finally {
+      setThemePackageBusy(false);
+    }
+  };
+
+  const handleStartAIThemeTuning = useCallback((slot) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const normalizedSlot = slot === 'light' || slot === 'dark'
+      ? slot
+      : (getAppThemeMode() === 'light' ? 'light' : 'dark');
+    window.dispatchEvent(new CustomEvent('ai-theme-tuning-request', {
+      detail: {
+        slot: normalizedSlot,
+      },
+    }));
+    handleClose();
+  }, [handleClose]);
 
   const handleLanguageChange = async (e) => {
     const lang = e.target.value;
@@ -1021,6 +1137,25 @@ export default function SettingsModal({
   }, [refreshSyncMeta]);
 
   useEffect(() => {
+    refreshThemePackages().catch(() => {});
+  }, [refreshThemePackages]);
+
+  useEffect(() => {
+    const handleThemeRuntimeChanged = () => {
+      const nextSettings = getStoredThemePackageSettings();
+      setThemePackageSettings(nextSettings);
+      setThemePackages(listThemePackages());
+      setThemeMode(nextSettings.themeMode || 'dark');
+    };
+    window.addEventListener('theme-package-changed', handleThemeRuntimeChanged);
+    window.addEventListener('theme-mode-changed', handleThemeRuntimeChanged);
+    return () => {
+      window.removeEventListener('theme-package-changed', handleThemeRuntimeChanged);
+      window.removeEventListener('theme-mode-changed', handleThemeRuntimeChanged);
+    };
+  }, []);
+
+  useEffect(() => {
     const unbind = EventsOn('sync-completed', () => { void refreshSyncMeta(); });
     return () => { if (unbind) unbind(); };
   }, [refreshSyncMeta]);
@@ -1378,7 +1513,6 @@ export default function SettingsModal({
   const handleProbeIntervalChange = (s) => { setProbeInterval(s); localStorage.setItem('probeInterval', String(s)); window.dispatchEvent(new Event('probeIntervalChanged')); };
   const handlePingIntervalChange = (s) => { setPingInterval(s); localStorage.setItem('pingInterval', String(s)); window.dispatchEvent(new Event('pingIntervalChanged')); };
   const handlePingModeChange = (mode) => { setPingMode(mode); localStorage.setItem('pingMode', mode); window.dispatchEvent(new Event('pingModeChanged')); };
-  const handleTerminalColorThemeChange = (key) => { setTerminalColorTheme(key); localStorage.setItem('terminalColorTheme', key); window.dispatchEvent(new CustomEvent('terminal-theme-changed', { detail: key })); };
   const handleSyncModeChange = async (mode) => { setSyncMode(mode); try { await AppGo.SetSyncMode(mode); } catch (_) {} };
   const handleAutoSyncEnabledChange = async (enabled) => { setAutoSyncEnabled(enabled); try { await AppGo.SetAutoSyncEnabled(enabled); } catch (_) {} };
   const handlePruneSyncTombstones = async (days) => {
@@ -1605,10 +1739,18 @@ export default function SettingsModal({
                 onTerminalLocalEchoChange={handleTerminalLocalEchoChange}
                 terminalTimestamps={terminalTimestamps}
                 onTerminalTimestampsChange={handleTerminalTimestampsChange}
-                terminalColorTheme={terminalColorTheme}
-                onTerminalColorThemeChange={(key) => { setTerminalColorTheme(key); localStorage.setItem('terminalColorTheme', key); window.dispatchEvent(new CustomEvent('terminal-theme-changed', { detail: key })); }}
+                themePackages={themePackages}
+                themePackageSettings={themePackageSettings}
                 themeMode={forceDarkTheme ? 'dark' : themeMode}
                 onThemeChange={forceDarkTheme ? () => {} : handleThemeChange}
+                onSelectLightThemePackage={(packageId) => { void handleSelectThemePackage('light', packageId); }}
+                onSelectDarkThemePackage={(packageId) => { void handleSelectThemePackage('dark', packageId); }}
+                onReloadThemePackages={() => { void handleReloadThemePackages(); }}
+                onOpenThemePackagesDirectory={() => { void handleOpenThemePackagesDirectory(); }}
+                onImportThemePackages={() => { void handleImportThemePackages(); }}
+                onTuneActiveThemeWithAI={() => { handleStartAIThemeTuning(); }}
+                onDeleteThemePackage={(themePackage) => { void handleDeleteThemePackage(themePackage); }}
+                themePackageBusy={themePackageBusy}
                 showThemeQuickEntry={showThemeQuickEntry}
                 onToggleThemeQuickEntry={handleToggleThemeQuickEntry}
                 probePanelPosition={probePanelPosition}

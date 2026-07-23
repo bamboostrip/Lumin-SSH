@@ -8,7 +8,7 @@ import AIConversationBackupSettings from './ai/AIConversationBackupSettings.jsx'
 import AIPanelSettingsOverlay from './ai/AIPanelSettingsOverlay.jsx'
 import AIComposer from './ai/AIComposer.jsx'
 import { approveAIChatTools, assignAIChatToolTerminal, cancelAIChat, continueAIChatTool, disableAIChatCollaboration, listAIChatCommandTerminalCandidates, previewAIChatToolRestore, rejectAIChatTools, rejectAIChatToolsForQueuedSubmission, resolveAIChatFollowup, restoreAIChatTool, setAIChatSkipNextAutomaticRequest, startAIChat, startAIChatCollaboration, terminateAIChatTool } from './ai/aiChatBridge.js'
-import { condenseAIConversationContext, createAIConversation, deleteAIConversation, getAIAssistantFirstReply, getAIConversation, listAIConversations, normalizeAIConversationMessageSearchResult, normalizeAIConversationSnapshot, normalizeAIConversationTaskSettings, openAIConversationFolder, preprocessAIConversationLongText, readAIConversationWrappedFile, saveAIConversation, searchAIConversationMessages, subscribeAIConversationChanges } from './ai/aiConversationBridge.js'
+import { buildAIConversationTokenLedger, condenseAIConversationContext, countAIConversationAPIMessageRawTokens, createAIConversation, deleteAIConversation, getAIAssistantFirstReply, getAIConversation, listAIConversations, normalizeAIConversationMessageSearchResult, normalizeAIConversationSnapshot, normalizeAIConversationTaskSettings, openAIConversationFolder, preprocessAIConversationLongText, readAIConversationWrappedFile, saveAIConversation, searchAIConversationMessages, subscribeAIConversationChanges } from './ai/aiConversationBridge.js'
 import { buildExecutionContextDetails, getExecutionContextSnapshot } from './ai/aiExecutionContext.js'
 import { getAIGlobalSettings, normalizeAIGlobalSettings, saveAIGlobalSettings } from './ai/aiGlobalSettingsBridge.js'
 import { getAIProviderState, getAIProviderTokenGroup } from './ai/aiProviderBridge.js'
@@ -715,6 +715,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   const [conversationSearchIndex, setConversationSearchIndex] = useState(0)
   const terminalPanelsRef = useRef({})
   const panelMountedRef = useRef(true)
+  const tokenLedgerRef = useRef(new Map())
   const panelInstanceKey = `${sessionId || 'session'}::${terminalId || 'terminal'}`
   const globalSearchRequestRef = useRef(0)
   const globalSearchInputRef = useRef(null)
@@ -1230,14 +1231,57 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     }
   }, [getMessageApiLengthBefore])
 
-  const refreshAIConversationContextTokens = useCallback(async (snapshot, targetPanelKey = panelInstanceKey) => {
-    const bridge = window?.go?.main?.AIBindings || window?.go?.main?.App
-    if (!snapshot?.id || !bridge?.CountAIConversationContextTokens) {
+  const applyAITokenFudgeFactor = useCallback((rawTokens) => {
+    if (!Number.isFinite(Number(rawTokens)) || Number(rawTokens) <= 0) {
+      return 0
+    }
+    return Math.ceil(Number(rawTokens) * 1.5)
+  }, [])
+
+  const computeAITokenLedgerContextTokens = useCallback((ledger) => {
+    if (!ledger || typeof ledger !== 'object') {
+      return 0
+    }
+    const systemRawTokens = Number(ledger.systemRawTokens) || 0
+    let totalRawTokens = systemRawTokens
+    ledger.entries.forEach((rawTokens) => {
+      totalRawTokens += Number(rawTokens) || 0
+    })
+    return applyAITokenFudgeFactor(totalRawTokens)
+  }, [applyAITokenFudgeFactor])
+
+  const buildAIConversationCurrentApiMessageIds = useCallback((snapshot) => {
+    const apiMessages = Array.isArray(snapshot?.apiMessages) ? snapshot.apiMessages : []
+    return apiMessages
+      .map((message) => (typeof message?.messageId === 'string' ? message.messageId.trim() : ''))
+      .filter((messageId) => messageId)
+  }, [])
+
+  // 全量重建账本: 进入任务/恢复备份/压缩后调用,对每个节点逐条重算 raw token 并持久化到内存账本
+  const rebuildAIConversationTokenLedger = useCallback(async (snapshot, targetPanelKey = panelInstanceKey) => {
+    if (!snapshot?.id) {
       return 0
     }
     try {
-      const metrics = await bridge.CountAIConversationContextTokens(terminalId, JSON.stringify(snapshot))
-      const contextTokens = normalizeAIContextTokensValue(metrics?.contextTokens)
+      const ledger = await buildAIConversationTokenLedger(terminalId, snapshot)
+      if (!ledger) {
+        return 0
+      }
+      const entryMap = new Map()
+      ledger.entries.forEach((entry) => {
+        if (entry.messageId) {
+          entryMap.set(entry.messageId, entry.rawTokens)
+        }
+      })
+      const nextLedger = {
+        systemRawTokens: ledger.systemRawTokens,
+        entries: entryMap,
+      }
+      tokenLedgerRef.current.set(snapshot.id, nextLedger)
+      const contextTokens = ledger.contextTokens || computeAITokenLedgerContextTokens({
+        systemRawTokens: nextLedger.systemRawTokens,
+        entries: Array.from(entryMap.values()),
+      })
       setPanelState(targetPanelKey, (current) => {
         if (current.activeConversationId !== snapshot.id) {
           return current
@@ -1251,7 +1295,64 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     } catch {
       return 0
     }
-  }, [panelInstanceKey, setPanelState, terminalId])
+  }, [computeAITokenLedgerContextTokens, panelInstanceKey, setPanelState, terminalId])
+
+  // 增量刷新账本: 只对账本里尚未记录的新增节点算 raw token, 已删除节点从账本移除, 然后按剩余节点求和
+  const refreshAIConversationContextTokens = useCallback(async (snapshot, targetPanelKey = panelInstanceKey) => {
+    if (!snapshot?.id) {
+      return 0
+    }
+    const existingLedger = tokenLedgerRef.current.get(snapshot.id)
+    if (!existingLedger) {
+      return rebuildAIConversationTokenLedger(snapshot, targetPanelKey)
+    }
+    const currentApiMessageIds = buildAIConversationCurrentApiMessageIds(snapshot)
+    const currentIdSet = new Set(currentApiMessageIds)
+    // 删除/编辑/重试导致的节点消失: 从账本移除
+    const nextEntries = new Map()
+    existingLedger.entries.forEach((rawTokens, messageId) => {
+      if (currentIdSet.has(messageId)) {
+        nextEntries.set(messageId, rawTokens)
+      }
+    })
+    // 追加的新节点: 只算账本里没有的那几条
+    const apiMessages = Array.isArray(snapshot.apiMessages) ? snapshot.apiMessages : []
+    const missingMessages = apiMessages.filter((message) => {
+      const messageId = typeof message?.messageId === 'string' ? message.messageId.trim() : ''
+      return messageId && !nextEntries.has(messageId)
+    })
+    if (missingMessages.length > 0) {
+      try {
+        const entries = await countAIConversationAPIMessageRawTokens(terminalId, snapshot.id, missingMessages)
+        entries.forEach((entry) => {
+          if (entry.messageId) {
+            nextEntries.set(entry.messageId, entry.rawTokens)
+          }
+        })
+      } catch {
+        return rebuildAIConversationTokenLedger(snapshot, targetPanelKey)
+      }
+    }
+    const nextLedger = {
+      systemRawTokens: existingLedger.systemRawTokens,
+      entries: nextEntries,
+    }
+    tokenLedgerRef.current.set(snapshot.id, nextLedger)
+    const contextTokens = computeAITokenLedgerContextTokens({
+      systemRawTokens: nextLedger.systemRawTokens,
+      entries: Array.from(nextEntries.values()),
+    })
+    setPanelState(targetPanelKey, (current) => {
+      if (current.activeConversationId !== snapshot.id) {
+        return current
+      }
+      return {
+        ...current,
+        contextTokens,
+      }
+    })
+    return contextTokens
+  }, [buildAIConversationCurrentApiMessageIds, computeAITokenLedgerContextTokens, panelInstanceKey, rebuildAIConversationTokenLedger, setPanelState, terminalId])
 
   const saveConversationSnapshot = useCallback(async (snapshot, targetPanelKey = panelInstanceKey, options = {}) => {
     const shouldHydrate = options?.hydrate === true
@@ -1500,6 +1601,8 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
             contextTokens: normalizeAIContextTokensValue(payload.newContextTokens),
           }
         })
+        // 压缩改写了历史节点: 全量重建账本 (对每个节点重算并重新持久化压缩后的 Token)
+        void rebuildAIConversationTokenLedger(nextSnapshot, matchedPanelKey)
         return
       }
 
@@ -2317,7 +2420,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         unbind()
       }
     }
-  }, [enrichAIChatCommandMessage, playAISound, saveConversationSnapshot, setPanelState])
+  }, [enrichAIChatCommandMessage, playAISound, rebuildAIConversationTokenLedger, saveConversationSnapshot, setPanelState])
 
   useEffect(() => {
     const pendingRequestId = typeof panelState.collaborationPendingRequestId === 'string' ? panelState.collaborationPendingRequestId.trim() : ''
@@ -2550,8 +2653,9 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       await saveConversationSnapshot(nextSnapshot, panelInstanceKey)
       return
     }
-    void refreshAIConversationContextTokens(nextSnapshot, panelInstanceKey)
-  }, [aiProviderState, availableAIProviders, buildConversationWithProviderId, panelInstanceKey, refreshAIConversationContextTokens, resetComposerEditState, resolveAvailableProviderId, saveConversationSnapshot, setPanelState])
+    // 进入任务: 全量重建账本 (100% 可靠)
+    void rebuildAIConversationTokenLedger(nextSnapshot, panelInstanceKey)
+  }, [aiProviderState, availableAIProviders, buildConversationWithProviderId, panelInstanceKey, rebuildAIConversationTokenLedger, resetComposerEditState, resolveAvailableProviderId, saveConversationSnapshot, setPanelState])
 
   const handleRestoreConversationBackup = useCallback(async (snapshot) => {
     if (!snapshot?.id) {
@@ -2588,8 +2692,9 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       collaborationAwaitingManualFollowup: false,
       collaborationFollowupRequestId: '',
     })
-    void refreshAIConversationContextTokens(snapshot, panelInstanceKey)
-  }, [panelInstanceKey, refreshAIConversationContextTokens, resetComposerEditState, setPanelState])
+    // 恢复备份: 全量重建账本 (100% 可靠)
+    void rebuildAIConversationTokenLedger(snapshot, panelInstanceKey)
+  }, [panelInstanceKey, rebuildAIConversationTokenLedger, resetComposerEditState, setPanelState])
 
   const handleOpenConversationFolder = useCallback(async (conversationId) => {
     try {
@@ -2673,6 +2778,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       return
     }
     await deleteAIConversation(conversationId)
+    tokenLedgerRef.current.delete(conversationId)
     setConversationList((prev) => prev.filter((item) => item.id !== conversationId))
     setTerminalPanels((prev) => {
       const nextPanels = { ...prev }
@@ -3705,14 +3811,15 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         apiMessages: nextSnapshot.apiMessages,
         isCondensingContext: false,
       }))
-      void refreshAIConversationContextTokens(nextSnapshot, panelInstanceKey)
+      // 压缩改写了历史节点: 全量重建账本 (对每个节点重算并重新持久化压缩后的 Token)
+      void rebuildAIConversationTokenLedger(nextSnapshot, panelInstanceKey)
     } catch {
       setPanelState(panelInstanceKey, (current) => ({
         ...current,
         isCondensingContext: false,
       }))
     }
-  }, [activeConversation, panelInstanceKey, panelState.isCondensingContext, refreshAIConversationContextTokens, runtimePhase, setPanelState, terminalId])
+  }, [activeConversation, panelInstanceKey, panelState.isCondensingContext, rebuildAIConversationTokenLedger, runtimePhase, setPanelState, terminalId])
 
   const resumeAIChatFromConversation = useCallback(async (conversationSnapshot, targetPanelKey = panelInstanceKey) => {
     if (!conversationSnapshot || !effectiveProviderId) {

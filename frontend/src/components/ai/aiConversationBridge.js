@@ -370,3 +370,48 @@ export async function readAIConversationWrappedFile(conversationId, localPath) {
   }
   return bridge.ReadAIConversationWrappedFile(conversationId, localPath)
 }
+
+function normalizeAITokenLedgerEntry(entry) {
+  const messageId = typeof entry?.messageId === 'string' ? entry.messageId.trim() : ''
+  const rawTokens = Number(entry?.rawTokens)
+  return {
+    messageId,
+    rawTokens: Number.isFinite(rawTokens) && rawTokens > 0 ? Math.trunc(rawTokens) : 0,
+  }
+}
+
+export async function buildAIConversationTokenLedger(sessionId, snapshot) {
+  const bridge = getAppBridge()
+  if (!bridge?.BuildAIConversationTokenLedger) {
+    return null
+  }
+  const outgoingSnapshot = normalizeAIConversationSnapshot(snapshot)
+  const ledger = await bridge.BuildAIConversationTokenLedger(
+    typeof sessionId === 'string' ? sessionId : '',
+    JSON.stringify(outgoingSnapshot),
+  )
+  if (!ledger || typeof ledger !== 'object') {
+    return null
+  }
+  const systemRawTokens = Number(ledger?.systemRawTokens)
+  const contextTokens = Number(ledger?.contextTokens)
+  return {
+    systemRawTokens: Number.isFinite(systemRawTokens) && systemRawTokens > 0 ? Math.trunc(systemRawTokens) : 0,
+    entries: Array.isArray(ledger?.entries) ? ledger.entries.map(normalizeAITokenLedgerEntry) : [],
+    contextTokens: Number.isFinite(contextTokens) && contextTokens > 0 ? Math.trunc(contextTokens) : 0,
+  }
+}
+
+export async function countAIConversationAPIMessageRawTokens(sessionId, conversationId, apiMessages) {
+  const bridge = getAppBridge()
+  if (!bridge?.CountAIConversationAPIMessageRawTokens) {
+    return []
+  }
+  const outgoingMessages = Array.isArray(apiMessages) ? apiMessages.map(normalizeAIConversationAPIMessage) : []
+  const entries = await bridge.CountAIConversationAPIMessageRawTokens(
+    typeof sessionId === 'string' ? sessionId : '',
+    typeof conversationId === 'string' ? conversationId : '',
+    JSON.stringify(outgoingMessages),
+  )
+  return Array.isArray(entries) ? entries.map(normalizeAITokenLedgerEntry) : []
+}

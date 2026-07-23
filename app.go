@@ -634,6 +634,11 @@ func (a *App) BatchSetConnectionGroup(ids []string, group string) error {
 	return a.configManager.BatchSetConnectionGroup(ids, group)
 }
 
+// RenameConnectionGroup 重命名服务器分组（批量更新该组下所有连接的 group）
+func (a *App) RenameConnectionGroup(oldName, newName string) error {
+	return a.configManager.RenameConnectionGroup(oldName, newName)
+}
+
 // SetConnectionOS 仅更新服务器操作系统
 func (a *App) SetConnectionOS(id string, os string) error {
 	return a.configManager.SetConnectionOS(id, os)

@@ -976,6 +976,52 @@ func (c *ConfigManager) BatchSetConnectionGroup(ids []string, group string) erro
 	return nil
 }
 
+// RenameConnectionGroup 将 oldName 分组下所有服务器的 group 改为 newName。
+// 与已有分组重名时拒绝；未分组（空名）不可作为 oldName；同名 no-op。
+func (c *ConfigManager) RenameConnectionGroup(oldName, newName string) error {
+	oldName = strings.TrimSpace(oldName)
+	newName = strings.TrimSpace(newName)
+	if oldName == "" {
+		return fmt.Errorf("不能重命名未分组")
+	}
+	if newName == "" {
+		return fmt.Errorf("分组名称不能为空")
+	}
+	if oldName == newName {
+		return nil
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	conns := c.getConnectionsLocked()
+
+	for _, conn := range conns {
+		if conn.Group == newName {
+			return fmt.Errorf("分组名称已存在")
+		}
+	}
+
+	now := time.Now().UnixMilli()
+	modified := false
+	for i, conn := range conns {
+		if conn.Group == oldName {
+			conns[i].Group = newName
+			conns[i].LastModified = now
+			modified = true
+		}
+	}
+	if !modified {
+		return nil
+	}
+	if err := c.saveConnectionsFile(conns); err != nil {
+		return err
+	}
+	c.bumpSnapshotTime()
+	c.connCacheDirty = true
+	go c.AutoSync()
+	return nil
+}
+
 // SetConnectionOS 仅更新服务器的操作系统字段；值未变化时不触发同步。
 func (c *ConfigManager) SetConnectionOS(id string, osValue string) error {
 	c.mu.Lock()

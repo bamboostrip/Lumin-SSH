@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from '../i18n.js';
-import { Monitor, Pencil, Link, Trash2, X, SquarePen, Folder, FolderOpen, ChevronUp, ChevronDown, Copy, Trash, ChevronLeft, ChevronRight, Download } from 'lucide-react';
+import { Monitor, Pencil, Link, Trash2, X, SquarePen, Folder, FolderOpen, ChevronUp, ChevronDown, Copy, Trash, ChevronLeft, ChevronRight, Download, PenLine } from 'lucide-react';
 import { clampMenuPosition } from '../utils/menuPosition.js';
 import Tiptop from './Tiptop.jsx';
 
@@ -112,6 +112,7 @@ export default function ServerList({
   onBatchConnect,
   onBatchMoveGroup,
   onGroupDelete,
+  onRenameGroup,
   onBatchExport,
   onExitSelectionMode,
   collapsedGroups: controlledCollapsedGroups,
@@ -120,6 +121,7 @@ export default function ServerList({
   const { t } = useTranslation();
   const [menuServer, setMenuServer] = useState(null);
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
+  const [groupHeaderMenu, setGroupHeaderMenu] = useState(null); // { groupName, x, y }
   const [hoveredId, setHoveredId] = useState(null);
   const [groupMenu, setGroupMenu] = useState(false);
   const [localCollapsedGroups, setLocalCollapsedGroups] = useState(new Set());
@@ -129,6 +131,7 @@ export default function ServerList({
     try { return JSON.parse(localStorage.getItem('serverGroupOrder') || '[]'); } catch { return []; }
   });
   const menuRef = useRef(null);
+  const groupHeaderMenuRef = useRef(null);
   const menuSourceRef = useRef(null);
   const lastClickedIndex = useRef(-1); // 记录上次点击的扁平索引，用于 Shift 批量选择
   const [showMoveGroupDropdown, setShowMoveGroupDropdown] = useState(false);
@@ -214,6 +217,9 @@ export default function ServerList({
     const handler = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) {
         setMenuServer(null);
+      }
+      if (groupHeaderMenuRef.current && !groupHeaderMenuRef.current.contains(e.target)) {
+        setGroupHeaderMenu(null);
       }
     };
     document.addEventListener('mousedown', handler);
@@ -407,6 +413,37 @@ export default function ServerList({
     });
   };
 
+  const openGroupHeaderMenu = (e, groupName) => {
+    if (!groupName || !onRenameGroup) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setMenuServer(null);
+    setGroupMenu(false);
+    const next = clampMenuPosition(e.clientX, e.clientY, MENU_ESTIMATED_WIDTH, 48);
+    setGroupHeaderMenu({ groupName, x: next.x, y: next.y });
+  };
+
+  const handleRenameGroupFromMenu = async () => {
+    if (!groupHeaderMenu?.groupName || !onRenameGroup) return;
+    const oldName = groupHeaderMenu.groupName;
+    setGroupHeaderMenu(null);
+    const newName = await onRenameGroup(oldName);
+    if (!newName || newName === oldName) return;
+    setCollapsedGroups((prev) => {
+      if (!prev.has(oldName)) return prev;
+      const next = new Set(prev);
+      next.delete(oldName);
+      next.add(newName);
+      return next;
+    });
+    setGroupOrder((prev) => {
+      if (!prev.includes(oldName)) return prev;
+      const next = prev.map((g) => (g === oldName ? newName : g));
+      localStorage.setItem('serverGroupOrder', JSON.stringify(next));
+      return next;
+    });
+  };
+
   const moveGroup = (g, dir) => {
     const names = groupedServers.filter(([n]) => n !== '').map(([n]) => n);
     const idx = names.indexOf(g);
@@ -584,6 +621,7 @@ export default function ServerList({
           item.type === 'header' ? (
             <div
               key={`__group_${item.groupName || 'ungrouped'}`}
+              onContextMenu={(e) => openGroupHeaderMenu(e, item.groupName)}
               style={{
                 gridColumn: '1 / -1',
                 display: 'flex', alignItems: 'center', gap: 6,
@@ -664,10 +702,11 @@ export default function ServerList({
           <tbody>
              {flatItems.map((item, idx) => {
                if (item.type === 'header') {
-                 return (
+                   return (
                    <tr key={`__group_${item.groupName || 'ungrouped'}`}>
                      <td
                        colSpan={6 + (selectionMode ? 1 : 0)}
+                       onContextMenu={(e) => openGroupHeaderMenu(e, item.groupName)}
                        style={{
                          padding: '6px 8px',
                          color: 'var(--text-secondary)', fontSize: 13, fontWeight: 500,
@@ -840,12 +879,27 @@ export default function ServerList({
       )}
 
       {/* Context Menu */}
-      {menuServer && (
+      {groupHeaderMenu && (
         <div
-          ref={menuRef}
+          ref={groupHeaderMenuRef}
           className="context-menu"
-          style={{ left: menuPos.x, top: menuPos.y }}
+          style={{ left: groupHeaderMenu.x, top: groupHeaderMenu.y, zIndex: 120 }}
         >
+          <div
+            className="context-menu-item"
+            onClick={() => { void handleRenameGroupFromMenu(); }}
+          >
+            <PenLine size={14} style={{ marginRight: 8 }} /> {t('重命名分组')}
+          </div>
+        </div>
+      )}
+
+       {menuServer && (
+         <div
+           ref={menuRef}
+           className="context-menu"
+           style={{ left: menuPos.x, top: menuPos.y }}
+         >
           <div
             className="context-menu-item"
             onClick={() => { onConnect(menuServer); setMenuServer(null); }}

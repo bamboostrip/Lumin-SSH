@@ -188,6 +188,14 @@ func (b *AIBindings) CondenseAIConversationContext(conversationID string, sessio
 	return b.runtime().CondenseAIConversationContext(conversationID, sessionID)
 }
 
+func (b *AIBindings) BuildAIConversationTokenLedger(sessionID string, snapshotJSON string) (ai.AIConversationTokenLedger, error) {
+	return b.runtime().BuildAIConversationTokenLedger(sessionID, snapshotJSON)
+}
+
+func (b *AIBindings) CountAIConversationAPIMessageRawTokens(sessionID string, conversationID string, messagesJSON string) ([]ai.AIConversationAPIMessageTokenEntry, error) {
+	return b.runtime().CountAIConversationAPIMessageRawTokens(sessionID, conversationID, messagesJSON)
+}
+
 func (b *AIBindings) GetAIGlobalSettings() ai.AIGlobalSettings {
 	return b.runtime().GetAIGlobalSettings()
 }

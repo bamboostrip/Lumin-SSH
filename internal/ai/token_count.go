@@ -124,7 +124,7 @@ func buildAIResponsesOutputTokenCountBlocks(items []map[string]any) []TokenCount
 	return blocks
 }
 
-func CountTokenBlocks(blocks []TokenCountBlock) (int, error) {
+func CountTokenBlocksRaw(blocks []TokenCountBlock) (int, error) {
 	if len(blocks) == 0 {
 		return 0, nil
 	}
@@ -147,5 +147,20 @@ func CountTokenBlocks(blocks []TokenCountBlock) (int, error) {
 			totalTokens += estimateAITokenCountForImage(block.Data)
 		}
 	}
-	return int(math.Ceil(float64(totalTokens) * aiTokenCountFudgeFactor)), nil
+	return totalTokens, nil
+}
+
+func ApplyAITokenFudgeFactor(rawTokens int) int {
+	if rawTokens <= 0 {
+		return 0
+	}
+	return int(math.Ceil(float64(rawTokens) * aiTokenCountFudgeFactor))
+}
+
+func CountTokenBlocks(blocks []TokenCountBlock) (int, error) {
+	rawTokens, err := CountTokenBlocksRaw(blocks)
+	if err != nil {
+		return 0, err
+	}
+	return ApplyAITokenFudgeFactor(rawTokens), nil
 }

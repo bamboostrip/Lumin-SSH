@@ -1557,10 +1557,8 @@ export default function AIComposer({
             </div>
           ) : null}
           {isQueuedSubmissionBlocked ? (
-            <button
-              type="button"
-              disabled={!canClickQueuedSubmissionOverlay}
-              onClick={isCollaborationBlocked ? (() => onInterruptCollaboration?.()) : onCancelQueuedSubmission}
+            <div
+              onClick={isCollaborationBlocked ? undefined : (canClickQueuedSubmissionOverlay ? onCancelQueuedSubmission : undefined)}
               style={{
                 position: 'absolute',
                 inset: 0,
@@ -1568,12 +1566,11 @@ export default function AIComposer({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                border: 'none',
                 background: 'rgba(0, 0, 0, 0.18)',
                 padding: '0 24px',
                 textAlign: 'center',
                 color: 'var(--text-primary)',
-                cursor: canClickQueuedSubmissionOverlay ? 'pointer' : 'default',
+                cursor: (!isCollaborationBlocked && canClickQueuedSubmissionOverlay) ? 'pointer' : 'default',
               }}>
               <span style={{
                 display: 'inline-flex',
@@ -1592,12 +1589,40 @@ export default function AIComposer({
                   {queuedSubmissionVisualLabel}
                 </span>
                 {queuedSubmissionCancelHint ? (
-                  <span style={{ borderLeft: '1px solid var(--border-subtle)', paddingLeft: 8, color: 'var(--text-tertiary)', fontSize: 11, whiteSpace: 'nowrap' }}>
-                    {queuedSubmissionCancelHint}
-                  </span>
+                  isCollaborationBlocked ? (
+                    <button
+                      type="button"
+                      disabled={!canClickQueuedSubmissionOverlay}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onInterruptCollaboration?.()
+                      }}
+                      style={{
+                        borderLeft: '1px solid var(--border-subtle)',
+                        borderTop: 'none',
+                        borderRight: 'none',
+                        borderBottom: 'none',
+                        paddingLeft: 8,
+                        paddingTop: 0,
+                        paddingRight: 0,
+                        paddingBottom: 0,
+                        margin: 0,
+                        background: 'transparent',
+                        color: 'var(--text-tertiary)',
+                        fontSize: 11,
+                        whiteSpace: 'nowrap',
+                        cursor: canClickQueuedSubmissionOverlay ? 'pointer' : 'default',
+                      }}>
+                      {queuedSubmissionCancelHint}
+                    </button>
+                  ) : (
+                    <span style={{ borderLeft: '1px solid var(--border-subtle)', paddingLeft: 8, color: 'var(--text-tertiary)', fontSize: 11, whiteSpace: 'nowrap' }}>
+                      {queuedSubmissionCancelHint}
+                    </span>
+                  )
                 ) : null}
               </span>
-            </button>
+            </div>
           ) : null}
           <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             {editModeLabel ? (

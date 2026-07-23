@@ -4,23 +4,43 @@ import AIChatMessageActions from './AIChatMessageActions.jsx'
 
 const assistantTitleKey = 'AI'
 
-function UserMessageActionBar({ t, title, time, actions }) {
+function TitleIcon({ Icon, onClick, clickTitle }) {
+  if (typeof onClick !== 'function') {
+    return <Icon size={13} />
+  }
+  return (
+    <button
+      type="button"
+      title={clickTitle}
+      aria-label={clickTitle}
+      onClick={(event) => {
+        event.stopPropagation()
+        onClick()
+      }}
+      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0, border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer', lineHeight: 1 }}
+    >
+      <Icon size={13} />
+    </button>
+  )
+}
+
+function UserMessageActionBar({ t, title, time, actions, onTitleIconClick, titleIconClickTitle }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, fontSize: 11, color: 'var(--text-tertiary)', flexWrap: 'wrap' }}>
       <AIChatMessageActions actions={actions} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
         <span>{time}</span>
         <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{t(title)}</span>
-        <User size={13} />
+        <TitleIcon Icon={User} onClick={onTitleIconClick} clickTitle={titleIconClickTitle} />
       </div>
     </div>
   )
 }
 
-function AssistantMessageActionBar({ t, title, time, actions, status }) {
+function AssistantMessageActionBar({ t, title, time, actions, status, onTitleIconClick, titleIconClickTitle }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 10, fontSize: 11, color: 'var(--text-tertiary)', flexWrap: 'wrap' }}>
-      <MessageSquare size={13} />
+      <TitleIcon Icon={MessageSquare} onClick={onTitleIconClick} clickTitle={titleIconClickTitle} />
       <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>{t(title)}</span>
       <span>{time}</span>
       <AIChatMessageActions actions={actions} />
@@ -29,10 +49,10 @@ function AssistantMessageActionBar({ t, title, time, actions, status }) {
   )
 }
 
-export default function AIChatMessageActionBar({ variant = 'assistant', title = assistantTitleKey, time = '', actions = [], status = null }) {
+export default function AIChatMessageActionBar({ variant = 'assistant', title = assistantTitleKey, time = '', actions = [], status = null, onTitleIconClick, titleIconClickTitle = '' }) {
   const { t } = useTranslation()
   if (variant === 'user') {
-    return <UserMessageActionBar t={t} title={title} time={time} actions={actions} />
+    return <UserMessageActionBar t={t} title={title} time={time} actions={actions} onTitleIconClick={onTitleIconClick} titleIconClickTitle={titleIconClickTitle} />
   }
-  return <AssistantMessageActionBar t={t} title={title} time={time} actions={actions} status={status} />
+  return <AssistantMessageActionBar t={t} title={title} time={time} actions={actions} status={status} onTitleIconClick={onTitleIconClick} titleIconClickTitle={titleIconClickTitle} />
 }

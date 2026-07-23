@@ -7,7 +7,7 @@ import AIChatToolSessionPane from './AIChatToolSessionPane.jsx'
 
 const assistantTitleKey = 'AI'
 
-export default function AIChatAssistantTurn({ assistant, reasoning = [], tools = [], isLastAssistantTurn = false, hasSubsequentAssistantMessage = false, onDelete, onRetry, onSendUserMessage, onPreviewRestore, onApplyRestore, followupInteractionLocked = false, messageActionBarAtBottom = false }) {
+export default function AIChatAssistantTurn({ assistant, reasoning = [], tools = [], isLastAssistantTurn = false, hasSubsequentAssistantMessage = false, onDelete, onRetry, onSendUserMessage, onPreviewRestore, onApplyRestore, followupInteractionLocked = false, messageActionBarAtBottom = false, perfMetricsText = '' }) {
   const title = assistant?.title || assistantTitleKey
   const time = assistant?.time || ''
   const assistantText = typeof assistant?.text === 'string' ? assistant.text.trim() : ''
@@ -37,6 +37,9 @@ export default function AIChatAssistantTurn({ assistant, reasoning = [], tools =
     { key: 'copy', onClick: handleCopyText },
     { key: 'delete', onClick: () => onDelete?.(assistantId) },
   ]
+  const handleCopyPerfMetrics = perfMetricsText
+    ? () => navigator.clipboard.writeText(perfMetricsText).catch(() => {})
+    : undefined
 
   const renderActionBar = (showStatus) => (
     <AIChatMessageActionBar
@@ -45,6 +48,8 @@ export default function AIChatAssistantTurn({ assistant, reasoning = [], tools =
       time={time}
       actions={messageActions}
       status={showStatus ? <AIChatRequestStatusRow assistant={assistant} reasoning={reasoning} /> : null}
+      onTitleIconClick={handleCopyPerfMetrics}
+      titleIconClickTitle="复制本次发送耗时"
     />
   )
 

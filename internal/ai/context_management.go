@@ -12,6 +12,17 @@ type AIConversationContextMetrics struct {
 	ContextTokens int `json:"contextTokens"`
 }
 
+type AIConversationAPIMessageTokenEntry struct {
+	MessageID string `json:"messageId"`
+	RawTokens int    `json:"rawTokens"`
+}
+
+type AIConversationTokenLedger struct {
+	SystemRawTokens int                                  `json:"systemRawTokens"`
+	Entries         []AIConversationAPIMessageTokenEntry `json:"entries"`
+	ContextTokens   int                                  `json:"contextTokens"`
+}
+
 type AIConversationContextCondenseResult struct {
 	Snapshot          AIConversationSnapshot `json:"snapshot"`
 	Summary           string                 `json:"summary"`
@@ -230,6 +241,113 @@ func (a *App) CountAIConversationContextTokens(sessionID string, snapshotJSON st
 	return AIConversationContextMetrics{
 		ContextTokens: contextTokens,
 	}, nil
+}
+
+func buildAISystemPromptRawTokens(conversationID string, sessionID string, profile AIProviderProfile) (int, error) {
+	return CountTokenBlocksRaw([]TokenCountBlock{
+		{
+			Type: "text",
+			Text: BuildChatSystemPromptWithProfile(nil, conversationID, sessionID, false, profile),
+		},
+	})
+}
+
+func buildAIConversationAPIMessageTokenBlocks(message AIConversationAPIMessage, profile AIProviderProfile) []TokenCountBlock {
+	blocks := make([]TokenCountBlock, 0, 2)
+	if strings.EqualFold(strings.TrimSpace(profile.Provider), "Responses") &&
+		strings.EqualFold(strings.TrimSpace(message.Role), "assistant") &&
+		message.CacheObjects != nil &&
+		message.CacheObjects.OpenAIResponses != nil &&
+		len(message.CacheObjects.OpenAIResponses.Output) > 0 {
+		responseBlocks := buildAIResponsesOutputTokenCountBlocks(message.CacheObjects.OpenAIResponses.Output)
+		if len(responseBlocks) > 0 {
+			return responseBlocks
+		}
+	}
+	if message.Content != "" {
+		blocks = append(blocks, TokenCountBlock{
+			Type: "text",
+			Text: message.Content,
+		})
+	}
+	for _, image := range normalizeAIStringList(message.Images) {
+		blocks = append(blocks, TokenCountBlock{
+			Type: "image",
+			Data: image,
+		})
+	}
+	return blocks
+}
+
+func buildAIConversationTokenLedger(conversationID string, sessionID string, messages []AIConversationAPIMessage, profile AIProviderProfile) (AIConversationTokenLedger, error) {
+	systemRawTokens, err := buildAISystemPromptRawTokens(conversationID, sessionID, profile)
+	if err != nil {
+		return AIConversationTokenLedger{}, err
+	}
+	normalizedMessages := normalizeAIConversationAPIMessages(messages)
+	entries := make([]AIConversationAPIMessageTokenEntry, 0, len(normalizedMessages))
+	totalRawTokens := systemRawTokens
+	for _, message := range normalizedMessages {
+		rawTokens, blockErr := CountTokenBlocksRaw(buildAIConversationAPIMessageTokenBlocks(message, profile))
+		if blockErr != nil {
+			return AIConversationTokenLedger{}, blockErr
+		}
+		entries = append(entries, AIConversationAPIMessageTokenEntry{
+			MessageID: strings.TrimSpace(message.MessageID),
+			RawTokens: rawTokens,
+		})
+		totalRawTokens += rawTokens
+	}
+	return AIConversationTokenLedger{
+		SystemRawTokens: systemRawTokens,
+		Entries:         entries,
+		ContextTokens:   ApplyAITokenFudgeFactor(totalRawTokens),
+	}, nil
+}
+
+func (a *App) BuildAIConversationTokenLedger(sessionID string, snapshotJSON string) (AIConversationTokenLedger, error) {
+	if a == nil || a.configManager == nil {
+		return AIConversationTokenLedger{}, fmt.Errorf("配置管理器不可用")
+	}
+	var snapshot AIConversationSnapshot
+	if err := json.Unmarshal([]byte(snapshotJSON), &snapshot); err != nil {
+		return AIConversationTokenLedger{}, err
+	}
+	snapshot = normalizeAIConversationSnapshot(snapshot, defaultAIConversationTaskSettings(a.configManager.GetAIGlobalSettings()))
+	profile := AIProviderProfile{}
+	if resolvedProfile, err := a.getAIProviderProfileForConversation(snapshot.ID); err == nil {
+		profile = resolvedProfile
+	}
+	return buildAIConversationTokenLedger(snapshot.ID, strings.TrimSpace(sessionID), snapshot.APIMessages, profile)
+}
+
+func (a *App) CountAIConversationAPIMessageRawTokens(sessionID string, conversationID string, messagesJSON string) ([]AIConversationAPIMessageTokenEntry, error) {
+	if a == nil || a.configManager == nil {
+		return nil, fmt.Errorf("配置管理器不可用")
+	}
+	var messages []AIConversationAPIMessage
+	if strings.TrimSpace(messagesJSON) != "" {
+		if err := json.Unmarshal([]byte(messagesJSON), &messages); err != nil {
+			return nil, err
+		}
+	}
+	profile := AIProviderProfile{}
+	if resolvedProfile, err := a.getAIProviderProfileForConversation(strings.TrimSpace(conversationID)); err == nil {
+		profile = resolvedProfile
+	}
+	normalizedMessages := normalizeAIConversationAPIMessages(messages)
+	entries := make([]AIConversationAPIMessageTokenEntry, 0, len(normalizedMessages))
+	for _, message := range normalizedMessages {
+		rawTokens, blockErr := CountTokenBlocksRaw(buildAIConversationAPIMessageTokenBlocks(message, profile))
+		if blockErr != nil {
+			return nil, blockErr
+		}
+		entries = append(entries, AIConversationAPIMessageTokenEntry{
+			MessageID: strings.TrimSpace(message.MessageID),
+			RawTokens: rawTokens,
+		})
+	}
+	return entries, nil
 }
 
 func (a *App) CondenseAIConversationContext(conversationID string, sessionID string) (AIConversationContextCondenseResult, error) {

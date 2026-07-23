@@ -221,11 +221,11 @@ const TERMINAL_THEMES = {
         cursorAccent: '#ffffff', selectionBackground: '#7c3aed',
         selectionForeground: '#ffffff',
         selectionInactiveBackground: '#7c3aed',
-        black: '#0a0a0f', red: '#e11d48', green: '#16a34a', yellow: '#ca8a04',
-        blue: '#7c3aed', magenta: '#db2777', cyan: '#0e7490', white: '#9ca3af',
-        brightBlack: '#4b5563', brightRed: '#f43f5e', brightGreen: '#22c55e',
-        brightYellow: '#eab308', brightBlue: '#a78bfa', brightMagenta: '#ec4899',
-        brightCyan: '#0891b2', brightWhite: '#f3f4f6',
+        black: '#0a0a0f', red: '#b91c1c', green: '#15803d', yellow: '#854d0e',
+        blue: '#6d28d9', magenta: '#be185d', cyan: '#0e7490', white: '#9ca3af',
+        brightBlack: '#4b5563', brightRed: '#dc2626', brightGreen: '#16a34a',
+        brightYellow: '#a16207', brightBlue: '#5b21b6', brightMagenta: '#9d174d',
+        brightCyan: '#007788', brightWhite: '#f3f4f6',
       },
       container: {
         // 近中性浅灰底，粉只留在状态栏识别，减少整屏粉雾

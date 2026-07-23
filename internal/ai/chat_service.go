@@ -1177,7 +1177,7 @@ func getAIParsedToolBatchDecision(settings AIConversationTaskSettings, tools []a
 }
 
 func isRawPreserveToolParam(toolName string, paramName string) bool {
-	return (toolName == "write_to_file" && paramName == "content") || (toolName == "apply_diff" && paramName == "diff")
+	return (toolName == "write_to_file" && paramName == "content") || (toolName == "apply_diff" && (paramName == "diff" || paramName == "args"))
 }
 
 func stripOuterToolParamNewlines(value string) string {
@@ -1501,36 +1501,11 @@ func normalizeAINonRawToolParamValue(value string) string {
 	if trimmedValue == "" {
 		return ""
 	}
-	if !strings.Contains(trimmedValue, "<![CDATA[") {
-		return html.UnescapeString(trimmedValue)
-	}
-	var builder strings.Builder
-	remaining := trimmedValue
-	for len(remaining) > 0 {
-		startIndex := strings.Index(remaining, "<![CDATA[")
-		if startIndex == -1 {
-			builder.WriteString(remaining)
-			break
-		}
-		builder.WriteString(remaining[:startIndex])
-		remaining = remaining[startIndex+len("<![CDATA["):]
-		endIndex := strings.Index(remaining, "]]>")
-		if endIndex == -1 {
-			builder.WriteString(remaining)
-			break
-		}
-		builder.WriteString(remaining[:endIndex])
-		remaining = remaining[endIndex+len("]]>"):]
-	}
-	return strings.TrimSpace(builder.String())
-}
-
-func wrapAIXMLCDATA(value string) string {
-	return "<![CDATA[" + strings.ReplaceAll(value, "]]>", "]]]]><![CDATA[>") + "]]>"
+	return html.UnescapeString(trimmedValue)
 }
 
 func buildAIAttemptCompletionToolText(resultText string) string {
-	return strings.TrimSpace(fmt.Sprintf("<attempt_completion>\n<result>%s</result>\n</attempt_completion>", wrapAIXMLCDATA(resultText)))
+	return strings.TrimSpace(fmt.Sprintf("<attempt_completion>\n<result>%s</result>\n</attempt_completion>", html.EscapeString(resultText)))
 }
 
 func replaceAILatestAssistantMessageContent(messages []AIChatRequestMessage, content string) []AIChatRequestMessage {

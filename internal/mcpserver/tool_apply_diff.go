@@ -10,7 +10,7 @@ You can perform multiple distinct search and replace operations within a single 
 The SEARCH section must exactly match existing content including whitespace and indentation.
 If you're not confident in the exact content to search for, use the read_file tool first to get the exact content.
 When applying the diffs, be extra careful to remember to change any closing brackets or other syntax that may be affected by the diff farther down in the file.
-Raw content rule: for apply_diff and its diff parameter, do NOT XML-escape the SEARCH/REPLACE body content. Do not pre-convert < to &lt;, > to &gt;, or & to &amp; unless you literally want those entity characters matched or written. Keep the diff payload itself literal.
+Raw content rule: put the SEARCH/REPLACE body directly inside the diff parameter. Do NOT XML-escape it. Do not pre-convert < to &lt;, > to &gt;, or & to &amp; unless you literally want those entity characters matched or written. Keep the diff payload literal and do NOT wrap it in <![CDATA[ ... ]]>.
 ALWAYS make as many changes in a single apply_diff request as possible using multiple SEARCH/REPLACE blocks
 
 Parameters:

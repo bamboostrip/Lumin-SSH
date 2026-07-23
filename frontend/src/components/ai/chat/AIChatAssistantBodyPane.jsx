@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import AIChatMarkdown from './AIChatMarkdown.jsx'
 
 const streamingAnimatedTailLength = 1
@@ -113,34 +113,81 @@ export default function AIChatAssistantBodyPane({ text }) {
   const contentRef = useRef(null)
   const shouldAutoFollowRef = useRef(true)
   const scrollFrameRef = useRef(0)
+  const programmaticScrollRef = useRef(false)
+  const programmaticScrollResetRef = useRef(0)
+  const streamingFollowTimerRef = useRef(0)
 
   const cancelScheduledScrollBodyToBottom = () => {
     if (scrollFrameRef.current) {
       window.cancelAnimationFrame(scrollFrameRef.current)
       scrollFrameRef.current = 0
     }
+    if (programmaticScrollResetRef.current) {
+      window.clearTimeout(programmaticScrollResetRef.current)
+      programmaticScrollResetRef.current = 0
+    }
   }
 
-  const scrollBodyToBottom = () => {
+  const clearStreamingFollowTimer = () => {
+    if (streamingFollowTimerRef.current) {
+      window.clearInterval(streamingFollowTimerRef.current)
+      streamingFollowTimerRef.current = 0
+    }
+  }
+
+  const markProgrammaticScroll = () => {
+    programmaticScrollRef.current = true
+    if (programmaticScrollResetRef.current) {
+      window.clearTimeout(programmaticScrollResetRef.current)
+    }
+    programmaticScrollResetRef.current = window.setTimeout(() => {
+      programmaticScrollRef.current = false
+      programmaticScrollResetRef.current = 0
+    }, 180)
+  }
+
+  const scrollBodyToBottom = (trackProgrammatic = true) => {
     const container = scrollContainerRef.current
     if (!container || !shouldAutoFollowRef.current) {
       return
+    }
+    if (trackProgrammatic) {
+      markProgrammaticScroll()
     }
     container.scrollTop = Math.max(container.scrollHeight - container.clientHeight, 0)
   }
 
   const scheduleScrollBodyToBottom = () => {
-    if (!shouldAutoFollowRef.current || scrollFrameRef.current) {
+    if (!isStreaming || !shouldAutoFollowRef.current || scrollFrameRef.current) {
       return
     }
     scrollFrameRef.current = window.requestAnimationFrame(() => {
-      scrollBodyToBottom()
       scrollFrameRef.current = 0
+      scrollBodyToBottom()
+      window.requestAnimationFrame(() => {
+        scrollBodyToBottom()
+      })
     })
   }
 
   useEffect(() => {
-    if (!displayContent && !isStreaming) {
+    clearStreamingFollowTimer()
+    if (!isStreaming) {
+      return undefined
+    }
+    streamingFollowTimerRef.current = window.setInterval(() => {
+      if (!shouldAutoFollowRef.current) {
+        return
+      }
+      scrollBodyToBottom(false)
+    }, 48)
+    return () => {
+      clearStreamingFollowTimer()
+    }
+  }, [isStreaming])
+
+  useLayoutEffect(() => {
+    if (!isStreaming) {
       return undefined
     }
     scheduleScrollBodyToBottom()
@@ -148,7 +195,7 @@ export default function AIChatAssistantBodyPane({ text }) {
   }, [displayContent, isStreaming])
 
   useEffect(() => {
-    if (isStreaming) {
+    if (!isStreaming) {
       return undefined
     }
     const container = scrollContainerRef.current
@@ -161,11 +208,12 @@ export default function AIChatAssistantBodyPane({ text }) {
     })
     observer.observe(contentElement)
     return () => observer.disconnect()
-  }, [isStreaming])
+  }, [displayContent, isStreaming])
 
   useEffect(() => {
     return () => {
       cancelScheduledScrollBodyToBottom()
+      clearStreamingFollowTimer()
     }
   }, [])
 
@@ -178,8 +226,15 @@ export default function AIChatAssistantBodyPane({ text }) {
     if (!container) {
       return
     }
+    const followThreshold = isStreaming ? assistantBodyAutoFollowThreshold : 0
     const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight
-    shouldAutoFollowRef.current = distanceToBottom <= assistantBodyAutoFollowThreshold
+    if (programmaticScrollRef.current) {
+      if (distanceToBottom <= followThreshold) {
+        shouldAutoFollowRef.current = true
+      }
+      return
+    }
+    shouldAutoFollowRef.current = distanceToBottom <= followThreshold
   }
 
   if (isStreaming) {

@@ -22,6 +22,7 @@ export default function Dashboard({
   onBatchConnect,
   onBatchMoveGroup,
   onGroupDelete,
+  onRenameGroup,
   onSelectionModeToggle,
   onBatchExport,
   onExitSelectionMode,
@@ -255,6 +256,7 @@ export default function Dashboard({
               onBatchConnect={onBatchConnect}
               onBatchMoveGroup={onBatchMoveGroup}
               onGroupDelete={onGroupDelete}
+              onRenameGroup={onRenameGroup}
               onBatchExport={onBatchExport}
               onExitSelectionMode={onExitSelectionMode}
               collapsedGroups={collapsedGroups}

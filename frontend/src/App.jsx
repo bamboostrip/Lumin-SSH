@@ -4673,6 +4673,46 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     }
   }, [handleBatchDelete, t]);
 
+  const handleRenameGroup = useCallback(async (groupName) => {
+    const next = await window.luminDialog?.prompt(
+      t('请输入新的分组名称'),
+      groupName,
+      t('重命名分组'),
+      '',
+      {
+        validate: async (value) => {
+          const trimmed = String(value ?? '').trim();
+          if (!trimmed) {
+            return t('分组名称不能为空');
+          }
+          if (trimmed === groupName) {
+            return null;
+          }
+          try {
+            await AppGo.RenameConnectionGroup(groupName, trimmed);
+            return null;
+          } catch (err) {
+            return String(err?.message || err || t('重命名失败'));
+          }
+        },
+      },
+    );
+    if (next === null || next === undefined) {
+      return false;
+    }
+    const trimmed = String(next).trim();
+    if (!trimmed || trimmed === groupName) {
+      return false;
+    }
+    addToast(t('分组已重命名'), 'success');
+    try {
+      await loadServers();
+    } catch (err) {
+      console.error('Failed to load servers:', err);
+    }
+    return trimmed;
+  }, [loadServers, addToast, t]);
+
   const handleBatchConnect = useCallback(async (ids) => {
     const targets = servers.filter((s) => ids.includes(s.id));
     for (const server of targets) {
@@ -5644,6 +5684,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
             onBatchConnect={handleBatchConnect}
             onBatchMoveGroup={handleBatchMoveGroup}
             onGroupDelete={handleGroupDelete}
+            onRenameGroup={handleRenameGroup}
             onBatchExport={handleBatchExport}
             onExitSelectionMode={() => setBatchSelectionMode(false)}
             onSelectionModeToggle={() => setBatchSelectionMode(prev => {

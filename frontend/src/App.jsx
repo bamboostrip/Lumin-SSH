@@ -1481,6 +1481,19 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
     WindowToggleMaximise();
   }, []);
 
+  const handleTopbarDoubleClick = useCallback((e) => {
+    if (
+      e.target.closest('button') ||
+      e.target.closest('input') ||
+      e.target.closest('.no-drag') ||
+      e.target.closest('.topbar-logo') ||
+      e.target.closest('.tab-item')
+    ) {
+      return;
+    }
+    handleToggleMaximise();
+  }, [handleToggleMaximise]);
+
   const startDrag = useCallback((e, direction) => {
     e.preventDefault();
     const startX = e.clientX;
@@ -5382,7 +5395,7 @@ const getFileManagerDockConfirmRect = useCallback((target) => {
   return (
     <div className="app-layout">
       {/* ── Topbar ───────────────────────────────────────── */}
-      <div className="topbar">
+      <div className="topbar" onDoubleClick={handleTopbarDoubleClick}>
         <div className="topbar-content">
           <div className="topbar-logo" onClick={() => { markWorkspaceRestoreNavigationOverride(); setActiveSessionId(null); setActiveTerminalId(null); setShowSettings(false); }}>
             <div

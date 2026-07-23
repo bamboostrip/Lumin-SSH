@@ -146,6 +146,7 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
   const { t } = useTranslation()
   const containerRef = useRef(null)
   const virtuosoRef = useRef(null)
+  const scrollerElementRef = useRef(null)
   const followIntentRef = useRef(true)
   const programmaticScrollRef = useRef(false)
   const programmaticScrollResetRef = useRef(0)
@@ -176,11 +177,22 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
 
   const hasRecentUserScrollIntent = useCallback(() => Date.now() - lastUserScrollIntentAtRef.current < 1200, [])
 
-  const scrollToBottom = useCallback((behavior = 'smooth') => {
+  const scrollToBottom = useCallback((behavior = 'auto') => {
     if (groupedMessages.length === 0) {
       return
     }
     markProgrammaticScroll()
+    const scroller = scrollerElementRef.current
+    if (behavior === 'auto' && scroller instanceof HTMLElement) {
+      scroller.scrollTop = scroller.scrollHeight
+      window.requestAnimationFrame(() => {
+        const nextScroller = scrollerElementRef.current
+        if (nextScroller instanceof HTMLElement) {
+          nextScroller.scrollTop = nextScroller.scrollHeight
+        }
+      })
+      return
+    }
     if (typeof virtuosoRef.current?.scrollToIndex === 'function') {
       virtuosoRef.current.scrollToIndex({
         index: groupedMessages.length - 1,
@@ -189,13 +201,21 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
       })
       return
     }
+    if (scroller instanceof HTMLElement) {
+      if (typeof scroller.scrollTo === 'function') {
+        scroller.scrollTo({ top: scroller.scrollHeight, behavior })
+      } else {
+        scroller.scrollTop = scroller.scrollHeight
+      }
+      return
+    }
     virtuosoRef.current?.scrollTo?.({
       top: Number.MAX_SAFE_INTEGER,
       behavior,
     })
   }, [groupedMessages.length, markProgrammaticScroll])
 
-  const scheduleScrollToBottom = useCallback((behavior = 'smooth', force = false) => {
+  const scheduleScrollToBottom = useCallback((behavior = 'auto', force = false) => {
     if (groupedMessages.length === 0) {
       return
     }
@@ -225,7 +245,7 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
       hasHydratedRef.current = true
       return
     }
-    scheduleScrollToBottom('smooth')
+    scheduleScrollToBottom('auto')
   }, [groupedMessages, scheduleScrollToBottom])
 
   useEffect(() => {
@@ -256,7 +276,7 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
         return
       }
       lastContainerHeightRef.current = nextHeight
-      scheduleScrollToBottom('smooth')
+      scheduleScrollToBottom('auto')
     })
     observer.observe(container)
     return () => {
@@ -417,12 +437,16 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
       `}</style>
       <Virtuoso
         ref={virtuosoRef}
+        scrollerRef={(element) => {
+          scrollerElementRef.current = element instanceof HTMLElement ? element : null
+        }}
         style={{ height: '100%' }}
         data={groupedMessages}
         increaseViewportBy={{ top: 1200, bottom: 800 }}
         initialTopMostItemIndex={Math.max(groupedMessages.length - 1, 0)}
+        alignToBottom={true}
         atBottomThreshold={24}
-        followOutput={(isAtBottom) => (isAtBottom || followIntentRef.current ? 'smooth' : false)}
+        followOutput={(isAtBottom) => (isAtBottom || followIntentRef.current ? 'auto' : false)}
         atBottomStateChange={(isAtBottom) => {
           if (isAtBottom) {
             followIntentRef.current = true

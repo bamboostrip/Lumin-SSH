@@ -120,7 +120,9 @@ Literal content rules:
 - Do not introduce escape characters, XML entities, backslashes, or extra quotes unless the command itself requires them or the target format strictly requires them.
 - For shell commands, preserve the command content in the exact form it should be executed in the target shell.
 - Escape content only when the target syntax strictly requires it, such as a valid JSON string, a required XML markup boundary, or another format with explicitly defined escaping rules.
-- For write_to_file.content and apply_diff.diff, keep the body content literal and unescaped unless the embedded content's own format requires escaping.
+- For write_to_file.content, apply_diff.diff, and apply_diff.args, do not XML-escape the body content.
+- Do not pre-convert < to &lt;, > to &gt;, or & to &amp; inside those parameter bodies unless you literally want those entity characters written into the target file.
+- Keep the outer tool and parameter tags as XML, keep those parameter bodies literal, and do not wrap them in <![CDATA[ ... ]]>.
 - Prefer the simplest valid representation while preserving exact execution semantics and exact file content semantics.
 
 Recovery rules (minimal state machine):

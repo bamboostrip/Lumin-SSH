@@ -167,7 +167,7 @@ func ResolvePromptCacheStrategy(profile Profile, capability AIProviderModelCapab
 	}
 }
 
-func BuildResponsesPromptCacheKey(conversationID string, promptCacheBypassTimestamp string) string {
+func BuildResponsesPromptCacheKey(conversationID string, promptCacheBypassTimestamp string, systemPrompt string) string {
 	trimmedConversationID := strings.TrimSpace(conversationID)
 	if trimmedConversationID == "" {
 		return ""
@@ -176,9 +176,10 @@ func BuildResponsesPromptCacheKey(conversationID string, promptCacheBypassTimest
 	if bypassSource == "" {
 		bypassSource = "stable"
 	}
-	checksum := sha256.Sum256([]byte(bypassSource))
+	trimmedSystemPrompt := strings.TrimSpace(systemPrompt)
+	checksum := sha256.Sum256([]byte(bypassSource + "\n" + trimmedSystemPrompt))
 	bypassHash := hex.EncodeToString(checksum[:])[:12]
-	cacheKey := "LuminSSH:resp:v1:" + trimmedConversationID + ":" + bypassHash
+	cacheKey := "LuminSSH:resp:v2:" + trimmedConversationID + ":" + bypassHash
 	if len(cacheKey) > 64 {
 		return cacheKey[len(cacheKey)-64:]
 	}

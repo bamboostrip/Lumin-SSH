@@ -231,9 +231,6 @@ jobs:
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
 
-      - name: Install UPX
-        run: brew install upx
-
       - name: Install frontend dependencies
         run: npm install
         working-directory: frontend
@@ -241,7 +238,7 @@ jobs:
       - name: Build Wails
         run: |
           export PATH=$HOME/go/bin:$PATH
-          wails build -clean -ldflags "-s -w" -upx -o Lumin
+          wails build -clean -ldflags "-s -w" -o Lumin
           uname -m
           file build/bin/Lumin.app/Contents/MacOS/Lumin
           lipo -archs build/bin/Lumin.app/Contents/MacOS/Lumin

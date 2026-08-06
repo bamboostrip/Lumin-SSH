@@ -1225,12 +1225,13 @@ export default function useSessionConnections(deps) {
         .catch(() => '')
       : Promise.resolve('');
 
-    let maxNum = 0;
+    let maxNum = 1;
+    const baseName = session.serverName || t('终端');
     (session.terminals || []).forEach(term => {
       const match = term.label?.match(/(\d+)$/);
       if (match) maxNum = Math.max(maxNum, parseInt(match[1]));
     });
-    const termLabel = `${t('终端')}${maxNum + 1}`;
+    const termLabel = `${baseName} ${maxNum + 1}`;
 
     try {
       const newTermId = await AppGo.OpenTerminal(baseTermId);

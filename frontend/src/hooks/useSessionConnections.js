@@ -1227,9 +1227,11 @@ export default function useSessionConnections(deps) {
 
     let maxNum = 1;
     const baseName = session.serverName || t('终端');
+    const escapedBase = baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`^${escapedBase}\\s+(\\d+)$`);
     (session.terminals || []).forEach(term => {
-      const match = term.label?.match(/(\d+)$/);
-      if (match) maxNum = Math.max(maxNum, parseInt(match[1]));
+      const match = term.label?.match(regex);
+      if (match) maxNum = Math.max(maxNum, parseInt(match[1], 10));
     });
     const termLabel = `${baseName} ${maxNum + 1}`;
 

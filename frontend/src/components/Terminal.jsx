@@ -1259,6 +1259,7 @@ export default function Terminal({
       },
     });
     term.open(containerRef.current);
+    try { fitAddon.fit(); } catch (_) {}
     const terminalInput = containerRef.current.querySelector('.xterm-helper-textarea');
     if (terminalInput) {
       terminalInput.name = 'terminalInput';

@@ -40,7 +40,8 @@ type App struct {
 	wsPort                    int
 	wsToken                   string
 	wsMu                      sync.Mutex
-	wsConns                   map[string]*wsEntry // sessionId -> active WebSocket
+	wsConns                   map[string]*wsEntry    // sessionId -> active WebSocket
+	wsPending                 map[string]*wsPendingBuf // WS 注册前到达的输出缓冲（本地终端 PTY 首帧）
 	wsServer                  *http.Server        // WebSocket HTTP 服务器，用于优雅关闭
 	wsListener                net.Listener        // WebSocket 监听器，用于关闭时释放端口
 	mainLivenessLockPath      string
@@ -74,6 +75,18 @@ type wsEntry struct {
 	conn    *websocket.Conn
 	writeMu sync.Mutex
 }
+
+// wsPendingBuf 缓冲 WS 注册前到达的输出（本地终端启动极快，PTY 首帧提示符
+// 往往早于前端 WS 注册到达；直接丢弃会表现为「首屏空白，回车才出提示符」）。
+// firstAt 用于过期：前端始终不连接时过期作废，避免陈旧数据在之后误 flush。
+type wsPendingBuf struct {
+	data    []byte
+	firstAt time.Time
+}
+
+// 每 session 首帧缓冲上限与过期时间
+const wsPendingMaxBytes = 256 * 1024
+const wsPendingMaxAge = 30 * time.Second
 
 type BuiltinProviderRuntimeStatus struct {
 	ProviderID string `json:"providerId"`
@@ -116,6 +129,7 @@ func NewApp() *App {
 		sshManager:                NewSSHManager(),
 		configManager:             NewConfigManager(),
 		wsConns:                   make(map[string]*wsEntry),
+		wsPending:                 make(map[string]*wsPendingBuf),
 		builtinProcesses:          make(map[string]*exec.Cmd),
 		builtinBundleReady:        make(map[string]bool),
 		builtinInitCommands:       make(map[string]*exec.Cmd),
@@ -200,6 +214,8 @@ func (a *App) startup(ctx context.Context) {
 		if os.Getenv("LUMIN_DBG_LOCAL_TERM") == "1" {
 			log.Printf("[DBG-LocalTerm %s] ws conn REGISTERED", sessionId)
 		}
+		// 注册完成后立即 flush 注册前缓冲的首帧，保证本地终端首屏提示符立即可见
+		a.flushPendingWsOutput(sessionId)
 		defer func() {
 			a.wsMu.Lock()
 			// 仅删除自己的 entry：若已被新连接覆盖，cur != entry，不能误删新连接
@@ -300,19 +316,82 @@ func (a *App) GetWsToken() string {
 
 // WriteWsToSession 将 WebSocket 输出写入给指定 session 的 WS 连接
 func (a *App) WriteWsOutput(sessionId string, data []byte) {
-	// 仅在 wsMu 下取出 entry，写消息时用每连接独立锁，避免慢客户端阻塞其他 session
+	// 仅在 wsMu 下取出 entry，并原子取走可能存在的注册前缓冲；
+	// 写消息时用每连接独立锁，避免慢客户端阻塞其他 session
 	a.wsMu.Lock()
 	entry, ok := a.wsConns[sessionId]
+	var pending []byte
+	if ok && entry != nil {
+		if p := a.wsPending[sessionId]; p != nil {
+			pending = p.data
+			delete(a.wsPending, sessionId)
+		}
+	}
 	a.wsMu.Unlock()
+
 	if !ok || entry == nil {
-		// 调试：本地终端首屏竞态排查。若 PTY 首帧在 WS 注册前到达，数据会被丢弃，
-		// 表现为"打开终端空白，按回车才出提示符"。设 LUMIN_DBG_LOCAL_TERM=1 可观察。
+		// WS 尚未注册（本地终端 PTY 首帧竞态）：缓冲而非丢弃，注册时 flush。
+		if len(data) > 0 {
+			a.bufferPendingWsOutput(sessionId, data)
+		}
 		if os.Getenv("LUMIN_DBG_LOCAL_TERM") == "1" {
-			log.Printf("[DBG-LocalTerm %s] WriteWsOutput DROP %d bytes (ws conn not registered yet)", sessionId, len(data))
+			log.Printf("[DBG-LocalTerm %s] WriteWsOutput BUFFER %d bytes (ws conn not registered yet)", sessionId, len(data))
 		}
 		return
 	}
 
+	// 先写缓冲首帧再写当前数据，保证前端帧顺序
+	if len(pending) > 0 {
+		a.writeWsFrame(sessionId, entry, pending)
+	}
+	if len(data) > 0 {
+		a.writeWsFrame(sessionId, entry, data)
+	}
+}
+
+// bufferPendingWsOutput 在 wsMu 下累积注册前输出，带上限与过期保护。
+func (a *App) bufferPendingWsOutput(sessionId string, data []byte) {
+	a.wsMu.Lock()
+	defer a.wsMu.Unlock()
+	p := a.wsPending[sessionId]
+	if p == nil || time.Since(p.firstAt) > wsPendingMaxAge {
+		p = &wsPendingBuf{firstAt: time.Now()}
+		a.wsPending[sessionId] = p
+	}
+	if len(p.data) >= wsPendingMaxBytes {
+		return // 已达上限：只保留头部首帧数据
+	}
+	if remain := wsPendingMaxBytes - len(p.data); len(data) > remain {
+		data = data[:remain]
+	}
+	p.data = append(p.data, data...)
+}
+
+// flushPendingWsOutput 在 WS 注册时把注册前缓冲 flush 给新连接。
+// 与 WriteWsOutput 的取缓冲操作同在 wsMu 下原子完成，二者只会有一方取到，
+// 因此「flush 路径」与「注册后首条实时数据路径」不会重复或乱序。
+func (a *App) flushPendingWsOutput(sessionId string) {
+	a.wsMu.Lock()
+	entry, ok := a.wsConns[sessionId]
+	var pending []byte
+	if ok && entry != nil {
+		if p := a.wsPending[sessionId]; p != nil {
+			pending = p.data
+			delete(a.wsPending, sessionId)
+		}
+	}
+	a.wsMu.Unlock()
+	if !ok || entry == nil || len(pending) == 0 {
+		return
+	}
+	if os.Getenv("LUMIN_DBG_LOCAL_TERM") == "1" {
+		log.Printf("[DBG-LocalTerm %s] flush pending %d bytes to newly registered ws conn", sessionId, len(pending))
+	}
+	a.writeWsFrame(sessionId, entry, pending)
+}
+
+// writeWsFrame 在连接独立写锁下写一帧二进制消息；写失败时移除并关闭连接。
+func (a *App) writeWsFrame(sessionId string, entry *wsEntry, data []byte) {
 	entry.writeMu.Lock()
 	defer entry.writeMu.Unlock()
 	// 设置写超时，防止前端停止读取后 goroutine 永久阻塞

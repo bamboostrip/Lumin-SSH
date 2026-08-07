@@ -1608,7 +1608,15 @@ export default function Terminal({
         return `len=${u.length} hex=${hex}`;
       };
       dbgOut('WebSocket creating');
-      ws.onopen = () => { dbgOut('ws.onopen'); };
+      ws.onopen = () => {
+        dbgOut('ws.onopen');
+        // 补发一次初始尺寸：终端首次 fit 发生在 onResize 订阅之前，那次
+        // 尺寸变化事件被错过，本地 PTY 可能长期停留在出生尺寸；这里主动
+        // 同步一次，同时给 SIGWINCH 会重绘提示符的 shell（bash/zsh）兜底自愈机会。
+        if (termRef.current) {
+          AppGo.ResizeTerminal(sessionId, termRef.current.cols, termRef.current.rows);
+        }
+      };
       ws.onclose = (ev) => { dbgOut(`ws.onclose code=${ev.code}`); };
 
       ws.onmessage = (ev) => {

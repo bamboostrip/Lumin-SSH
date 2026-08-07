@@ -4521,12 +4521,27 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
 
   const handleOpenSystemEditor = useCallback(async (file, content, readOnly = false) => {
     if (!file?.path) return;
-    await openExternalEditor(file.path, content ?? file.content ?? '', '', readOnly, file?.size || 0);
-  }, [openExternalEditor]);
+    if (openingFilesRef.current.has(file.path)) {
+      addToast(t('文件正在打开中，请稍候...'), 'warning');
+      return;
+    }
+    addOpeningFile(file.path);
+    addToast(t('正在打开文件...'), 'info');
+    try {
+      await openExternalEditor(file.path, content ?? file.content ?? '', '', readOnly, file?.size || 0);
+    } finally {
+      removeOpeningFile(file.path);
+    }
+  }, [openExternalEditor, addToast, t]);
 
-  // forcePick=true：始终弹出选择框；false：有记忆路径则直接打开（对齐 electerm）
   const handleOpenWithEditor = useCallback(async (file, content, forcePick = false, readOnly = false) => {
     if (!file?.path) return;
+    if (openingFilesRef.current.has(file.path)) {
+      addToast(t('文件正在打开中，请稍候...'), 'warning');
+      return;
+    }
+    addOpeningFile(file.path);
+    addToast(t('正在打开文件...'), 'info');
     try {
       let editorPath = '';
       if (!forcePick) {
@@ -4550,12 +4565,18 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       }
     } catch (err) {
       addToast(`${t('打开外部编辑器失败')}: ${err}`, 'error');
+    } finally {
+      removeOpeningFile(file.path);
     }
   }, [openExternalEditor, addToast, t]);
 
-  // Open file editor / external editor according to settings default.
   const handleEdit = async (item) => {
     const remotePath = joinPath(currentPath, item.name);
+
+    if (openingFilesRef.current.has(remotePath)) {
+      addToast(t('文件正在打开中，请稍候...'), 'warning');
+      return;
+    }
 
     // 文件大小检查，避免加载过大文件导致卡顿
     if (item.size && item.size > maxEditSizeMB * 1024 * 1024) {
@@ -4587,6 +4608,8 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       return;
     }
 
+    addOpeningFile(remotePath);
+    addToast(t('正在下载并打开文件...'), 'info');
     try {
       const content = await AppGo.ReadFile(sessionId, remotePath);
       const newFile = { path: remotePath, name: item.name, content };
@@ -4594,6 +4617,8 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       setActiveEditPath(remotePath);
     } catch (err) {
       addToast(`${t('无法打开文件')}: ${err}`, 'error');
+    } finally {
+      removeOpeningFile(remotePath);
     }
   };
 

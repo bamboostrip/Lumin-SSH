@@ -6744,7 +6744,13 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         } : undefined}
       >
         <div className="file-name-cell">
-          <span className="file-icon">{fileIcon(item.name, item.isDirectory, item.isSymlink)}</span>
+          <span className="file-icon">
+            {openingFiles.has(itemPath) ? (
+              <RefreshCw className="spin" size={14} style={{ color: 'var(--text-accent)' }} />
+            ) : (
+              fileIcon(item.name, item.isDirectory, item.isSymlink)
+            )}
+          </span>
           {isInteractive && renamingItem?.name === item.name ? (
             <RenameInput
               initialValue={item.name}
@@ -6780,12 +6786,15 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         {isInteractive ? (
           <div className="file-actions file-col-actions">
             {!item.isDirectory && isEditable(item.name) && (
-              <Tiptop text={t('编辑')}>
+              <Tiptop text={openingFiles.has(itemPath) ? t('正在打开...') : t('编辑')}>
                 <button
                   className="btn btn-ghost btn-sm btn-icon"
                   aria-label={t('编辑')}
+                  disabled={openingFiles.has(itemPath)}
                   onClick={(event) => { event.stopPropagation(); void handleEdit(item); }}
-                ><SquarePen size={14} /></button>
+                >
+                  {openingFiles.has(itemPath) ? <RefreshCw className="spin" size={14} /> : <SquarePen size={14} />}
+                </button>
               </Tiptop>
             )}
             <Tiptop text={item.isDirectory ? t('下载文件夹到本地') : t('下载到本地')}>

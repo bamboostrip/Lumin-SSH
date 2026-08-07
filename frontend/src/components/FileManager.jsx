@@ -168,6 +168,8 @@ function isEditable(name) {
 // Track files currently being downloaded/opened
 const globalOpeningFiles = new Set();
 const globalOpeningListeners = new Set();
+// key -> safety-timeout id, so removeOpeningFile can clear pending timers
+const globalOpeningTimers = new Map();
 
 function addOpeningFile(sessionId, path) {
   if (!sessionId || !path) return;
@@ -175,18 +177,29 @@ function addOpeningFile(sessionId, path) {
   globalOpeningFiles.add(key);
   notifyOpeningListeners();
 
-  // 5-minute safety timeout to prevent permanent lock leakage in case of backend hang
-  setTimeout(() => {
+  // 5-minute safety timeout to prevent permanent lock leakage in case of backend hang.
+  // Defensive: replace any stale timer for this key before scheduling a new one.
+  if (globalOpeningTimers.has(key)) {
+    clearTimeout(globalOpeningTimers.get(key));
+  }
+  const timer = setTimeout(() => {
+    globalOpeningTimers.delete(key);
     if (globalOpeningFiles.has(key)) {
       globalOpeningFiles.delete(key);
       notifyOpeningListeners();
     }
   }, 5 * 60 * 1000);
+  globalOpeningTimers.set(key, timer);
 }
 
 function removeOpeningFile(sessionId, path) {
   if (!sessionId || !path) return;
   const key = `${sessionId}:${path}`;
+  // Cancel the pending safety-timeout so normal fast opens leave no dangling timer
+  if (globalOpeningTimers.has(key)) {
+    clearTimeout(globalOpeningTimers.get(key));
+    globalOpeningTimers.delete(key);
+  }
   globalOpeningFiles.delete(key);
   notifyOpeningListeners();
 }

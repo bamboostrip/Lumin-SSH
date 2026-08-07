@@ -211,9 +211,6 @@ func (a *App) startup(ctx context.Context) {
 		}
 		a.wsConns[sessionId] = entry
 		a.wsMu.Unlock()
-		if os.Getenv("LUMIN_DBG_LOCAL_TERM") == "1" {
-			log.Printf("[DBG-LocalTerm %s] ws conn REGISTERED", sessionId)
-		}
 		// 注册完成后立即 flush 注册前缓冲的首帧，保证本地终端首屏提示符立即可见
 		a.flushPendingWsOutput(sessionId)
 		defer func() {
@@ -334,9 +331,6 @@ func (a *App) WriteWsOutput(sessionId string, data []byte) {
 		if len(data) > 0 {
 			a.bufferPendingWsOutput(sessionId, data)
 		}
-		if os.Getenv("LUMIN_DBG_LOCAL_TERM") == "1" {
-			log.Printf("[DBG-LocalTerm %s] WriteWsOutput BUFFER %d bytes (ws conn not registered yet)", sessionId, len(data))
-		}
 		return
 	}
 
@@ -384,10 +378,16 @@ func (a *App) flushPendingWsOutput(sessionId string) {
 	if !ok || entry == nil || len(pending) == 0 {
 		return
 	}
-	if os.Getenv("LUMIN_DBG_LOCAL_TERM") == "1" {
-		log.Printf("[DBG-LocalTerm %s] flush pending %d bytes to newly registered ws conn", sessionId, len(pending))
-	}
 	a.writeWsFrame(sessionId, entry, pending)
+}
+
+// cleanupWsPending 在会话彻底销毁时清理其注册前缓冲，避免 wsPending map 残留。
+// 注意：不能在单条 WS 重连时调用——重连期间 PTY 可能仍在向 pending 缓冲首帧，
+// 那些数据需要留给新连接 flush。仅在 session 从 m.sessions 删除（彻底断开）时调用。
+func (a *App) cleanupWsPending(sessionId string) {
+	a.wsMu.Lock()
+	delete(a.wsPending, sessionId)
+	a.wsMu.Unlock()
 }
 
 // writeWsFrame 在连接独立写锁下写一帧二进制消息；写失败时移除并关闭连接。

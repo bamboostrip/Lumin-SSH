@@ -116,3 +116,18 @@ func TestBufferPendingWsOutputCap(t *testing.T) {
 		t.Fatalf("缓冲应截断到 %d, got %d", wsPendingMaxBytes, n)
 	}
 }
+
+// 会话彻底销毁时必须清理其 pending 缓冲，避免 map 残留泄漏。
+func TestCleanupWsPendingRemovesEntry(t *testing.T) {
+	a := newTestAppWithWs()
+	a.WriteWsOutput("s1", []byte("orphaned-frame"))
+
+	a.cleanupWsPending("s1")
+
+	a.wsMu.Lock()
+	_, still := a.wsPending["s1"]
+	a.wsMu.Unlock()
+	if still {
+		t.Fatal("cleanupWsPending 后 wsPending 仍残留")
+	}
+}

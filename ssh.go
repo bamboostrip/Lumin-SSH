@@ -1084,9 +1084,6 @@ func (m *SSHManager) pipeLocalOutput(sessionId string, cptyHandle any, stdoutPip
 		defer m.bufPool.Put(bufPtr)
 		buf := *bufPtr
 
-		dbg := os.Getenv("LUMIN_DBG_LOCAL_TERM") == "1"
-		dbgFrames := 0
-
 		for {
 			var n int
 			var err error
@@ -1097,14 +1094,6 @@ func (m *SSHManager) pipeLocalOutput(sessionId string, cptyHandle any, stdoutPip
 					return
 				}
 				n, err = stdoutPipe.Read(buf)
-			}
-			if dbg && n > 0 && dbgFrames < 8 {
-				dbgFrames++
-				hex := ""
-				for i := 0; i < n && i < 40; i++ {
-					hex += fmt.Sprintf("%02x ", buf[i])
-				}
-				log.Printf("[DBG-LocalTerm %s] pipeLocalOutput read #%d n=%d hex=%s", sessionId, dbgFrames, n, hex)
 			}
 			if n <= 0 {
 				if err != nil {
@@ -1323,6 +1312,11 @@ func (m *SSHManager) Disconnect(sessionId string) bool {
 	m.mu.Unlock() // 尽早释放锁，避免 Close 阻塞影响其他操作
 	if stopForwardsConnKey != "" {
 		m.stopPortForwardsForConnKey(stopForwardsConnKey)
+	}
+	// 会话彻底销毁：清理其 WS 注册前缓冲，避免 wsPending map 残留泄漏
+	// （PTY 在 WS 断开后可能缓冲过数据；此时 session 已删，再无 flush 机会）。
+	if m.app != nil {
+		m.app.cleanupWsPending(sessionId)
 	}
 
 	// 2. 在锁外关闭资源（服务器挂了时这些操作可能阻塞，但不会锁住其他 goroutine）

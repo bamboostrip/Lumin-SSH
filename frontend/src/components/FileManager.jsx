@@ -165,6 +165,28 @@ function isEditable(name) {
   return false;
 }
 
+// Track files currently being downloaded/opened
+const globalOpeningFiles = new Set();
+const globalOpeningListeners = new Set();
+
+function addOpeningFile(path) {
+  if (!path) return;
+  globalOpeningFiles.add(path);
+  notifyOpeningListeners();
+}
+
+function removeOpeningFile(path) {
+  if (!path) return;
+  globalOpeningFiles.delete(path);
+  notifyOpeningListeners();
+}
+
+function notifyOpeningListeners() {
+  const currentSet = new Set(globalOpeningFiles);
+  globalOpeningListeners.forEach(listener => listener(currentSet));
+}
+
+
 // 压缩包/二进制/媒体文件类型判定已抽到 utils/fileTypeClassify.js（isArchive/isBinaryLike/isViewable）
 
 // 文件编辑大小上限默认值（MB）；实际值由用户配置，组件内 maxEditSizeMB state 持有
@@ -1253,6 +1275,24 @@ function ContextMenu({ pos, item, mode = 'item', isPinned = false, isSystemPinne
 
 export default function FileManager({ sessionId, sessionGroupId = sessionId, addToast, isActive = true, initialPath = '' }) {
   const { t } = useTranslation();
+
+  const [openingFiles, setOpeningFiles] = useState(new Set());
+
+  useEffect(() => {
+    setOpeningFiles(new Set(globalOpeningFiles));
+    const listener = (newSet) => {
+      setOpeningFiles(newSet);
+    };
+    globalOpeningListeners.add(listener);
+    return () => {
+      globalOpeningListeners.delete(listener);
+    };
+  }, []);
+
+  const openingFilesRef = useRef(new Set());
+  useEffect(() => {
+    openingFilesRef.current = openingFiles;
+  }, [openingFiles]);
   const joinPath = (base, name) => base === '/' ? `/${name}` : `${base}/${name}`;
   const normalizePath = useCallback((value) => {
     const trimmed = String(value || '').trim();

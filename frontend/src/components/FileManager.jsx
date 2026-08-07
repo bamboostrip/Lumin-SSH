@@ -169,15 +169,25 @@ function isEditable(name) {
 const globalOpeningFiles = new Set();
 const globalOpeningListeners = new Set();
 
-function addOpeningFile(path) {
-  if (!path) return;
-  globalOpeningFiles.add(path);
+function addOpeningFile(sessionId, path) {
+  if (!sessionId || !path) return;
+  const key = `${sessionId}:${path}`;
+  globalOpeningFiles.add(key);
   notifyOpeningListeners();
+
+  // 5-minute safety timeout to prevent permanent lock leakage in case of backend hang
+  setTimeout(() => {
+    if (globalOpeningFiles.has(key)) {
+      globalOpeningFiles.delete(key);
+      notifyOpeningListeners();
+    }
+  }, 5 * 60 * 1000);
 }
 
-function removeOpeningFile(path) {
-  if (!path) return;
-  globalOpeningFiles.delete(path);
+function removeOpeningFile(sessionId, path) {
+  if (!sessionId || !path) return;
+  const key = `${sessionId}:${path}`;
+  globalOpeningFiles.delete(key);
   notifyOpeningListeners();
 }
 
@@ -4521,28 +4531,29 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
 
   const handleOpenSystemEditor = useCallback(async (file, content, readOnly = false) => {
     if (!file?.path) return;
-    if (openingFilesRef.current.has(file.path)) {
+    if (openingFilesRef.current.has(`${sessionId}:${file.path}`)) {
       addToast(t('文件正在打开中，请稍候...'), 'warning');
       return;
     }
-    addOpeningFile(file.path);
-    addToast(t('正在打开文件...'), 'info');
     try {
+      addOpeningFile(sessionId, file.path);
+      addToast(t('正在打开文件...'), 'info');
       await openExternalEditor(file.path, content ?? file.content ?? '', '', readOnly, file?.size || 0);
     } finally {
-      removeOpeningFile(file.path);
+      removeOpeningFile(sessionId, file.path);
     }
-  }, [openExternalEditor, addToast, t]);
+  }, [sessionId, openExternalEditor, addToast, t]);
 
+  // forcePick=true：始终弹出选择框；false：有记忆路径则直接打开（对齐 electerm）
   const handleOpenWithEditor = useCallback(async (file, content, forcePick = false, readOnly = false) => {
     if (!file?.path) return;
-    if (openingFilesRef.current.has(file.path)) {
+    if (openingFilesRef.current.has(`${sessionId}:${file.path}`)) {
       addToast(t('文件正在打开中，请稍候...'), 'warning');
       return;
     }
-    addOpeningFile(file.path);
-    addToast(t('正在打开文件...'), 'info');
     try {
+      addOpeningFile(sessionId, file.path);
+      addToast(t('正在打开文件...'), 'info');
       let editorPath = '';
       if (!forcePick) {
         editorPath = (localStorage.getItem('fileEditorPreferredApp') || '').trim();
@@ -4566,14 +4577,15 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     } catch (err) {
       addToast(`${t('打开外部编辑器失败')}: ${err}`, 'error');
     } finally {
-      removeOpeningFile(file.path);
+      removeOpeningFile(sessionId, file.path);
     }
-  }, [openExternalEditor, addToast, t]);
+  }, [sessionId, openExternalEditor, addToast, t]);
 
+  // Open file editor / external editor according to settings default.
   const handleEdit = async (item) => {
     const remotePath = joinPath(currentPath, item.name);
 
-    if (openingFilesRef.current.has(remotePath)) {
+    if (openingFilesRef.current.has(`${sessionId}:${remotePath}`)) {
       addToast(t('文件正在打开中，请稍候...'), 'warning');
       return;
     }
@@ -4608,9 +4620,9 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       return;
     }
 
-    addOpeningFile(remotePath);
-    addToast(t('正在下载并打开文件...'), 'info');
     try {
+      addOpeningFile(sessionId, remotePath);
+      addToast(t('正在下载并打开文件...'), 'info');
       const content = await AppGo.ReadFile(sessionId, remotePath);
       const newFile = { path: remotePath, name: item.name, content };
       setOpenEditFiles(prev => [...prev, newFile]);
@@ -4618,7 +4630,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     } catch (err) {
       addToast(`${t('无法打开文件')}: ${err}`, 'error');
     } finally {
-      removeOpeningFile(remotePath);
+      removeOpeningFile(sessionId, remotePath);
     }
   };
 
@@ -6745,7 +6757,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       >
         <div className="file-name-cell">
           <span className="file-icon">
-            {openingFiles.has(itemPath) ? (
+            {openingFiles.has(`${sessionId}:${itemPath}`) ? (
               <RefreshCw className="spin" size={14} style={{ color: 'var(--text-accent)' }} />
             ) : (
               fileIcon(item.name, item.isDirectory, item.isSymlink)
@@ -6786,14 +6798,14 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         {isInteractive ? (
           <div className="file-actions file-col-actions">
             {!item.isDirectory && isEditable(item.name) && (
-              <Tiptop text={openingFiles.has(itemPath) ? t('正在打开...') : t('编辑')}>
+              <Tiptop text={openingFiles.has(`${sessionId}:${itemPath}`) ? t('正在打开文件...') : t('编辑')}>
                 <button
                   className="btn btn-ghost btn-sm btn-icon"
                   aria-label={t('编辑')}
-                  disabled={openingFiles.has(itemPath)}
+                  disabled={openingFiles.has(`${sessionId}:${itemPath}`)}
                   onClick={(event) => { event.stopPropagation(); void handleEdit(item); }}
                 >
-                  {openingFiles.has(itemPath) ? <RefreshCw className="spin" size={14} /> : <SquarePen size={14} />}
+                  {openingFiles.has(`${sessionId}:${itemPath}`) ? <RefreshCw className="spin" size={14} /> : <SquarePen size={14} />}
                 </button>
               </Tiptop>
             )}
@@ -6832,7 +6844,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         )}
       </div>
     );
-  }, [activePaneKey, activeRowEffects, addToast, buildFileManagerDragPayload, clipboard, confirmRename, contextMenuTargetPath, defaultOpenMode, effectiveLocatorActiveRowKey, fileManagerDoubleClickUncompressArchive, fileManagerDualPaneDragTransferEnabled, handleChmod, handleDelete, handleDownload, handleEdit, handleOpenSystemEditor, handleOpenWithEditor, handleUncompress, hideFileManagerDragTip, isDeletedPlaceholderItem, isDualPaneLayout, navigate, normalizePath, renamingItem, t, updateFileManagerDragTip]);
+  }, [activePaneKey, activeRowEffects, addToast, buildFileManagerDragPayload, clipboard, confirmRename, contextMenuTargetPath, defaultOpenMode, effectiveLocatorActiveRowKey, fileManagerDoubleClickUncompressArchive, fileManagerDualPaneDragTransferEnabled, handleChmod, handleDelete, handleDownload, handleEdit, handleOpenSystemEditor, handleOpenWithEditor, handleUncompress, hideFileManagerDragTip, isDeletedPlaceholderItem, isDualPaneLayout, navigate, normalizePath, renamingItem, t, updateFileManagerDragTip, openingFiles, sessionId]);
 
   const renderFileManagerVirtualViewport = useCallback((paneState, options = {}) => {
     const normalizedPaneKey = paneState?.key === 'right' ? 'right' : 'left';

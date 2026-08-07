@@ -168,6 +168,29 @@ jobs:
           sudo chown root:root build/deb/usr/bin/lumin
           cp build/appicon.png build/deb/usr/share/icons/hicolor/256x256/apps/lumin.png
           cp build/linux/lumin.desktop build/deb/usr/share/applications/lumin.desktop
+          # postinst/postrm：安装后刷新桌面数据库与图标缓存，避免 GNOME 菜单项/图标不生效
+          cat > build/deb/DEBIAN/postinst <<'POSTINST'
+          #!/bin/sh
+          set -e
+          if command -v update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database -q /usr/share/applications || true
+          fi
+          if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+            gtk-update-icon-cache -q /usr/share/icons/hicolor || true
+          fi
+          POSTINST
+          cat > build/deb/DEBIAN/postrm <<'POSTRM'
+          #!/bin/sh
+          set -e
+          if command -v update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database -q /usr/share/applications || true
+          fi
+          if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+            gtk-update-icon-cache -q /usr/share/icons/hicolor || true
+          fi
+          POSTRM
+          sudo chmod 755 build/deb/DEBIAN/postinst build/deb/DEBIAN/postrm
+          sudo chown root:root build/deb/DEBIAN/postinst build/deb/DEBIAN/postrm
           sudo dpkg-deb --root-owner-group --build build/deb "build/Lumin-V${VERSION}-amd64.deb"
           shasum -a 256 "build/Lumin-V${VERSION}-amd64.deb" | sed 's|build/||' > "build/Lumin-V${VERSION}-amd64.deb.sha256"
           echo "deb=${{ github.workspace }}/build/Lumin-V${VERSION}-amd64.deb" >> $GITHUB_ENV

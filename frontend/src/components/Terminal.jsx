@@ -1592,9 +1592,31 @@ export default function Terminal({
       ws.binaryType = 'arraybuffer';
       wsRef.current = ws;
 
+      // ── 调试：本地终端首屏空白排查（按需开启）─────────────────────
+      // 复现「打开本地 bash 终端完全空白，按一次回车才出提示符」时，开启诊断：
+      //   localStorage.setItem('dbgLocalTerm','1')（前端 console）
+      //   后端设 LUMIN_DBG_LOCAL_TERM=1 后从终端启动应用，看 stderr 的 [DBG-LocalTerm] 日志。
+      // 用于定位是 WS 没连上 / 首帧没到 / 走了过滤分支被吞 / term.write 没渲染 / 后端 DROP。
+      const DBG = localStorage.getItem('dbgLocalTerm') === '1';
+      const dbgTag = `[DBG-LocalTerm ${sessionId.slice(-8)}]`;
+      let dbgMsgCount = 0;
+      const dbgOut = (msg) => { if (DBG) console.log(dbgTag, msg); };
+      const dbgBytes = (d) => {
+        if (typeof d === 'string') return `len=${d.length} text=${JSON.stringify(d.slice(0, 80))}`;
+        const u = new Uint8Array(d);
+        const hex = Array.from(u.slice(0, 40)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+        return `len=${u.length} hex=${hex}`;
+      };
+      dbgOut('WebSocket creating');
+      ws.onopen = () => { dbgOut('ws.onopen'); };
+      ws.onclose = (ev) => { dbgOut(`ws.onclose code=${ev.code}`); };
+
       ws.onmessage = (ev) => {
         if (!termRef.current) return;
-
+        if (DBG && dbgMsgCount < 8) {
+          dbgMsgCount += 1;
+          dbgOut(`ws.onmessage #${dbgMsgCount} ${dbgBytes(ev.data)} localEcho=${localEchoRef.current} carry=${predictiveTextCarry.length}`);
+        }
         // 在原始数据上检测清屏序列（不依赖后续文本处理路径）
         const rawBytes = typeof ev.data === 'string' ? null : new Uint8Array(ev.data);
         // 统一解码：高亮开启时整个连接只用一个流式解码器（hlDecoderRef），
@@ -1628,6 +1650,7 @@ export default function Terminal({
         }
 
         const shouldFilterIncomingText = (localEchoRef.current && pendingEchoes.length > 0) || predictiveTextCarry.length > 0
+        if (DBG && dbgMsgCount <= 8) dbgOut(`  branch: ${shouldFilterIncomingText ? 'filter' : 'direct-smartWrite'}`);
 
         if (!shouldFilterIncomingText) {
           predictiveDecoder = new TextDecoder()
@@ -1645,7 +1668,9 @@ export default function Terminal({
         const splitText = splitTrailingIncompleteEscapeSequence(text);
         predictiveTextCarry = splitText.carry;
         text = splitText.complete;
+        if (DBG && dbgMsgCount <= 8) dbgOut(`  split carry=${splitText.carry.length} complete=${splitText.complete.length}`);
         if (!text) {
+          if (DBG) dbgOut('  !! text empty after split -> NOT written (held in carry)');
           return;
         }
 
@@ -1722,6 +1747,7 @@ export default function Terminal({
     let localInputLength = 0; // 用于保护提示符，防止退格越界
 
     term.onData((data) => {
+      if (localStorage.getItem('dbgLocalTerm') === '1') console.log(`[DBG-LocalTerm ${sessionId.slice(-8)}] term.onData user-input`, JSON.stringify(data.slice(0, 20)), 'wsState=', wsRef.current?.readyState);
       if ((statusRef.current === 'closed' || statusRef.current === 'error') && (data.includes('\r') || data.includes('\n'))) {
         window.dispatchEvent(new CustomEvent('ssh-reconnect-trigger', { detail: sessionId }));
         return;

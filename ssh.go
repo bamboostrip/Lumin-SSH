@@ -1084,6 +1084,9 @@ func (m *SSHManager) pipeLocalOutput(sessionId string, cptyHandle any, stdoutPip
 		defer m.bufPool.Put(bufPtr)
 		buf := *bufPtr
 
+		dbg := os.Getenv("LUMIN_DBG_LOCAL_TERM") == "1"
+		dbgFrames := 0
+
 		for {
 			var n int
 			var err error
@@ -1094,6 +1097,14 @@ func (m *SSHManager) pipeLocalOutput(sessionId string, cptyHandle any, stdoutPip
 					return
 				}
 				n, err = stdoutPipe.Read(buf)
+			}
+			if dbg && n > 0 && dbgFrames < 8 {
+				dbgFrames++
+				hex := ""
+				for i := 0; i < n && i < 40; i++ {
+					hex += fmt.Sprintf("%02x ", buf[i])
+				}
+				log.Printf("[DBG-LocalTerm %s] pipeLocalOutput read #%d n=%d hex=%s", sessionId, dbgFrames, n, hex)
 			}
 			if n <= 0 {
 				if err != nil {
@@ -1111,6 +1122,7 @@ func (m *SSHManager) pipeLocalOutput(sessionId string, cptyHandle any, stdoutPip
 				return
 			}
 			oscParser := curSd.OSCCwdParser
+
 
 			var data []byte
 			if oscParser != nil {

@@ -197,6 +197,9 @@ func (a *App) startup(ctx context.Context) {
 		}
 		a.wsConns[sessionId] = entry
 		a.wsMu.Unlock()
+		if os.Getenv("LUMIN_DBG_LOCAL_TERM") == "1" {
+			log.Printf("[DBG-LocalTerm %s] ws conn REGISTERED", sessionId)
+		}
 		defer func() {
 			a.wsMu.Lock()
 			// 仅删除自己的 entry：若已被新连接覆盖，cur != entry，不能误删新连接
@@ -302,6 +305,11 @@ func (a *App) WriteWsOutput(sessionId string, data []byte) {
 	entry, ok := a.wsConns[sessionId]
 	a.wsMu.Unlock()
 	if !ok || entry == nil {
+		// 调试：本地终端首屏竞态排查。若 PTY 首帧在 WS 注册前到达，数据会被丢弃，
+		// 表现为"打开终端空白，按回车才出提示符"。设 LUMIN_DBG_LOCAL_TERM=1 可观察。
+		if os.Getenv("LUMIN_DBG_LOCAL_TERM") == "1" {
+			log.Printf("[DBG-LocalTerm %s] WriteWsOutput DROP %d bytes (ws conn not registered yet)", sessionId, len(data))
+		}
 		return
 	}
 

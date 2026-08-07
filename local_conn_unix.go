@@ -41,6 +41,13 @@ func (a *App) getLocalShells() ([]string, error) {
 
 // connectLocal spawns a local process using creack/pty.
 func (a *App) connectLocal(sessionId string, name string, shellPath string, cwd string) error {
+	dbg := os.Getenv("LUMIN_DBG_LOCAL_TERM") == "1"
+	dbgLog := func(format string, args ...any) {
+		if dbg {
+			log.Printf("[DBG-LocalTerm %s] "+format, append([]any{sessionId}, args...)...)
+		}
+	}
+
 	workDir := cwd
 	if workDir == "" {
 		if home, err := os.UserHomeDir(); err == nil {
@@ -52,9 +59,15 @@ func (a *App) connectLocal(sessionId string, name string, shellPath string, cwd 
 	cmd.Dir = workDir
 	cmd.Env = os.Environ()
 
+	dbgLog("shellPath=%s workDir=%s pty.Start (no initial Winsize, will be 0x0 until first Resize)", shellPath, workDir)
 	ptyFile, err := pty.Start(cmd)
 	if err != nil {
 		return fmt.Errorf("pty start error: %w", err)
+	}
+	if dbg {
+		if ws, e := pty.Getsize(ptyFile); e == nil {
+			dbgLog("after pty.Start: pty size = %dx%d", ws.Rows, ws.Cols)
+		}
 	}
 
 	sd := &SessionData{
@@ -112,6 +125,9 @@ func (m *SSHManager) ResizeLocal(s *SessionData, cols, rows int) {
 	ptyFile := s.LocalPTYUnix
 	m.mu.RUnlock()
 	if ptyFile != nil {
+		if os.Getenv("LUMIN_DBG_LOCAL_TERM") == "1" {
+			log.Printf("[DBG-LocalTerm] ResizeLocal cols=%d rows=%d", cols, rows)
+		}
 		_ = pty.Setsize(ptyFile, &pty.Winsize{
 			Cols: uint16(cols),
 			Rows: uint16(rows),

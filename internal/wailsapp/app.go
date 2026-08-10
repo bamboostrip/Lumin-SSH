@@ -229,7 +229,12 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 			if origin == "" {
 				return false
 			}
+			// wails://wails: Windows WebView2 自定义协议
+			// wails://localhost: Linux/macOS WebKit 自定义协议；dev 模式下
+			//   baseURL 端口被替换为 vite 端口（wails://localhost:<port>）
 			if origin == "wails://wails" ||
+				origin == "wails://localhost" ||
+				strings.HasPrefix(origin, "wails://localhost:") ||
 				origin == "http://wails.localhost" ||
 				origin == "https://wails.localhost" ||
 				strings.HasPrefix(origin, "http://wails.localhost:") ||

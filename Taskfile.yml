@@ -3,7 +3,9 @@ version: '3'
 vars:
   APP_NAME: Lumin
   BIN_DIR: build/bin
-  VITE_PORT: 5173
+  # Dev 模式下跟随 `wails3 dev` 设置的 WAILS_VITE_PORT（默认 9245），
+  # 保证 vite 端口与 FRONTEND_DEVSERVER_URL 一致；生产构建仍可用 VITE_PORT=5173 覆盖。
+  VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
 
 tasks:
   go:mod:tidy:
@@ -60,7 +62,10 @@ tasks:
       - cmd: rm -f wails_windows_amd64.syso
         platforms: [linux, darwin]
     vars:
-      BUILD_FLAGS: '-tags production{{if .EXTRA_TAGS}},{{.EXTRA_TAGS}}{{end}} -trimpath -ldflags="-w -s{{if eq OS "windows"}} -H windowsgui{{end}}"'
+      # DEV=true（`wails3 dev` 流程传入）时不带 production tag：
+      # assetserver 走 build_dev.go，将前端请求代理到 FRONTEND_DEVSERVER_URL（vite 热更新）。
+      # 默认 production 构建：-trimpath + strip + Windows 隐藏控制台。
+      BUILD_FLAGS: '{{if eq .DEV "true"}}{{if .EXTRA_TAGS}}-tags {{.EXTRA_TAGS}}{{end}} -buildvcs=false -gcflags=all="-l"{{else}}-tags production{{if .EXTRA_TAGS}},{{.EXTRA_TAGS}}{{end}} -trimpath -ldflags="-w -s{{if eq OS "windows"}} -H windowsgui{{end}}"{{end}}'
 
   generate:syso:
     summary: Generate Windows application icon resources

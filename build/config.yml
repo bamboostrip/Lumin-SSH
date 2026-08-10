@@ -8,3 +8,32 @@ info:
   copyright: "Copyright 2026 Lumin"
   comments: "Lightweight SSH Client"
   version: "1.2.6"
+
+# Dev mode configuration (used by `wails3 dev`)
+# root_path is required by the atterpac/refresh watcher engine, without it
+# `wails3 dev` fails with "root path is required".
+dev_mode:
+  root_path: .
+  log_level: warn
+  debounce: 1000
+  ignore:
+    dir:
+      - .git
+      - node_modules
+      - frontend
+      - bin
+    file:
+      - .DS_Store
+      - .gitignore
+      - .gitkeep
+      - "*_test.go"
+    watched_extension:
+      - "*.go"
+    git_ignore: true
+  executes:
+    - cmd: wails3 build DEV=true
+      type: blocking
+    - cmd: wails3 task dev:frontend
+      type: background
+    - cmd: ./build/bin/Lumin
+      type: primary

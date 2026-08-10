@@ -81,6 +81,11 @@ tasks:
     cmds:
       - '"./{{.BIN_DIR}}/{{.APP_NAME}}{{exeExt}}"'
 
+  run:dev:
+    summary: Run the application without rebuilding (for `wails3 dev`)
+    cmds:
+      - '"./{{.BIN_DIR}}/{{.APP_NAME}}{{exeExt}}"'
+
   generate:icons:
     summary: Generates Windows .ico and Mac .icns from an image
     run: once

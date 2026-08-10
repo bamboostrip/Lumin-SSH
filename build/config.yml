@@ -35,5 +35,5 @@ dev_mode:
       type: blocking
     - cmd: wails3 task dev:frontend
       type: background
-    - cmd: ./build/bin/Lumin
+    - cmd: wails3 task run:dev
       type: primary

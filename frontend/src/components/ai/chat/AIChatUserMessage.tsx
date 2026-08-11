@@ -2,7 +2,7 @@ import AIChatMessageActionBar from './AIChatMessageActionBar.jsx'
 
 const userTitleKey = '用户'
 
-function openExternalLink(event, href) {
+function openExternalLink(event: React.MouseEvent<HTMLAnchorElement>, href: string) {
   const nextHref = typeof href === 'string' ? href.trim() : ''
   if (!nextHref) {
     return
@@ -14,11 +14,28 @@ function openExternalLink(event, href) {
   }
 }
 
-export default function AIChatUserMessage({ message, onRetry, onEdit, onDelete, messageActionBarAtBottom = false, perfMetricsText = '', isEditingTarget = false, isFirstUserMessage = false }) {
+interface AIChatUserMessageProps {
+  message?: {
+    id?: string;
+    text?: string;
+    time?: string;
+    images?: unknown[];
+    extra?: Record<string, unknown>;
+  };
+  onRetry?: (id: string, text: string, images: string[]) => void;
+  onEdit?: (id: string, text: string, images: string[]) => void;
+  onDelete?: (id: string) => void;
+  messageActionBarAtBottom?: boolean;
+  perfMetricsText?: string;
+  isEditingTarget?: boolean;
+  isFirstUserMessage?: boolean;
+}
+
+export default function AIChatUserMessage({ message, onRetry, onEdit, onDelete, messageActionBarAtBottom = false, perfMetricsText = '', isEditingTarget = false, isFirstUserMessage = false }: AIChatUserMessageProps) {
   const text = typeof message?.text === 'string' ? message.text : ''
   const time = typeof message?.time === 'string' ? message.time : ''
   const messageId = typeof message?.id === 'string' ? message.id : ''
-  const images = Array.isArray(message?.images) ? message.images.filter((item) => typeof item === 'string' && item.trim()) : []
+  const images = Array.isArray(message?.images) ? message.images.filter((item): item is string => typeof item === 'string' && !!item.trim()) : []
   const requestModelLabel = typeof message?.extra?.requestModelLabel === 'string' ? message.extra.requestModelLabel.trim() : ''
   const requestModelName = typeof message?.extra?.requestModelName === 'string' ? message.extra.requestModelName.trim() : ''
   const requestProviderName = typeof message?.extra?.requestProviderName === 'string' ? message.extra.requestProviderName.trim() : ''

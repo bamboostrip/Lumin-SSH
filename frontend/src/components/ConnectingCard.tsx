@@ -1,8 +1,15 @@
 import { Monitor, Radio, Loader2 } from 'lucide-react';
 import { Z } from '../constants/zIndex';
 import { getThemeComponentTheme } from '../utils/theme.js';
+import type { ConnectingServer } from '../hooks/useSessionConnections.js';
 
-export default function ConnectingCard({ connectingServer, t, onCancel }) {
+interface ConnectingCardProps {
+  connectingServer: ConnectingServer | null;
+  t: (key: string, vars?: Record<string, unknown>) => string;
+  onCancel: () => void;
+}
+
+export default function ConnectingCard({ connectingServer, t, onCancel }: ConnectingCardProps) {
   if (!connectingServer) return null;
   const C = getThemeComponentTheme('connectingCard');
   const server = connectingServer.server;

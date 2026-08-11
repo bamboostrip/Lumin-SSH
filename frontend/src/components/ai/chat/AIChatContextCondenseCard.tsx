@@ -1,7 +1,7 @@
 import { Scissors } from 'lucide-react'
-import { useTranslation } from '../../../i18n.js'
+import { useTranslation, type I18nKey } from '../../../i18n.js'
 
-function formatTokenValue(value) {
+function formatTokenValue(value: unknown) {
   const parsed = Number(value)
   if (!Number.isFinite(parsed) || parsed < 0) {
     return ''
@@ -19,7 +19,7 @@ function formatTokenValue(value) {
   return String(rounded)
 }
 
-function formatCondenseSummary(text, t) {
+function formatCondenseSummary(text: string, t: (key: I18nKey, vars?: Record<string, unknown>) => string) {
   const match = text.match(/^已压缩 (\d+) 个 工具调用结果,移除 (\d+) 个空白 assistant 消息,替换 (\d+) 个图片,移除 (\d+) 个 environment_details,压缩 (\d+) 个 file_content,压缩 (\d+) 个 terminal_output,压缩 (\d+) 个系统提示消息$/)
   if (!match) return text
   const [, toolResults, emptyAssistantMessages, images, environmentDetails, fileContent, terminalOutput, systemNotices] = match
@@ -34,7 +34,14 @@ function formatCondenseSummary(text, t) {
   })
 }
 
-export default function AIChatContextCondenseCard({ message }) {
+interface AIChatContextCondenseCardProps {
+  message?: {
+    text?: string
+    extra?: Record<string, unknown>
+  }
+}
+
+export default function AIChatContextCondenseCard({ message }: AIChatContextCondenseCardProps) {
   const { t } = useTranslation()
   const isDerivedSubtask = message?.extra?.derivedSubtask === true
   const parentTitleSnapshot = typeof message?.extra?.parentTitleSnapshot === 'string' ? message.extra.parentTitleSnapshot.trim() : ''

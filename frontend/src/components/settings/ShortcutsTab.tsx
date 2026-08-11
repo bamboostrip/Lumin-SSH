@@ -1,9 +1,19 @@
 import React from 'react';
-import { t as $t } from '../../i18n.js';
-import { SettingsPanel, SettingsSectionTitle, SettingsTabRoot } from './SharedComponents';
+import { t as $t, type I18nKey } from '../../i18n.js';
+import { SettingsPanel, SettingsSectionTitle, SettingsTabRoot, type SettingsDefinitionNode } from './SharedComponents.jsx';
 import { settings } from './settingDefinitions';
 
-function ShortcutRow({ definition, label, keyName, shortcuts, listeningKey, onSetListening, withBorder }) {
+interface ShortcutRowProps {
+  definition?: { id?: string };
+  label: string;
+  keyName: string;
+  shortcuts: Record<string, string>;
+  listeningKey: string | null;
+  onSetListening: (key: string) => void;
+  withBorder: boolean;
+}
+
+function ShortcutRow({ definition, label, keyName, shortcuts, listeningKey, onSetListening, withBorder }: ShortcutRowProps) {
   const isListening = listeningKey === keyName;
   return (
     <div data-settings-field-id={definition?.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', ...(withBorder ? { borderBottom: '1px solid var(--border)' } : {}) }}>
@@ -28,10 +38,18 @@ function ShortcutRow({ definition, label, keyName, shortcuts, listeningKey, onSe
   );
 }
 
-export default function ShortcutsTab({ shortcuts, listeningKey, onSetListeningKey, onResetShortcuts }) {
-  const sectionNode = settings.shortcuts.sections.terminal;
-  const shortcutNodes = sectionNode.children.flatMap((node) => node.children || []).filter((node) => node.type === 'field');
-  const resetNode = sectionNode.children.flatMap((node) => node.children || []).find((node) => node.type === 'action');
+interface ShortcutsTabProps {
+  shortcuts: Record<string, string>;
+  listeningKey: string | null;
+  onSetListeningKey: (key: string) => void;
+  onResetShortcuts: () => void;
+}
+
+export default function ShortcutsTab({ shortcuts, listeningKey, onSetListeningKey, onResetShortcuts }: ShortcutsTabProps) {
+  // settingDefinitions.js 未转 TS（推断为 Readonly<{}>），此处按实际结构断言
+  const sectionNode = (settings as { shortcuts: { sections: { terminal: SettingsDefinitionNode } } }).shortcuts.sections.terminal;
+  const shortcutNodes = (sectionNode.children || []).flatMap((node) => node.children || []).filter((node) => node.type === 'field');
+  const resetNode = (sectionNode.children || []).flatMap((node) => node.children || []).find((node) => node.type === 'action');
   return (
     <SettingsTabRoot>
       <div>
@@ -44,7 +62,7 @@ export default function ShortcutsTab({ shortcuts, listeningKey, onSetListeningKe
               data-settings-field-id={resetNode.id}
               onClick={onResetShortcuts}
             >
-              {$t(resetNode.titleKey)}
+              {$t(resetNode.titleKey as I18nKey)}
             </button>
           ) : null}
         </div>
@@ -53,8 +71,8 @@ export default function ShortcutsTab({ shortcuts, listeningKey, onSetListeningKe
             <ShortcutRow
               key={node.id}
               definition={node}
-              label={$t(node.titleKey)}
-              keyName={node.alias}
+              label={$t(node.titleKey as I18nKey)}
+              keyName={node.alias || ''}
               shortcuts={shortcuts}
               listeningKey={listeningKey}
               onSetListening={onSetListeningKey}

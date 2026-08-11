@@ -1,7 +1,20 @@
-import { useTranslation } from '../../i18n.js'
+import { useTranslation, type I18nKey } from '../../i18n.js'
 import { DiffEditorPair } from './AIDiffViewerPair.jsx'
 
-export default function AIChangeReviewWorkbench({ review, queueLength = 1, previewOnly = false, onClose = null }) {
+interface AIChangeReviewWorkbenchProps {
+  review: {
+    reviewId: string;
+    path?: string;
+    toolName?: string;
+    pathParams?: unknown;
+    blocks?: unknown[];
+  } | null;
+  queueLength?: number;
+  previewOnly?: boolean;
+  onClose?: (() => void) | null;
+}
+
+export default function AIChangeReviewWorkbench({ review, queueLength = 1, previewOnly = false, onClose = null }: AIChangeReviewWorkbenchProps) {
   const { t } = useTranslation()
 
   if (!review) {
@@ -10,7 +23,7 @@ export default function AIChangeReviewWorkbench({ review, queueLength = 1, previ
 
   const blocks = Array.isArray(review.blocks) ? review.blocks : []
   const path = typeof review.path === 'string' ? review.path : ''
-  const pathParams = review?.pathParams && typeof review.pathParams === 'object' ? review.pathParams : undefined
+  const pathParams = review?.pathParams && typeof review.pathParams === 'object' ? review.pathParams as Record<string, unknown> : undefined
   const toolName = typeof review.toolName === 'string' ? review.toolName : ''
   const showBlockBadge = blocks.length > 1
 
@@ -58,7 +71,8 @@ export default function AIChangeReviewWorkbench({ review, queueLength = 1, previ
           ) : null}
           {path ? (
             <div style={{ maxWidth: '100%', padding: '3px 8px', borderRadius: 999, background: 'var(--surface-base)', color: 'var(--text-tertiary)', fontSize: 11, fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {t(path, pathParams)}
+              {/* path 为动态 key（可能不在翻译表），t() 内部有兜底 */}
+              {t(path as I18nKey, pathParams)}
             </div>
           ) : null}
           {!previewOnly && queueLength > 1 ? (

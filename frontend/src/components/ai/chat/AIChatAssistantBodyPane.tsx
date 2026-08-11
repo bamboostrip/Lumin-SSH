@@ -56,13 +56,18 @@ function StreamingCursor() {
   )
 }
 
-export default function AIChatAssistantBodyPane({ text, isStreaming = false }) {
+interface AIChatAssistantBodyPaneProps {
+  text?: string
+  isStreaming?: boolean
+}
+
+export default function AIChatAssistantBodyPane({ text, isStreaming = false }: AIChatAssistantBodyPaneProps) {
   const content = typeof text === 'string' ? text.trim() : ''
   const displayContent = isStreaming && content.endsWith('▍') ? content.slice(0, -1) : content
-  const scrollRef = useRef(null)
-  const contentRef = useRef(null)
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const contentRef = useRef<HTMLDivElement | null>(null)
   const followRef = useRef(true)
-  const lastTouchClientYRef = useRef(null)
+  const lastTouchClientYRef = useRef<number | null>(null)
 
   const scrollToBottom = useCallback(() => {
     const container = scrollRef.current
@@ -105,18 +110,18 @@ export default function AIChatAssistantBodyPane({ text, isStreaming = false }) {
     }
   }
 
-  const handleWheelCapture = (event) => {
+  const handleWheelCapture = (event: React.WheelEvent<HTMLDivElement>) => {
     if ((Number(event?.deltaY) || 0) < -1) {
       suspendFollow()
     }
   }
 
-  const handleTouchStartCapture = (event) => {
+  const handleTouchStartCapture = (event: React.TouchEvent<HTMLDivElement>) => {
     const nextClientY = Number(event?.touches?.[0]?.clientY)
     lastTouchClientYRef.current = Number.isFinite(nextClientY) ? nextClientY : null
   }
 
-  const handleTouchMoveCapture = (event) => {
+  const handleTouchMoveCapture = (event: React.TouchEvent<HTMLDivElement>) => {
     const nextClientY = Number(event?.touches?.[0]?.clientY)
     const previousClientY = lastTouchClientYRef.current
     lastTouchClientYRef.current = Number.isFinite(nextClientY) ? nextClientY : null
@@ -125,7 +130,7 @@ export default function AIChatAssistantBodyPane({ text, isStreaming = false }) {
     }
   }
 
-  const handlePointerDownCapture = (event) => {
+  const handlePointerDownCapture = (event: React.PointerEvent<HTMLDivElement>) => {
     const container = scrollRef.current
     if (!container || event?.target !== container) {
       return
@@ -137,7 +142,7 @@ export default function AIChatAssistantBodyPane({ text, isStreaming = false }) {
     }
   }
 
-  const handleKeyDownCapture = (event) => {
+  const handleKeyDownCapture = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (['ArrowUp', 'PageUp', 'Home'].includes(event?.key)) {
       suspendFollow()
     }

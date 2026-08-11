@@ -5,7 +5,7 @@ import AIChatMCPCard from './AIChatMCPCard.jsx'
 import AIChatToolCard from './AIChatToolCard.jsx'
 
 /** 会话工具条目（来自 .jsx 父级；kind 区分卡片类型，各卡片按需取用字段） */
-interface AIChatToolSessionItem {
+export interface AIChatToolSessionItem {
   kind: string;
   id: string;
   extra?: Record<string, unknown>;

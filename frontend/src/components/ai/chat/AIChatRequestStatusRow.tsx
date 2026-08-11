@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { t as translate } from '../../../i18n.js'
 
-function stripStreamingCursor(text) {
+function stripStreamingCursor(text: string) {
   const content = typeof text === 'string' ? text.trim() : ''
   return content.endsWith('▍') ? content.slice(0, -1) : content
 }
 
-function estimateLiveTokenCount(text) {
+function estimateLiveTokenCount(text: string) {
   const normalized = stripStreamingCursor(text).replace(/\s+/g, ' ').trim()
   if (!normalized) {
     return 0
@@ -14,14 +14,14 @@ function estimateLiveTokenCount(text) {
   return Math.max(1, Math.round(normalized.length / 4))
 }
 
-function formatDurationLabel(milliseconds) {
+function formatDurationLabel(milliseconds: number) {
   if (!Number.isFinite(milliseconds) || milliseconds <= 0) {
     return ''
   }
   return `${(milliseconds / 1000).toFixed(1)}s`
 }
 
-function getFirstTokenMetricColor(seconds) {
+function getFirstTokenMetricColor(seconds: unknown) {
   if (typeof seconds !== 'number' || !Number.isFinite(seconds)) {
     return 'var(--text-secondary)'
   }
@@ -34,7 +34,7 @@ function getFirstTokenMetricColor(seconds) {
   return 'var(--danger)'
 }
 
-function getElapsedMetricColor(seconds) {
+function getElapsedMetricColor(seconds: unknown) {
   if (typeof seconds !== 'number' || !Number.isFinite(seconds)) {
     return 'var(--text-secondary)'
   }
@@ -47,7 +47,7 @@ function getElapsedMetricColor(seconds) {
   return 'var(--danger)'
 }
 
-function getTokensPerSecondMetricColor(tokensPerSecond) {
+function getTokensPerSecondMetricColor(tokensPerSecond: unknown) {
   if (typeof tokensPerSecond !== 'number' || !Number.isFinite(tokensPerSecond)) {
     return 'var(--text-secondary)'
   }
@@ -63,7 +63,7 @@ function getTokensPerSecondMetricColor(tokensPerSecond) {
   return 'var(--danger)'
 }
 
-function parseDurationSeconds(metric) {
+function parseDurationSeconds(metric: string) {
   if (typeof metric !== 'string') {
     return undefined
   }
@@ -71,7 +71,7 @@ function parseDurationSeconds(metric) {
   return match ? Number(match[1]) : undefined
 }
 
-function parseTokensPerSecond(metric) {
+function parseTokensPerSecond(metric: string) {
   if (typeof metric !== 'string') {
     return undefined
   }
@@ -79,7 +79,13 @@ function parseTokensPerSecond(metric) {
   return match ? Number(match[1]) : undefined
 }
 
-function buildMetricItem(metric, index) {
+interface MetricItem {
+  key: string;
+  label: string;
+  color: string;
+}
+
+function buildMetricItem(metric: string, index: number): MetricItem | null {
   if (typeof metric !== 'string' || !metric.trim()) {
     return null
   }
@@ -104,12 +110,23 @@ function buildMetricItem(metric, index) {
   }
 }
 
-export default function AIChatRequestStatusRow({ assistant, reasoning = [] }) {
+interface AIChatRequestStatusRowProps {
+  assistant?: {
+    id?: string;
+    text?: string;
+    streaming?: boolean;
+    metrics?: unknown[];
+    extra?: Record<string, unknown>;
+  };
+  reasoning?: Array<{ id: string; text?: string; duration?: string }>;
+}
+
+export default function AIChatRequestStatusRow({ assistant, reasoning = [] }: AIChatRequestStatusRowProps) {
   const assistantId = typeof assistant?.id === 'string' ? assistant.id : ''
   const [nowMs, setNowMs] = useState(Date.now())
-  const samplesRef = useRef([])
+  const samplesRef = useRef<Array<{ ts: number; tokens: number }>>([])
   const explicitMetrics = useMemo(
-    () => (Array.isArray(assistant?.metrics) ? assistant.metrics.filter((item) => typeof item === 'string' && item.trim()) : []),
+    () => (Array.isArray(assistant?.metrics) ? assistant.metrics.filter((item): item is string => typeof item === 'string' && !!item.trim()) : []),
     [assistant?.metrics],
   )
   const isLive = Boolean(assistant?.extra?.requestStatusLive) || Boolean(assistant?.streaming)
@@ -156,7 +173,7 @@ export default function AIChatRequestStatusRow({ assistant, reasoning = [] }) {
     if (!isLive || !Number.isFinite(startedAtMs) || startedAtMs <= 0) {
       return []
     }
-    const parts = []
+    const parts: string[] = []
     const normalizedFirstTokenAtMs = Number.isFinite(firstTokenAtMs) && firstTokenAtMs > startedAtMs ? firstTokenAtMs : 0
     if (normalizedFirstTokenAtMs > 0) {
       parts.push(`${translate('首字')} ${formatDurationLabel(normalizedFirstTokenAtMs - startedAtMs)}`)
@@ -188,7 +205,7 @@ export default function AIChatRequestStatusRow({ assistant, reasoning = [] }) {
 
   const metrics = isLive ? liveMetrics : (explicitMetrics.length > 0 ? explicitMetrics : liveMetrics)
   const metricItems = useMemo(
-    () => metrics.map((metric, index) => buildMetricItem(metric, index)).filter(Boolean),
+    () => metrics.map((metric, index) => buildMetricItem(metric, index)).filter((item): item is MetricItem => item !== null),
     [metrics],
   )
 

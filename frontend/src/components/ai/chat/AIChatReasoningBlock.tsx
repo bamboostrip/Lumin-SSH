@@ -4,17 +4,21 @@ import { useStickToBottom } from 'use-stick-to-bottom'
 import { useTranslation } from '../../../i18n.js'
 import AIChatMarkdown from './AIChatMarkdown.jsx'
 
-function parseDurationSeconds(duration) {
-  if (typeof duration !== 'string') {
-    return 0
-  }
+function parseDurationSeconds(duration: string) {
   const match = duration.trim().match(/(\d+(?:\.\d+)?)s$/)
   return match ? Number(match[1]) : 0
 }
 
 const reasoningBodyMaxHeight = 360
 
-export default function AIChatReasoningBlock({ text, duration = '', isStreaming = false, isLast = false }) {
+interface AIChatReasoningBlockProps {
+  text?: string
+  duration?: string
+  isStreaming?: boolean
+  isLast?: boolean
+}
+
+export default function AIChatReasoningBlock({ text, duration = '', isStreaming = false, isLast = false }: AIChatReasoningBlockProps) {
   const { t } = useTranslation()
   const content = typeof text === 'string' ? text.trim() : ''
   const durationLabel = typeof duration === 'string' && duration.trim() ? duration.trim() : ''

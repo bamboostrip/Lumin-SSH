@@ -3,11 +3,35 @@ import AIChatAssistantBodyPane from './AIChatAssistantBodyPane.jsx'
 import AIChatErrorBlock from './AIChatErrorBlock.jsx'
 import AIChatReasoningBlock from './AIChatReasoningBlock.jsx'
 import AIChatRequestStatusRow from './AIChatRequestStatusRow.jsx'
-import AIChatToolSessionPane from './AIChatToolSessionPane.jsx'
+import AIChatToolSessionPane, { type AIChatToolSessionItem } from './AIChatToolSessionPane.jsx'
 
 const assistantTitleKey = 'AI'
 
-export default function AIChatAssistantTurn({ assistant, reasoning = [], tools = [], isLastAssistantTurn = false, hasSubsequentAssistantMessage = false, onDelete, onRetry, onSendUserMessage, onPreviewRestore, onPreviewDiffFetch, onApplyRestore, followupInteractionLocked = false, messageActionBarAtBottom = false, perfMetricsText = '' }) {
+interface AIChatAssistantTurnProps {
+  assistant?: {
+    id?: string;
+    title?: string;
+    time?: string;
+    text?: string;
+    streaming?: boolean;
+    extra?: Record<string, unknown>;
+  };
+  reasoning?: Array<{ id: string; text?: string; duration?: string }>;
+  tools?: AIChatToolSessionItem[];
+  isLastAssistantTurn?: boolean;
+  hasSubsequentAssistantMessage?: boolean;
+  onDelete?: (id: string) => void;
+  onRetry?: (id: string) => void;
+  onSendUserMessage?: (text: string) => void;
+  onPreviewRestore?: (artifactPath: string, targetTerminalId: string) => void;
+  onPreviewDiffFetch?: (artifactPath: string, targetTerminalId: string) => void;
+  onApplyRestore?: (artifactPath: string, targetTerminalId: string) => void;
+  followupInteractionLocked?: boolean;
+  messageActionBarAtBottom?: boolean;
+  perfMetricsText?: string;
+}
+
+export default function AIChatAssistantTurn({ assistant, reasoning = [], tools = [], isLastAssistantTurn = false, hasSubsequentAssistantMessage = false, onDelete, onRetry, onSendUserMessage, onPreviewRestore, onPreviewDiffFetch, onApplyRestore, followupInteractionLocked = false, messageActionBarAtBottom = false, perfMetricsText = '' }: AIChatAssistantTurnProps) {
   const title = assistant?.title || assistantTitleKey
   const time = assistant?.time || ''
   const assistantText = typeof assistant?.text === 'string' ? assistant.text.trim() : ''
@@ -41,7 +65,7 @@ export default function AIChatAssistantTurn({ assistant, reasoning = [], tools =
     ? () => navigator.clipboard.writeText(perfMetricsText).catch(() => {})
     : undefined
 
-  const renderActionBar = (showStatus) => (
+  const renderActionBar = (showStatus: boolean) => (
     <AIChatMessageActionBar
       variant="assistant"
       title={title}

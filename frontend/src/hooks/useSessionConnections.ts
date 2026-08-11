@@ -9,7 +9,7 @@ import type { SnapshotOverrides, WorkspaceSessionSnapshot } from './useWorkspace
 
 /** 连接中的服务器卡片 */
 export interface ConnectingServer {
-  server: { id: string; name?: string; host: string };
+  server: { id: string; name?: string; host: string; port?: number };
   sessionId: string;
   startTime: number;
   status?: string;

@@ -1,8 +1,17 @@
 import { Check, Copy, Pin, SquarePen } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useTranslation } from '../../i18n.js';
 import Tiptop from '../Tiptop.jsx';
 
-function IconButton({ title, active = false, disabled = false, onClick, children }) {
+interface IconButtonProps {
+  title: string;
+  active?: boolean;
+  disabled?: boolean;
+  onClick?: () => void;
+  children?: ReactNode;
+}
+
+function IconButton({ title, active = false, disabled = false, onClick, children }: IconButtonProps) {
   return (
     <Tiptop text={title}>
       <button
@@ -38,7 +47,22 @@ function IconButton({ title, active = false, disabled = false, onClick, children
   );
 }
 
-export default function AIProviderListRow({ item, active = false, builtin = false, onSelect, onCopy, onEdit, onTogglePin }) {
+interface AIProviderListRowProps {
+  item: {
+    name: string;
+    model?: string;
+    description?: string;
+    pinned?: boolean;
+  };
+  active?: boolean;
+  builtin?: boolean;
+  onSelect?: () => void;
+  onCopy?: () => void;
+  onEdit?: () => void;
+  onTogglePin?: () => void;
+}
+
+export default function AIProviderListRow({ item, active = false, builtin = false, onSelect, onCopy, onEdit, onTogglePin }: AIProviderListRowProps) {
   const { t } = useTranslation()
   const secondaryLabel = item.model || item.description || 'Compatible'
 

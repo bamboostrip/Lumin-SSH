@@ -1,5 +1,5 @@
 import React from 'react';
-import { t as $t } from '../../i18n.js';
+import { t as $t, type I18nKey } from '../../i18n.js';
 
 export const SETTINGS_TAB_GAP = 14;
 
@@ -17,25 +17,70 @@ export const SETTINGS_PANEL_STYLE = {
   border: '1px solid var(--border)',
 };
 
-export function SettingsTabRoot({ children, gap = SETTINGS_TAB_GAP, style = {} }) {
+/** 设置定义节点（来自 settingDefinitions.js 的数据结构，字段按需取用） */
+export interface SettingsDefinitionNode {
+  id?: string;
+  titleKey?: string;
+  descriptionKey?: string;
+  type?: string;
+  alias?: string;
+  children?: SettingsDefinitionNode[];
+  [key: string]: unknown;
+}
+
+interface SettingsTabRootProps {
+  children?: React.ReactNode;
+  gap?: number;
+  style?: React.CSSProperties;
+}
+
+export function SettingsTabRoot({ children, gap = SETTINGS_TAB_GAP, style = {} }: SettingsTabRootProps) {
   return <div style={{ display: 'flex', flexDirection: 'column', gap, ...style }}>{children}</div>;
 }
 
-export function SettingsSection({ definition, children, style = {} }) {
+interface SettingsSectionProps {
+  definition?: SettingsDefinitionNode;
+  children?: React.ReactNode;
+  style?: React.CSSProperties;
+}
+
+export function SettingsSection({ definition, children, style = {} }: SettingsSectionProps) {
   return <div data-settings-section-id={definition?.id} style={style}>{children}</div>;
 }
 
-export function SettingsSectionTitle({ children, definition, style = {} }) {
-  return <h3 data-settings-section-id={definition?.id} style={{ ...SETTINGS_SECTION_TITLE_STYLE, ...style }}>{definition?.titleKey ? $t(definition.titleKey) : children}</h3>;
+interface SettingsSectionTitleProps {
+  children?: React.ReactNode;
+  definition?: SettingsDefinitionNode;
+  style?: React.CSSProperties;
 }
 
-export function SettingsPanel({ children, style = {}, ...rest }) {
+export function SettingsSectionTitle({ children, definition, style = {} }: SettingsSectionTitleProps) {
+  // titleKey 为动态 key（可能不在翻译表），t() 内部有兜底
+  return <h3 data-settings-section-id={definition?.id} style={{ ...SETTINGS_SECTION_TITLE_STYLE, ...style }}>{definition?.titleKey ? $t(definition.titleKey as I18nKey) : children}</h3>;
+}
+
+interface SettingsPanelProps extends React.HTMLAttributes<HTMLDivElement> {
+  children?: React.ReactNode;
+}
+
+export function SettingsPanel({ children, style = {}, ...rest }: SettingsPanelProps) {
   return <div {...rest} className="form-group" style={{ ...SETTINGS_PANEL_STYLE, ...style }}>{children}</div>;
 }
 
-export function SettingsField({ definition, title, description, action, children, alignItems = 'center', gap = 16, style = {} }) {
-  const resolvedTitle = title ?? (definition?.titleKey ? $t(definition.titleKey) : title);
-  const resolvedDescription = description ?? (definition?.descriptionKey ? $t(definition.descriptionKey) : description);
+export interface SettingsFieldProps {
+  definition?: SettingsDefinitionNode;
+  title?: string;
+  description?: string;
+  action?: React.ReactNode;
+  children?: React.ReactNode;
+  alignItems?: string;
+  gap?: number;
+  style?: React.CSSProperties;
+}
+
+export function SettingsField({ definition, title, description, action, children, alignItems = 'center', gap = 16, style = {} }: SettingsFieldProps) {
+  const resolvedTitle = title ?? (definition?.titleKey ? $t(definition.titleKey as I18nKey) : title);
+  const resolvedDescription = description ?? (definition?.descriptionKey ? $t(definition.descriptionKey as I18nKey) : description);
   return (
     <div data-settings-field-id={definition?.id} style={{ ...style, ...(children ? { display: 'flex', flexDirection: 'column', gap: 8 } : { display: 'flex', justifyContent: 'space-between', alignItems, gap }) }}>
       <div style={{ minWidth: 0 }}>
@@ -47,15 +92,24 @@ export function SettingsField({ definition, title, description, action, children
   );
 }
 
-export function SettingRow(props) {
+export function SettingRow(props: SettingsFieldProps) {
   return <SettingsField {...props} />;
 }
 
-export function SettingsDivider({ margin = '5px 0' }) {
+interface SettingsDividerProps {
+  margin?: string;
+}
+
+export function SettingsDivider({ margin = '5px 0' }: SettingsDividerProps) {
   return <div className="divider" style={{ margin, borderTop: '1px solid var(--border)' }} />;
 }
 
-export function ToggleSwitch({ checked, onChange }) {
+interface ToggleSwitchProps {
+  checked: boolean;
+  onChange: () => void;
+}
+
+export function ToggleSwitch({ checked, onChange }: ToggleSwitchProps) {
   return (
     <div
       onClick={onChange}
@@ -88,7 +142,15 @@ export function ToggleSwitch({ checked, onChange }) {
   );
 }
 
-export function RadioOption({ selected, label, description, onClick, definition }) {
+interface RadioOptionProps {
+  selected: boolean;
+  label: React.ReactNode;
+  description?: React.ReactNode;
+  onClick: () => void;
+  definition?: SettingsDefinitionNode;
+}
+
+export function RadioOption({ selected, label, description, onClick, definition }: RadioOptionProps) {
   return (
     <div
       data-settings-field-id={definition?.id}
@@ -111,11 +173,18 @@ export function RadioOption({ selected, label, description, onClick, definition 
   );
 }
 
-export function AboutLink({ icon, title, url, definition }) {
+interface AboutLinkProps {
+  icon: React.ReactNode;
+  title: string;
+  url: string;
+  definition?: SettingsDefinitionNode;
+}
+
+export function AboutLink({ icon, title, url, definition }: AboutLinkProps) {
   return (
     <div
       data-settings-field-id={definition?.id}
-      onClick={() => window.runtime?.BrowserOpenURL(url)}
+      onClick={() => window.runtime?.BrowserOpenURL?.(url)}
       className="about-list-item"
       style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '16px 12px', minHeight: 96, borderRadius: 'var(--radius-md)', cursor: 'pointer', transition: 'all 0.2s', textAlign: 'center' }}
     >

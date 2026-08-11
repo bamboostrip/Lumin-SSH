@@ -2,15 +2,17 @@ import { useCallback, useEffect, useState } from 'react'
 import { CheckCircle2, CircleOff, Package } from 'lucide-react'
 import { t as $t } from '../../i18n.js'
 import { DEFAULT_RUNTIME_ENVIRONMENT_STATUS, getRuntimeEnvironmentStatus, installRuntimeEnvironment } from './runtimeEnvironmentBridge.js'
-import { SettingsPanel, SettingsSectionTitle, SettingsTabRoot } from './SharedComponents'
+import { SettingsPanel, SettingsSectionTitle, SettingsTabRoot, type SettingsDefinitionNode } from './SharedComponents.jsx'
 import { settings } from './settingDefinitions'
 
 export default function RuntimeEnvironmentTab() {
   const [runtimeEnvironmentStatus, setRuntimeEnvironmentStatus] = useState(DEFAULT_RUNTIME_ENVIRONMENT_STATUS)
   const [installing, setInstalling] = useState(false)
-  const sectionNode = settings.runtimeEnvironment.sections.environment
-  const uvNode = settings.runtimeEnvironment.fields.uv
-  const uvBinaryNode = settings.runtimeEnvironment.fields.uvBinary
+  // settingDefinitions.js 未转 TS（推断为 Readonly<{}>），此处按实际结构断言
+  const runtimeSettings = settings as { runtimeEnvironment: { sections: { environment: SettingsDefinitionNode }; fields: { uv: SettingsDefinitionNode; uvBinary: SettingsDefinitionNode } } };
+  const sectionNode = runtimeSettings.runtimeEnvironment.sections.environment
+  const uvNode = runtimeSettings.runtimeEnvironment.fields.uv
+  const uvBinaryNode = runtimeSettings.runtimeEnvironment.fields.uvBinary
 
   const refreshRuntimeEnvironmentStatus = useCallback(async () => {
     const status = await getRuntimeEnvironmentStatus()

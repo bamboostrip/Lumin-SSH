@@ -1,3 +1,4 @@
+import type { I18nDict } from '../types.ts';
 export const LANGUAGE_LABEL = "Deutsch";
 
 export default {
@@ -1818,4 +1819,4 @@ export default {
   "当前目录路径": "Pfad des aktuellen Verzeichnisses",
   "清空输入": "Eingabe löschen",
   "增大后可能提高同一会话内的 SFTP/SSH 通道占用": "kann die SFTP/SSH-Kanalnutzung in derselben Sitzung erhöhen",
-};
+} satisfies I18nDict;

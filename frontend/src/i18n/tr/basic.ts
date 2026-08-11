@@ -1,3 +1,4 @@
+import type { I18nDict } from '../types.ts';
 export const LANGUAGE_LABEL = "Türkçe";
 
 export default {
@@ -1818,4 +1819,4 @@ export default {
   "当前目录路径": "Geçerli dizin yolu",
   "清空输入": "Girişi temizle",
   "增大后可能提高同一会话内的 SFTP/SSH 通道占用": "aynı oturumda SFTP/SSH kanal kullanımını artırabilir",
-};
+} satisfies I18nDict;

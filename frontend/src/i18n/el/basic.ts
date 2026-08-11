@@ -1,3 +1,4 @@
+import type { I18nDict } from '../types.ts';
 export const LANGUAGE_LABEL = "Ελληνικά";
 
 export default {
@@ -1818,4 +1819,4 @@ export default {
   "当前目录路径": "Διαδρομή τρέχοντος καταλόγου",
   "清空输入": "Εκκαθάριση εισαγωγής",
   "增大后可能提高同一会话内的 SFTP/SSH 通道占用": "μπορεί να αυξήσει τη χρήση καναλιών SFTP/SSH στην ίδια συνεδρία",
-};
+} satisfies I18nDict;

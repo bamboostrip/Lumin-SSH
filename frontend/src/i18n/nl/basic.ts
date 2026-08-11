@@ -1,3 +1,4 @@
+import type { I18nDict } from '../types.ts';
 export const LANGUAGE_LABEL = "Nederlands";
 
 export default {
@@ -1818,4 +1819,4 @@ export default {
   "当前目录路径": "Pad van de huidige map",
   "清空输入": "Invoer wissen",
   "增大后可能提高同一会话内的 SFTP/SSH 通道占用": "kan het SFTP/SSH-kanaalgebruik in dezelfde sessie verhogen",
-};
+} satisfies I18nDict;

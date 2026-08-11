@@ -1,3 +1,4 @@
+import type { I18nDict } from '../types.ts';
 export const LANGUAGE_LABEL = "繁體中文(中國澳門)";
 
 export default {
@@ -1818,4 +1819,4 @@ export default {
   "当前目录路径": "目前目錄路徑",
   "清空输入": "清空輸入",
   "增大后可能提高同一会话内的 SFTP/SSH 通道占用": "增加後可能提高同一工作階段內的 SFTP/SSH 通道佔用",
-};
+} satisfies I18nDict;

@@ -1,3 +1,4 @@
+import type { I18nDict } from '../types.ts';
 export const LANGUAGE_LABEL = "Українська";
 
 export default {
@@ -1818,4 +1819,4 @@ export default {
   "当前目录路径": "Шлях до поточного каталогу",
   "清空输入": "Очистити введення",
   "增大后可能提高同一会话内的 SFTP/SSH 通道占用": "може збільшити використання каналів SFTP/SSH у межах однієї сесії",
-};
+} satisfies I18nDict;

@@ -1,3 +1,4 @@
+import type { I18nDict } from '../types.ts';
 export const LANGUAGE_LABEL = "Tiếng Việt";
 
 export default {
@@ -1818,4 +1819,4 @@ export default {
   "当前目录路径": "Đường dẫn thư mục hiện tại",
   "清空输入": "Xóa nội dung nhập",
   "增大后可能提高同一会话内的 SFTP/SSH 通道占用": "có thể làm tăng mức sử dụng kênh SFTP/SSH trong cùng phiên",
-};
+} satisfies I18nDict;

@@ -1,8 +1,10 @@
 /**
  * i18n 翻译表类型模板
  *
- * 以 zh-CN 为基准语言推导键类型，其他语言文件的键必须与之完全一致
- * （可配合 `npm run i18n:check` 脚本校验）。
+ * 以 zh-CN 为基准语言推导键类型。其他 27 个语言文件均以
+ * `export default {...} satisfies I18nDict` 标注（见各 basic.ts），
+ * 键拼错/缺失/多余在编译期直接被 tsc 捕获（TS2353/TS2322），
+ * 与 `npm run i18n:check` 脚本形成双保险。
  *
  * 已接入 src/i18n.ts：t() 的 key 参数为 I18nKey，setLanguage/loadLanguage 为 LanguageCode。
  */
@@ -15,7 +17,7 @@ export type I18nDict = typeof zhCN;
 export type I18nKey = keyof I18nDict;
 
 /**
- * 支持的语言代码（与 src/i18n/<lang>/basic.js 目录一一对应，共 28 种）。
+ * 支持的语言代码（与 src/i18n/<lang>/basic.ts 目录一一对应，共 28 种）。
  * 新增语言目录时需同步更新此联合类型。
  */
 export type LanguageCode =

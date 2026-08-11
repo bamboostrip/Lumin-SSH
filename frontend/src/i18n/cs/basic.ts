@@ -1,3 +1,4 @@
+import type { I18nDict } from '../types.ts';
 export const LANGUAGE_LABEL = "Čeština";
 
 export default {
@@ -1818,4 +1819,4 @@ export default {
   "当前目录路径": "Cesta k aktuálnímu adresáři",
   "清空输入": "Vymazat vstup",
   "增大后可能提高同一会话内的 SFTP/SSH 通道占用": "může zvýšit využití kanálů SFTP/SSH ve stejné relaci",
-};
+} satisfies I18nDict;

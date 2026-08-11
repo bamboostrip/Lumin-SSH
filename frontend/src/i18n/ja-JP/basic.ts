@@ -1,3 +1,4 @@
+import type { I18nDict } from '../types.ts';
 export const LANGUAGE_LABEL = "日本語";
 
 export default {
@@ -1818,4 +1819,4 @@ export default {
   "当前目录路径": "現在のディレクトリのパス",
   "清空输入": "入力をクリア",
   "增大后可能提高同一会话内的 SFTP/SSH 通道占用": "増やした場合、同一セッション内の SFTP/SSH チャネル使用量が増加する可能性があります",
-};
+} satisfies I18nDict;

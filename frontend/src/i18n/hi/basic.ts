@@ -1,3 +1,4 @@
+import type { I18nDict } from '../types.ts';
 export const LANGUAGE_LABEL = "हिन्दी";
 
 export default {
@@ -1818,4 +1819,4 @@ export default {
   "当前目录路径": "वर्तमान निर्देशिका पथ",
   "清空输入": "इनपुट साफ़ करें",
   "增大后可能提高同一会话内的 SFTP/SSH 通道占用": "समान सत्र में SFTP/SSH चैनल उपयोग बढ़ा सकता है",
-};
+} satisfies I18nDict;

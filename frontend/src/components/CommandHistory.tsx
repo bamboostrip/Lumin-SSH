@@ -3,6 +3,31 @@ import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 import { useTranslation } from '../i18n.js';
 import { ScrollText, Keyboard, Clipboard, Trash2, Rocket } from 'lucide-react';
 
+/** 历史指令条目 */
+interface HistoryItem {
+  id: number;
+  command: string;
+  time: string;
+  source: string;
+}
+
+/** 历史事件 detail（ssh-command-history / ssh-history-cleared / ssh-history-changed） */
+interface CommandHistoryEventDetail {
+  sessionId?: string;
+  historyServerId?: string;
+  command?: string;
+  time?: string;
+  source?: string;
+  scope?: 'server' | 'global';
+}
+
+interface CommandHistoryProps {
+  sessionId: string;
+  historyServerId: string;
+  terminalId: string;
+  addToast: (message: string | Error, type?: string, duration?: number, actions?: unknown[]) => number;
+}
+
 // 历史事件约定：
 // - ssh-command-history { sessionId(归组id), command, time, source }  新增命令
 // - ssh-history-cleared { sessionId, historyServerId, scope: 'server'|'global' }  清空
@@ -10,12 +35,12 @@ import { ScrollText, Keyboard, Clipboard, Trash2, Rocket } from 'lucide-react';
 // sessionId 作为「历史归组 ID」（= 父会话 s.id），用于过滤事件；
 // historyServerId 作为服务器历史文件键（= s.serverId）；
 // terminalId 作为「再次运行」实际写入终端的目标（= 活动终端 id）。
-export default function CommandHistory({ sessionId, historyServerId, terminalId, addToast }) {
+export default function CommandHistory({ sessionId, historyServerId, terminalId, addToast }: CommandHistoryProps) {
   const { t } = useTranslation();
-  const [history, setHistory] = useState([]);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [historyMode, setHistoryMode] = useState('server'); // 'server' | 'global'
-  const perServerRef = useRef([]);
+  const [historyMode, setHistoryMode] = useState<'server' | 'global'>('server');
+  const perServerRef = useRef<HistoryItem[]>([]);
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -23,14 +48,14 @@ export default function CommandHistory({ sessionId, historyServerId, terminalId,
   }, []);
 
   // ── 串行化全局历史更新，避免 read-modify-write 竞态 ──
-  const globalHistoryUpdateLock = useRef(Promise.resolve());
+  const globalHistoryUpdateLock = useRef<Promise<unknown>>(Promise.resolve());
 
   // 返回写入后的数组，供调用方直接刷新显示，避免再次读取旧文件
-  const updateGlobalHistory = useCallback((updater) => {
+  const updateGlobalHistory = useCallback((updater: (current: HistoryItem[]) => HistoryItem[]) => {
     const next = globalHistoryUpdateLock.current.then(async () => {
       try {
         const raw = await AppGo.GetGlobalCommandHistory();
-        let current = [];
+        let current: HistoryItem[] = [];
         try { current = JSON.parse(raw) || []; } catch {}
         if (!Array.isArray(current)) current = [];
         const result = updater(current);
@@ -74,7 +99,7 @@ export default function CommandHistory({ sessionId, historyServerId, terminalId,
   }, [historyServerId, historyMode]);
 
   // 判断事件是否属于当前会话/服务器（按归组 id 或服务器 id 任一匹配）
-  const matchesSession = useCallback((detail) => {
+  const matchesSession = useCallback((detail: CommandHistoryEventDetail | null | undefined) => {
     if (!detail) return false;
     if (detail.historyServerId && detail.historyServerId === historyServerId) return true;
     if (detail.sessionId && detail.sessionId === sessionId) return true;
@@ -87,23 +112,23 @@ export default function CommandHistory({ sessionId, historyServerId, terminalId,
       AppGo.SaveCommandHistory(historyServerId, JSON.stringify(perServerRef.current.slice(0, 100))).catch(() => {});
     };
 
-    const handler = (e) => {
-      const d = e.detail;
+    const handler = (e: Event) => {
+      const d = (e as CustomEvent<CommandHistoryEventDetail>).detail;
       if (d.sessionId !== sessionId) return;
       const cmd = d.command;
       if (!cmd || !String(cmd).trim()) return;
 
-      const entry = { id: Date.now() + Math.random(), command: cmd, time: d.time, source: 'input' };
+      const entry: HistoryItem = { id: Date.now() + Math.random(), command: cmd, time: d.time || '', source: 'input' };
       // 去重：如果历史已有相同命令，移除旧的，放到最新位置
-      perServerRef.current = [entry, ...perServerRef.current.filter(e => e.command !== cmd)].slice(0, 100);
+      perServerRef.current = [entry, ...perServerRef.current.filter((historyEntry) => historyEntry.command !== cmd)].slice(0, 100);
       persist();
 
       // 追加到全局历史（连续相同命令只更新时间）
       const globalUpdate = updateGlobalHistory((list) => {
         if (!Array.isArray(list)) return [];
         // 全局历史去重：移除相同命令的旧条目
-        const filtered = list.filter(e => e.command !== cmd);
-        filtered.unshift({ id: Date.now() + Math.random(), command: cmd, time: d.time, source: 'input' });
+        const filtered = list.filter((historyEntry) => historyEntry.command !== cmd);
+        filtered.unshift({ id: Date.now() + Math.random(), command: cmd, time: d.time || '', source: 'input' });
         return filtered.slice(0, 100);
       });
 
@@ -120,8 +145,8 @@ export default function CommandHistory({ sessionId, historyServerId, terminalId,
 
     window.addEventListener('ssh-command-history', handler);
 
-    const onClear = (e) => {
-      const d = e.detail;
+    const onClear = (e: Event) => {
+      const d = (e as CustomEvent<CommandHistoryEventDetail>).detail;
       if (!matchesSession(d)) return;
       const scope = d?.scope || 'server';
       if (scope === 'server') {
@@ -137,8 +162,8 @@ export default function CommandHistory({ sessionId, historyServerId, terminalId,
     window.addEventListener('ssh-history-cleared', onClear);
 
     // 删除/变更通知：按作用域刷新当前显示，避免历史页继续显示已删除条目
-    const onChanged = (e) => {
-      const d = e.detail;
+    const onChanged = (e: Event) => {
+      const d = (e as CustomEvent<CommandHistoryEventDetail>).detail;
       if (!matchesSession(d)) return;
       const scope = d?.scope || 'server';
       // 只刷新与当前模式一致的作用域，避免串模式
@@ -177,12 +202,12 @@ export default function CommandHistory({ sessionId, historyServerId, terminalId,
     : history;
 
   // ── 操作 ──
-  const copy = (cmd) => {
+  const copy = (cmd: string) => {
     navigator.clipboard.writeText(cmd);
     addToast?.(t('命令已复制到剪贴板'), 'success');
   };
 
-  const exec = (cmd) => {
+  const exec = (cmd: string) => {
     window.dispatchEvent(new CustomEvent('ssh-command-history', {
       detail: { sessionId, command: cmd, time: new Date().toISOString(), source: 'input' }
     }));
@@ -217,7 +242,7 @@ export default function CommandHistory({ sessionId, historyServerId, terminalId,
     }
   };
 
-  const deleteItem = async (id) => {
+  const deleteItem = async (id: number) => {
     const scope = historyMode;
     try {
       if (scope === 'server') {

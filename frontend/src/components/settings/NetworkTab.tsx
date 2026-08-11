@@ -1,14 +1,35 @@
 import React, { useEffect, useState } from 'react';
 import { t as $t } from '../../i18n.js';
 import { Lightbulb } from 'lucide-react';
-import { ToggleSwitch, RadioOption, SettingRow, SettingsPanel, SettingsSectionTitle, SettingsTabRoot } from './SharedComponents';
+import { ToggleSwitch, RadioOption, SettingRow, SettingsPanel, SettingsSectionTitle, SettingsTabRoot, type SettingsDefinitionNode } from './SharedComponents';
 import { settings } from './settingDefinitions';
 import { getAIGlobalSettings, saveAIGlobalSettings } from '../ai/aiGlobalSettingsBridge.js';
 import { getProxyNodes, saveProxyNodes, normalizeProxyNode } from './proxyNodesBridge.js';
 
 const PROXY_NODES_CHANGED_EVENT = 'lumin:proxy-nodes-changed';
 
-const defaultProxyForm = {
+/** 代理节点表单（port 为字符串输入态，保存时转数字） */
+interface ProxyFormState {
+  name: string;
+  type: string;
+  host: string;
+  port: string;
+  username: string;
+  password: string;
+}
+
+/** 代理节点（来自 proxyNodesBridge.js，字段按需取用） */
+interface ProxyNodeLike {
+  id?: unknown;
+  name?: unknown;
+  type?: unknown;
+  host?: unknown;
+  port?: unknown;
+  username?: unknown;
+  password?: unknown;
+}
+
+const defaultProxyForm: ProxyFormState = {
   name: '',
   type: 'socks5',
   host: '',
@@ -27,19 +48,37 @@ function getIsMobileLayout() {
   return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(MOBILE_MEDIA_QUERY).matches;
 }
 
-export default function NetworkTab({ pingEnabled, onTogglePingEnabled, pingMode, onPingModeChange, probeInterval, onProbeIntervalChange, pingInterval, onPingIntervalChange }) {
-  const [proxyNodes, setProxyNodes] = useState([]);
-  const [proxyForm, setProxyForm] = useState(defaultProxyForm);
+interface NetworkTabProps {
+  pingEnabled: boolean;
+  onTogglePingEnabled: () => void;
+  pingMode: string;
+  onPingModeChange: (mode: string) => void;
+  probeInterval: number;
+  onProbeIntervalChange: (seconds: number) => void;
+  pingInterval: number;
+  onPingIntervalChange: (seconds: number) => void;
+}
+
+export default function NetworkTab({ pingEnabled, onTogglePingEnabled, pingMode, onPingModeChange, probeInterval, onProbeIntervalChange, pingInterval, onPingIntervalChange }: NetworkTabProps) {
+  // settingDefinitions.js 未转 TS（推断为 Readonly<{}>），此处按实际结构断言
+  const settingsData = settings as {
+    network: {
+      sections: { latency: SettingsDefinitionNode; mode: SettingsDefinitionNode; refresh: SettingsDefinitionNode; proxy: SettingsDefinitionNode };
+      fields: Record<string, SettingsDefinitionNode>;
+    };
+  };
+  const [proxyNodes, setProxyNodes] = useState<ProxyNodeLike[]>([]);
+  const [proxyForm, setProxyForm] = useState<ProxyFormState>(defaultProxyForm);
   const [editingProxyId, setEditingProxyId] = useState('');
   const [isMobileLayout, setIsMobileLayout] = useState(() => getIsMobileLayout());
-  const [aiGlobalSettings, setAIGlobalSettings] = useState(null);
+  const [aiGlobalSettings, setAIGlobalSettings] = useState<{ aiRequestProxyId?: string } | null>(null);
 
-  const persistProxyNodes = (nextNodes) => {
+  const persistProxyNodes = (nextNodes: ProxyNodeLike[]) => {
     setProxyNodes(nextNodes);
     window.dispatchEvent(new CustomEvent(PROXY_NODES_CHANGED_EVENT, { detail: nextNodes }));
     saveProxyNodes(nextNodes).catch(() => {});
     const currentSelectedProxyId = aiGlobalSettings?.aiRequestProxyId || '';
-    const nextSelectedProxyId = nextNodes.some((item) => item.id === currentSelectedProxyId) ? currentSelectedProxyId : '';
+    const nextSelectedProxyId = nextNodes.some((item) => item?.id === currentSelectedProxyId) ? currentSelectedProxyId : '';
     if (nextSelectedProxyId !== currentSelectedProxyId) {
       const nextSettings = {
         ...(aiGlobalSettings || {}),
@@ -50,7 +89,7 @@ export default function NetworkTab({ pingEnabled, onTogglePingEnabled, pingMode,
     }
   };
 
-  const setProxyField = (key) => (e) => {
+  const setProxyField = (key: keyof ProxyFormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const value = e?.target?.value ?? '';
     setProxyForm((current) => ({ ...current, [key]: value }));
   };
@@ -65,7 +104,7 @@ export default function NetworkTab({ pingEnabled, onTogglePingEnabled, pingMode,
       return undefined;
     }
     const mediaQuery = window.matchMedia(MOBILE_MEDIA_QUERY);
-    const handleChange = (event) => setIsMobileLayout(event.matches);
+    const handleChange = (event: MediaQueryListEvent) => setIsMobileLayout(event.matches);
     setIsMobileLayout(mediaQuery.matches);
     if (typeof mediaQuery.addEventListener === 'function') {
       mediaQuery.addEventListener('change', handleChange);
@@ -78,11 +117,11 @@ export default function NetworkTab({ pingEnabled, onTogglePingEnabled, pingMode,
   useEffect(() => {
     let cancelled = false;
     Promise.all([getAIGlobalSettings(), getProxyNodes()])
-      .then(([settings, nextNodes]) => {
+      .then(([settingsResult, nextNodes]) => {
         if (cancelled) {
           return;
         }
-        setAIGlobalSettings(settings);
+        setAIGlobalSettings(settingsResult);
         setProxyNodes(nextNodes);
         window.dispatchEvent(new CustomEvent(PROXY_NODES_CHANGED_EVENT, { detail: nextNodes }));
       })
@@ -97,7 +136,7 @@ export default function NetworkTab({ pingEnabled, onTogglePingEnabled, pingMode,
     };
   }, []);
 
-  const showAlert = (message) => {
+  const showAlert = (message: string) => {
     if (window?.luminDialog?.alert) {
       window.luminDialog.alert(message, $t('提示'), { priority: 'settings' });
       return;
@@ -105,7 +144,7 @@ export default function NetworkTab({ pingEnabled, onTogglePingEnabled, pingMode,
     window.alert(message);
   };
 
-  const handleProxySubmit = (e) => {
+  const handleProxySubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e?.preventDefault();
     const host = String(proxyForm.host || '').trim();
     const port = parseInt(String(proxyForm.port || '').trim(), 10);
@@ -125,26 +164,26 @@ export default function NetworkTab({ pingEnabled, onTogglePingEnabled, pingMode,
       updatedAt: Date.now(),
     });
     const nextNodes = editingProxyId
-      ? proxyNodes.map((item) => item.id === editingProxyId ? nextNode : item)
+      ? proxyNodes.map((item) => item?.id === editingProxyId ? nextNode : item)
       : [...proxyNodes, nextNode];
     persistProxyNodes(nextNodes);
     resetProxyForm();
   };
 
-  const handleProxyEdit = (node) => {
-    setEditingProxyId(node.id);
+  const handleProxyEdit = (node: ProxyNodeLike) => {
+    setEditingProxyId(String(node.id));
     setProxyForm({
-      name: node.name || '',
-      type: node.type || 'socks5',
-      host: node.host || '',
+      name: String(node.name || ''),
+      type: String(node.type || 'socks5'),
+      host: String(node.host || ''),
       port: String(node.port || 1080),
-      username: node.username || '',
-      password: node.password || '',
+      username: String(node.username || ''),
+      password: String(node.password || ''),
     });
   };
 
-  const handleProxyDelete = async (id) => {
-    const node = proxyNodes.find((item) => item.id === id);
+  const handleProxyDelete = async (id: string) => {
+    const node = proxyNodes.find((item) => item?.id === id);
     const name = node?.name || node?.host || $t('未命名节点');
     const confirmed = await window.luminDialog?.confirm?.(
       `${$t('确定删除代理节点')}「${name}」？${$t('此操作不可撤销')}`,
@@ -155,7 +194,7 @@ export default function NetworkTab({ pingEnabled, onTogglePingEnabled, pingMode,
     if (!confirmed) {
       return;
     }
-    const nextNodes = proxyNodes.filter((item) => item.id !== id);
+    const nextNodes = proxyNodes.filter((item) => item?.id !== id);
     persistProxyNodes(nextNodes);
     if (editingProxyId === id) {
       resetProxyForm();
@@ -165,11 +204,11 @@ export default function NetworkTab({ pingEnabled, onTogglePingEnabled, pingMode,
   return (
     <SettingsTabRoot>
       <div>
-        <SettingsSectionTitle definition={settings.network.sections.latency} />
+        <SettingsSectionTitle definition={settingsData.network.sections.latency} />
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>{$t('开启或关闭对主页所有服务器的网络可用性及延迟自动探测。')}</div>
         <SettingsPanel>
           <SettingRow
-            definition={settings.network.fields.pingEnabled}
+            definition={settingsData.network.fields.pingEnabled}
             description={$t('定期向服务器发起轻量级探测，实时了解服务器的在线状态和响应速度')}
             action={<ToggleSwitch checked={pingEnabled} onChange={onTogglePingEnabled} />}
           />
@@ -181,9 +220,9 @@ export default function NetworkTab({ pingEnabled, onTogglePingEnabled, pingMode,
         </div>
       </div>
       <div>
-        <SettingsSectionTitle definition={settings.network.sections.mode} />
+        <SettingsSectionTitle definition={settingsData.network.sections.mode} />
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>{$t('选择延迟检测的探测方式，不同方式适用于不同网络环境。')}</div>
-        <SettingsPanel data-settings-field-id={settings.network.fields.detectionMode.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <SettingsPanel data-settings-field-id={settingsData.network.fields.detectionMode.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {[
             { id: 'auto', label: <><span style={{ fontSize: 10, background: 'var(--accent-dim)', border: '1px solid var(--accent-border)', color: 'var(--accent)', padding: '1px 6px', borderRadius: 4, fontWeight: 700, marginRight: 6 }}>{$t('推荐')}</span>{$t('智能检测')}</>, desc: $t('直连用 TCP 测延迟；检测到代理/TUN 时低频 Banner 确认可达性，避免 Clash 等环境下不可达主机显示 0 毫秒在线') },
             { id: 'banner', label: $t('SSH Banner RTT'), desc: $t('所有连接都读取 SSH 握手响应测速，准确反映真实可达性，能穿透 TUN/代理；选择后会自动将延迟检测间隔调整为至少 15 秒') },
@@ -191,7 +230,7 @@ export default function NetworkTab({ pingEnabled, onTogglePingEnabled, pingMode,
           ].map((opt) => (
             <RadioOption
               key={opt.id}
-              definition={opt.id === 'auto' ? settings.network.fields.smartDetection : (opt.id === 'banner' ? settings.network.fields.bannerRtt : settings.network.fields.tcpDial)}
+              definition={opt.id === 'auto' ? settingsData.network.fields.smartDetection : (opt.id === 'banner' ? settingsData.network.fields.bannerRtt : settingsData.network.fields.tcpDial)}
               selected={pingMode === opt.id}
               label={opt.label}
               description={opt.desc}
@@ -204,10 +243,10 @@ export default function NetworkTab({ pingEnabled, onTogglePingEnabled, pingMode,
         </div>
       </div>
       <div>
-        <SettingsSectionTitle definition={settings.network.sections.refresh} />
+        <SettingsSectionTitle definition={settingsData.network.sections.refresh} />
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>{$t('设置探针数据和延迟测试的自动刷新间隔。延迟检测默认 2 秒（适合 TCP/智能模式）；选择 Banner 时自动不低于 15 秒。')}</div>
         <SettingsPanel style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div data-settings-field-id={settings.network.fields.probeInterval.id} style={{ display: 'flex', flexDirection: isMobileLayout ? 'column' : 'row', alignItems: isMobileLayout ? 'stretch' : 'center', justifyContent: 'space-between', gap: isMobileLayout ? 10 : 0 }}>
+          <div data-settings-field-id={settingsData.network.fields.probeInterval.id} style={{ display: 'flex', flexDirection: isMobileLayout ? 'column' : 'row', alignItems: isMobileLayout ? 'stretch' : 'center', justifyContent: 'space-between', gap: isMobileLayout ? 10 : 0 }}>
             <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{$t('探针刷新间隔')}</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: isMobileLayout ? 'flex-start' : 'flex-end' }}>
               {[1, 3, 5, 10, 30].map((s) => (
@@ -230,7 +269,7 @@ export default function NetworkTab({ pingEnabled, onTogglePingEnabled, pingMode,
               ))}
             </div>
           </div>
-          <div data-settings-field-id={settings.network.fields.pingInterval.id} style={{ display: 'flex', flexDirection: isMobileLayout ? 'column' : 'row', alignItems: isMobileLayout ? 'stretch' : 'center', justifyContent: 'space-between', gap: isMobileLayout ? 10 : 0 }}>
+          <div data-settings-field-id={settingsData.network.fields.pingInterval.id} style={{ display: 'flex', flexDirection: isMobileLayout ? 'column' : 'row', alignItems: isMobileLayout ? 'stretch' : 'center', justifyContent: 'space-between', gap: isMobileLayout ? 10 : 0 }}>
             <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{$t('延迟检测间隔')}</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: isMobileLayout ? 'flex-start' : 'flex-end' }}>
               {[2, 5, 10, 15, 30].map((s) => {
@@ -267,9 +306,9 @@ export default function NetworkTab({ pingEnabled, onTogglePingEnabled, pingMode,
         </SettingsPanel>
       </div>
       <div>
-        <SettingsSectionTitle definition={settings.network.sections.proxy} />
+        <SettingsSectionTitle definition={settingsData.network.sections.proxy} />
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>{$t('添加并管理本地代理节点，可供 AI 请求与服务器 SSH/SFTP 连接复用。')}</div>
-        <div data-settings-field-id={settings.network.fields.proxyNodes.id} style={{ display: 'grid', gridTemplateColumns: isMobileLayout ? '1fr' : 'minmax(0, 1.1fr) minmax(320px, 0.9fr)', gap: 14, alignItems: 'start' }}>
+        <div data-settings-field-id={settingsData.network.fields.proxyNodes.id} style={{ display: 'grid', gridTemplateColumns: isMobileLayout ? '1fr' : 'minmax(0, 1.1fr) minmax(320px, 0.9fr)', gap: 14, alignItems: 'start' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
             {proxyNodes.length === 0 ? (
               <div style={{ padding: '16px 14px', background: 'var(--surface-overlay)', borderRadius: 10, border: '1px dashed var(--border)', color: 'var(--text-tertiary)', lineHeight: 1.7 }}>
@@ -277,22 +316,22 @@ export default function NetworkTab({ pingEnabled, onTogglePingEnabled, pingMode,
                 <div style={{ fontSize: 12 }}>{$t('创建第一个代理节点后会显示在这里。')}</div>
               </div>
             ) : proxyNodes.map((node) => (
-              <div key={node.id} style={{ padding: 12, background: 'var(--surface-overlay)', borderRadius: 10, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+              <div key={String(node?.id)} style={{ padding: 12, background: 'var(--surface-overlay)', borderRadius: 10, border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
                 <div style={{ display: 'flex', flexDirection: isMobileLayout ? 'column' : 'row', alignItems: isMobileLayout ? 'stretch' : 'center', justifyContent: 'space-between', gap: 10 }}>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', whiteSpace: isMobileLayout ? 'normal' : 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', overflowWrap: 'anywhere' }}>{node.name || $t('未命名节点')}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', whiteSpace: isMobileLayout ? 'normal' : 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', overflowWrap: 'anywhere' }}>{String(node?.name || $t('未命名节点'))}</div>
                     <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2, whiteSpace: isMobileLayout ? 'normal' : 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', overflowWrap: 'anywhere', lineHeight: 1.6 }}>
                       {[
-                        node.type === 'http' ? $t('HTTP 代理') : $t('SOCKS5 代理'),
-                        `${node.host}:${node.port}`,
-                        ...(node.username ? [`${$t('用户名')}: ${node.username}`] : []),
-                        ...(node.password ? [`${$t('密码')}: ••••••`] : []),
+                        node?.type === 'http' ? $t('HTTP 代理') : $t('SOCKS5 代理'),
+                        `${String(node?.host)}:${String(node?.port)}`,
+                        ...(node?.username ? [`${$t('用户名')}: ${String(node?.username)}`] : []),
+                        ...(node?.password ? [`${$t('密码')}: ••••••`] : []),
                       ].join(' · ')}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap', justifyContent: isMobileLayout ? 'flex-start' : 'flex-end' }}>
                     <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleProxyEdit(node)}>{$t('编辑')}</button>
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleProxyDelete(node.id)} style={{ color: 'var(--danger)' }}>{$t('删除')}</button>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleProxyDelete(String(node?.id))} style={{ color: 'var(--danger)' }}>{$t('删除')}</button>
                   </div>
                 </div>
               </div>
@@ -301,31 +340,31 @@ export default function NetworkTab({ pingEnabled, onTogglePingEnabled, pingMode,
           <SettingsPanel style={{ padding: 12 }}>
             <form onSubmit={handleProxySubmit} style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{editingProxyId ? $t('编辑') : $t('添加')}</div>
-              <div className="form-group" data-settings-field-id={settings.network.fields.proxyName.id} style={{ margin: 0 }}>
+              <div className="form-group" data-settings-field-id={settingsData.network.fields.proxyName.id} style={{ margin: 0 }}>
                 <label className="form-label" htmlFor="network-proxy-name">{$t('代理名称（备注）')}</label>
                 <input id="network-proxy-name" name="network-proxy-name" autoComplete="off" className="input" value={proxyForm.name} onChange={setProxyField('name')} placeholder={$t('代理名称（备注）')} />
                 <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-tertiary)' }}>{$t('仅用于区分代理节点，不参与连接逻辑')}</div>
               </div>
-              <div className="form-group" data-settings-field-id={settings.network.fields.proxyType.id} style={{ margin: 0 }}>
+              <div className="form-group" data-settings-field-id={settingsData.network.fields.proxyType.id} style={{ margin: 0 }}>
                 <label className="form-label" htmlFor="network-proxy-type">{$t('协议类型')}</label>
                 <select id="network-proxy-type" name="network-proxy-type" className="select" value={proxyForm.type} onChange={setProxyField('type')}>
                   <option value="socks5">{$t('SOCKS5 代理')}</option>
                   <option value="http">{$t('HTTP 代理')}</option>
                 </select>
               </div>
-              <div className="form-group" data-settings-field-id={settings.network.fields.proxyHost.id} style={{ margin: 0 }}>
+              <div className="form-group" data-settings-field-id={settingsData.network.fields.proxyHost.id} style={{ margin: 0 }}>
                 <label className="form-label" htmlFor="network-proxy-host">{$t('主机地址')}</label>
                 <input id="network-proxy-host" name="network-proxy-host" autoComplete="off" className="input" value={proxyForm.host} onChange={setProxyField('host')} placeholder="127.0.0.1" />
               </div>
-              <div className="form-group" data-settings-field-id={settings.network.fields.proxyPort.id} style={{ margin: 0 }}>
+              <div className="form-group" data-settings-field-id={settingsData.network.fields.proxyPort.id} style={{ margin: 0 }}>
                 <label className="form-label" htmlFor="network-proxy-port">{$t('端口')}</label>
                 <input id="network-proxy-port" name="network-proxy-port" autoComplete="off" className="input" type="number" min={1} max={65535} value={proxyForm.port} onChange={setProxyField('port')} placeholder="1080" />
               </div>
-              <div className="form-group" data-settings-field-id={settings.network.fields.proxyUsername.id} style={{ margin: 0 }}>
+              <div className="form-group" data-settings-field-id={settingsData.network.fields.proxyUsername.id} style={{ margin: 0 }}>
                 <label className="form-label" htmlFor="network-proxy-username">{$t('用户名')}</label>
                 <input id="network-proxy-username" name="network-proxy-username" autoComplete="off" className="input" value={proxyForm.username} onChange={setProxyField('username')} placeholder={$t('用户名')} />
               </div>
-              <div className="form-group" data-settings-field-id={settings.network.fields.proxyPassword.id} style={{ margin: 0 }}>
+              <div className="form-group" data-settings-field-id={settingsData.network.fields.proxyPassword.id} style={{ margin: 0 }}>
                 <label className="form-label" htmlFor="network-proxy-password">{$t('密码')}</label>
                 <input id="network-proxy-password" name="network-proxy-password" autoComplete="off" className="input" type="password" value={proxyForm.password} onChange={setProxyField('password')} placeholder={$t('密码')} />
               </div>

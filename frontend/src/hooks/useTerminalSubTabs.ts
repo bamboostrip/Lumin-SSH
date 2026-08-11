@@ -1,24 +1,97 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { DockRect, FileManagerDockPosition, PanelResizeDirection } from './useWorkspacePanelDocking.js';
 
-function withAlpha(color, alpha, fallback) {
+function withAlpha(color: string | undefined, alpha: number, fallback: string): string {
   if (typeof color !== 'string') return fallback;
   const trimmed = color.trim();
   if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) { const hex = trimmed.slice(1); const rgb = [0,2,4].map(i=>parseInt(hex.slice(i,i+2),16)).join(', '); return `rgba(${rgb}, ${alpha})`; }
   return trimmed || fallback;
 }
 
-export default function useTerminalSubTabs(deps) {
-  const { TERMINAL_DOCK_LONG_PRESS_MS, activeSessionId, activeSessionRootTerminals, activeTerminalId, canMoveTerminalToDockTarget, clearTerminalDockLongPressTimer, contentTab, fileManagerDockPreview, getFileManagerDockConfirmRect, getSessionRootTerminals, getTerminalDockPreviewTarget, getTerminalDockPreviewZones, getTerminalDockTargetStates, handleTerminalPaneDrop, setTerminalDockDragPreview, setTerminalSubTabOverflow, terminalDockClickSuppressUntilRef, terminalDockLongPressTimerRef, terminalDockPointerCleanupRef, terminalSubTabDragSuppressUntilRef, terminalSubTabDraggingRef, terminalSubTabScrollBySessionRef, terminalSubTabScrollFrameRef, terminalSubTabScrollRef, terminalSubTabScrollTargetRef, terminalSubTabTheme } = deps;
-  const terminalSubTabScrollStyle = useMemo(() => ({
+/** 会话/终端（宽松形状） */
+export interface SubTabSessionLike {
+  id: string;
+  label?: string;
+  [key: string]: unknown;
+}
+
+export interface SubTabTerminalLike {
+  id: string;
+  label?: string;
+  [key: string]: unknown;
+}
+
+/** 终端停靠拖拽预览 */
+export interface TerminalDockDragPreview {
+  sessionId: string;
+  terminalId: string;
+  label?: string;
+  pointer: { x: number; y: number };
+  activeTarget: string | null;
+  zoneStates?: unknown[];
+  zones?: unknown[];
+}
+
+export interface TerminalSubTabDeps {
+  TERMINAL_DOCK_LONG_PRESS_MS: number;
+  activeSessionId: string | null;
+  activeSessionRootTerminals: unknown[];
+  activeTerminalId: string | null;
+  canMoveTerminalToDockTarget: (session: SubTabSessionLike, terminalId: string, dockTarget: string) => boolean;
+  clearTerminalDockLongPressTimer: () => void;
+  contentTab: string;
+  fileManagerDockPreview: PanelResizeDirection | null;
+  getFileManagerDockConfirmRect: (target: FileManagerDockPosition) => DockRect | null;
+  getSessionRootTerminals: (session: SubTabSessionLike) => SubTabTerminalLike[];
+  getTerminalDockPreviewTarget: (clientX: number, clientY: number, zones: unknown[]) => string | null;
+  getTerminalDockPreviewZones: () => unknown[];
+  getTerminalDockTargetStates: (session: SubTabSessionLike, terminalId: string, zones: unknown[]) => unknown[];
+  handleTerminalPaneDrop: (session: SubTabSessionLike, terminalId: string, target: string) => void;
+  setTerminalDockDragPreview: React.Dispatch<React.SetStateAction<TerminalDockDragPreview | null>>;
+  setTerminalSubTabOverflow: (overflow: boolean) => void;
+  terminalDockClickSuppressUntilRef: React.MutableRefObject<number>;
+  terminalDockLongPressTimerRef: React.MutableRefObject<number | null>;
+  terminalDockPointerCleanupRef: React.MutableRefObject<(() => void) | null>;
+  terminalSubTabDragSuppressUntilRef: React.MutableRefObject<number>;
+  terminalSubTabDraggingRef: React.MutableRefObject<boolean>;
+  terminalSubTabScrollBySessionRef: React.MutableRefObject<Record<string, number>>;
+  terminalSubTabScrollFrameRef: React.MutableRefObject<number>;
+  terminalSubTabScrollRef: React.MutableRefObject<HTMLElement | null>;
+  terminalSubTabScrollTargetRef: React.MutableRefObject<number>;
+  terminalSubTabTheme: { xterm?: { cursor?: string; blue?: string } } | null;
+}
+
+export interface TerminalSubTabResult {
+  terminalSubTabScrollStyle: React.CSSProperties;
+  handleTerminalSubTabScroll: (e: React.UIEvent<HTMLElement>) => void;
+  handleTerminalSubTabWheel: (e: React.WheelEvent<HTMLElement>) => void;
+  handleTerminalSubTabMouseDown: (e: React.MouseEvent<HTMLElement>) => void;
+  handleTerminalSubTabClickCapture: (e: React.MouseEvent<HTMLElement>) => void;
+  handleTerminalSubTabDockMouseDown: (e: React.MouseEvent<HTMLElement>, session: SubTabSessionLike, term: SubTabTerminalLike) => void;
+  fileManagerDockDropzones: Array<{ target: string; style: { left: string; top: string; width: string; height: string } }>;
+}
+
+export default function useTerminalSubTabs(deps: TerminalSubTabDeps): TerminalSubTabResult {
+  const {
+    TERMINAL_DOCK_LONG_PRESS_MS, activeSessionId, activeSessionRootTerminals, activeTerminalId,
+    canMoveTerminalToDockTarget, clearTerminalDockLongPressTimer, contentTab, fileManagerDockPreview,
+    getFileManagerDockConfirmRect, getSessionRootTerminals, getTerminalDockPreviewTarget,
+    getTerminalDockPreviewZones, getTerminalDockTargetStates, handleTerminalPaneDrop,
+    setTerminalDockDragPreview, setTerminalSubTabOverflow, terminalDockClickSuppressUntilRef,
+    terminalDockLongPressTimerRef, terminalDockPointerCleanupRef, terminalSubTabDragSuppressUntilRef,
+    terminalSubTabDraggingRef, terminalSubTabScrollBySessionRef, terminalSubTabScrollFrameRef,
+    terminalSubTabScrollRef, terminalSubTabScrollTargetRef, terminalSubTabTheme,
+  } = deps;
+  const terminalSubTabScrollStyle = useMemo<React.CSSProperties>(() => ({
     '--terminal-list-scrollbar-thumb': withAlpha(terminalSubTabTheme?.xterm?.cursor, 0.32, 'rgba(var(--accent-rgb), 0.32)'),
     '--terminal-list-scrollbar-thumb-hover': withAlpha(terminalSubTabTheme?.xterm?.blue || terminalSubTabTheme?.xterm?.cursor, 0.58, 'rgba(var(--accent-rgb), 0.58)'),
-  }), [terminalSubTabTheme]);
-  const rememberTerminalSubTabScroll = useCallback((sessionId, left) => {
+  } as React.CSSProperties), [terminalSubTabTheme]);
+  const rememberTerminalSubTabScroll = useCallback((sessionId: string, left: number) => {
     if (!sessionId) return;
     const next = Number.isFinite(left) ? Math.max(0, left) : 0;
     terminalSubTabScrollBySessionRef.current[sessionId] = next;
   }, []);
-  const restoreTerminalSubTabScroll = useCallback((sessionId, immediate = true) => {
+  const restoreTerminalSubTabScroll = useCallback((sessionId: string, immediate = true) => {
     const el = terminalSubTabScrollRef.current;
     if (!el || !sessionId) return;
     const saved = terminalSubTabScrollBySessionRef.current[sessionId];
@@ -31,7 +104,7 @@ export default function useTerminalSubTabs(deps) {
     }
   }, []);
   // 把指定终端子标签滚进可视区（工作区恢复选中了 7 但滚动还在 1 时用）
-  const scrollTerminalSubTabIntoView = useCallback((terminalId, sessionId) => {
+  const scrollTerminalSubTabIntoView = useCallback((terminalId: string, sessionId: string) => {
     const el = terminalSubTabScrollRef.current;
     if (!el || !terminalId) return;
     const tabEl = el.querySelector(`[data-terminal-id="${CSS.escape(String(terminalId))}"]`);
@@ -101,7 +174,7 @@ export default function useTerminalSubTabs(deps) {
     el.scrollLeft = currentLeft + nextStep;
     terminalSubTabScrollFrameRef.current = requestAnimationFrame(stepTerminalSubTabScroll);
   }, [syncTerminalSubTabOverflowState]);
-  const setTerminalSubTabScrollTarget = useCallback((nextLeft, immediate = false) => {
+  const setTerminalSubTabScrollTarget = useCallback((nextLeft: number, immediate = false) => {
     const el = terminalSubTabScrollRef.current;
     if (!el) {
       return;
@@ -157,7 +230,7 @@ export default function useTerminalSubTabs(deps) {
       window.removeEventListener('resize', handleResize);
     };
   }, [activeSessionId, activeTerminalId, activeSessionRootTerminals, contentTab, restoreTerminalSubTabScroll, scrollTerminalSubTabIntoView, syncTerminalSubTabOverflowState]);
-  const handleTerminalSubTabScroll = useCallback((e) => {
+  const handleTerminalSubTabScroll = useCallback((e: React.UIEvent<HTMLElement>) => {
     const left = e.currentTarget.scrollLeft;
     if (!terminalSubTabScrollFrameRef.current) {
       terminalSubTabScrollTargetRef.current = left;
@@ -167,7 +240,7 @@ export default function useTerminalSubTabs(deps) {
     }
     syncTerminalSubTabOverflowState();
   }, [activeSessionId, rememberTerminalSubTabScroll, syncTerminalSubTabOverflowState]);
-  const handleTerminalSubTabWheel = useCallback((e) => {
+  const handleTerminalSubTabWheel = useCallback((e: React.WheelEvent<HTMLElement>) => {
     const el = terminalSubTabScrollRef.current;
     if (!el || el.scrollWidth <= el.clientWidth) {
       return;
@@ -180,7 +253,7 @@ export default function useTerminalSubTabs(deps) {
     setTerminalSubTabScrollTarget(baseLeft + delta);
     e.preventDefault();
   }, [setTerminalSubTabScrollTarget]);
-  const handleTerminalSubTabMouseDown = useCallback((e) => {
+  const handleTerminalSubTabMouseDown = useCallback((e: React.MouseEvent<HTMLElement>) => {
     if (e.button !== 0) {
       return;
     }
@@ -207,7 +280,7 @@ export default function useTerminalSubTabs(deps) {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-    const handleMouseMove = (moveEvent) => {
+    const handleMouseMove = (moveEvent: MouseEvent) => {
       const deltaX = moveEvent.clientX - startX;
       const deltaY = moveEvent.clientY - startY;
       if (!dragging && Math.abs(deltaX) < 4 && Math.abs(deltaY) < 4) {
@@ -232,13 +305,13 @@ export default function useTerminalSubTabs(deps) {
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
   }, [setTerminalSubTabScrollTarget, stopTerminalSubTabScrollAnimation]);
-  const handleTerminalSubTabClickCapture = useCallback((e) => {
+  const handleTerminalSubTabClickCapture = useCallback((e: React.MouseEvent<HTMLElement>) => {
     if (Date.now() < terminalSubTabDragSuppressUntilRef.current) {
       e.preventDefault();
       e.stopPropagation();
     }
   }, []);
-  const handleTerminalSubTabDockMouseDown = useCallback((e, session, term) => {
+  const handleTerminalSubTabDockMouseDown = useCallback((e: React.MouseEvent<HTMLElement>, session: SubTabSessionLike, term: SubTabTerminalLike) => {
     if (e.button !== 0) {
       return;
     }
@@ -258,8 +331,8 @@ export default function useTerminalSubTabs(deps) {
     const startX = e.clientX;
     const startY = e.clientY;
     let previewActive = false;
-    const createZoneStates = (zones) => getTerminalDockTargetStates(session, term.id, zones);
-    const resolveDockTarget = (clientX, clientY, zones = getTerminalDockPreviewZones()) => {
+    const createZoneStates = (zones: unknown[]) => getTerminalDockTargetStates(session, term.id, zones);
+    const resolveDockTarget = (clientX: number, clientY: number, zones: unknown[] = getTerminalDockPreviewZones()) => {
       const hoveredTarget = getTerminalDockPreviewTarget(clientX, clientY, zones);
       return hoveredTarget && canMoveTerminalToDockTarget(session, term.id, hoveredTarget) ? hoveredTarget : null;
     };
@@ -284,7 +357,7 @@ export default function useTerminalSubTabs(deps) {
       }
     };
 
-    const handleMouseMove = (moveEvent) => {
+    const handleMouseMove = (moveEvent: MouseEvent) => {
       if (!previewActive) {
         if (Math.abs(moveEvent.clientX - startX) > 6 || Math.abs(moveEvent.clientY - startY) > 6) {
           clearTerminalDockLongPressTimer();
@@ -303,7 +376,7 @@ export default function useTerminalSubTabs(deps) {
       });
     };
 
-    const handleMouseUp = (upEvent) => {
+    const handleMouseUp = (upEvent: MouseEvent) => {
       const finalTarget = previewActive
         ? resolveDockTarget(upEvent.clientX, upEvent.clientY)
         : null;
@@ -359,7 +432,7 @@ export default function useTerminalSubTabs(deps) {
             ? ['left', 'right', 'tab']
             : [];
     return dockTargets.map((target) => {
-      const rect = getFileManagerDockConfirmRect(target);
+      const rect = getFileManagerDockConfirmRect(target as FileManagerDockPosition);
       if (!rect) {
         return null;
       }
@@ -372,7 +445,7 @@ export default function useTerminalSubTabs(deps) {
           height: `${rect.bottom - rect.top}px`,
         },
       };
-    }).filter(Boolean);
+    }).filter((zone): zone is { target: string; style: { left: string; top: string; width: string; height: string } } => zone !== null);
   }, [fileManagerDockPreview, getFileManagerDockConfirmRect]);
 
   return { terminalSubTabScrollStyle, handleTerminalSubTabScroll, handleTerminalSubTabWheel, handleTerminalSubTabMouseDown, handleTerminalSubTabClickCapture, handleTerminalSubTabDockMouseDown, fileManagerDockDropzones };

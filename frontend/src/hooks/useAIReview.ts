@@ -5,16 +5,88 @@ import {
   resolveAIWorkspaceTerminalBindingByTerminalId,
 } from '../utils/sessionWorkspace.js';
 
-export default function useAIReview({ sessionsRef, addToast, t }) {
-  const [changeReviewQueues, setChangeReviewQueues] = useState({});
-  const [restorePreviewReviews, setRestorePreviewReviews] = useState({});
-  const [conversationDiffPanels, setConversationDiffPanels] = useState({});
+/** AI 变更审查（reviewId/requestId 为必填标识） */
+export interface AIChangeReview {
+  reviewId: string;
+  requestId: string;
+  sessionId?: string;
+  [key: string]: unknown;
+}
 
-  const enqueueChangeReview = useCallback((review) => {
+/** 恢复预览状态（按面板键存储） */
+export interface RestorePreviewState {
+  sessionId: string;
+  terminalId: string;
+  review: AIChangeReview;
+}
+
+/** 对话差异面板项 */
+export interface ConversationDiffItem {
+  id: string;
+  messageId: string;
+  artifactPath: string;
+  toolName: string;
+  title: string;
+  summary: string;
+  status: string;
+  copyContent: string;
+  order: number;
+}
+
+/** 对话差异面板 */
+export interface ConversationDiffPanel {
+  sessionId: string;
+  terminalId: string;
+  openedAt: number;
+  items: ConversationDiffItem[];
+  selectedMessageId: string;
+  selectedArtifactPath: string;
+  reviewByArtifactPath: Record<string, unknown>;
+  loadingByArtifactPath: Record<string, boolean>;
+}
+
+/** AI 桥接层（Preview/Reapply 工具差异） */
+interface AIBridgeLike {
+  PreviewAIChatToolDiff?: (artifactPath: string, terminalId: string) => Promise<unknown>;
+  ReapplyAIChatTool?: (artifactPath: string, terminalId: string) => Promise<void>;
+}
+
+export interface UseAIReviewOptions {
+  sessionsRef: React.MutableRefObject<unknown[]>;
+  addToast: (message: string | Error, type?: string, duration?: number, actions?: unknown[]) => number;
+  t: (key: string, vars?: Record<string, unknown>) => string;
+}
+
+export interface UseAIReviewResult {
+  changeReviewQueues: Record<string, AIChangeReview[]>;
+  restorePreviewReviews: Record<string, RestorePreviewState>;
+  conversationDiffPanels: Record<string, ConversationDiffPanel>;
+  setRestorePreviewReviews: React.Dispatch<React.SetStateAction<Record<string, RestorePreviewState>>>;
+  setConversationDiffPanels: React.Dispatch<React.SetStateAction<Record<string, ConversationDiffPanel>>>;
+  enqueueChangeReview: (review: AIChangeReview) => void;
+  removeChangeReviewsByRequestId: (requestId: string) => void;
+  removeChangeReviewsBySessionId: (terminalId: string) => void;
+  handleReapplyConversationDiffItem: (artifactPath: string, targetSessionId: string, targetTerminalId: string) => Promise<boolean>;
+  handleApplyConversationDiffRestore: (artifactPath: string, targetSessionId: string, targetTerminalId: string) => Promise<boolean>;
+  handleSelectConversationDiffItem: (item: ConversationDiffItem, options?: {
+    sessionId?: string;
+    terminalId?: string;
+    items?: ConversationDiffItem[];
+    locate?: boolean;
+    setActive?: boolean;
+  }) => Promise<void>;
+}
+
+export default function useAIReview({ sessionsRef, addToast, t }: UseAIReviewOptions): UseAIReviewResult {
+  const [changeReviewQueues, setChangeReviewQueues] = useState<Record<string, AIChangeReview[]>>({});
+  const [restorePreviewReviews, setRestorePreviewReviews] = useState<Record<string, RestorePreviewState>>({});
+  const [conversationDiffPanels, setConversationDiffPanels] = useState<Record<string, ConversationDiffPanel>>({});
+
+  const enqueueChangeReview = useCallback((review: AIChangeReview) => {
     if (!review || typeof review !== 'object' || !review.reviewId || !review.requestId) {
       return;
     }
-    const binding = resolveAIWorkspaceTerminalBindingByTerminalId(sessionsRef.current, review.sessionId);
+    const binding = resolveAIWorkspaceTerminalBindingByTerminalId(sessionsRef.current, review.sessionId || '');
     if (!binding) {
       return;
     }
@@ -34,14 +106,14 @@ export default function useAIReview({ sessionsRef, addToast, t }) {
     });
   }, []);
 
-  const removeChangeReviewById = useCallback((reviewId) => {
+  const removeChangeReviewById = useCallback((reviewId: string) => {
     const normalizedId = typeof reviewId === 'string' ? reviewId.trim() : '';
     if (!normalizedId) {
       return;
     }
     setChangeReviewQueues((prev) => {
       let changed = false;
-      const next = {};
+      const next: Record<string, AIChangeReview[]> = {};
       Object.entries(prev).forEach(([panelKey, queue]) => {
         const currentQueue = Array.isArray(queue) ? queue : [];
         const filteredQueue = currentQueue.filter((item) => item.reviewId !== normalizedId);
@@ -56,14 +128,14 @@ export default function useAIReview({ sessionsRef, addToast, t }) {
     });
   }, []);
 
-  const removeChangeReviewsByRequestId = useCallback((requestId) => {
+  const removeChangeReviewsByRequestId = useCallback((requestId: string) => {
     const normalizedRequestId = typeof requestId === 'string' ? requestId.trim() : '';
     if (!normalizedRequestId) {
       return;
     }
     setChangeReviewQueues((prev) => {
       let changed = false;
-      const next = {};
+      const next: Record<string, AIChangeReview[]> = {};
       Object.entries(prev).forEach(([panelKey, queue]) => {
         const currentQueue = Array.isArray(queue) ? queue : [];
         const filteredQueue = currentQueue.filter((item) => item.requestId !== normalizedRequestId);
@@ -78,7 +150,7 @@ export default function useAIReview({ sessionsRef, addToast, t }) {
     });
     setRestorePreviewReviews((prev) => {
       let changed = false;
-      const next = {};
+      const next: Record<string, RestorePreviewState> = {};
       Object.entries(prev).forEach(([panelKey, reviewState]) => {
         if (reviewState?.review?.requestId === normalizedRequestId) {
           changed = true;
@@ -90,7 +162,7 @@ export default function useAIReview({ sessionsRef, addToast, t }) {
     });
   }, []);
 
-  const removeChangeReviewsBySessionId = useCallback((terminalId) => {
+  const removeChangeReviewsBySessionId = useCallback((terminalId: string) => {
     const binding = resolveAIWorkspaceTerminalBindingByTerminalId(sessionsRef.current, terminalId);
     if (!binding) {
       return;
@@ -118,8 +190,10 @@ export default function useAIReview({ sessionsRef, addToast, t }) {
   }, []);
 
   useEffect(() => {
-    const handleClearChangeReview = (event) => {
-      const sessionId = typeof event?.detail?.sessionId === 'string' ? event.detail.sessionId.trim() : '';
+    const handleClearChangeReview = (event: Event) => {
+      const sessionId = typeof (event as CustomEvent<{ sessionId?: unknown }>).detail?.sessionId === 'string'
+        ? (event as CustomEvent<{ sessionId: string }>).detail.sessionId.trim()
+        : '';
       if (!sessionId) {
         return;
       }
@@ -131,9 +205,10 @@ export default function useAIReview({ sessionsRef, addToast, t }) {
   }, [removeChangeReviewsBySessionId]);
 
   useEffect(() => {
-    const handlePreviewChangeReview = (event) => {
-      const review = event?.detail?.review;
-      const terminalId = typeof event?.detail?.sessionId === 'string' ? event.detail.sessionId.trim() : '';
+    const handlePreviewChangeReview = (event: Event) => {
+      const detail = (event as CustomEvent<{ review?: unknown; sessionId?: unknown }>).detail || {};
+      const review = detail.review;
+      const terminalId = typeof detail.sessionId === 'string' ? detail.sessionId.trim() : '';
       if (!review || typeof review !== 'object') {
         return;
       }
@@ -150,19 +225,20 @@ export default function useAIReview({ sessionsRef, addToast, t }) {
         [panelKey]: {
           sessionId: binding.sessionId,
           terminalId: binding.terminalId,
-          review,
+          review: review as AIChangeReview,
         },
       }));
     };
 
-    const handleClearPreviewChangeReview = (event) => {
-      const reviewId = typeof event?.detail?.reviewId === 'string' ? event.detail.reviewId.trim() : '';
-      const terminalId = typeof event?.detail?.sessionId === 'string' ? event.detail.sessionId.trim() : '';
+    const handleClearPreviewChangeReview = (event: Event) => {
+      const detail = (event as CustomEvent<{ reviewId?: unknown; sessionId?: unknown }>).detail || {};
+      const reviewId = typeof detail.reviewId === 'string' ? detail.reviewId.trim() : '';
+      const terminalId = typeof detail.sessionId === 'string' ? detail.sessionId.trim() : '';
       const binding = terminalId ? resolveAIWorkspaceTerminalBindingByTerminalId(sessionsRef.current, terminalId) : null;
       const panelKey = binding ? buildAIWorkspaceTerminalPanelKey(binding.sessionId, binding.terminalId) : '';
       setRestorePreviewReviews((prev) => {
         let changed = false;
-        const next = {};
+        const next: Record<string, RestorePreviewState> = {};
         Object.entries(prev).forEach(([currentKey, reviewState]) => {
           if (panelKey && currentKey !== panelKey) {
             next[currentKey] = reviewState;
@@ -186,8 +262,8 @@ export default function useAIReview({ sessionsRef, addToast, t }) {
     };
   }, []);
 
-  const previewConversationDiffArtifact = useCallback(async (artifactPath, targetTerminalId) => {
-    const bridge = window?.go?.wailsapp?.AIBindings || window?.go?.wailsapp?.App;
+  const previewConversationDiffArtifact = useCallback(async (artifactPath: string, targetTerminalId: string) => {
+    const bridge = (window?.go?.wailsapp?.AIBindings || window?.go?.wailsapp?.App) as AIBridgeLike;
     if (!bridge?.PreviewAIChatToolDiff) {
       throw new Error(t('差异预览能力未就绪'));
     }
@@ -195,8 +271,8 @@ export default function useAIReview({ sessionsRef, addToast, t }) {
     return review && typeof review === 'object' ? review : null;
   }, []);
 
-  const handleReapplyConversationDiffItem = useCallback(async (artifactPath, targetSessionId, targetTerminalId) => {
-    const bridge = window?.go?.wailsapp?.AIBindings || window?.go?.wailsapp?.App;
+  const handleReapplyConversationDiffItem = useCallback(async (artifactPath: string, targetSessionId: string, targetTerminalId: string) => {
+    const bridge = (window?.go?.wailsapp?.AIBindings || window?.go?.wailsapp?.App) as AIBridgeLike;
     const effectiveTerminalId = typeof targetTerminalId === 'string' && targetTerminalId.trim()
       ? targetTerminalId.trim()
       : typeof targetSessionId === 'string'
@@ -215,7 +291,7 @@ export default function useAIReview({ sessionsRef, addToast, t }) {
     }
   }, [addToast, t]);
 
-  const handleApplyConversationDiffRestore = useCallback(async (artifactPath, targetSessionId, targetTerminalId) => {
+  const handleApplyConversationDiffRestore = useCallback(async (artifactPath: string, targetSessionId: string, targetTerminalId: string) => {
     try {
       await restoreAIChatTool(artifactPath, targetTerminalId);
       return true;
@@ -225,7 +301,13 @@ export default function useAIReview({ sessionsRef, addToast, t }) {
     }
   }, [addToast]);
 
-  const handleSelectConversationDiffItem = useCallback(async (item, options = {}) => {
+  const handleSelectConversationDiffItem = useCallback(async (item: ConversationDiffItem, options: {
+    sessionId?: string;
+    terminalId?: string;
+    items?: ConversationDiffItem[];
+    locate?: boolean;
+    setActive?: boolean;
+  } = {}) => {
     const artifactPath = typeof item?.artifactPath === 'string' ? item.artifactPath.trim() : '';
     const messageId = typeof item?.messageId === 'string' ? item.messageId.trim() : '';
     const sessionId = typeof options?.sessionId === 'string' ? options.sessionId.trim() : '';
@@ -328,29 +410,37 @@ export default function useAIReview({ sessionsRef, addToast, t }) {
   }, [addToast, previewConversationDiffArtifact]);
 
   useEffect(() => {
-    const handleOpenConversationDiffPanel = (event) => {
-      const sessionId = typeof event?.detail?.sessionId === 'string' ? event.detail.sessionId.trim() : '';
-      const terminalId = typeof event?.detail?.terminalId === 'string' ? event.detail.terminalId.trim() : '';
+    const handleOpenConversationDiffPanel = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        sessionId?: unknown;
+        terminalId?: unknown;
+        items?: unknown;
+      }>).detail || {};
+      const sessionId = typeof detail.sessionId === 'string' ? detail.sessionId.trim() : '';
+      const terminalId = typeof detail.terminalId === 'string' ? detail.terminalId.trim() : '';
       const panelKey = buildAIWorkspaceTerminalPanelKey(sessionId, terminalId);
-      const rawItems = Array.isArray(event?.detail?.items) ? event.detail.items : [];
-      const items = rawItems
+      const rawItems = Array.isArray(detail.items) ? detail.items : [];
+      const items: ConversationDiffItem[] = rawItems
         .filter((item) => item && typeof item === 'object')
-        .map((item, index) => ({
-          id: typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `conversation-diff-item-${index}`,
-          messageId: typeof item.messageId === 'string' ? item.messageId.trim() : '',
-          artifactPath: typeof item.artifactPath === 'string' ? item.artifactPath.trim() : '',
-          toolName: typeof item.toolName === 'string' ? item.toolName.trim() : '',
-          title: typeof item.title === 'string' ? item.title.trim() : '',
-          summary: typeof item.summary === 'string' ? item.summary.trim() : '',
-          status: typeof item.status === 'string' ? item.status.trim() : '',
-          copyContent: typeof item.copyContent === 'string' ? item.copyContent : '',
-          order: Number.isFinite(Number(item.order)) ? Number(item.order) : index + 1,
-        }))
+        .map((item, index) => {
+          const raw = item as Record<string, unknown>;
+          return {
+            id: typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : `conversation-diff-item-${index}`,
+            messageId: typeof raw.messageId === 'string' ? raw.messageId.trim() : '',
+            artifactPath: typeof raw.artifactPath === 'string' ? raw.artifactPath.trim() : '',
+            toolName: typeof raw.toolName === 'string' ? raw.toolName.trim() : '',
+            title: typeof raw.title === 'string' ? raw.title.trim() : '',
+            summary: typeof raw.summary === 'string' ? raw.summary.trim() : '',
+            status: typeof raw.status === 'string' ? raw.status.trim() : '',
+            copyContent: typeof raw.copyContent === 'string' ? raw.copyContent : '',
+            order: Number.isFinite(Number(raw.order)) ? Number(raw.order) : index + 1,
+          };
+        })
         .filter((item) => item.artifactPath);
       if (!panelKey || items.length === 0) {
         return;
       }
-      let firstItem = null;
+      let firstItem: ConversationDiffItem | null = null;
       let shouldOpen = false;
       setConversationDiffPanels((prev) => {
         if (prev[panelKey]) {
@@ -382,9 +472,10 @@ export default function useAIReview({ sessionsRef, addToast, t }) {
       }
     };
 
-    const handleCloseConversationDiffPanel = (event) => {
-      const sessionId = typeof event?.detail?.sessionId === 'string' ? event.detail.sessionId.trim() : '';
-      const terminalId = typeof event?.detail?.terminalId === 'string' ? event.detail.terminalId.trim() : '';
+    const handleCloseConversationDiffPanel = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId?: unknown; terminalId?: unknown }>).detail || {};
+      const sessionId = typeof detail.sessionId === 'string' ? detail.sessionId.trim() : '';
+      const terminalId = typeof detail.terminalId === 'string' ? detail.terminalId.trim() : '';
       const panelKey = buildAIWorkspaceTerminalPanelKey(sessionId, terminalId);
       setConversationDiffPanels((prev) => {
         if (!panelKey) {
@@ -406,7 +497,6 @@ export default function useAIReview({ sessionsRef, addToast, t }) {
       window.removeEventListener('ai-conversation-diff-close', handleCloseConversationDiffPanel);
     };
   }, [handleSelectConversationDiffItem]);
-
 
   return {
     changeReviewQueues,

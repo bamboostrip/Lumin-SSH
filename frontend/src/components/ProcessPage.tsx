@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useReducer } from 'react';
+import { useState, useEffect, useCallback, useRef, useReducer, type MouseEvent as ReactMouseEvent } from 'react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 import { useTranslation } from '../i18n.js';
 import Tiptop from './Tiptop.jsx';
@@ -8,15 +8,43 @@ import { ClipboardList, Search, RefreshCw, XCircle, X, ArrowUpDown, ArrowUp, Arr
 const PROCESS_MENU_W = 170;
 const PROCESS_MENU_H = 160;
 
+/** 进程条目（GetFullProcessList 返回的宽松结构） */
+interface ProcessInfo {
+  pid: string;
+  cpu?: number;
+  mem?: number;
+  user?: string;
+  name?: string;
+  cmd?: string;
+  loc?: string;
+  stat?: string;
+  nlwp?: number;
+  etime?: string;
+}
+
+/** 右键菜单状态 */
+interface ProcessContextMenu {
+  x: number;
+  y: number;
+  process: ProcessInfo;
+  hasEnv: boolean | null;
+}
+
+/** 详情面板 reducer 动作 */
+type DetailAction =
+  | { type: 'toggle'; process: ProcessInfo }
+  | { type: 'close'; pid: string }
+  | { type: 'closeAll' };
+
 // ponytail: input is MB from Go backend (ps RSS KB → /1024 → MB)
-const fmem = (mb) => {
+const fmem = (mb: number | undefined) => {
   const v = Number(mb);
   if (v < 1) return (v * 1024).toFixed(0) + 'K';
   if (v < 1024) return v.toFixed(1) + 'M';
   return (v / 1024).toFixed(1) + 'G';
 };
 
-const sortFns = {
+const sortFns: Record<string, (a: ProcessInfo, b: ProcessInfo) => number> = {
   pid: (a, b) => Number(a.pid) - Number(b.pid),
   cpu: (a, b) => (a.cpu || 0) - (b.cpu || 0),
   mem: (a, b) => (a.mem || 0) - (b.mem || 0),
@@ -24,19 +52,25 @@ const sortFns = {
   name: (a, b) => (a.name || '').localeCompare(b.name || ''),
 };
 
-export default function ProcessPage({ sessionId, addToast, active }) {
+export interface ProcessPageProps {
+  sessionId: string;
+  addToast: (message: string | Error, type?: string, duration?: number, actions?: unknown[]) => number;
+  active: boolean;
+}
+
+export default function ProcessPage({ sessionId, addToast, active }: ProcessPageProps) {
   const { t } = useTranslation();
-  const [processes, setProcesses] = useState(null);
+  const [processes, setProcesses] = useState<ProcessInfo[] | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortKey, setSortKey] = useState('cpu');
   const [sortAsc, setSortAsc] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [selectedPids, setSelectedPids] = useState(new Set());
+  const [error, setError] = useState<string | null>(null);
+  const [selectedPids, setSelectedPids] = useState<Set<string>>(new Set());
   const [killing, setKilling] = useState(false);
-  const [contextMenu, setContextMenu] = useState(null); // { x, y, process }
-  const contextMenuRef = useRef(null);
-  const [detailState, detailDispatch] = useReducer((state, action) => {
+  const [contextMenu, setContextMenu] = useState<ProcessContextMenu | null>(null); // { x, y, process }
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const [detailState, detailDispatch] = useReducer((state: { processes: ProcessInfo[]; activePid: string | null }, action: DetailAction) => {
     switch (action.type) {
       case 'toggle': {
         const idx = state.processes.findIndex(p => p.pid === action.process.pid);
@@ -68,19 +102,19 @@ export default function ProcessPage({ sessionId, addToast, active }) {
     const saved = localStorage.getItem('processDetailHeight');
     return saved ? parseFloat(saved) : 200;
   });
-  const [envVars, setEnvVars] = useState(null);
+  const [envVars, setEnvVars] = useState<string[] | null>(null);
   const [envLoading, setEnvLoading] = useState(false);
   const [showEnv, setShowEnv] = useState(false);
-  const [colWidths, setColWidths] = useState(() => {
+  const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
     const saved = localStorage.getItem('processColWidths');
     if (saved) try { return JSON.parse(saved); } catch {}
     return { pid: 70, cpu: 70, mem: 70, user: 100, name: 200 };
   });
   const mountedRef = useRef(true);
-  const timerRef = useRef(null);
-  const detailRef = useRef(null);
+  const timerRef = useRef<number | null>(null);
+  const detailRef = useRef<HTMLDivElement | null>(null);
   const colDragging = useRef(false);
-  const scrollRef = useRef(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   // ponytail: 可视区切片，避免数百进程全量渲染。行高固定 33px（6px*2 padding + ~21px 内容）
   // 上限约 300 行无虚拟化也无压力，超出靠此切片；O(n) 滚动计算在 60fps 内可接受
   const ROW_H = 33;
@@ -104,11 +138,11 @@ export default function ProcessPage({ sessionId, addToast, active }) {
     try {
       const list = await AppGo.GetFullProcessList(sessionId);
       if (mountedRef.current) {
-        setProcesses(list || []);
+        setProcesses((list || []) as ProcessInfo[]);
       }
     } catch (e) {
       if (mountedRef.current) {
-        setError(e?.message || String(e));
+        setError(e instanceof Error ? e.message : String(e));
         setProcesses([]);
       }
     } finally {
@@ -173,20 +207,20 @@ export default function ProcessPage({ sessionId, addToast, active }) {
       )
     : sorted;
 
-  const handleSort = (key) => {
+  const handleSort = (key: string) => {
     if (key === sortKey) setSortAsc(v => !v);
     else { setSortKey(key); setSortAsc(false); }
   };
 
   // ponytail: 改为函数调用而非组件定义，避免每次 polling 渲染时 React 视为新组件类型导致表头 unmount/remount
-  const renderSortIcon = (col) => {
+  const renderSortIcon = (col: string) => {
     if (col !== sortKey) return <ArrowUpDown size={13} style={{ opacity: 0.7, marginLeft: 2, flexShrink: 0 }} />;
     return sortAsc
       ? <ArrowUp size={13} style={{ marginLeft: 2, flexShrink: 0, color: 'var(--accent)' }} />
       : <ArrowDown size={13} style={{ marginLeft: 2, flexShrink: 0, color: 'var(--accent)' }} />;
   };
 
-  const toggleSelect = (pid) => {
+  const toggleSelect = (pid: string) => {
     setSelectedPids(prev => {
       const next = new Set(prev);
       if (next.has(pid)) next.delete(pid);
@@ -203,14 +237,15 @@ export default function ProcessPage({ sessionId, addToast, active }) {
     }
   };
 
-  const confirmKill = async (count) => {
+  const confirmKill = async (count: number) => {
     if (localStorage.getItem('skipProcessKillConfirm') === 'true') return true;
     const result = await window.luminDialog?.confirm(
       t('确定要终止选中的 ') + count + t(' 个进程吗？'),
       t('操作确认'),
       t('不再询问'),
     );
-    if (!result?.confirmed) return false;
+    // 带复选框的 confirm 恒返回 { confirmed, checked }；此处防御性处理 boolean 分支
+    if (!result || typeof result !== 'object' || !result.confirmed) return false;
     if (result.checked) localStorage.setItem('skipProcessKillConfirm', 'true');
     return true;
   };
@@ -237,7 +272,7 @@ export default function ProcessPage({ sessionId, addToast, active }) {
     }
   };
 
-  const killOne = async (p) => {
+  const killOne = async (p: ProcessInfo | undefined) => {
     if (!p) return;
     if (!await confirmKill(1)) return;
     setKilling(true);
@@ -258,7 +293,7 @@ export default function ProcessPage({ sessionId, addToast, active }) {
     }
   };
 
-  const copyText = (text, okMsg) => {
+  const copyText = (text: string | undefined, okMsg: string) => {
     const value = String(text || '');
     if (!value) {
       addToast?.(t('复制失败'), 'error');
@@ -271,7 +306,7 @@ export default function ProcessPage({ sessionId, addToast, active }) {
     });
   };
 
-  const copyEnv = async (p) => {
+  const copyEnv = async (p: ProcessInfo) => {
     if (!p) return;
     try {
       const vars = await AppGo.GetProcessEnv(sessionId, p.pid);
@@ -286,12 +321,12 @@ export default function ProcessPage({ sessionId, addToast, active }) {
     }
   };
 
-  const handleRowClick = (p) => {
+  const handleRowClick = (p: ProcessInfo) => {
     detailDispatch({ type: 'toggle', process: p });
     setSelectedPids(new Set());
   };
 
-  const handleRowContextMenu = (e, p) => {
+  const handleRowContextMenu = (e: ReactMouseEvent, p: ProcessInfo) => {
     e.preventDefault();
     e.stopPropagation();
     const pos = clampMenuPosition(e.clientX, e.clientY, PROCESS_MENU_W, PROCESS_MENU_H);
@@ -321,12 +356,12 @@ export default function ProcessPage({ sessionId, addToast, active }) {
 
   useEffect(() => {
     if (!contextMenu) return;
-    const onDown = (e) => {
-      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target)) {
+    const onDown = (e: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
         setContextMenu(null);
       }
     };
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setContextMenu(null);
     };
     document.addEventListener('mousedown', onDown);
@@ -349,11 +384,11 @@ export default function ProcessPage({ sessionId, addToast, active }) {
     });
   }, [contextMenu?.process?.pid, contextMenu?.hasEnv]);
 
-  const startDetailDrag = useCallback((e) => {
+  const startDetailDrag = useCallback((e: ReactMouseEvent) => {
     e.preventDefault();
     const startY = e.clientY;
     const startH = detailHeight;
-    const onMove = (ev) => {
+    const onMove = (ev: MouseEvent) => {
       const dh = Math.max(100, Math.min(600, startH - (ev.clientY - startY)));
       setDetailHeight(dh);
       localStorage.setItem('processDetailHeight', String(dh));
@@ -370,12 +405,12 @@ export default function ProcessPage({ sessionId, addToast, active }) {
     document.addEventListener('mouseup', onUp);
   }, [detailHeight]);
 
-  const startColResize = useCallback((colKey, e) => {
+  const startColResize = useCallback((colKey: string, e: ReactMouseEvent) => {
     e.preventDefault();
     const startX = e.clientX;
     const startW = colWidths[colKey];
     colDragging.current = false;
-    const onMove = (ev) => {
+    const onMove = (ev: MouseEvent) => {
       colDragging.current = true;
       const w = Math.max(40, Math.min(500, startW + (ev.clientX - startX)));
       const next = { ...colWidths, [colKey]: w };
@@ -493,14 +528,14 @@ export default function ProcessPage({ sessionId, addToast, active }) {
                   checked={selectedPids.size === filtered.length && filtered.length > 0}
                   onChange={selectAll} style={{ cursor: 'pointer' }} />
               </div>
-              {[
+              {([
                 { key: 'pid', label: 'PID', align: 'right' },
                 { key: 'cpu', label: 'CPU%', align: 'right' },
                 { key: 'mem', label: t('内存'), align: 'right' },
                 { key: 'user', label: t('用户'), align: 'left' },
                 { key: 'name', label: t('名称/命令行'), align: 'left' },
                 { key: 'loc', label: t('位置'), align: 'left' },
-              ].map(({ key, label, align }) => (
+              ] as Array<{ key: string; label: string; align: 'right' | 'left' }>).map(({ key, label, align }) => (
                 <div key={key} style={{
                   padding: '8px 6px',
                   textAlign: align,
@@ -550,7 +585,7 @@ export default function ProcessPage({ sessionId, addToast, active }) {
                       onChange={() => toggleSelect(p.pid)} style={{ cursor: 'pointer' }} />
                   </div>
                   <div style={{ padding: '6px 6px', textAlign: 'right', color: 'var(--text-tertiary)', fontSize: 11.5, borderRight: '1px solid var(--border-light)' }} onClick={() => handleRowClick(p)}>{p.pid}</div>
-                  <div style={{ padding: '6px 6px', textAlign: 'right', color: p.cpu > 50 ? 'var(--danger)' : p.cpu > 10 ? 'var(--warning)' : 'var(--text-primary)', borderRight: '1px solid var(--border-light)' }} onClick={() => handleRowClick(p)}>
+                  <div style={{ padding: '6px 6px', textAlign: 'right', color: (p.cpu || 0) > 50 ? 'var(--danger)' : (p.cpu || 0) > 10 ? 'var(--warning)' : 'var(--text-primary)', borderRight: '1px solid var(--border-light)' }} onClick={() => handleRowClick(p)}>
                     {p.cpu?.toFixed(1)}%
                   </div>
                   <div style={{ padding: '6px 6px', textAlign: 'right', color: 'var(--text-primary)', borderRight: '1px solid var(--border-light)' }} onClick={() => handleRowClick(p)}>{fmem(p.mem)}</div>
@@ -695,7 +730,7 @@ export default function ProcessPage({ sessionId, addToast, active }) {
                 <DetailRow label={t('状态')} value={activeProcess?.stat || '-'} />
                 <DetailRow label={t('进程名')} value={activeProcess?.name} />
                 <DetailRow label={t('线程数')} value={activeProcess?.nlwp != null ? String(activeProcess.nlwp) : '-'} />
-                <DetailRow label="CPU" value={<><span style={{ color: activeProcess?.cpu > 50 ? 'var(--danger)' : activeProcess?.cpu > 10 ? 'var(--warning)' : 'inherit' }}>{activeProcess?.cpu?.toFixed(1)}%</span></>} />
+                <DetailRow label="CPU" value={<><span style={{ color: (activeProcess?.cpu || 0) > 50 ? 'var(--danger)' : (activeProcess?.cpu || 0) > 10 ? 'var(--warning)' : 'inherit' }}>{activeProcess?.cpu?.toFixed(1)}%</span></>} />
                 <DetailRow label={t('运行时间')} value={activeProcess?.etime || '-'} />
                 <DetailRow label={t('内存')} value={fmem(activeProcess?.mem)} />
                 <DetailRow label={t('用户')} value={activeProcess?.user} />
@@ -755,7 +790,12 @@ export default function ProcessPage({ sessionId, addToast, active }) {
   );
 }
 
-const DetailRow = ({ label, value }) => (
+interface DetailRowProps {
+  label: string;
+  value: React.ReactNode;
+}
+
+const DetailRow = ({ label, value }: DetailRowProps) => (
   <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '3px 0' }}>
     <span style={{ color: 'var(--text-tertiary)', minWidth: 60, flexShrink: 0, fontSize: 12 }}>{label}</span>
     <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{value}</span>

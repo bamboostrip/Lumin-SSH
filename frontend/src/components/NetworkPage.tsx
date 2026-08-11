@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 import { useTranslation } from '../i18n.js';
 import Tiptop from './Tiptop.jsx';
@@ -6,7 +6,48 @@ import { formatRate, formatTransferTotal } from './probeFormatting.js';
 import { Globe, RefreshCw, ArrowDown, ArrowUp, Info, ArrowUpDown, Search, X } from 'lucide-react';
 
 const HISTORY_SIZE = 60;
-const connectionSortFns = {
+
+/** 网卡统计（AppGo.NetworkInfo 返回的宽松结构） */
+interface NetworkInterfaceInfo {
+  name?: string;
+  uploadSpeed?: number;
+  downloadSpeed?: number;
+  uploadTotal?: number;
+  downloadTotal?: number;
+}
+
+/** 连接对端 */
+interface ConnectionPeer {
+  ip?: string;
+  port?: string | number;
+  location?: string;
+  upload?: number;
+  download?: number;
+}
+
+/** 监听端口连接条目 */
+interface NetworkConnection {
+  pid?: string | number;
+  name?: string;
+  listenIP?: string;
+  port?: string | number;
+  ipCount?: number;
+  connCount?: number;
+  upload?: number;
+  download?: number;
+  peers?: ConnectionPeer[];
+}
+
+interface NetworkState {
+  uploadSpeed?: number;
+  downloadSpeed?: number;
+  uploadTotal?: number;
+  downloadTotal?: number;
+  interfaces?: NetworkInterfaceInfo[];
+  connections?: NetworkConnection[];
+}
+
+const connectionSortFns: Record<string, (a: NetworkConnection, b: NetworkConnection) => number> = {
   pid: (a, b) => Number(a.pid || 0) - Number(b.pid || 0),
   name: (a, b) => (a.name || '').localeCompare(b.name || ''),
   listenIP: (a, b) => (a.listenIP || '').localeCompare(b.listenIP || ''),
@@ -16,9 +57,14 @@ const connectionSortFns = {
   upload: (a, b) => (a.upload || 0) - (b.upload || 0),
   download: (a, b) => (a.download || 0) - (b.download || 0),
 };
-const defaultConnectionColWidths = { pid: 70, name: 150, listenIP: 150, port: 80, ipCount: 70, connCount: 80, upload: 90, download: 90 };
+const defaultConnectionColWidths: Record<string, number> = { pid: 70, name: 150, listenIP: 150, port: 80, ipCount: 70, connCount: 80, upload: 90, download: 90 };
 
-function Sparkline({ data, color }) {
+interface SparklineProps {
+  data: number[];
+  color: string;
+}
+
+function Sparkline({ data, color }: SparklineProps) {
   const points = data || [];
   const path = useMemo(() => {
     if (points.length < 2) return '';
@@ -33,26 +79,31 @@ function Sparkline({ data, color }) {
   );
 }
 
-export default function NetworkPage({ sessionId, active }) {
+export interface NetworkPageProps {
+  sessionId: string;
+  active: boolean;
+}
+
+export default function NetworkPage({ sessionId, active }: NetworkPageProps) {
   const { t } = useTranslation();
-  const [network, setNetwork] = useState(null);
-  const [history, setHistory] = useState({ up: Array(HISTORY_SIZE).fill(0), down: Array(HISTORY_SIZE).fill(0) });
+  const [network, setNetwork] = useState<NetworkState | null>(null);
+  const [history, setHistory] = useState<{ up: number[]; down: number[] }>({ up: Array(HISTORY_SIZE).fill(0), down: Array(HISTORY_SIZE).fill(0) });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [showAllListeners, setShowAllListeners] = useState(() => localStorage.getItem('networkShowAllListeners') === 'true');
   const [showInstallTips, setShowInstallTips] = useState(false);
   const [connectionSearchQuery, setConnectionSearchQuery] = useState('');
-  const [detailConnections, setDetailConnections] = useState([]);
-  const [activeDetailKey, setActiveDetailKey] = useState(null);
+  const [detailConnections, setDetailConnections] = useState<Array<{ key: string; item: NetworkConnection }>>([]);
+  const [activeDetailKey, setActiveDetailKey] = useState<string | null>(null);
   const [connectionSortKey, setConnectionSortKey] = useState('download');
   const [connectionSortAsc, setConnectionSortAsc] = useState(false);
-  const [connectionColWidths, setConnectionColWidths] = useState(() => {
+  const [connectionColWidths, setConnectionColWidths] = useState<Record<string, number>>(() => {
     const saved = localStorage.getItem('networkConnectionColWidths');
     if (saved) try { return { ...defaultConnectionColWidths, ...JSON.parse(saved) }; } catch {}
     return defaultConnectionColWidths;
   });
   const [detailHeight, setDetailHeight] = useState(() => parseFloat(localStorage.getItem('networkDetailHeight') || '220'));
-  const timerRef = useRef(null);
+  const timerRef = useRef<number | null>(null);
   const colDragging = useRef(false);
   const mountedRef = useRef(true);
 
@@ -79,7 +130,7 @@ export default function NetworkPage({ sessionId, active }) {
       }));
     } catch (e) {
       if (!mountedRef.current) return;
-      setError(e?.message || String(e));
+      setError(e instanceof Error ? e.message : String(e));
       setNetwork(null);
     } finally {
       if (mountedRef.current) setLoading(false);
@@ -140,26 +191,26 @@ export default function NetworkPage({ sessionId, active }) {
   const connectionTableColumns = `${connectionColWidths.pid}px ${connectionColWidths.name}px ${connectionColWidths.listenIP}px ${connectionColWidths.port}px ${connectionColWidths.ipCount}px ${connectionColWidths.connCount}px ${connectionColWidths.upload}px minmax(${connectionColWidths.download}px, 1fr)`;
   const connectionTableMinWidth = Math.max(840, Object.values(connectionColWidths).reduce((sum, width) => sum + width, 0));
   const activeDetailConnection = detailConnections.find(item => item.key === activeDetailKey) || null;
-  const formatOptionalTransfer = (value) => value == null ? '--' : formatTransferTotal(value);
-  const handleShowAllListenersChange = (checked) => {
+  const formatOptionalTransfer = (value: number | undefined) => value == null ? '--' : formatTransferTotal(value);
+  const handleShowAllListenersChange = (checked: boolean) => {
     setShowAllListeners(checked);
     localStorage.setItem('networkShowAllListeners', checked ? 'true' : 'false');
   };
-  const handleConnectionSort = (key) => {
+  const handleConnectionSort = (key: string) => {
     if (key === connectionSortKey) setConnectionSortAsc(v => !v);
     else { setConnectionSortKey(key); setConnectionSortAsc(false); }
   };
-  const renderConnectionSortIcon = (key) => {
+  const renderConnectionSortIcon = (key: string) => {
     if (key !== connectionSortKey) return <ArrowUpDown size={13} style={{ opacity: 0.65, marginLeft: 2, flexShrink: 0 }} />;
     return connectionSortAsc
       ? <ArrowUp size={13} style={{ marginLeft: 2, flexShrink: 0, color: 'var(--accent)' }} />
       : <ArrowDown size={13} style={{ marginLeft: 2, flexShrink: 0, color: 'var(--accent)' }} />;
   };
-  const startDetailDrag = useCallback((event) => {
+  const startDetailDrag = useCallback((event: ReactMouseEvent) => {
     event.preventDefault();
     const startY = event.clientY;
     const startH = detailHeight;
-    const onMove = (ev) => {
+    const onMove = (ev: MouseEvent) => {
       const next = Math.max(120, Math.min(600, startH - (ev.clientY - startY)));
       setDetailHeight(next);
       localStorage.setItem('networkDetailHeight', String(next));
@@ -175,13 +226,13 @@ export default function NetworkPage({ sessionId, active }) {
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   }, [detailHeight]);
-  const startConnectionColResize = useCallback((colKey, event) => {
+  const startConnectionColResize = useCallback((colKey: string, event: ReactMouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
     const startX = event.clientX;
     const startW = connectionColWidths[colKey];
     colDragging.current = false;
-    const onMove = (ev) => {
+    const onMove = (ev: MouseEvent) => {
       colDragging.current = true;
       const next = { ...connectionColWidths, [colKey]: Math.max(50, Math.min(420, startW + (ev.clientX - startX))) };
       setConnectionColWidths(next);
@@ -198,9 +249,9 @@ export default function NetworkPage({ sessionId, active }) {
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   }, [connectionColWidths]);
-  const getConnectionKey = (item, index) => `${item.pid}-${item.name}-${item.listenIP}-${item.port}-${index}`;
-  const formatLocation = (value) => value === 'reserved' ? t('保留地址') : (value || '-');
-  const openConnectionDetail = (item, key) => {
+  const getConnectionKey = (item: NetworkConnection, index: number) => `${item.pid}-${item.name}-${item.listenIP}-${item.port}-${index}`;
+  const formatLocation = (value: string | undefined) => value === 'reserved' ? t('保留地址') : (value || '-');
+  const openConnectionDetail = (item: NetworkConnection, key: string) => {
     if (!Array.isArray(item.peers) || item.peers.length === 0) return;
     setDetailConnections(prev => {
       if (prev.some(detail => detail.key === key)) return prev;
@@ -208,7 +259,7 @@ export default function NetworkPage({ sessionId, active }) {
     });
     setActiveDetailKey(key);
   };
-  const closeConnectionDetail = (key) => {
+  const closeConnectionDetail = (key: string) => {
     setDetailConnections(prev => {
       const index = prev.findIndex(detail => detail.key === key);
       const next = prev.filter(detail => detail.key !== key);

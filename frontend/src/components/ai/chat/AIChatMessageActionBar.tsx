@@ -63,7 +63,7 @@ function AssistantMessageActionBar({ t, title, time, actions, status, onTitleIco
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 10, fontSize: 11, color: 'var(--text-tertiary)', flexWrap: 'wrap' }}>
       <TitleIcon Icon={MessageSquare} onClick={onTitleIconClick} clickTitle={titleIconClickTitle} />
-      <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>{t(title as I18nKey)}</span>
+      <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>{/* 同 title：动态文案，t() 内部有兜底 */}{t(title as I18nKey)}</span>
       <span>{time}</span>
       <AIChatMessageActions actions={actions} />
       {status}

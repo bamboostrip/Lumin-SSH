@@ -1488,6 +1488,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   }, [refreshMCPOutputCompressionSettings, refreshMCPServerInfo])
 
   const showAlert = useCallback(async (message: BridgeData) => {
+    // message 为动态内容（可能不在翻译表），t() 内部有兜底
     const finalMessage = typeof message === 'string' && message.trim() ? translate(message.trim() as I18nKey) : translate('当前状态不支持还原')
     if (window?.luminDialog?.alert) {
       await window.luminDialog.alert(finalMessage, t('提示'))
@@ -5232,6 +5233,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         }))
       }
     } catch (error) {
+      // error.message 为后端动态文案（可能不在翻译表），translate() 内部有兜底
       await showAlert(error instanceof Error ? translate(error.message as I18nKey) : translate('当前状态不支持还原'))
     }
   }, [showAlert, terminalId])
@@ -5251,6 +5253,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       clearRestorePreview()
       return true
     } catch (error) {
+      // error.message 为后端动态文案（可能不在翻译表），translate() 内部有兜底
       await showAlert(error instanceof Error ? translate(error.message as I18nKey) : translate('当前状态不支持还原'))
       return false
     }

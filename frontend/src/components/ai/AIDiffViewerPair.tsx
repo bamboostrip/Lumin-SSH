@@ -386,6 +386,7 @@ export function DiffEditorPair({ block, index, showBlockBadge = false, t }: Diff
   const labelParams = rawBlock?.labelParams && typeof rawBlock.labelParams === 'object'
     ? rawBlock.labelParams as Record<string, unknown>
     : { count: (index ?? 0) + 1 }
+  // labelKey 为 AI diff 返回的动态键（可能不在翻译表），t() 内部有兜底
   const label = t(labelKey as I18nKey, labelParams)
   const alignedRows = useMemo(() => {
     const leftLines = splitLines(leftText)

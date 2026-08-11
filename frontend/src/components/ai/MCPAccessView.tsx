@@ -90,7 +90,7 @@ export default function MCPAccessView({
   return (
     <>
       <div style={{ display: 'grid', gap: 4 }}>
-        <div style={{ fontSize: titleSize, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3 }}>{t(title as I18nKey)}</div>
+        <div style={{ fontSize: titleSize, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3 }}>{/* title 为后端动态描述（可能不在翻译表），t() 内部有兜底 */}{t(title as I18nKey)}</div>
         <div style={{ fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>{t('可直接粘贴到支持 streamable-http 的 MCP 客户端配置中')}</div>
         {showNotice && <div style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>{t('该面板可在设置中关闭, 仅影响前端展示层, 不影响 MCP 服务的启动, 监听绑定或生命周期管理.')}</div>}
       </div>

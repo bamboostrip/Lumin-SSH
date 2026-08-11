@@ -643,10 +643,12 @@ function ThemePackagePalette({
                 />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: isActive ? 700 : 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {/* themePackage.name 为动态显示名（内置主题为 i18n 键），t() 内部有兜底 */}
                     {$t(themePackage.name as I18nKey)}
                   </div>
                   {themePackage.description ? (
                     <div style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.5, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {/* 同 name：动态描述，t() 内部有兜底 */}
                       {$t(themePackage.description as I18nKey)}
                     </div>
                   ) : null}

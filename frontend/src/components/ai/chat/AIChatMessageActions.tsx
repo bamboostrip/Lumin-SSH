@@ -52,7 +52,7 @@ export default function AIChatMessageActions({ actions = [], style }: AIChatMess
           <button
             key={normalizedAction.key}
             type="button"
-            title={t((title ?? '') as I18nKey)}
+            title={t(/* title 为动态文案（可能不在翻译表），t() 内部有兜底 */ (title ?? '') as I18nKey)}
             aria-label={t((title ?? '') as I18nKey)}
             disabled={isDisabled}
             onClick={(event) => {

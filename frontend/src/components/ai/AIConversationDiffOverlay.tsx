@@ -436,6 +436,7 @@ export default function AIConversationDiffOverlay({
                       fontSize: 11,
                       fontWeight: 700,
                     }}>
+                    {/* status 为 AI 返回动态文案（可能不在翻译表），t() 内部有兜底 */}
                     {item.toolName || (item.status ? t(item.status as I18nKey) : t('已完成'))}
                   </div>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>

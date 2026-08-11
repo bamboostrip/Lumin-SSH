@@ -185,6 +185,7 @@ function buildCompactDiffRowsFromBlocks(blocks: unknown, t: (key: I18nKey, vars?
       : { count: blockIndex + 1 }
     rows.push({
       type: 'file',
+      // labelKey 为 AI 返回动态键（可能不在翻译表），t() 内部有兜底
       text: t(labelKey as I18nKey, labelParams),
       key: `file-${blockIndex}`,
     })
@@ -575,6 +576,7 @@ export default function AIChatToolCard({ restoreArtifactPath = '', copyContent =
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 12 }}>
         <div style={{ minWidth: 0, display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <FileCode2 size={14} color="var(--text-secondary)" />
+          {/* title 为 AI 返回动态文案（可能不在翻译表），t() 内部有兜底 */}
           <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{t(title as I18nKey)}</span>
           {showCopyCharacterCount ? (
             <Tiptop text={copied ? t('已复制') : t('复制完整 diff/内容')} style={{ display: 'inline-flex' }}>
@@ -644,6 +646,7 @@ export default function AIChatToolCard({ restoreArtifactPath = '', copyContent =
             <div style={{ padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4, border: statusPalette.border, background: statusPalette.background, color: statusPalette.color }}>
               {statusPalette.tone === 'success' ? <Check size={11} color="currentColor" strokeWidth={2.5} /> : null}
               {statusPalette.tone === 'danger' ? <X size={11} color="currentColor" strokeWidth={2.5} /> : null}
+              {/* 同 title：动态状态文案兜底 */}
               <span>{t(normalizedStatus as I18nKey)}</span>
             </div>
           ) : null}
@@ -722,7 +725,7 @@ export default function AIChatToolCard({ restoreArtifactPath = '', copyContent =
             {result ? (
               <div style={{ display: 'grid', gap: 6 }}>
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{t('result')}</div>
-                <pre style={{ margin: 0, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border-subtle)', background: 'var(--surface-base)', color: 'var(--text-primary)', fontSize: 12, lineHeight: 1.65, fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 320, overflowY: 'auto', overflowX: 'auto', overscrollBehavior: 'contain' }}>{t(result as I18nKey)}</pre>
+                <pre style={{ margin: 0, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border-subtle)', background: 'var(--surface-base)', color: 'var(--text-primary)', fontSize: 12, lineHeight: 1.65, fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 320, overflowY: 'auto', overflowX: 'auto', overscrollBehavior: 'contain' }}>{/* result 为动态内容（可能不在翻译表），t() 内部有兜底 */}{t(result as I18nKey)}</pre>
               </div>
             ) : null}
           </div>

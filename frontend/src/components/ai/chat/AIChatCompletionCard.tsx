@@ -43,6 +43,7 @@ export default function AIChatCompletionCard({ title = completionTitleKey, summa
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 12 }}>
         <div style={{ minWidth: 0, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <CheckCircle2 size={14} color={normalizedStatus === completionStatusKey ? 'var(--success)' : 'var(--accent)'} />
+          {/* title 为 AI 返回动态文案（可能不在翻译表），t() 内部有兜底 */}
           <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{t(title as I18nKey)}</span>
         </div>
         {normalizedStatus ? (
@@ -55,6 +56,7 @@ export default function AIChatCompletionCard({ title = completionTitleKey, summa
               whiteSpace: 'nowrap',
               ...statusPalette,
             }}>
+            {/* 同 title：动态状态文案兜底 */}
             {t(normalizedStatus as I18nKey)}
           </div>
         ) : null}

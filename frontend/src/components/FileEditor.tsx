@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import CodeMirror, { keymap, EditorView, EditorState, Prec, EditorSelection, showDialog } from '@uiw/react-codemirror';
+import CodeMirror, { keymap, EditorView, EditorState, Prec, EditorSelection, showDialog, type Extension } from '@uiw/react-codemirror';
 import { useTranslation } from '../i18n.js';
 import { formatShortcut } from '../utils/platform.js';
 import { clampMenuPosition } from '../utils/menuPosition.js';
@@ -30,17 +30,43 @@ import { diff } from '@codemirror/legacy-modes/mode/diff';
 import { cmake } from '@codemirror/legacy-modes/mode/cmake';
 import { c, cpp, java, csharp } from '@codemirror/legacy-modes/mode/clike';
 import { X, Pencil, Save, SquarePen, Upload, ExternalLink, AppWindow } from 'lucide-react';
-import { Z } from '../constants/zIndex';
+import { Z } from '../constants/zIndex.js';
 import { getSessionUploadPanelState, getSessionWorkbenchState, setSessionWorkbenchState, subscribeSessionUploadPanelState, subscribeSessionWorkbenchState } from '../utils/fileWorkbench.js';
 import Tiptop from './Tiptop.jsx';
 
 const EXTERNAL_PREFERRED_APP_KEY = 'fileEditorPreferredApp';
 
+/** 文件编辑器条目（FileManager 打开的文件） */
+export interface FileEditorFile {
+  path: string;
+  name: string;
+  content: string;
+}
+
+export interface FileEditorProps {
+  files: FileEditorFile[];
+  activePath?: string;
+  onSave: (path: string, content: string) => Promise<void> | void;
+  onCloseFile: (path: string) => void;
+  onCloseAll: () => void;
+  onActivate: (path: string) => void;
+  mode?: 'modal' | 'popup' | 'split';
+  onModeChange?: (mode: string) => void;
+  splitPosition?: 'left' | 'right' | 'bottom';
+  onSplitPositionChange?: (position: string) => void;
+  isActive?: boolean;
+  workbenchSessionId?: string;
+  workbenchOwnerId?: string;
+  onOpenSystemEditor?: (file: FileEditorFile, content: string) => void;
+  onOpenWithEditor?: (file: FileEditorFile, content: string, chooseApp: boolean) => void;
+  externalOpening?: boolean;
+}
+
 function readPreferredExternalApp() {
   return (localStorage.getItem(EXTERNAL_PREFERRED_APP_KEY) || '').trim();
 }
 
-function preferredExternalAppLabel(path) {
+function preferredExternalAppLabel(path: string) {
   if (!path) return '';
   const normalized = path.replace(/\\/g, '/');
   const base = normalized.split('/').pop() || path;
@@ -64,7 +90,7 @@ const debianList = StreamLanguage.define({
     if (stream.match(/https?:\/\/[^\s]+/)) return 'string';
     // 行末架构标记
     if (stream.match(/[a-z-]+=/)) return 'attribute';
-    return stream.next();
+    return stream.next() ?? null;
   }
 });
 
@@ -84,15 +110,15 @@ const rhelRepo = StreamLanguage.define({
     if (stream.match(/^[a-zA-Z_][a-zA-Z0-9_]*\s*=/)) return 'attribute';
     // $变量
     if (stream.match(/\$[a-zA-Z_][a-zA-Z0-9_]*/)) return 'string';
-    return stream.next();
+    return stream.next() ?? null;
   }
 });
 
 // 根据完整路径/文件名返回 CodeMirror 语言（带缓存）。
 // .conf 不能一律当 nginx：仅 nginx 相关路径用 nginx，其余 conf 走 ini/properties。
-const LANG_CACHE = {};
+const LANG_CACHE: Record<string, Extension | null> = {};
 
-function isNginxConfigPath(fullPath, baseName) {
+function isNginxConfigPath(fullPath: string, baseName: string) {
   const path = String(fullPath || '').replace(/\\/g, '/').toLowerCase();
   const base = String(baseName || '').toLowerCase();
   if (!base) return false;
@@ -107,7 +133,7 @@ function isNginxConfigPath(fullPath, baseName) {
   return false;
 }
 
-function getLanguage(filename) {
+function getLanguage(filename: string): Extension | null {
   const raw = String(filename || '');
   const normalized = raw.replace(/\\/g, '/');
   const base = (normalized.split('/').pop() || '').toLowerCase();
@@ -119,7 +145,7 @@ function getLanguage(filename) {
 
   if (Object.prototype.hasOwnProperty.call(LANG_CACHE, cacheKey)) return LANG_CACHE[cacheKey];
 
-  let lang = null;
+  let lang: Extension | null = null;
   // special filenames / path-sensitive first
   if (base === 'dockerfile' || base.startsWith('dockerfile.')) {
     lang = StreamLanguage.define(dockerFile);
@@ -203,7 +229,7 @@ const BASIC_SETUP = {
 // 自定义 gotoLineTop：复制 @codemirror/search 的 gotoLine 逻辑，但 dialog 放顶部（top: true），
 // 符合 VSCode/Sublime 等主流编辑器习惯（CM6 默认底部是 Emacs 风格）。
 // 支持输入 行号 / 行:列 / +N / -N / N%
-const gotoLineTop = (view) => {
+const gotoLineTop = (view: EditorView) => {
   let { state } = view;
   let { close, result } = showDialog(view, {
     label: state.phrase('Go to line'),
@@ -212,8 +238,10 @@ const gotoLineTop = (view) => {
     top: true,
     submitLabel: state.phrase('go'),
   });
-  result.then(form => {
-    let match = form && /^([+-])?(\d+)?(:\d+)?(%)?$/.exec(form.elements['line'].value);
+  result.then((form) => {
+    // showDialog resolve 的 form 为 HTMLFormElement，elements 无字符串索引签名，按结构断言取输入值
+    const lineValue = (form?.elements as unknown as Record<string, { value?: string }> | null)?.['line']?.value || '';
+    let match = form && /^([+-])?(\d+)?(:\d+)?(%)?$/.exec(lineValue);
     if (!match) { view.dispatch({ effects: close }); return; }
     let startLine = state.doc.lineAt(state.selection.main.head);
     let [, sign, ln, cl, percent] = match;
@@ -238,8 +266,8 @@ const gotoLineTop = (view) => {
 // CM6 的 showDialog 每次创建新 dialog 不自动关闭旧的，连按 Ctrl+G 会堆积。
 // 调用前先 click 已有 dialog 的关闭按钮（.cm-dialog-close 的 onclick 触发 done→resolve，
 // microtask 里 dispatch close effect 移除旧 dialog），避免重复堆积。
-const gotoLineSingle = (view) => {
-  view.dom.querySelectorAll('.cm-dialog-close').forEach(btn => btn.click());
+const gotoLineSingle = (view: EditorView) => {
+  view.dom.querySelectorAll('.cm-dialog-close').forEach(btn => (btn as HTMLElement).click());
   return gotoLineTop(view);
 };
 const gotoLineKeymap = Prec.highest(keymap.of([{ key: 'Mod-g', run: gotoLineSingle }]));
@@ -258,7 +286,7 @@ const editorActiveLineTheme = EditorView.theme({
 
 // 浮动面板八方向 resize handle：四边窄条 + 四角方块。角 handle 在边之后渲染以覆盖重叠区。
 // 边条贴容器内边缘（容器 overflow:hidden 不裁剪），拖拽用 window mousemove 不受容器限制。
-const POPUP_RESIZE_HANDLES = [
+const POPUP_RESIZE_HANDLES: Array<{ dir: string; pos: Record<string, number>; cursor: string }> = [
   { dir: 'n',  pos: { top: 0, left: 0, right: 0, height: 6 }, cursor: 'n-resize' },
   { dir: 's',  pos: { bottom: 0, left: 0, right: 0, height: 6 }, cursor: 's-resize' },
   { dir: 'e',  pos: { right: 0, top: 0, bottom: 0, width: 6 }, cursor: 'e-resize' },
@@ -286,12 +314,12 @@ export default function FileEditor({
   onOpenSystemEditor,
   onOpenWithEditor,
   externalOpening = false,
-}) {
+}: FileEditorProps) {
   const { t, lang: i18nLang } = useTranslation();
   const C = getTerminalTheme().container;
 
   // 每个文件的编辑内容缓存：{ [path]: content }
-  const [editedContents, setEditedContents] = useState({});
+  const [editedContents, setEditedContents] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [preferredExternalApp, setPreferredExternalApp] = useState(() => readPreferredExternalApp());
@@ -310,7 +338,7 @@ export default function FileEditor({
   useEffect(() => {
     if (minimized && activePath) setMinimized(false);
   }, [activePath]);
-  const [contextMenu, setContextMenu] = useState(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
   const [workbenchState, setWorkbenchStateState] = useState(() => getSessionWorkbenchState(workbenchSessionId));
   const [uploadPanelState, setUploadPanelState] = useState(() => getSessionUploadPanelState(workbenchSessionId, workbenchOwnerId));
 
@@ -319,10 +347,15 @@ export default function FileEditor({
   const activeWorkbenchTab = showWorkbenchTabs && workbenchState.activeTab === 'upload' ? 'upload' : 'editor';
 
   // popup 模式的位置状态
-  const [popupPos, setPopupPos] = useState(() => {
+  const [popupPos, setPopupPos] = useState<{ x: number; y: number; w: number; h: number }>(() => {
     const saved = localStorage.getItem('fileEditorPopupPos');
     if (saved) {
-      try { return JSON.parse(saved); } catch (_) {}
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed.x === 'number' && typeof parsed.y === 'number' && typeof parsed.w === 'number' && typeof parsed.h === 'number') {
+          return parsed as { x: number; y: number; w: number; h: number };
+        }
+      } catch (_) { /* 忽略损坏的持久化位置 */ }
     }
     return { x: window.innerWidth - 660, y: 60, w: 620, h: 500 };
   });
@@ -375,7 +408,7 @@ export default function FileEditor({
     return undefined;
   }, [mode, isActive, workbenchOwnerId, workbenchSessionId]);
 
-  const handleWorkbenchTabChange = useCallback((tab) => {
+  const handleWorkbenchTabChange = useCallback((tab: string) => {
     if (!workbenchSessionId) return;
     setSessionWorkbenchState(workbenchSessionId, { activeTab: tab });
   }, [workbenchSessionId]);
@@ -389,13 +422,13 @@ export default function FileEditor({
 
   const byteSize = useMemo(() => new Blob([currentContent]).size, [currentContent]);
 
-  const handleChange = useCallback((value) => {
+  const handleChange = useCallback((value: string) => {
     if (!activeFile) return;
     setEditedContents(prev => ({ ...prev, [activeFile.path]: value }));
   }, [activeFile]);
 
   // ── 右键菜单（复制/粘贴/剪切） ──
-  const handleContextMenu = (e) => {
+  const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     const sel = window.getSelection()?.toString() || '';
@@ -403,7 +436,7 @@ export default function FileEditor({
     setContextMenu({ ...pos, hasSelection: sel.length > 0 });
   };
 
-  const handleMenuAction = (action) => {
+  const handleMenuAction = (action: 'copy' | 'paste' | 'cut' | 'selectAll') => {
     setContextMenu(null);
     switch (action) {
       case 'copy':
@@ -449,7 +482,7 @@ export default function FileEditor({
 
   // Ctrl+S 保存
   useEffect(() => {
-    const handler = (e) => {
+    const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
         if (isModified && !saving) handleSave();
@@ -459,7 +492,7 @@ export default function FileEditor({
     return () => window.removeEventListener('keydown', handler);
   }, [isModified, saving, handleSave]);
 
-  const closeFileWithConfirm = async (path) => {
+  const closeFileWithConfirm = async (path: string) => {
     const f = files.find((x) => x.path === path);
     const edited = editedContents[path];
     if (f && edited !== undefined && edited !== f.content) {
@@ -480,13 +513,13 @@ export default function FileEditor({
   };
 
   // popup 拖拽逻辑
-  const startPopupDrag = (e) => {
+  const startPopupDrag = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
     isDraggingRef.current = true;
     dragStartRef.current = { x: e.clientX, y: e.clientY, px: popupPosRef.current.x, py: popupPosRef.current.y };
     document.body.style.userSelect = 'none';
 
-    const onMove = (ev) => {
+    const onMove = (ev: MouseEvent) => {
       if (!isDraggingRef.current) return;
       const dx = ev.clientX - dragStartRef.current.x;
       const dy = ev.clientY - dragStartRef.current.y;
@@ -512,7 +545,7 @@ export default function FileEditor({
 
   // popup 八方向 resize：dir 含 n/s/e/w 组合，各方向独立 clamp，角方向两轴同时处理。
   // ponytail: 各轴独立 clamp 不做跨轴联合求解，极端拖拽下尺寸/位置可能非最优但够用。
-  const startPopupResize = (dir) => (e) => {
+  const startPopupResize = (dir: string) => (e: React.MouseEvent) => {
     e.stopPropagation();
     if (e.button !== 0) return;
     isDraggingRef.current = true;
@@ -522,7 +555,7 @@ export default function FileEditor({
     const MIN_W = 320, MIN_H = 200;
     document.body.style.userSelect = 'none';
 
-    const onMove = (ev) => {
+    const onMove = (ev: MouseEvent) => {
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
       let { x, y, w, h } = start;
@@ -572,7 +605,7 @@ export default function FileEditor({
     'close': t('关闭'),
   }), [i18nLang, t]);
   const extensions = useMemo(() => {
-    const exts = [gotoLineKeymap, editorActiveLineTheme, editorPhrases];
+    const exts: Extension[] = [gotoLineKeymap, editorActiveLineTheme, editorPhrases];
     if (lang) exts.push(lang);
     return exts;
   }, [lang, editorPhrases]);
@@ -834,7 +867,7 @@ export default function FileEditor({
             <button
               className="btn btn-ghost btn-sm"
               disabled={!activeFile || externalOpening || !onOpenSystemEditor}
-              onClick={() => onOpenSystemEditor?.(activeFile, currentContent)}
+              onClick={() => { if (activeFile) onOpenSystemEditor?.(activeFile, currentContent); }}
               aria-label={t('使用系统编辑器')}
               style={{
                 display: 'inline-flex',
@@ -863,7 +896,7 @@ export default function FileEditor({
               className="btn btn-ghost btn-sm"
               disabled={!activeFile || externalOpening || !onOpenWithEditor}
               onClick={() => {
-                onOpenWithEditor?.(activeFile, currentContent, false);
+                if (activeFile) onOpenWithEditor?.(activeFile, currentContent, false);
                 setTimeout(() => setPreferredExternalApp(readPreferredExternalApp()), 0);
               }}
               aria-label={preferredExternalApp
@@ -895,7 +928,7 @@ export default function FileEditor({
                 className="btn btn-ghost btn-sm"
                 disabled={!activeFile || externalOpening || !onOpenWithEditor}
                 onClick={() => {
-                  onOpenWithEditor?.(activeFile, currentContent, true);
+                  if (activeFile) onOpenWithEditor?.(activeFile, currentContent, true);
                   setTimeout(() => setPreferredExternalApp(readPreferredExternalApp()), 0);
                 }}
                 aria-label={t('更换外部编辑器')}
@@ -1011,12 +1044,12 @@ export default function FileEditor({
           }}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          {[
+          {([
             { label: t('复制'), action: 'copy', shortcut: formatShortcut('Ctrl+C'), disabled: !contextMenu?.hasSelection },
             { label: t('粘贴'), action: 'paste', shortcut: formatShortcut('Ctrl+V') },
             { label: t('剪切'), action: 'cut', shortcut: formatShortcut('Ctrl+X'), disabled: !contextMenu?.hasSelection },
             { label: t('全选'), action: 'selectAll', shortcut: formatShortcut('Ctrl+A') },
-          ].map((item) => (
+          ] as Array<{ label: string; action: 'copy' | 'paste' | 'cut' | 'selectAll'; shortcut: string; disabled?: boolean }>).map((item) => (
             <div
               key={item.action}
               className="context-menu-item"

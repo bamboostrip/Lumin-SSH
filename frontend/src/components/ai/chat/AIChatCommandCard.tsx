@@ -1,10 +1,16 @@
 import { Check, ChevronDown, TerminalSquare, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useStickToBottom } from 'use-stick-to-bottom'
-import { useTranslation } from '../../../i18n.js'
+import { useTranslation, type I18nKey } from '../../../i18n.js'
 
-const buildShellCommandPattern = (commandPattern) => new RegExp(`(^|[\\s|;&()])(${commandPattern})(?=\\s)`, 'gi')
-const DANGEROUS_COMMAND_RULES = [
+const buildShellCommandPattern = (commandPattern: string) => new RegExp(`(^|[\\s|;&()])(${commandPattern})(?=\\s)`, 'gi')
+
+interface CommandRiskRule {
+  severity: 'danger' | 'warning'
+  pattern: RegExp
+}
+
+const DANGEROUS_COMMAND_RULES: CommandRiskRule[] = [
   { severity: 'danger', pattern: buildShellCommandPattern(String.raw`Remove-Item`) },
   { severity: 'danger', pattern: buildShellCommandPattern(String.raw`rm`) },
   { severity: 'danger', pattern: buildShellCommandPattern(String.raw`(?:del|erase)`) },
@@ -21,7 +27,7 @@ const DANGEROUS_COMMAND_RULES = [
   { severity: 'danger', pattern: buildShellCommandPattern(String.raw`(?:newfs|gpt|asr|hdiutil)`) },
   { severity: 'danger', pattern: buildShellCommandPattern(String.raw`(?:Clear-Disk|Initialize-Disk|Remove-Partition|Update-Disk|clean|clean\s+all)`) },
 ]
-const WARNING_COMMAND_RULES = [
+const WARNING_COMMAND_RULES: CommandRiskRule[] = [
   { severity: 'warning', pattern: buildShellCommandPattern(String.raw`chmod`) },
   { severity: 'warning', pattern: buildShellCommandPattern(String.raw`chown`) },
   { severity: 'warning', pattern: buildShellCommandPattern(String.raw`mountvol`) },
@@ -30,9 +36,15 @@ const WARNING_COMMAND_RULES = [
   { severity: 'warning', pattern: buildShellCommandPattern(String.raw`(?:New-Partition|Resize-Partition|Set-Disk|Set-Partition|diskutil\s+(?:partitionDisk|apfs|unmountDisk|eraseVolume))`) },
 ]
 const SENSITIVE_COMMAND_RULES = [...DANGEROUS_COMMAND_RULES, ...WARNING_COMMAND_RULES]
-const COMMAND_RISK_PRIORITY = { danger: 2, warning: 1 }
+const COMMAND_RISK_PRIORITY: Record<'danger' | 'warning', number> = { danger: 2, warning: 1 }
 
-function assessSensitiveCommandRisk(command) {
+interface CommandRiskMatch {
+  start: number
+  end: number
+  severity: 'danger' | 'warning'
+}
+
+function assessSensitiveCommandRisk(command: string): { severity: 'danger' | 'warning' | null; matches: CommandRiskMatch[] } {
   if (!command.trim()) {
     return { severity: null, matches: [] }
   }
@@ -52,7 +64,7 @@ function assessSensitiveCommandRisk(command) {
     }
     return COMMAND_RISK_PRIORITY[right.severity] - COMMAND_RISK_PRIORITY[left.severity]
   })
-  const matches = allMatches.reduce((result, match) => {
+  const matches = allMatches.reduce<CommandRiskMatch[]>((result, match) => {
     const lastMatch = result[result.length - 1]
     if (!lastMatch || match.start >= lastMatch.end) {
       result.push(match)
@@ -67,7 +79,7 @@ function assessSensitiveCommandRisk(command) {
   return { severity, matches }
 }
 
-function getRiskBadgePalette(severity) {
+function getRiskBadgePalette(severity: 'danger' | 'warning' | null) {
   if (severity === 'danger') {
     return {
       border: '1px solid var(--ai-chat-risk-danger-border)',
@@ -85,7 +97,7 @@ function getRiskBadgePalette(severity) {
   return null
 }
 
-function getRiskHighlightStyle(severity) {
+function getRiskHighlightStyle(severity: 'danger' | 'warning'): React.CSSProperties {
   if (severity === 'danger') {
     return {
       color: 'var(--ai-chat-risk-danger-fg)',
@@ -102,11 +114,11 @@ function getRiskHighlightStyle(severity) {
   }
 }
 
-function renderCommandWithRiskHighlights(command, matches) {
+function renderCommandWithRiskHighlights(command: string, matches: CommandRiskMatch[]): ReactNode {
   if (!matches.length) {
     return command
   }
-  const segments = []
+  const segments: ReactNode[] = []
   let cursor = 0
   matches.forEach((match, index) => {
     if (cursor < match.start) {
@@ -125,7 +137,7 @@ function renderCommandWithRiskHighlights(command, matches) {
   return segments
 }
 
-function getCommandMutationPalette(isMutating) {
+function getCommandMutationPalette(isMutating: boolean) {
   if (isMutating) {
     return {
       cardBorder: '1px solid var(--ai-chat-command-write-card-border)',
@@ -152,11 +164,11 @@ function getCommandMutationPalette(isMutating) {
   }
 }
 
-function normalizeAICommandStatus(value) {
+function normalizeAICommandStatus(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-function processCommandOutputCarriageReturns(input) {
+function processCommandOutputCarriageReturns(input: unknown) {
   const source = typeof input === 'string' ? input : ''
   if (!source.includes('\r')) {
     return source
@@ -186,7 +198,7 @@ function processCommandOutputCarriageReturns(input) {
   }).join('\n')
 }
 
-function processCommandOutputBackspaces(input) {
+function processCommandOutputBackspaces(input: unknown) {
   const source = typeof input === 'string' ? input : ''
   if (!source.includes('\b')) {
     return source
@@ -207,7 +219,7 @@ function processCommandOutputBackspaces(input) {
 const ansiEscapePattern = /\u001B(?:\][\s\S]*?(?:\u0007|\u001B\\)|[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g
 const invisibleCommandOutputControlCharacterPattern = /[\u0000-\u0008\u000B\u000C\u000E-\u001A\u001C-\u001F\u007F-\u009F]/g
 
-function normalizeCommandOutputForDisplay(value) {
+function normalizeCommandOutputForDisplay(value: unknown) {
   let output = typeof value === 'string' ? value : ''
   if (!output) {
     return ''
@@ -222,7 +234,15 @@ function normalizeCommandOutputForDisplay(value) {
 
 const runningStatusKey = '执行中'
 
-export default function AIChatCommandCard({ purpose, command, output, status = runningStatusKey, extra = {} }) {
+interface AIChatCommandCardProps {
+  purpose?: string
+  command?: string
+  output?: string
+  status?: string
+  extra?: Record<string, unknown>
+}
+
+export default function AIChatCommandCard({ purpose, command, output, status = runningStatusKey, extra = {} }: AIChatCommandCardProps) {
   const { t } = useTranslation()
   const [isExpanded, setIsExpanded] = useState(false)
   const normalizedStatus = useMemo(() => normalizeAICommandStatus(status), [status])
@@ -304,13 +324,15 @@ export default function AIChatCommandCard({ purpose, command, output, status = r
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           {riskBadgePalette ? (
             <div style={{ padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', textTransform: 'uppercase', ...riskBadgePalette }}>
-              {t(riskState.severity)}
+              {/* severity 在 riskBadgePalette 非空时必为 danger/warning，此处断言 */}
+              {t((riskState.severity || '') as I18nKey)}
             </div>
           ) : null}
           <div style={{ padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4, border: statusPalette.border, background: statusPalette.background, color: statusPalette.color }}>
             {statusPalette.tone === 'success' ? <Check size={11} color="currentColor" strokeWidth={2.5} /> : null}
             {statusPalette.tone === 'danger' ? <X size={11} color="currentColor" strokeWidth={2.5} /> : null}
-            <span>{t(normalizedStatus)}</span>
+            {/* status 为后端返回的动态文案（可能不在翻译表），t() 内部有兜底 */}
+            <span>{t(normalizedStatus as I18nKey)}</span>
           </div>
           {resultTokenEstimateDisplay ? (
             <div style={{ padding: '2px 8px', borderRadius: 999, border: '1px solid color-mix(in srgb, var(--accent) 24%, var(--border))', background: 'color-mix(in srgb, var(--accent) 8%, var(--surface-overlay))', color: 'var(--text-secondary)', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums' }}>
@@ -369,7 +391,7 @@ export default function AIChatCommandCard({ purpose, command, output, status = r
         <div style={{ padding: '12px 12px 10px', display: 'grid', gap: 10 }}>
           <pre style={{ margin: 0, padding: '10px 12px', borderRadius: 10, border: riskState.severity === 'danger' ? '1px solid rgba(var(--danger-rgb), 0.24)' : riskState.severity === 'warning' ? '1px solid rgba(var(--warning-rgb), 0.24)' : mutationPalette.commandBorder, background: riskState.severity ? 'var(--surface-base)' : mutationPalette.commandBackground, color: 'var(--text-primary)', fontSize: 12, lineHeight: 1.65, fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 260, overflowY: 'auto', overflowX: 'auto', overscrollBehavior: 'contain' }}>{highlightedCommand}</pre>
           {expanded && displayOutput ? (
-            <pre ref={outputContainerRef} style={{ margin: 0, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border-subtle)', background: 'var(--surface-base)', color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.65, fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 320, overflowY: 'auto', overflowX: 'auto', overscrollBehavior: 'contain' }}><span ref={outputContentRef} style={{ display: 'block' }}>{t(displayOutput)}</span></pre>
+            <pre ref={outputContainerRef} style={{ margin: 0, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border-subtle)', background: 'var(--surface-base)', color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.65, fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 320, overflowY: 'auto', overflowX: 'auto', overscrollBehavior: 'contain' }}><span ref={outputContentRef} style={{ display: 'block' }}>{t(displayOutput as I18nKey)}</span></pre>
           ) : null}
         </div>
       </div>

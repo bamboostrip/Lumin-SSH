@@ -1,5 +1,5 @@
-import { createContext, useCallback, useContext, useRef } from 'react'
-import ReactMarkdown from 'react-markdown'
+import { createContext, useCallback, useContext, useRef, type ReactNode } from 'react'
+import ReactMarkdown, { type Components } from 'react-markdown'
 import rehypeSanitize from 'rehype-sanitize'
 import remarkGfm from 'remark-gfm'
 import { useTranslation } from '../../../i18n.js'
@@ -11,8 +11,8 @@ import * as runtime from '../../../../wailsjs/runtime/runtime.js'
 // 2. 不匹配的括号：右括号无左括号 → 截断；左括号无右括号 → 截断
 // 3. 尾部标点剥离
 // 返回 { cleaned, removed } — removed 是被截断的文本，需作为纯文本插回
-function cleanAutolinkUrl(url) {
-  if (typeof url !== 'string' || !url) return { cleaned: url, removed: '' }
+function cleanAutolinkUrl(url: string) {
+  if (!url) return { cleaned: url, removed: '' }
   let cleaned = url
   let removed = ''
   const hardStop = cleaned.search(/["'<>\\]/)
@@ -44,14 +44,22 @@ function cleanAutolinkUrl(url) {
   return { cleaned, removed }
 }
 
+/** remark AST 节点（仅取本插件用到的字段） */
+interface MarkdownAstNode {
+  type?: string;
+  url?: string;
+  value?: string;
+  children?: MarkdownAstNode[];
+}
+
 function remarkCleanAutolinks() {
-  return (tree) => {
-    const walk = (node) => {
+  return (tree: MarkdownAstNode) => {
+    const walk = (node: MarkdownAstNode) => {
       if (!node.children) return
-      const nextChildren = []
+      const nextChildren: MarkdownAstNode[] = []
       for (const child of node.children) {
         if (child.type === 'link' && /^https?:\/\//.test(child.url || '')) {
-          const { cleaned, removed } = cleanAutolinkUrl(child.url)
+          const { cleaned, removed } = cleanAutolinkUrl(child.url || '')
           if (cleaned !== child.url) {
             child.url = cleaned
             if (child.children?.length === 1 && child.children[0].type === 'text') {
@@ -73,7 +81,7 @@ function remarkCleanAutolinks() {
   }
 }
 
-function openExternalLink(event, href) {
+function openExternalLink(event: React.MouseEvent<HTMLAnchorElement>, href: unknown) {
   const nextHref = typeof href === 'string' ? href.trim() : ''
   if (!nextHref) {
     return
@@ -91,13 +99,13 @@ const PreContext = createContext(false)
 // 代码块内 URL 高亮（remark-gfm 不会在 code/inlineCode 内自动链接）
 const CODE_URL_RE = /\bhttps?:\/\/[^\s]+/g
 
-function renderCodeChildren(children) {
+function renderCodeChildren(children: ReactNode): ReactNode {
   const text = typeof children === 'string' ? children
     : Array.isArray(children) ? children.map((c) => (typeof c === 'string' ? c : '')).join('')
     : ''
   if (!text) return children
   CODE_URL_RE.lastIndex = 0
-  const parts = []
+  const parts: ReactNode[] = []
   let lastIndex = 0
   let match
   while ((match = CODE_URL_RE.exec(text)) !== null) {
@@ -122,7 +130,7 @@ function renderCodeChildren(children) {
   return parts.length > 0 ? parts : children
 }
 
-function getSelectedTextWithinContainer(container) {
+function getSelectedTextWithinContainer(container: HTMLElement | null) {
   if (!container || typeof window === 'undefined') {
     return ''
   }
@@ -143,7 +151,7 @@ function getSelectedTextWithinContainer(container) {
   return selectedText
 }
 
-async function copyTextToClipboard(text) {
+async function copyTextToClipboard(text: string) {
   const nextText = typeof text === 'string' ? text.trim() : ''
   if (!nextText) {
     return
@@ -157,7 +165,7 @@ async function copyTextToClipboard(text) {
   } catch {}
 }
 
-const markdownComponents = {
+const markdownComponents: Components = {
   p: ({ children }) => <p style={{ margin: 0, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{children}</p>,
   ul: ({ children }) => <ul style={{ margin: '0 0 10px', paddingLeft: 20 }}>{children}</ul>,
   ol: ({ children }) => <ol style={{ margin: '0 0 10px', paddingLeft: 20 }}>{children}</ol>,
@@ -254,11 +262,16 @@ const markdownComponents = {
   ),
 }
 
-export default function AIChatMarkdown({ text, enableQuoteContextMenu = false }) {
-  const { t, lang } = useTranslation()
-  const containerRef = useRef(null)
+interface AIChatMarkdownProps {
+  text?: string
+  enableQuoteContextMenu?: boolean
+}
 
-  const handleContextMenu = useCallback((event) => {
+export default function AIChatMarkdown({ text, enableQuoteContextMenu = false }: AIChatMarkdownProps) {
+  const { t, lang } = useTranslation()
+  const containerRef = useRef<HTMLDivElement | null>(null)
+
+  const handleContextMenu = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (!enableQuoteContextMenu || typeof window === 'undefined') {
       return
     }

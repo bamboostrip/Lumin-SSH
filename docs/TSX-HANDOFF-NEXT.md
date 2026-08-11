@@ -84,7 +84,7 @@ AIPanel `BridgeData = any`（55 处）、SettingsModal `Record<string, any>` ×6
 - `AIProviderQuickEditOverlay.tsx:193` `draft.` 直取（当前 null 不可能）
 - `i18n:check` 的 `englishCandidates=3` 告警（base 时代即有）
 - 9 个新补语言键在 27 个非中文表为中文占位，待翻译（搜索设置 Tab 的描述文案）
-- `NetworkTab.tsx:326` / `AIPanel.tsx:229` 的 `String(undefined)` → `"undefined"` 风险位（非迁移回归）
+- ~~`NetworkTab.tsx:326` / `AIPanel.tsx:229` 的 `String(undefined)` → `"undefined"` 风险位~~ 已核实虚惊（normalizeProxyNode 保证 host/port 非空；pad 调用处全传数字）
 
 ---
 

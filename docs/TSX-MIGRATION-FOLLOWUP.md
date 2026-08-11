@@ -75,7 +75,7 @@
 - `AIPanel.tsx` `type BridgeData = any`（55 处使用）→ **已消除**：按语义拆为局部接口（`AIEventPayloadShape`/`AIMetricsPayload`/`AIPanelSettings`/`AIAPIHistoryMessageLike`），复用已类型化形状（`AIConversationSnapshot`/`AIProviderLike`/`AIProviderState`/`AIGlobalSettings`/`AIConversationMessageSearchResult`/`AIMessage`），事件回调改 `unknown` + 守卫断言
 - `SettingsModal.tsx` `Record<string, any>` ×6 → **已消除**：`Record<string, unknown>` + 使用处守卫/断言
 - 结果：全项目（除 wailsjs 生成代码）显式 `any` **归零**（tsc strict 验证）
-- 遗留风险位（非迁移回归，可顺手修）：`NetworkTab.tsx:326` `${String(node?.host)}:${String(node?.port)}`、`AIPanel.tsx:229` `String(value).padStart(2,'0')`（`String(undefined)` → `"undefined"`）
+- 已核实的"风险位"（2026-08-11 复查，均虚惊）：`NetworkTab.tsx:321` `${String(node?.host)}:${String(node?.port)}` —— `normalizeProxyNode` 保证 host 字符串兜底（空串）、port 有效数字（默认 1080），不会出现 `"undefined"`；`AIPanel.tsx:259` `String(value).padStart(2,'0')` —— 调用处均传数字（`date.getMonth()+1` 等），永不 undefined
 
 ---
 

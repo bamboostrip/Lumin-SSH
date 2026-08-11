@@ -1,6 +1,6 @@
 import { Plus, Search } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useTranslation, getLanguage } from '../../i18n.js'
+import { useTranslation, getLanguage, type I18nKey } from '../../i18n.js'
 import AIProviderListRow from './AIProviderListRow.jsx'
 import AIProviderQuickEditOverlay from './AIProviderQuickEditOverlay.jsx'
 import Tiptop from '../Tiptop.jsx'
@@ -8,7 +8,31 @@ import { getAIProviderState, isBuiltinAIProvider, normalizeAIProviderState, save
 import { getAIProviderDefinition } from './providers/index.js'
 import { isCallMyVipProviderHost } from './providerSpecialHosts.js'
 
-const defaultProviders = []
+/** 宽松供应商形状（aiProviderBridge.js 未转 TS，字段以 typeof 守卫读取） */
+export interface AIProviderLike {
+  id?: string
+  name?: string
+  provider?: string
+  model?: string
+  apiKey?: string
+  baseUrl?: string
+  pinned?: boolean
+  cacheStrategy?: string
+  reasoningEffort?: string
+  enableReasoningEffort?: boolean
+  dedicatedProxyEnabled?: boolean
+  dedicatedProxyId?: string
+  webSearchEnabled?: boolean
+  dedicatedWebSearchEnabled?: boolean
+  dedicatedWebSearchProviderId?: string
+  modelMaxTokens?: number
+  modelMaxThinkingTokens?: number
+  updatedAt?: number
+  apiKeyField?: Record<string, unknown> | null
+  [key: string]: unknown
+}
+
+const defaultProviders: AIProviderLike[] = []
 const summaryTooltipDelay = 300
 const embeddedBrowserAuthMessageTypes = new Set([
   'lumin-builtin-provider-auth',
@@ -16,20 +40,23 @@ const embeddedBrowserAuthMessageTypes = new Set([
   'builtin-ai-provider-auth',
 ])
 const embeddedBrowserAuthRequestType = 'lumin-builtin-provider-auth-request'
+// 原 .jsx 引用未定义的 defaultTokenStoreTitle（潜在 ReferenceError），补默认值
+const defaultTokenStoreTitle = 'LuminSSH'
 
-const cacheStrategyLabelKeys = {
+const cacheStrategyLabelKeys: Record<string, string> = {
   model: '基于模型能力',
   off: '强制关闭',
   '5m': '5分钟',
   '1h': '1小时',
 }
 
-function getCacheStrategyLabel(t, value) {
+function getCacheStrategyLabel(t: (key: I18nKey) => string, value: unknown) {
   const nextValue = typeof value === 'string' ? value.trim() : ''
-  return t(cacheStrategyLabelKeys[nextValue] || cacheStrategyLabelKeys.model)
+  // 动态 key：cacheStrategyLabelKeys 的值均为合法 i18n 键
+  return t((cacheStrategyLabelKeys[nextValue] || cacheStrategyLabelKeys.model) as I18nKey)
 }
 
-const reasoningEffortLabelKeys = {
+const reasoningEffortLabelKeys: Record<string, string> = {
   none: '无',
   minimal: '最少',
   low: '低',
@@ -38,22 +65,23 @@ const reasoningEffortLabelKeys = {
   xhigh: '超高',
 }
 
-function getReasoningEffortLabel(t, value) {
+function getReasoningEffortLabel(t: (key: I18nKey) => string, value: unknown) {
   const nextValue = typeof value === 'string' ? value.trim().toLowerCase() : ''
   if (!nextValue || nextValue === 'disable') {
     return ''
   }
-  return t(reasoningEffortLabelKeys[nextValue] || nextValue)
+  // 动态 key：reasoningEffortLabelKeys 的值为合法 i18n 键，未知值原样兜底
+  return t((reasoningEffortLabelKeys[nextValue] || nextValue) as I18nKey)
 }
 
 const DEFAULT_EFFORT_REASONING_OPTIONS = ['low', 'medium', 'high', 'xhigh']
 const adaptiveLabelCanvas = typeof document !== 'undefined' ? document.createElement('canvas') : null
 
-function supportsUnifiedEffortReasoning(providerValue) {
+function supportsUnifiedEffortReasoning(providerValue: string) {
   return providerValue === 'Compatible' || providerValue === 'Responses' || providerValue === 'Messages'
 }
 
-function buildDisplayModelCapability(providerValue, capability) {
+function buildDisplayModelCapability(providerValue: string, capability: Record<string, unknown> | null | undefined) {
   if (!supportsUnifiedEffortReasoning(providerValue)) {
     return capability
   }
@@ -73,7 +101,7 @@ function buildDisplayModelCapability(providerValue, capability) {
   }
 }
 
-function buildReasoningOptions(capability) {
+function buildReasoningOptions(capability: Record<string, unknown> | null | undefined) {
   if (capability?.reasoningMode !== 'effort') {
     return []
   }
@@ -88,7 +116,7 @@ function buildReasoningOptions(capability) {
   return [...new Set(nextOptions)]
 }
 
-function getProviderModelSummary(t, provider) {
+function getProviderModelSummary(t: (key: I18nKey) => string, provider: AIProviderLike | null | undefined) {
   const model = typeof provider?.model === 'string' ? provider.model.trim() : ''
   if (!model) {
     return t('未选择模型')
@@ -100,7 +128,7 @@ function getProviderModelSummary(t, provider) {
   return `${model}(${reasoningEffortLabel})`
 }
 
-function measureAdaptiveLabelWidth(text, fontSize, fontWeight = 500, fontFamily = 'sans-serif') {
+function measureAdaptiveLabelWidth(text: string, fontSize: number, fontWeight = 500, fontFamily = 'sans-serif') {
   const content = typeof text === 'string' ? text.trim() : ''
   if (!content) {
     return 0
@@ -113,11 +141,16 @@ function measureAdaptiveLabelWidth(text, fontSize, fontWeight = 500, fontFamily 
   return context.measureText(content).width
 }
 
-function measureAdaptiveLabelTriggerWidth(text, fontSize, {
+function measureAdaptiveLabelTriggerWidth(text: string, fontSize: number, {
   fontWeight = 500,
   fontFamily = 'sans-serif',
   horizontalPadding = 20,
   minWidth = 36,
+}: {
+  fontWeight?: number
+  fontFamily?: string
+  horizontalPadding?: number
+  minWidth?: number
 } = {}) {
   const contentWidth = measureAdaptiveLabelWidth(text, fontSize, fontWeight, fontFamily)
   if (contentWidth <= 0) {
@@ -135,16 +168,25 @@ function resolveAdaptiveLabelLayout({
   fixedWidth = 0,
   baseFontSize = 12,
   minFontSize = 9,
+}: {
+  providerText?: string
+  modelText?: string
+  availableWidth?: number
+  providerFontFamily?: string
+  modelFontFamily?: string
+  fixedWidth?: number
+  baseFontSize?: number
+  minFontSize?: number
 } = {}) {
   const normalizedProviderText = typeof providerText === 'string' ? providerText.trim() : ''
   const normalizedModelText = typeof modelText === 'string' ? modelText.trim() : ''
-  const normalizedAvailableWidth = Number.isFinite(availableWidth) && availableWidth > 0 ? availableWidth : 0
-  const sizeOptions = []
+  const normalizedAvailableWidth = typeof availableWidth === 'number' && Number.isFinite(availableWidth) && availableWidth > 0 ? availableWidth : 0
+  const sizeOptions: number[] = []
   for (let size = baseFontSize; size >= minFontSize; size -= 1) {
     sizeOptions.push(size)
   }
   const modelSizeOptions = normalizedModelText ? sizeOptions : [baseFontSize]
-  let bestLayout = null
+  let bestLayout: { providerFontSize: number; modelFontSize: number; providerWidth: number; modelWidth: number; totalWidth: number } | null = null
   for (const providerFontSize of sizeOptions) {
     for (const modelFontSize of modelSizeOptions) {
       const providerWidth = measureAdaptiveLabelTriggerWidth(normalizedProviderText, providerFontSize, {
@@ -201,7 +243,7 @@ function resolveAdaptiveLabelLayout({
   }
 }
 
-function resolveAdaptiveSelectorAvailableWidth(container) {
+function resolveAdaptiveSelectorAvailableWidth(container: HTMLElement | null) {
   const row = container?.parentElement
   if (!container || !row) {
     return container?.clientWidth || 0
@@ -216,12 +258,12 @@ function resolveAdaptiveSelectorAvailableWidth(container) {
   return Math.max(0, Math.max(container.clientWidth, row.clientWidth - siblingsWidth - totalGap))
 }
 
-function buildProviderModelOptions(provider) {
+function buildProviderModelOptions(provider: AIProviderLike | null | undefined) {
   const providerValue = typeof provider?.provider === 'string' && provider.provider.trim() ? provider.provider.trim() : 'Compatible'
   const providerDefinition = getAIProviderDefinition(providerValue)
-  const seen = new Set()
-  const options = []
-  const appendOption = (value) => {
+  const seen = new Set<string>()
+  const options: string[] = []
+  const appendOption = (value: unknown) => {
     const nextValue = typeof value === 'string' ? value.trim() : ''
     if (!nextValue || seen.has(nextValue)) {
       return
@@ -235,7 +277,7 @@ function buildProviderModelOptions(provider) {
   return options
 }
 
-function getApiKeyPreview(value) {
+function getApiKeyPreview(value: unknown) {
   const nextValue = typeof value === 'string' ? value.trim() : ''
   if (!nextValue) {
     return ''
@@ -243,12 +285,12 @@ function getApiKeyPreview(value) {
   return nextValue.length <= 12 ? nextValue : nextValue.slice(-12)
 }
 
-function buildProviderCopyName(t, provider) {
+function buildProviderCopyName(t: (key: I18nKey) => string, provider: AIProviderLike | null | undefined) {
   const baseName = typeof provider?.name === 'string' && provider.name.trim() ? provider.name.trim() : t('未命名供应商')
   return `${baseName}${t('副本')}`
 }
 
-function sortProviders(items) {
+function sortProviders(items: AIProviderLike[]) {
   const locale = getLanguage() || 'zh-CN'
   return [...items].sort((left, right) => {
     const leftBuiltin = isBuiltinAIProvider(left)
@@ -259,26 +301,26 @@ function sortProviders(items) {
     if (!leftBuiltin && Boolean(left.pinned) !== Boolean(right.pinned)) {
       return left.pinned ? -1 : 1
     }
-    return left.name.localeCompare(right.name, locale)
+    return String(left.name || '').localeCompare(String(right.name || ''), locale)
   })
 }
 
-function parseEmbeddedBrowserMessage(data) {
+function parseEmbeddedBrowserMessage(data: unknown): Record<string, unknown> | null {
   if (data && typeof data === 'object') {
-    return data
+    return data as Record<string, unknown>
   }
   if (typeof data !== 'string' || !data.trim()) {
     return null
   }
   try {
     const parsed = JSON.parse(data)
-    return parsed && typeof parsed === 'object' ? parsed : null
+    return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : null
   } catch {
     return null
   }
 }
 
-function readEmbeddedBrowserPathValue(source, path) {
+function readEmbeddedBrowserPathValue(source: unknown, path: string): unknown {
   if (!source || typeof source !== 'object' || typeof path !== 'string' || !path.trim()) {
     return undefined
   }
@@ -286,7 +328,7 @@ function readEmbeddedBrowserPathValue(source, path) {
     .split('.')
     .map((segment) => segment.trim())
     .filter(Boolean)
-    .reduce((current, segment) => {
+    .reduce<unknown>((current, segment) => {
       if (current === undefined || current === null) {
         return undefined
       }
@@ -300,54 +342,59 @@ function readEmbeddedBrowserPathValue(source, path) {
       if (typeof current !== 'object') {
         return undefined
       }
-      return current[segment]
+      return (current as Record<string, unknown>)[segment]
     }, source)
 }
 
-function resolveEmbeddedBrowserStorageValue(bucket, pathConfig, sourceType) {
+function resolveEmbeddedBrowserStorageValue(bucket: unknown, pathConfig: unknown, sourceType: string): unknown {
   if (!bucket || !pathConfig || typeof pathConfig !== 'object') {
     return undefined
   }
   if (sourceType === 'cookie' && Array.isArray(bucket)) {
-    const expectedDomain = typeof pathConfig.domain === 'string' ? pathConfig.domain.trim() : ''
-    const expectedName = typeof pathConfig.name === 'string' ? pathConfig.name.trim() : ''
+    const expectedDomain = typeof (pathConfig as Record<string, unknown>).domain === 'string' ? String((pathConfig as Record<string, unknown>).domain).trim() : ''
+    const expectedName = typeof (pathConfig as Record<string, unknown>).name === 'string' ? String((pathConfig as Record<string, unknown>).name).trim() : ''
     const matchedItem = bucket.find((item) => {
-      const itemDomain = typeof item?.domain === 'string' ? item.domain.trim() : ''
-      const itemName = typeof item?.name === 'string' ? item.name.trim() : (typeof item?.key === 'string' ? item.key.trim() : '')
+      const itemRecord = item as Record<string, unknown> | null
+      const itemDomain = typeof itemRecord?.domain === 'string' ? String(itemRecord.domain).trim() : ''
+      const itemName = typeof itemRecord?.name === 'string' ? String(itemRecord.name).trim() : (typeof itemRecord?.key === 'string' ? String(itemRecord.key).trim() : '')
       return (!expectedDomain || itemDomain === expectedDomain) && expectedName && itemName === expectedName
     })
-    return matchedItem?.value
+    return (matchedItem as Record<string, unknown> | undefined)?.value
   }
-  const expectedKey = typeof pathConfig.key === 'string' ? pathConfig.key.trim() : ''
+  const expectedKey = typeof (pathConfig as Record<string, unknown>).key === 'string' ? String((pathConfig as Record<string, unknown>).key).trim() : ''
   if (Array.isArray(bucket)) {
     const exactItem = bucket.find((item) => {
-      const itemKey = typeof item?.key === 'string' ? item.key.trim() : (typeof item?.name === 'string' ? item.name.trim() : '')
-      const itemOrigin = typeof item?.origin === 'string' ? item.origin.trim() : ''
-      const expectedOrigin = typeof pathConfig.origin === 'string' ? pathConfig.origin.trim() : ''
+      const itemRecord = item as Record<string, unknown> | null
+      const itemKey = typeof itemRecord?.key === 'string' ? String(itemRecord.key).trim() : (typeof itemRecord?.name === 'string' ? String(itemRecord.name).trim() : '')
+      const itemOrigin = typeof itemRecord?.origin === 'string' ? String(itemRecord.origin).trim() : ''
+      const expectedOrigin = typeof (pathConfig as Record<string, unknown>).origin === 'string' ? String((pathConfig as Record<string, unknown>).origin).trim() : ''
       return itemKey === expectedKey && (!expectedOrigin || !itemOrigin || itemOrigin === expectedOrigin)
     })
-    if (exactItem?.value !== undefined) {
-      return exactItem.value
+    const exactRecord = exactItem as Record<string, unknown> | undefined
+    if (exactRecord?.value !== undefined) {
+      return exactRecord.value
     }
     if (expectedKey.includes('.')) {
       const [rootKey, ...restPath] = expectedKey.split('.')
       const nestedItem = bucket.find((item) => {
-        const itemKey = typeof item?.key === 'string' ? item.key.trim() : (typeof item?.name === 'string' ? item.name.trim() : '')
+        const itemRecord = item as Record<string, unknown> | null
+        const itemKey = typeof itemRecord?.key === 'string' ? String(itemRecord.key).trim() : (typeof itemRecord?.name === 'string' ? String(itemRecord.name).trim() : '')
         return itemKey === rootKey
       })
-      if (nestedItem?.value !== undefined) {
-        return readEmbeddedBrowserPathValue(nestedItem.value, restPath.join('.'))
+      const nestedRecord = nestedItem as Record<string, unknown> | undefined
+      if (nestedRecord?.value !== undefined) {
+        return readEmbeddedBrowserPathValue(nestedRecord.value, restPath.join('.'))
       }
     }
     return undefined
   }
   if (expectedKey && Object.prototype.hasOwnProperty.call(bucket, expectedKey)) {
-    return bucket[expectedKey]
+    return (bucket as Record<string, unknown>)[expectedKey]
   }
   return readEmbeddedBrowserPathValue(bucket, expectedKey)
 }
 
-function resolveEmbeddedBrowserAPIKey(payload, apiKeyField) {
+function resolveEmbeddedBrowserAPIKey(payload: Record<string, unknown> | null, apiKeyField: unknown) {
   const directCandidates = [
     payload?.apiKey,
     payload?.token,
@@ -356,26 +403,28 @@ function resolveEmbeddedBrowserAPIKey(payload, apiKeyField) {
   ]
   const directApiKey = directCandidates.find((candidate) => typeof candidate === 'string' && candidate.trim())
   if (directApiKey) {
-    return directApiKey.trim()
+    return String(directApiKey).trim()
   }
   if (!apiKeyField || typeof apiKeyField !== 'object') {
     return ''
   }
-  const sourceType = typeof apiKeyField?.source === 'string' ? apiKeyField.source.trim().toLowerCase() : ''
-  const pathConfig = apiKeyField?.path && typeof apiKeyField.path === 'object' ? apiKeyField.path : null
-  let bucket = null
+  const apiKeyFieldRecord = apiKeyField as Record<string, unknown>
+  const sourceType = typeof apiKeyFieldRecord.source === 'string' ? String(apiKeyFieldRecord.source).trim().toLowerCase() : ''
+  const pathConfig = apiKeyFieldRecord.path && typeof apiKeyFieldRecord.path === 'object' ? apiKeyFieldRecord.path : null
+  const payloadStorage = payload?.storage as Record<string, unknown> | null | undefined
+  let bucket: unknown = null
   if (sourceType === 'cookie') {
     bucket = payload?.cookies ?? payload?.cookie ?? payload?.cookieJar ?? null
   } else if (sourceType === 'local_storage') {
-    bucket = payload?.localStorage ?? payload?.local_storage ?? payload?.storage?.localStorage ?? payload?.storage?.local_storage ?? null
+    bucket = payload?.localStorage ?? payload?.local_storage ?? payloadStorage?.localStorage ?? payloadStorage?.local_storage ?? null
   } else if (sourceType === 'session_storage') {
-    bucket = payload?.sessionStorage ?? payload?.session_storage ?? payload?.storage?.sessionStorage ?? payload?.storage?.session_storage ?? null
+    bucket = payload?.sessionStorage ?? payload?.session_storage ?? payloadStorage?.sessionStorage ?? payloadStorage?.session_storage ?? null
   }
   const resolvedValue = resolveEmbeddedBrowserStorageValue(bucket, pathConfig, sourceType)
   return typeof resolvedValue === 'string' ? resolvedValue.trim() : ''
 }
 
-function matchesEmbeddedBrowserAPIKeyExpression(value, expression) {
+function matchesEmbeddedBrowserAPIKeyExpression(value: unknown, expression: unknown) {
   const trimmedValue = typeof value === 'string' ? value.trim() : ''
   if (!trimmedValue) {
     return false
@@ -391,7 +440,7 @@ function matchesEmbeddedBrowserAPIKeyExpression(value, expression) {
   }
 }
 
-function resolveURLOrigin(value) {
+function resolveURLOrigin(value: unknown) {
   const nextValue = typeof value === 'string' ? value.trim() : ''
   if (!nextValue) {
     return ''
@@ -403,7 +452,7 @@ function resolveURLOrigin(value) {
   }
 }
 
-function resolveAIProviderBaseOrigin(value) {
+function resolveAIProviderBaseOrigin(value: unknown) {
   const rawBaseURL = typeof value === 'string' ? value.trim() : ''
   if (!rawBaseURL) {
     return ''
@@ -417,11 +466,11 @@ function resolveAIProviderBaseOrigin(value) {
   return ''
 }
 
-function isAIProviderBalanceLabelEnabled(provider) {
+function isAIProviderBalanceLabelEnabled(provider: AIProviderLike | null | undefined) {
   return isCallMyVipProviderHost(provider?.baseUrl)
 }
 
-function normalizeAIProviderBalanceValue(value) {
+function normalizeAIProviderBalanceValue(value: unknown) {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return String(value)
   }
@@ -431,7 +480,7 @@ function normalizeAIProviderBalanceValue(value) {
   return ''
 }
 
-function stripAIProviderBalanceCurrencyPrefix(value) {
+function stripAIProviderBalanceCurrencyPrefix(value: unknown) {
   const normalizedValue = normalizeAIProviderBalanceValue(value)
   if (!normalizedValue) {
     return ''
@@ -439,7 +488,7 @@ function stripAIProviderBalanceCurrencyPrefix(value) {
   return normalizedValue.replace(/^[\s$¥￥]+/, '').trim()
 }
 
-function formatAIProviderBalanceLabel(value) {
+function formatAIProviderBalanceLabel(value: unknown) {
   const normalizedValue = stripAIProviderBalanceCurrencyPrefix(value)
   if (!normalizedValue) {
     return '¥--'
@@ -447,7 +496,7 @@ function formatAIProviderBalanceLabel(value) {
   return `¥${normalizedValue}`
 }
 
-function parseAIProviderBalanceNumber(value) {
+function parseAIProviderBalanceNumber(value: unknown) {
   const normalizedValue = stripAIProviderBalanceCurrencyPrefix(value).replace(/,/g, '')
   if (!normalizedValue) {
     return null
@@ -456,7 +505,7 @@ function parseAIProviderBalanceNumber(value) {
   return Number.isFinite(parsedValue) ? parsedValue : null
 }
 
-function formatAIProviderBalanceDeltaLabel(value) {
+function formatAIProviderBalanceDeltaLabel(value: number) {
   if (!Number.isFinite(value) || value === 0) {
     return ''
   }
@@ -468,7 +517,7 @@ function formatAIProviderBalanceDeltaLabel(value) {
   return `${sign}${formattedValue}`
 }
 
-function extractAIProviderBalanceValue(payload) {
+function extractAIProviderBalanceValue(payload: unknown) {
   if (typeof payload === 'string' && payload.trim()) {
     try {
       return extractAIProviderBalanceValue(JSON.parse(payload))
@@ -479,15 +528,16 @@ function extractAIProviderBalanceValue(payload) {
   if (!payload || typeof payload !== 'object') {
     return ''
   }
+  const payloadRecord = payload as Record<string, unknown>
   const candidates = [
-    payload?.display_balance,
-    payload?.data?.display_balance,
-    payload?.user?.display_balance,
-    payload?.data?.user?.display_balance,
-    payload?.quota,
-    payload?.data?.quota,
-    payload?.user?.quota,
-    payload?.data?.user?.quota,
+    payloadRecord.display_balance,
+    (payloadRecord.data as Record<string, unknown> | undefined)?.display_balance,
+    (payloadRecord.user as Record<string, unknown> | undefined)?.display_balance,
+    ((payloadRecord.data as Record<string, unknown> | undefined)?.user as Record<string, unknown> | undefined)?.display_balance,
+    payloadRecord.quota,
+    (payloadRecord.data as Record<string, unknown> | undefined)?.quota,
+    (payloadRecord.user as Record<string, unknown> | undefined)?.quota,
+    ((payloadRecord.data as Record<string, unknown> | undefined)?.user as Record<string, unknown> | undefined)?.quota,
   ]
   for (const candidate of candidates) {
     const normalizedValue = normalizeAIProviderBalanceValue(candidate)
@@ -498,14 +548,14 @@ function extractAIProviderBalanceValue(payload) {
   return ''
 }
 
-function buildEmbeddedBrowserAuthRequest(context) {
+function buildEmbeddedBrowserAuthRequest(context: Record<string, unknown> | null) {
   if (!context || typeof context !== 'object') {
     return null
   }
   return {
     type: embeddedBrowserAuthRequestType,
-    providerId: typeof context.providerId === 'string' ? context.providerId.trim() : '',
-    providerName: typeof context.providerName === 'string' ? context.providerName.trim() : '',
+    providerId: typeof context.providerId === 'string' ? String(context.providerId).trim() : '',
+    providerName: typeof context.providerName === 'string' ? String(context.providerName).trim() : '',
     apiKeyField: context.apiKeyField && typeof context.apiKeyField === 'object' ? context.apiKeyField : null,
     timestamp: Date.now(),
   }
@@ -515,6 +565,22 @@ function getAppBridge() {
   return window?.go?.wailsapp?.AIBindings || window?.go?.wailsapp?.AIProviderBindings || window?.go?.wailsapp?.App
 }
 
+interface RectLike {
+  top: number
+  left: number
+  right: number
+  bottom: number
+}
+
+export interface AIProviderSelectorProps {
+  providers?: AIProviderLike[]
+  currentProviderId?: string
+  onCurrentProviderChange?: (providerId: string) => Promise<void> | void
+  balanceRefreshSignal?: number
+  persistSelectedProviderId?: boolean
+  dismissSignal?: number
+}
+
 export default function AIProviderSelector({
   providers = defaultProviders,
   currentProviderId,
@@ -522,48 +588,48 @@ export default function AIProviderSelector({
   balanceRefreshSignal = 0,
   persistSelectedProviderId = true,
   dismissSignal = 0,
-}) {
+}: AIProviderSelectorProps) {
   const { t, lang } = useTranslation()
-  const containerRef = useRef(null)
-  const iframeRef = useRef(null)
-  const tooltipTimerRef = useRef(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const iframeRef = useRef<HTMLIFrameElement | null>(null)
+  const tooltipTimerRef = useRef<number | null>(null)
   const balanceRequestRef = useRef(0)
-  const providerLabelRef = useRef(null)
-  const modelLabelRef = useRef(null)
-  const reasoningButtonRef = useRef(null)
+  const providerLabelRef = useRef<HTMLSpanElement | null>(null)
+  const modelLabelRef = useRef<HTMLSpanElement | null>(null)
+  const reasoningButtonRef = useRef<HTMLDivElement | null>(null)
   const [open, setOpen] = useState(false)
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
   const [reasoningMenuOpen, setReasoningMenuOpen] = useState(false)
   const [searchValue, setSearchValue] = useState('')
-  const [providerList, setProviderList] = useState(sortProviders(providers))
+  const [providerList, setProviderList] = useState<AIProviderLike[]>(sortProviders(providers))
   const [persistedCurrentProviderId, setPersistedCurrentProviderId] = useState(providers[0]?.id || '')
-  const [panelBounds, setPanelBounds] = useState(null)
-  const [workspaceBounds, setWorkspaceBounds] = useState(null)
-  const [dropdownMetrics, setDropdownMetrics] = useState(null)
-  const [triggerRect, setTriggerRect] = useState(null)
-  const [modelTriggerRect, setModelTriggerRect] = useState(null)
+  const [panelBounds, setPanelBounds] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
+  const [workspaceBounds, setWorkspaceBounds] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
+  const [dropdownMetrics, setDropdownMetrics] = useState<{ width: number; maxHeight: number } | null>(null)
+  const [triggerRect, setTriggerRect] = useState<RectLike | null>(null)
+  const [modelTriggerRect, setModelTriggerRect] = useState<RectLike | null>(null)
   const [tooltipVisible, setTooltipVisible] = useState(false)
-  const [tooltipTriggerRect, setTooltipTriggerRect] = useState(null)
+  const [tooltipTriggerRect, setTooltipTriggerRect] = useState<RectLike | null>(null)
   const [tokenStoreOpen, setTokenStoreOpen] = useState(false)
   const [tokenStoreLoading, setTokenStoreLoading] = useState(false)
   const [tokenStoreFrameURL, setTokenStoreFrameURL] = useState('')
   const [tokenStoreViewTitle, setTokenStoreViewTitle] = useState('')
-  const [embeddedBrowserContext, setEmbeddedBrowserContext] = useState(null)
+  const [embeddedBrowserContext, setEmbeddedBrowserContext] = useState<Record<string, unknown> | null>(null)
   const [providerBalanceLabel, setProviderBalanceLabel] = useState('')
-  const [providerBalanceDelta, setProviderBalanceDelta] = useState(null)
+  const [providerBalanceDelta, setProviderBalanceDelta] = useState<number | null>(null)
   const [providerBalanceDeltaTick, setProviderBalanceDeltaTick] = useState(0)
-  const [quickModelOptions, setQuickModelOptions] = useState([])
+  const [quickModelOptions, setQuickModelOptions] = useState<string[]>([])
   const [quickModelLoading, setQuickModelLoading] = useState(false)
   const [quickModelError, setQuickModelError] = useState('')
   const [quickModelResolved, setQuickModelResolved] = useState(false)
-  const modelButtonRef = useRef(null)
-  const balanceDeltaTimeoutRef = useRef(null)
+  const modelButtonRef = useRef<HTMLDivElement | null>(null)
+  const balanceDeltaTimeoutRef = useRef<number | null>(null)
   const lastBalanceProviderIdRef = useRef('')
-  const lastBalanceNumericValueRef = useRef(null)
-  const providerBalanceCacheRef = useRef({})
+  const lastBalanceNumericValueRef = useRef<number | null>(null)
+  const providerBalanceCacheRef = useRef<Record<string, { label: string; numericValue: number | null }>>({})
   const expandLeft = triggerRect ? triggerRect.left + 400 > window.innerWidth - 16 : false
   const tooltipExpandLeft = tooltipTriggerRect ? tooltipTriggerRect.left + 280 > window.innerWidth - 16 : false
-  const [editingState, setEditingState] = useState({ open: false, mode: 'edit', provider: null })
+  const [editingState, setEditingState] = useState<{ open: boolean; mode: 'create' | 'edit'; provider: AIProviderLike | null }>({ open: false, mode: 'edit', provider: null })
   const [providerLabelFontSize, setProviderLabelFontSize] = useState(12)
   const [modelLabelFontSize, setModelLabelFontSize] = useState(12)
   const [providerTriggerWidth, setProviderTriggerWidth] = useState(0)
@@ -577,7 +643,7 @@ export default function AIProviderSelector({
   )
   const quickModelConfig = useMemo(() => {
     if (!selectedProvider) {
-      return { visible: false, options: [], currentValue: '', currentLabel: '' }
+      return { visible: false, options: [] as string[], currentValue: '', currentLabel: '' }
     }
     const fallbackOptions = buildProviderModelOptions(selectedProvider)
     const options = quickModelResolved
@@ -594,11 +660,11 @@ export default function AIProviderSelector({
   }, [quickModelOptions, quickModelResolved, selectedProvider, t, lang])
   const quickReasoningConfig = useMemo(() => {
     if (!selectedProvider) {
-      return { visible: false, options: [], currentValue: 'disable', currentLabel: '' }
+      return { visible: false, options: [] as string[], currentValue: 'disable', currentLabel: '' }
     }
     const selectedModel = typeof selectedProvider.model === 'string' ? selectedProvider.model.trim() : ''
     if (!selectedModel) {
-      return { visible: false, options: [], currentValue: 'disable', currentLabel: '' }
+      return { visible: false, options: [] as string[], currentValue: 'disable', currentLabel: '' }
     }
     const providerValue = typeof selectedProvider.provider === 'string' && selectedProvider.provider.trim() ? selectedProvider.provider.trim() : 'Compatible'
     const providerDefinition = getAIProviderDefinition(providerValue)
@@ -613,7 +679,7 @@ export default function AIProviderSelector({
       options = [...options, defaultValue]
     }
     if (capability?.reasoningMode !== 'effort' || options.length <= 1) {
-      return { visible: false, options: [], currentValue: 'disable', currentLabel: '' }
+      return { visible: false, options: [] as string[], currentValue: 'disable', currentLabel: '' }
     }
     let currentValue = storedValue && options.includes(storedValue) ? storedValue : ''
     if (!currentValue) {
@@ -705,7 +771,7 @@ export default function AIProviderSelector({
       return sortedProviders
     }
     return sortedProviders.filter((item) => {
-      const haystack = `${item.name} ${item.model || ''} ${item.provider || ''}`.toLowerCase()
+      const haystack = `${item.name || ''} ${item.model || ''} ${item.provider || ''}`.toLowerCase()
       return haystack.includes(keyword)
     })
   }, [providerList, searchValue])
@@ -720,7 +786,7 @@ export default function AIProviderSelector({
     [filteredProviders],
   )
 
-  const persistRegistryState = useCallback(async (nextProviders, nextPersistedId) => {
+  const persistRegistryState = useCallback(async (nextProviders: AIProviderLike[], nextPersistedId: string) => {
     const savedState = await saveAIProviderState({
       currentProviderId: nextPersistedId,
       providers: nextProviders,
@@ -735,7 +801,7 @@ export default function AIProviderSelector({
     }
   }, [])
 
-  const getPersistedSelectionId = useCallback((nextProviders, preferredId) => {
+  const getPersistedSelectionId = useCallback((nextProviders: AIProviderLike[], preferredId: string) => {
     if (persistSelectedProviderId || !isControlled) {
       return preferredId
     }
@@ -794,7 +860,7 @@ export default function AIProviderSelector({
 
   useLayoutEffect(() => {
     updateAdaptiveLabelFontSizes()
-    const observedElements = [containerRef.current, containerRef.current?.parentElement, reasoningButtonRef.current].filter(Boolean)
+    const observedElements = [containerRef.current, containerRef.current?.parentElement, reasoningButtonRef.current].filter(Boolean) as HTMLElement[]
     if (observedElements.length === 0) {
       return undefined
     }
@@ -922,7 +988,7 @@ export default function AIProviderSelector({
           && Number.isFinite(previousNumericValue)
           && Number.isFinite(nextNumericValue)
         ) {
-          const deltaValue = nextNumericValue - previousNumericValue
+          const deltaValue = (nextNumericValue as number) - (previousNumericValue as number)
           if (deltaValue !== 0) {
             setProviderBalanceDelta(deltaValue)
             setProviderBalanceDeltaTick((current) => current + 1)
@@ -1006,8 +1072,8 @@ export default function AIProviderSelector({
       return undefined
     }
 
-    const handlePointerDown = (event) => {
-      if (containerRef.current && !containerRef.current.contains(event.target)) {
+    const handlePointerDown = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setOpen(false)
         setModelMenuOpen(false)
         setReasoningMenuOpen(false)
@@ -1244,7 +1310,7 @@ export default function AIProviderSelector({
       return undefined
     }
 
-    const handleKeyDown = (event) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setTokenStoreOpen(false)
       }
@@ -1254,13 +1320,13 @@ export default function AIProviderSelector({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [tokenStoreOpen])
 
-  const notifySelectionChange = useCallback(async (providerId) => {
+  const notifySelectionChange = useCallback(async (providerId: string) => {
     if (typeof onCurrentProviderChange === 'function') {
       await onCurrentProviderChange(providerId)
     }
   }, [onCurrentProviderChange])
 
-  const openEmbeddedBrowser = useCallback((url, title = '', context = null) => {
+  const openEmbeddedBrowser = useCallback((url: string, title = '', context: Record<string, unknown> | null = null) => {
     const nextURL = typeof url === 'string' ? url.trim() : ''
     if (!nextURL) {
       return
@@ -1278,7 +1344,7 @@ export default function AIProviderSelector({
     setTokenStoreOpen(true)
   }, [closeTooltip])
 
-  const handleOpenEditor = (mode, provider = null) => {
+  const handleOpenEditor = (mode: 'create' | 'edit', provider: AIProviderLike | null) => {
     setOpen(false)
     setTokenStoreOpen(false)
     setTokenStoreLoading(false)
@@ -1286,7 +1352,7 @@ export default function AIProviderSelector({
     setEditingState({ open: true, mode, provider })
   }
 
-  const handleCopyProvider = (provider) => {
+  const handleCopyProvider = (provider: AIProviderLike) => {
     if (!provider || isBuiltinAIProvider(provider)) {
       return
     }
@@ -1297,7 +1363,7 @@ export default function AIProviderSelector({
     })
   }
 
-  const handleSelectProvider = async (providerId) => {
+  const handleSelectProvider = async (providerId: string) => {
     setOpen(false)
     setModelMenuOpen(false)
     setReasoningMenuOpen(false)
@@ -1309,7 +1375,7 @@ export default function AIProviderSelector({
     await notifySelectionChange(providerId)
   }
 
-  const handleQuickModelSelect = useCallback(async (nextValue) => {
+  const handleQuickModelSelect = useCallback(async (nextValue: string) => {
     if (!selectedProvider) {
       return
     }
@@ -1330,10 +1396,10 @@ export default function AIProviderSelector({
       if (capability?.reasoningMode === 'effort') {
         if (!nextReasoningOptions.includes(reasoningEffort)) {
           reasoningEffort = capability.requiredReasoningEffort
-            ? (capability.reasoningEffort || nextReasoningOptions[0] || 'disable')
+            ? (typeof capability.reasoningEffort === 'string' ? capability.reasoningEffort : nextReasoningOptions[0] || 'disable')
             : (enableReasoningEffort
-              ? (capability.reasoningEffort || nextReasoningOptions.find((value) => value !== 'disable') || 'disable')
-              : (nextReasoningOptions.includes('disable') ? 'disable' : (capability.reasoningEffort || nextReasoningOptions[0] || 'disable')))
+              ? (typeof capability.reasoningEffort === 'string' ? capability.reasoningEffort : nextReasoningOptions.find((value) => value !== 'disable') || 'disable')
+              : (nextReasoningOptions.includes('disable') ? 'disable' : (typeof capability.reasoningEffort === 'string' ? capability.reasoningEffort : nextReasoningOptions[0] || 'disable')))
         }
         enableReasoningEffort = capability.requiredReasoningEffort ? true : reasoningEffort !== 'disable'
       } else {
@@ -1351,14 +1417,14 @@ export default function AIProviderSelector({
       }
     })
     const normalizedState = normalizeAIProviderState({
-      currentProviderId: getPersistedSelectionId(nextProviders, persistedCurrentProviderId || effectiveSelectedId || selectedProvider.id),
+      currentProviderId: getPersistedSelectionId(nextProviders, persistedCurrentProviderId || effectiveSelectedId || selectedProvider.id || ''),
       providers: nextProviders,
     })
     await persistRegistryState(normalizedState.providers, normalizedState.currentProviderId)
     setModelMenuOpen(false)
   }, [effectiveSelectedId, getPersistedSelectionId, persistRegistryState, persistedCurrentProviderId, providerList, selectedProvider])
 
-  const handleQuickReasoningSelect = useCallback(async (nextValue) => {
+  const handleQuickReasoningSelect = useCallback(async (nextValue: string) => {
     if (!selectedProvider) {
       return
     }
@@ -1376,28 +1442,28 @@ export default function AIProviderSelector({
         : item
     ))
     const normalizedState = normalizeAIProviderState({
-      currentProviderId: getPersistedSelectionId(nextProviders, persistedCurrentProviderId || effectiveSelectedId || selectedProvider.id),
+      currentProviderId: getPersistedSelectionId(nextProviders, persistedCurrentProviderId || effectiveSelectedId || selectedProvider.id || ''),
       providers: nextProviders,
     })
     await persistRegistryState(normalizedState.providers, normalizedState.currentProviderId)
     setReasoningMenuOpen(false)
   }, [effectiveSelectedId, getPersistedSelectionId, persistRegistryState, persistedCurrentProviderId, providerList, selectedProvider])
 
-  const handleSaveProvider = async (draft) => {
-    const savedProvider = {
-      id: draft.id || `ai-provider-${Date.now()}`,
-      name: draft.name?.trim() || t('未命名供应商'),
-      provider: draft.provider?.trim() || 'Compatible',
-      model: draft.model?.trim() || '',
-      baseUrl: draft.baseUrl?.trim() || '',
-      apiKey: draft.apiKey?.trim() || '',
-      cacheStrategy: draft.cacheStrategy || 'model',
+  const handleSaveProvider = async (draft: Record<string, unknown>) => {
+    const savedProvider: AIProviderLike = {
+      id: draft.id ? String(draft.id) : `ai-provider-${Date.now()}`,
+      name: (typeof draft.name === 'string' ? draft.name.trim() : '') || t('未命名供应商'),
+      provider: (typeof draft.provider === 'string' ? draft.provider.trim() : '') || 'Compatible',
+      model: typeof draft.model === 'string' ? draft.model.trim() : '',
+      baseUrl: typeof draft.baseUrl === 'string' ? draft.baseUrl.trim() : '',
+      apiKey: typeof draft.apiKey === 'string' ? draft.apiKey.trim() : '',
+      cacheStrategy: typeof draft.cacheStrategy === 'string' ? draft.cacheStrategy : 'model',
       webSearchEnabled: Boolean(draft.webSearchEnabled),
       dedicatedWebSearchEnabled: Boolean(draft.dedicatedWebSearchEnabled),
-      dedicatedWebSearchProviderId: draft.dedicatedWebSearchProviderId || '',
+      dedicatedWebSearchProviderId: typeof draft.dedicatedWebSearchProviderId === 'string' ? draft.dedicatedWebSearchProviderId : '',
       dedicatedProxyEnabled: Boolean(draft.dedicatedProxyEnabled),
-      dedicatedProxyId: draft.dedicatedProxyId || '',
-      reasoningEffort: draft.reasoningEffort || 'disable',
+      dedicatedProxyId: typeof draft.dedicatedProxyId === 'string' ? draft.dedicatedProxyId : '',
+      reasoningEffort: typeof draft.reasoningEffort === 'string' ? draft.reasoningEffort : 'disable',
       enableReasoningEffort: Boolean(draft.enableReasoningEffort),
       modelMaxTokens: Number.isFinite(Number(draft.modelMaxTokens)) && Number(draft.modelMaxTokens) > 0
         ? Math.floor(Number(draft.modelMaxTokens))
@@ -1406,7 +1472,7 @@ export default function AIProviderSelector({
         ? Math.floor(Number(draft.modelMaxThinkingTokens))
         : 0,
       pinned: Boolean(draft.pinned),
-      apiKeyField: draft?.apiKeyField && typeof draft.apiKeyField === 'object' ? draft.apiKeyField : null,
+      apiKeyField: draft?.apiKeyField && typeof draft.apiKeyField === 'object' ? draft.apiKeyField as Record<string, unknown> : null,
       updatedAt: Date.now(),
     }
 
@@ -1415,7 +1481,7 @@ export default function AIProviderSelector({
       : [savedProvider, ...providerList]
 
     const normalizedState = normalizeAIProviderState({
-      currentProviderId: getPersistedSelectionId(nextBaseProviders, savedProvider.id),
+      currentProviderId: getPersistedSelectionId(nextBaseProviders, savedProvider.id || ''),
       providers: nextBaseProviders,
     })
     const nextProviders = sortProviders(normalizedState.providers)
@@ -1423,10 +1489,10 @@ export default function AIProviderSelector({
     await persistRegistryState(nextProviders, normalizedState.currentProviderId)
     setOpen(false)
     setEditingState({ open: false, mode: 'edit', provider: null })
-    await notifySelectionChange(savedProvider.id)
+    await notifySelectionChange(savedProvider.id || '')
   }
 
-  const handleDeleteProvider = async (provider) => {
+  const handleDeleteProvider = async (provider: AIProviderLike) => {
     if (!provider || isBuiltinAIProvider(provider)) {
       return
     }
@@ -1455,7 +1521,7 @@ export default function AIProviderSelector({
     }
   }
 
-  const handleTogglePin = async (item) => {
+  const handleTogglePin = async (item: AIProviderLike) => {
     if (isBuiltinAIProvider(item)) {
       return
     }
@@ -1469,7 +1535,7 @@ export default function AIProviderSelector({
     await persistRegistryState(sortProviders(normalizedState.providers), normalizedState.currentProviderId)
   }
 
-  const completeEmbeddedBrowserBuiltinLogin = useCallback(async (providerId, apiKey) => {
+  const completeEmbeddedBrowserBuiltinLogin = useCallback(async (providerId: string, apiKey: string) => {
     const trimmedProviderId = typeof providerId === 'string' ? providerId.trim() : ''
     const trimmedApiKey = typeof apiKey === 'string' ? apiKey.trim() : ''
     if (!trimmedProviderId || !trimmedApiKey) {
@@ -1497,7 +1563,7 @@ export default function AIProviderSelector({
 
     const targetOrigin = resolveURLOrigin(tokenStoreFrameURL)
 
-    const handleMessage = (event) => {
+    const handleMessage = (event: MessageEvent) => {
       const sourceWindow = iframeRef.current?.contentWindow
       if (!sourceWindow || event.source !== sourceWindow) {
         return
@@ -1515,18 +1581,20 @@ export default function AIProviderSelector({
         payload?.channel,
         payload?.event,
       ].find((value) => typeof value === 'string' && value.trim())
-      if (!messageType || !embeddedBrowserAuthMessageTypes.has(messageType.trim())) {
+      if (!messageType || !embeddedBrowserAuthMessageTypes.has(String(messageType).trim())) {
         return
       }
-      const expectedProviderId = typeof embeddedBrowserContext?.providerId === 'string' ? embeddedBrowserContext.providerId.trim() : ''
-      const messageProviderId = typeof payload?.providerId === 'string' && payload.providerId.trim()
-        ? payload.providerId.trim()
+      const expectedProviderId = typeof embeddedBrowserContext?.providerId === 'string' ? String(embeddedBrowserContext.providerId).trim() : ''
+      const messageProviderId = typeof payload?.providerId === 'string' && String(payload.providerId).trim()
+        ? String(payload.providerId).trim()
         : expectedProviderId
       if (!expectedProviderId || messageProviderId !== expectedProviderId) {
         return
       }
       const resolvedApiKey = resolveEmbeddedBrowserAPIKey(payload, embeddedBrowserContext?.apiKeyField)
-      const expression = embeddedBrowserContext?.apiKeyField?.expression
+      const expression = embeddedBrowserContext?.apiKeyField && typeof embeddedBrowserContext.apiKeyField === 'object'
+        ? (embeddedBrowserContext.apiKeyField as Record<string, unknown>).expression
+        : undefined
       if (!matchesEmbeddedBrowserAPIKeyExpression(resolvedApiKey, expression)) {
         return
       }
@@ -1563,15 +1631,20 @@ export default function AIProviderSelector({
     }
   }, [completeEmbeddedBrowserBuiltinLogin, embeddedBrowserContext, tokenStoreFrameURL, tokenStoreOpen])
 
-  const renderRows = (items) => (
+  const renderRows = (items: AIProviderLike[]) => (
     <div>
       {items.map((item) => (
         <AIProviderListRow
           key={item.id}
-          item={item}
+          item={{
+            name: item.name || '',
+            model: item.model,
+            description: typeof item.description === 'string' ? item.description : undefined,
+            pinned: item.pinned,
+          }}
           builtin={isBuiltinAIProvider(item)}
           active={item.id === effectiveSelectedId}
-          onSelect={() => handleSelectProvider(item.id)}
+          onSelect={() => handleSelectProvider(item.id || '')}
           onCopy={() => handleCopyProvider(item)}
           onEdit={() => handleOpenEditor('edit', item)}
           onTogglePin={() => handleTogglePin(item)}
@@ -2167,7 +2240,8 @@ export default function AIProviderSelector({
         open={editingState.open}
         mode={editingState.mode}
         provider={editingState.provider}
-        providers={providerList}
+        // AIProviderQuickEditOverlay 尚未转 TSX：.jsx 推断 providers=[] → never[]，转 TSX 后移除断言
+        providers={providerList as never[]}
         panelBounds={panelBounds}
         onClose={() => setEditingState({ open: false, mode: 'edit', provider: null })}
         onSave={handleSaveProvider}

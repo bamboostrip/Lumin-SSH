@@ -49,6 +49,14 @@ function installWindowMock() {
           SaveRuntimeEnvironmentSettings: async () => {},
           GetRuntimeEnvironmentStatus: async () => ({ environmentType: 'uv', ready: true, binaryPath: '/b' }),
           InstallRuntimeEnvironment: async () => ({ environmentType: 'uv', ready: true, binaryPath: '/b' }),
+          GetMCPSettingsState: async () => ({ service: { url: 'http://x', tools: ['t1'] }, client: { servers: [{ name: 's1', tools: [{ name: 'tool1', inputSchema: { a: 1 } }] }, { name: '' }], globalConfigPath: '/p', globalConfigText: '{}', embeddedServers: ['e1'], globalServerOrder: ['s1'] } }),
+          SaveMCPGlobalServer: async () => {},
+          ReloadMCPGlobalServers: async () => {},
+          DeleteMCPGlobalServer: async () => {},
+          RestartMCPClientServer: async () => {},
+          ToggleMCPClientServer: async () => {},
+          ToggleMCPClientServerDisabledForPrompts: async () => {},
+          UpdateMCPClientServerTimeout: async () => {},
         },
       },
     },
@@ -265,6 +273,15 @@ for (const file of files) {
     await compare('ledger', (m) => m.buildAIConversationTokenLedger('s1', { id: 'c1' }));
     await compare('countTokens', (m) => m.countAIConversationAPIMessageRawTokens('s1', 'c1', [{ role: 'user', content: 'x' }]));
     await compare('subscribe', (m) => { const off = m.subscribeAIConversationChanges(() => {}); const r = typeof off === 'function'; off(); return r; });
+  } else if (idx === 'mcpClientBridge') {
+    await compare('getState', (m) => m.getMCPSettingsState());
+    await compare('saveGlobal', (m) => m.saveMCPGlobalServer('s1', '{}'));
+    await compare('reload', (m) => m.reloadMCPGlobalServers());
+    await compare('deleteGlobal', (m) => m.deleteMCPGlobalServer('s1'));
+    await compare('restart', (m) => m.restartMCPClientServer('s1', 'global'));
+    await compare('toggle', (m) => m.toggleMCPClientServer('s1', 'global', true));
+    await compare('togglePrompt', (m) => m.toggleMCPClientServerDisabledForPrompts('s1', 'global', false));
+    await compare('timeout', (m) => m.updateMCPClientServerTimeout('s1', 'global', 30));
   } else {
     console.log(`${idx}: 未知模块（无测试用例），跳过`);
   }

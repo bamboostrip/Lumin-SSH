@@ -12,7 +12,7 @@
 |---|---|
 | src 文件 | 170 个（78 .tsx + 89 .ts + 3 .d.ts），0 个 .js/.jsx |
 | `@ts-nocheck` | **0 个指令**（22 个桥接已全部类型化；此前"3 个组件遗留"为注释文本误判，已澄清） |
-| 显式 any | **全部清零**（`BridgeData = any`、`Record<string, any>` ×6、`: any` ×3 —— 2026-08-11 收尾会话消除，仅 wailsjs 生成代码保留宽泛类型） |
+| 显式 any | **全部清零**（`BridgeData = any`、`Record<string, any>` ×6、`: any` ×3、`type X = any` 别名 —— 含 2026-08-11 补扫的 FileManager `BridgeData = any`（88 处，上轮统计漏了 `= any` 形式），仅 wailsjs 生成代码保留宽泛类型） |
 | 逃生通道 | `as I18nKey` ×35（17 文件，均为运行时动态值且已注释）、`@ts-ignore` ×0 |
 
 ---

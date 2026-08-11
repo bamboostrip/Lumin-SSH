@@ -1,3 +1,5 @@
+// @ts-nocheck
+// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
 const VALID_REASONING_EFFORTS = new Set(['disable', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh'])
 const GPT_VERSION_PATTERN = /^gpt-(\d+)(?:\.(\d+))?/
 const RESPONSES_24H_ONLY_PATTERN = /^gpt-5\.5(?:$|[-.])/

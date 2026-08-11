@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from 'react';
-import { getAllSessionFileManagerWorkspaces } from '../utils/fileWorkbench.js';
-import { normalizeWorkspaceContentTab, type SessionLike, type WorkspaceContentTab } from '../utils/sessionWorkspace.js';
-import { sortTerminalPaneCells, type TerminalPaneLayout } from '../utils/terminalPaneLayout.js';
+import { getAllSessionFileManagerWorkspaces } from '../utils/fileWorkbench.ts';
+import { normalizeWorkspaceContentTab, type SessionLike, type WorkspaceContentTab } from '../utils/sessionWorkspace.ts';
+import { sortTerminalPaneCells, type TerminalPaneLayout } from '../utils/terminalPaneLayout.ts';
 
 /** 工作区会话快照（持久化到后端的结构） */
 export interface WorkspaceSessionSnapshot {

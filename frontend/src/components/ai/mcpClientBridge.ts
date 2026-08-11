@@ -1,3 +1,5 @@
+// @ts-nocheck
+// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
 import * as AppGo from '../../../wailsjs/go/wailsapp/App.js'
 
 function normalizeServerTool(tool) {

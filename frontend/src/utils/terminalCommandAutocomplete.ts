@@ -1,5 +1,5 @@
-import { parseCommandInputContext } from './terminalCommandAutocompleteParser.js'
-import { getBuiltinCommandNames, resolveAutocompletePlan } from './terminalCommandAutocompleteRegistry.js'
+import { parseCommandInputContext } from './terminalCommandAutocompleteParser.ts'
+import { getBuiltinCommandNames, resolveAutocompletePlan } from './terminalCommandAutocompleteRegistry.ts'
 import {
   buildAsyncProviderContext,
   buildChildCommandItems,
@@ -10,11 +10,11 @@ import {
   type AsyncPathContext,
   type AutocompleteItem,
   type AutocompleteSources,
-} from './terminalCommandAutocompleteProviders.js'
+} from './terminalCommandAutocompleteProviders.ts'
 
-export { normalizeRemoteAbsolutePath } from './terminalCommandAutocompleteParser.js'
-export type { CommandInputContext, ShellToken } from './terminalCommandAutocompleteParser.js'
-export type { AutocompleteItem, AsyncPathContext, AutocompleteSources } from './terminalCommandAutocompleteProviders.js'
+export { normalizeRemoteAbsolutePath } from './terminalCommandAutocompleteParser.ts'
+export type { CommandInputContext, ShellToken } from './terminalCommandAutocompleteParser.ts'
+export type { AutocompleteItem, AsyncPathContext, AutocompleteSources } from './terminalCommandAutocompleteProviders.ts'
 
 /** 扁平化后的快捷命令项 */
 export interface FlattenedQuickCommand {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
-import { sortTerminalPaneCells, type TerminalPaneLayout } from '../utils/terminalPaneLayout.js';
-import type { SessionLike } from '../utils/sessionWorkspace.js';
+import { sortTerminalPaneCells, type TerminalPaneLayout } from '../utils/terminalPaneLayout.ts';
+import type { SessionLike } from '../utils/sessionWorkspace.ts';
 
 export interface UseSessionWorkspaceModelOptions {
   activeSessionId: string | null;

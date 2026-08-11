@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { restoreAIChatTool } from '../components/ai/aiChatBridge.js';
+import { restoreAIChatTool } from '../components/ai/aiChatBridge.ts';
 import {
   buildAIWorkspaceTerminalPanelKey,
   resolveAIWorkspaceTerminalBindingByTerminalId,
-} from '../utils/sessionWorkspace.js';
+} from '../utils/sessionWorkspace.ts';
 
 /** AI 变更审查（reviewId/requestId 为必填标识） */
 export interface AIChangeReview {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { DockRect, FileManagerDockPosition, PanelResizeDirection } from './useWorkspacePanelDocking.js';
+import type { DockRect, FileManagerDockPosition, PanelResizeDirection } from './useWorkspacePanelDocking.ts';
 
 function withAlpha(color: string | undefined, alpha: number, fallback: string): string {
   if (typeof color !== 'string') return fallback;

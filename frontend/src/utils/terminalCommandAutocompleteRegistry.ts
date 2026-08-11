@@ -1,4 +1,4 @@
-import type { CommandInputContext } from './terminalCommandAutocompleteParser.js';
+import type { CommandInputContext } from './terminalCommandAutocompleteParser.ts';
 
 /** 参数提供器类型：path=远程路径补全，literal=固定候选项 */
 export type ArgProviderName = 'path' | 'literal';

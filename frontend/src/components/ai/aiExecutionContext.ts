@@ -1,5 +1,7 @@
-import { getLanguage } from '../../i18n.js'
-import { isValidRemoteAbsolutePath } from './aiMentions.js'
+// @ts-nocheck
+// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
+import { getLanguage } from '../../i18n.ts'
+import { isValidRemoteAbsolutePath } from './aiMentions.ts'
 
 function normalizeFilePaths(paths) {
   return Array.isArray(paths)

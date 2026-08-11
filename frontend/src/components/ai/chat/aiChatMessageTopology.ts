@@ -1,3 +1,5 @@
+// @ts-nocheck
+// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
 function normalizeString(value) {
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -76,7 +78,7 @@ function attachMessageToTurn(turnEntry, message) {
   turnEntry.tools.push(message)
 }
 
-export function groupConversationMessages(messages = []) {
+export function groupConversationMessages(messages: any[] = []) {
   const list = Array.isArray(messages) ? messages : []
   const grouped = []
   const turnMap = new Map()
@@ -152,7 +154,7 @@ export function groupConversationMessages(messages = []) {
   return grouped
 }
 
-export function getConversationBranchAnchor(messages = [], messageId = '') {
+export function getConversationBranchAnchor(messages: any[] = [], messageId = '') {
   const list = Array.isArray(messages) ? messages : []
   const targetMessageId = normalizeString(messageId)
   if (!targetMessageId) {

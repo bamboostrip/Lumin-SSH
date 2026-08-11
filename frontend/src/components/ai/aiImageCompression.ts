@@ -1,4 +1,6 @@
-import { t } from '../../i18n.js'
+// @ts-nocheck
+// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
+import { t } from '../../i18n.ts'
 
 const COMPRESSION_QUALITY_MAP = new Map([
   ['image/jpeg', 0.7],

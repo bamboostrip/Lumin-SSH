@@ -1,11 +1,11 @@
 import { useCallback, useEffect } from 'react';
 import { EventsOn, WindowHide } from '../../wailsjs/runtime/runtime.js';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
-import type { config } from '../../wailsjs/go/models.js';
-import type { SessionLike, WorkspaceContentTab } from '../utils/sessionWorkspace.js';
-import type { TerminalPaneLayout } from '../utils/terminalPaneLayout.js';
-import type { FileManagerWorkspaceState } from '../utils/fileWorkbench.js';
-import type { SnapshotOverrides, WorkspaceSessionSnapshot } from './useWorkspacePersistence.js';
+import type { config } from '../../wailsjs/go/models.ts';
+import type { SessionLike, WorkspaceContentTab } from '../utils/sessionWorkspace.ts';
+import type { TerminalPaneLayout } from '../utils/terminalPaneLayout.ts';
+import type { FileManagerWorkspaceState } from '../utils/fileWorkbench.ts';
+import type { SnapshotOverrides, WorkspaceSessionSnapshot } from './useWorkspacePersistence.ts';
 
 /** 连接中的服务器卡片 */
 export interface ConnectingServer {

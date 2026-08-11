@@ -1,5 +1,7 @@
-import { normalizeAISlashCommands } from './aiSlashCommands.js'
-import { getProxyNodes } from '../settings/proxyNodesBridge.js'
+// @ts-nocheck
+// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
+import { normalizeAISlashCommands } from './aiSlashCommands.ts'
+import { getProxyNodes } from '../settings/proxyNodesBridge.ts'
 
 const DEFAULT_AI_GLOBAL_SETTINGS = {
   currentProviderId: '',

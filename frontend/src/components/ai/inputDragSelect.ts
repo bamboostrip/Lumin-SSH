@@ -1,3 +1,5 @@
+// @ts-nocheck
+// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
 // Text input types whose selection can be programmatically changed via select().
 // number/email/etc. throw InvalidStateError on select()/setSelectionRange().
 const SELECTABLE_INPUT_TYPES = ['text', 'search', 'url', 'tel', 'password']

@@ -1,6 +1,8 @@
-import { compatibleProvider } from './compatibleProvider.js'
-import { messagesProvider } from './messagesProvider.js'
-import { responsesProvider } from './responsesProvider.js'
+// @ts-nocheck
+// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
+import { compatibleProvider } from './compatibleProvider.ts'
+import { messagesProvider } from './messagesProvider.ts'
+import { responsesProvider } from './responsesProvider.ts'
 
 export const availableAIProviders = [
   compatibleProvider,

@@ -1,5 +1,7 @@
-import { t } from '../../i18n.js'
-import { runAIProviderPasteHandlerById } from './aiProviderPasteHandlers.js'
+// @ts-nocheck
+// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
+import { t } from '../../i18n.ts'
+import { runAIProviderPasteHandlerById } from './aiProviderPasteHandlers.ts'
 
 const EMPTY_STATE = { currentProviderId: '', providers: [] }
 const VALID_PROTOCOLS = new Set(['Compatible', 'Responses', 'Messages'])

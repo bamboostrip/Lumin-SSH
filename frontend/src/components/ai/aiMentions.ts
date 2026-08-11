@@ -1,4 +1,6 @@
-import { t, getLanguage } from '../../i18n.js'
+// @ts-nocheck
+// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
+import { t, getLanguage } from '../../i18n.ts'
 
 const longTextWrapExtension = '.long_text_wrap'
 
@@ -467,7 +469,7 @@ export async function processAIMentions(
   return `${replacedText.trim()}\n\n${contentBlocks.join('\n\n')}`.trim()
 }
 
-export async function processRemoteFileMentions(text, sessionIdOrOptions, readFile) {
+export async function processRemoteFileMentions(text, sessionIdOrOptions, readFile?) {
   if (sessionIdOrOptions && typeof sessionIdOrOptions === 'object') {
     return processAIMentions(text, sessionIdOrOptions)
   }

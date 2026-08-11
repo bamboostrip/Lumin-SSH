@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
-import { APP_GITHUB_RELEASE_API, APP_VERSION } from '../config.js';
+import { APP_GITHUB_RELEASE_API, APP_VERSION } from '../config.ts';
 import { EventsOn } from '../../wailsjs/runtime/runtime.js';
-import { t, type I18nKey } from '../i18n.js';
+import { t, type I18nKey } from '../i18n.ts';
 
 const RELEASE_API = APP_GITHUB_RELEASE_API;
 

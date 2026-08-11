@@ -1,11 +1,11 @@
-import { t, type I18nKey } from '../i18n.js'
+import { t, type I18nKey } from '../i18n.ts'
 import {
   buildCommandReplacementValue,
   buildTokenReplacementValue,
   normalizeRemoteAbsolutePath,
   type CommandInputContext,
-} from './terminalCommandAutocompleteParser.js'
-import type { AutocompletePlan, CommandNode } from './terminalCommandAutocompleteRegistry.js'
+} from './terminalCommandAutocompleteParser.ts'
+import type { AutocompletePlan, CommandNode } from './terminalCommandAutocompleteRegistry.ts'
 
 const COMMAND_AUTOCOMPLETE_LIMIT = 10
 

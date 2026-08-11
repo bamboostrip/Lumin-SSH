@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
-import type { config } from '../../wailsjs/go/models.js';
+import type { config } from '../../wailsjs/go/models.ts';
 
 /** 服务器表单数据（编辑器中输入，可能缺失部分字段） */
 export interface ServerFormData {

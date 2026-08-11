@@ -1,4 +1,6 @@
-import { t } from '../../i18n.js'
+// @ts-nocheck
+// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
+import { t } from '../../i18n.ts'
 
 function getAppBridge() {
   return window?.go?.wailsapp?.AIBindings || window?.go?.wailsapp?.App
@@ -45,7 +47,7 @@ export async function rejectAIChatToolsForQueuedSubmission(requestId) {
   await bridge.RejectAIChatToolsForQueuedSubmission(requestId)
 }
 
-export async function resolveAIChatFollowup(requestId, answer, images = []) {
+export async function resolveAIChatFollowup(requestId, answer, images: any[] = []) {
   const bridge = getAppBridge()
   if (!bridge?.ResolveAIChatFollowup) {
     throw new Error(t('追问回复能力未就绪'))

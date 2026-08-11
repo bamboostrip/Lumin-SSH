@@ -3,10 +3,10 @@ import {
   TERMINAL_PANE_CELL_IDS, getTerminalDockTargetCellId, getTerminalPaneRect,
   isTerminalPaneRectangular, normalizeTwoTerminalPaneLayout, sortTerminalPaneCells, splitTerminalPaneCells,
   type TerminalPaneCellId, type TerminalPaneInfo, type TerminalPaneLayout,
-} from '../utils/terminalPaneLayout.js';
-import type { SessionLike } from '../utils/sessionWorkspace.js';
-import { normalizeWorkspaceContentTab } from '../utils/sessionWorkspace.js';
-import type { SnapshotOverrides } from './useWorkspacePersistence.js';
+} from '../utils/terminalPaneLayout.ts';
+import type { SessionLike } from '../utils/sessionWorkspace.ts';
+import { normalizeWorkspaceContentTab } from '../utils/sessionWorkspace.ts';
+import type { SnapshotOverrides } from './useWorkspacePersistence.ts';
 
 export interface TerminalDockingDeps {
   activeSessionIdRef: React.MutableRefObject<string | null>;

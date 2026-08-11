@@ -1,4 +1,14 @@
-export const TERMINAL_ENCODING_GROUPS = [
+export interface TerminalEncodingOption {
+  value: string;
+  label: string;
+}
+
+export interface TerminalEncodingGroup {
+  label: string;
+  options: TerminalEncodingOption[];
+}
+
+export const TERMINAL_ENCODING_GROUPS: TerminalEncodingGroup[] = [
   {
     label: 'Unicode',
     options: [

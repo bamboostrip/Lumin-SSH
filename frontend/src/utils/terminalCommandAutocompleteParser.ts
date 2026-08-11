@@ -1,4 +1,4 @@
-export function normalizeRemoteAbsolutePath(value) {
+export function normalizeRemoteAbsolutePath(value: string): string {
   let normalized = String(value || '').trim().replace(/^['"]|['"]$/g, '')
   if (normalized.startsWith('@')) {
     normalized = normalized.slice(1)
@@ -6,19 +6,54 @@ export function normalizeRemoteAbsolutePath(value) {
   return normalized.startsWith('/') ? normalized : ''
 }
 
-function getSafeCursorPosition(inputValue, cursorPosition) {
+function getSafeCursorPosition(inputValue: string, cursorPosition: unknown): number {
   const raw = String(inputValue || '')
   const fallback = raw.length
-  if (!Number.isFinite(cursorPosition)) {
+  if (!Number.isFinite(cursorPosition as number)) {
     return fallback
   }
   return Math.max(0, Math.min(raw.length, Number(cursorPosition)))
 }
 
-function splitShellSegments(raw) {
-  const segments = []
+/** shell 命令段（按 && / || / ; / | / 换行切分） */
+export interface ShellSegment {
+  start: number;
+  end: number;
+  boundaryEnd: number;
+  separator: string;
+}
+
+/** 段内按空白切分的词元 */
+export interface ShellToken {
+  text: string;
+  lowerText: string;
+  start: number;
+  end: number;
+}
+
+/** 解析后的命令输入上下文 */
+export interface CommandInputContext {
+  raw: string;
+  safeCursor: number;
+  currentCwd: string;
+  segmentStart: number;
+  segmentEnd: number;
+  commandStart: number;
+  command: string;
+  commandLower: string;
+  tokens: ShellToken[];
+  currentTokenIndex: number;
+  tokenStart: number;
+  tokenEnd: number;
+  token: string;
+  tokenLower: string;
+  hasTrailingSpace: boolean;
+}
+
+function splitShellSegments(raw: string): ShellSegment[] {
+  const segments: ShellSegment[] = []
   let segmentStart = 0
-  let quote = null
+  let quote: string | null = null
   let escaped = false
 
   for (let index = 0; index < raw.length; index += 1) {
@@ -106,7 +141,7 @@ function splitShellSegments(raw) {
   return segments
 }
 
-function findActiveSegment(segments, safeCursor) {
+function findActiveSegment(segments: ShellSegment[], safeCursor: number): ShellSegment {
   for (let index = segments.length - 1; index >= 0; index -= 1) {
     const segment = segments[index]
     if (safeCursor >= segment.start && safeCursor <= segment.boundaryEnd) {
@@ -121,13 +156,13 @@ function findActiveSegment(segments, safeCursor) {
   }
 }
 
-function tokenizeShellSegment(raw, start, end) {
-  const tokens = []
-  let tokenStart = null
-  let quote = null
+function tokenizeShellSegment(raw: string, start: number, end: number): ShellToken[] {
+  const tokens: ShellToken[] = []
+  let tokenStart: number | null = null
+  let quote: string | null = null
   let escaped = false
 
-  const pushToken = (tokenEnd) => {
+  const pushToken = (tokenEnd: number) => {
     if (tokenStart === null) {
       return
     }
@@ -193,7 +228,15 @@ function tokenizeShellSegment(raw, start, end) {
   return tokens
 }
 
-function getCurrentTokenInfo(raw, tokens, safeCursor) {
+interface CurrentTokenInfo {
+  index: number;
+  start: number;
+  end: number;
+  textBeforeCursor: string;
+  isVirtual: boolean;
+}
+
+function getCurrentTokenInfo(raw: string, tokens: ShellToken[], safeCursor: number): CurrentTokenInfo {
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index]
     if (safeCursor >= token.start && safeCursor <= token.end) {
@@ -217,7 +260,7 @@ function getCurrentTokenInfo(raw, tokens, safeCursor) {
   }
 }
 
-export function finalizeReplacementValue(prefix, replacement, suffix, appendSpace = false) {
+export function finalizeReplacementValue(prefix: string, replacement: string, suffix: string, appendSpace = false): string {
   let normalizedReplacement = String(replacement || '')
   if (appendSpace && (!suffix || !/^[\s;&|]/.test(suffix))) {
     normalizedReplacement = `${normalizedReplacement} `
@@ -225,7 +268,7 @@ export function finalizeReplacementValue(prefix, replacement, suffix, appendSpac
   return `${prefix}${normalizedReplacement}${suffix}`
 }
 
-export function buildCommandReplacementValue(context, replacement, appendSpace = false) {
+export function buildCommandReplacementValue(context: CommandInputContext, replacement: string, appendSpace = false): string {
   return finalizeReplacementValue(
     context.raw.slice(0, context.commandStart),
     replacement,
@@ -234,7 +277,7 @@ export function buildCommandReplacementValue(context, replacement, appendSpace =
   )
 }
 
-export function buildTokenReplacementValue(context, replacement, appendSpace = false) {
+export function buildTokenReplacementValue(context: CommandInputContext, replacement: string, appendSpace = false): string {
   return finalizeReplacementValue(
     context.raw.slice(0, context.tokenStart),
     replacement,
@@ -243,9 +286,12 @@ export function buildTokenReplacementValue(context, replacement, appendSpace = f
   )
 }
 
-export function parseCommandInputContext(inputValue, { cursorPosition, currentCwd } = {}) {
+export function parseCommandInputContext(
+  inputValue: string,
+  options: { cursorPosition?: unknown; currentCwd?: string } = {},
+): CommandInputContext {
   const raw = String(inputValue || '')
-  const safeCursor = getSafeCursorPosition(raw, cursorPosition)
+  const safeCursor = getSafeCursorPosition(raw, options.cursorPosition)
   const segments = splitShellSegments(raw)
   const activeSegment = findActiveSegment(segments, safeCursor)
   const tokens = tokenizeShellSegment(raw, activeSegment.start, activeSegment.end)
@@ -263,7 +309,7 @@ export function parseCommandInputContext(inputValue, { cursorPosition, currentCw
   return {
     raw,
     safeCursor,
-    currentCwd: normalizeRemoteAbsolutePath(currentCwd) || '/',
+    currentCwd: normalizeRemoteAbsolutePath(options.currentCwd || '') || '/',
     segmentStart: activeSegment.start,
     segmentEnd: activeSegment.end,
     commandStart: commandToken ? commandToken.start : firstNonWhitespace,

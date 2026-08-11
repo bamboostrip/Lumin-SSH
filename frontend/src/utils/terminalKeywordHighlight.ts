@@ -13,8 +13,29 @@
  * - 规则可动态更新（设置变更时重建正则缓存）
  */
 
+export type KeywordColorMode = 'ansi16' | 'truecolor';
+
+export interface KeywordRule {
+  id: string;
+  keywords: string[];
+  colorMode: KeywordColorMode;
+  sgr: number;
+  hex: string;
+}
+
+interface KeywordColorInfo {
+  colorMode: KeywordColorMode;
+  sgr: number;
+  hex: string;
+}
+
+/** 单会话高亮状态（per-session 跨帧跟踪前景色） */
+export interface HighlightState {
+  fgActive: boolean;
+}
+
 // ── 默认关键字规则 ──────────────────────────────────────────────────
-export const DEFAULT_KEYWORD_RULES = [
+export const DEFAULT_KEYWORD_RULES: KeywordRule[] = [
   {
     id: 'error',
     keywords: ['error', 'fatal', 'critical', 'panic'],
@@ -56,26 +77,24 @@ export const DEFAULT_KEYWORD_RULES = [
 // 注意：compiledRegex / keywordColorMap 是「只读结构」，多终端共享安全；
 // 但「前景色激活状态」必须 per-session 跟踪（见 createHighlightState），
 // 绝不能放模块级——否则多标签/分屏会互相污染，导致误注入/误跳过高亮。
-let activeRules = DEFAULT_KEYWORD_RULES;
-let compiledRegex = null;
-let keywordColorMap = new Map(); // 关键字(小写) → 颜色信息，避免下标对齐错位
+let activeRules: KeywordRule[] = DEFAULT_KEYWORD_RULES;
+let compiledRegex: RegExp | null = null;
+let keywordColorMap = new Map<string, KeywordColorInfo>(); // 关键字(小写) → 颜色信息，避免下标对齐错位
 
 /**
  * 为单个终端会话创建一个独立的高亮状态对象。
  * highlightKeywords 按 WebSocket 帧逐次调用，服务端着色区间可能跨帧，
  * 必须跨帧跟踪前景色才不会误注入/误清色。
  * 每个终端连接应持有自己的状态，避免多标签/分屏互相干扰。
- *
- * @returns {{ fgActive: boolean }}
  */
-export function createHighlightState() {
+export function createHighlightState(): HighlightState {
   return { fgActive: false };
 }
 
 /**
  * 将 hex 颜色转为 RGB 三元组
  */
-function hexToRgbParts(hex) {
+function hexToRgbParts(hex: string): number[] | null {
   const clean = String(hex || '').replace('#', '');
   if (!/^[\da-fA-F]{6}$/.test(clean)) return null;
   return [
@@ -89,13 +108,13 @@ function hexToRgbParts(hex) {
  * 根据规则列表重建合并正则和颜色映射表。
  * 仅在规则变更时调用，热路径零开销。
  */
-function rebuildRegex() {
-  const sources = [];
-  const colorMap = new Map();
+function rebuildRegex(): void {
+  const sources: string[] = [];
+  const colorMap = new Map<string, KeywordColorInfo>();
 
   for (const rule of activeRules) {
     if (!rule.keywords || rule.keywords.length === 0) continue;
-    const colorInfo = {
+    const colorInfo: KeywordColorInfo = {
       colorMode: rule.colorMode || 'ansi16',
       sgr: rule.sgr || 31,
       hex: rule.hex || '#ff6b6b',
@@ -128,21 +147,41 @@ function rebuildRegex() {
 // 初始化
 rebuildRegex();
 
+/** 将外部（localStorage/设置）数据规整为规则列表，坏项跳过（与旧运行时行为一致） */
+function normalizeKeywordRules(rules: unknown): KeywordRule[] {
+  if (!Array.isArray(rules)) {
+    return DEFAULT_KEYWORD_RULES;
+  }
+  const normalized: KeywordRule[] = [];
+  for (const item of rules) {
+    if (!item || typeof item !== 'object') continue;
+    const rule = item as Partial<KeywordRule>;
+    normalized.push({
+      id: typeof rule.id === 'string' ? rule.id : '',
+      keywords: Array.isArray(rule.keywords) ? rule.keywords.map((kw) => String(kw)) : [],
+      colorMode: rule.colorMode === 'truecolor' ? 'truecolor' : 'ansi16',
+      sgr: Number.isFinite(Number(rule.sgr)) ? Number(rule.sgr) : 31,
+      hex: typeof rule.hex === 'string' ? rule.hex : '#ff6b6b',
+    });
+  }
+  return normalized;
+}
+
 /**
  * 获取当前生效的规则列表
  */
-export function getKeywordRules() {
+export function getKeywordRules(): KeywordRule[] {
   return activeRules;
 }
 
 /**
  * 设置规则列表并重建正则缓存。
- * @param {Array} rules - 规则数组
+ * @param rules - 规则数组
  */
-export function setKeywordRules(rules) {
+export function setKeywordRules(rules: unknown): void {
   // 空数组 = 用户删光规则 = 真正禁用高亮（与 UI 语义一致）
   if (Array.isArray(rules)) {
-    activeRules = rules;
+    activeRules = normalizeKeywordRules(rules);
   } else {
     activeRules = DEFAULT_KEYWORD_RULES;
   }
@@ -152,14 +191,14 @@ export function setKeywordRules(rules) {
 /**
  * 从 localStorage 加载规则（如果有）
  */
-export function loadKeywordRulesFromStorage() {
+export function loadKeywordRulesFromStorage(): KeywordRule[] {
   try {
     const raw = localStorage.getItem('terminalKeywordRules');
     if (raw) {
-      const parsed = JSON.parse(raw);
+      const parsed: unknown = JSON.parse(raw);
       if (Array.isArray(parsed)) {
         setKeywordRules(parsed);
-        return parsed;
+        return activeRules;
       }
     }
   } catch (_) {}
@@ -170,7 +209,7 @@ export function loadKeywordRulesFromStorage() {
 /**
  * 保存规则到 localStorage
  */
-export function saveKeywordRulesToStorage(rules) {
+export function saveKeywordRulesToStorage(rules: KeywordRule[]): void {
   try {
     localStorage.setItem('terminalKeywordRules', JSON.stringify(rules));
   } catch (_) {}
@@ -179,7 +218,7 @@ export function saveKeywordRulesToStorage(rules) {
 /**
  * 清除自定义规则，恢复默认
  */
-export function resetKeywordRulesToDefault() {
+export function resetKeywordRulesToDefault(): KeywordRule[] {
   try {
     localStorage.removeItem('terminalKeywordRules');
   } catch (_) {}
@@ -190,7 +229,7 @@ export function resetKeywordRulesToDefault() {
 /**
  * 根据匹配文本找到对应的颜色信息（直接查 Map，无下标对齐问题）
  */
-function getColorInfoForMatch(matchText) {
+function getColorInfoForMatch(matchText: string): KeywordColorInfo {
   return keywordColorMap.get(String(matchText).toLowerCase())
     || { colorMode: 'ansi16', sgr: 31, hex: '#ff6b6b' };
 }
@@ -203,7 +242,7 @@ function getColorInfoForMatch(matchText) {
  * 等于篡改了原文的字重。改用 ANSI 亮色档（90-97 / 真彩色）保证观感鲜亮，
  * 关闭码只用 `\x1b[39m`（恢复默认前景，不碰字重），对原文 intensity 零副作用。
  */
-function buildColorOpen(colorInfo) {
+function buildColorOpen(colorInfo: KeywordColorInfo): string {
   if (colorInfo.colorMode === 'truecolor') {
     const rgb = hexToRgbParts(colorInfo.hex);
     if (rgb) return `\x1b[38;2;${rgb[0]};${rgb[1]};${rgb[2]}m`;
@@ -221,10 +260,10 @@ const COLOR_CLOSE = '\x1b[39m';
  * 从 SGR 参数字符串中提取前景色状态变化。
  * 返回: 'set' | 'reset' | 'none'
  */
-function sgrForegroundAction(sgrParams) {
+function sgrForegroundAction(sgrParams: string): 'set' | 'reset' | 'none' {
   if (!sgrParams || sgrParams === '') return 'reset';
   const parts = sgrParams.split(';');
-  let action = 'none';
+  let action: 'set' | 'reset' | 'none' = 'none';
   for (let i = 0; i < parts.length; i += 1) {
     const code = parseInt(parts[i], 10);
     if (Number.isNaN(code) || code === 0) {
@@ -248,30 +287,35 @@ function sgrForegroundAction(sgrParams) {
 // 第三分支末尾 `\x1b[^^PX^_]` 等价于「ESC 后跟非 [ 非 字符串序列引导符 的单字符」。
 const ANSI_ESCAPE_REGEX = /\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[PX^_][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[^[PX^_]/g;
 
+interface TextSegment {
+  type: 'text' | 'ansi';
+  value: string;
+}
+
 /**
  * 对终端输出文本注入关键字高亮 ANSI 码。
  *
- * @param {string} text - 原始终端输出（可能包含 ANSI 转义序列）
- * @param {{ fgActive?: boolean } | null} [state] - per-session 前景色状态。
+ * @param text - 原始终端输出（可能包含 ANSI 转义序列）
+ * @param state - per-session 前景色状态。
  *        跨帧跟踪服务端着色区间，避免误注入/误清色。由调用方（每个终端会话）
  *        用 useRef 持有并通过 createHighlightState() 创建，多终端互不干扰。
  *        传 null/undefined 时退化为「按帧无状态」高亮（兼容旧调用，不推荐）。
- * @returns {string} 注入高亮后的文本
+ * @returns 注入高亮后的文本
  */
-export function highlightKeywords(text, state) {
+export function highlightKeywords(text: string, state: HighlightState | null | undefined): string {
   if (!text || typeof text !== 'string') return text;
   if (text.length < 3) return text;
   if (!compiledRegex) return text;
 
-  const result = [];
+  const result: string[] = [];
   let lastEnd = 0;
   // 读取该会话的跨帧前景色状态（per-session，杜绝多终端互相污染）
   let fgActive = state ? !!state.fgActive : false;
 
   ANSI_ESCAPE_REGEX.lastIndex = 0;
 
-  let ansiMatch;
-  const segments = [];
+  let ansiMatch: RegExpExecArray | null;
+  const segments: TextSegment[] = [];
 
   while ((ansiMatch = ANSI_ESCAPE_REGEX.exec(text)) !== null) {
     if (ansiMatch.index > lastEnd) {
@@ -318,11 +362,11 @@ export function highlightKeywords(text, state) {
 /**
  * 对纯文本段进行关键字着色。
  */
-function highlightPlainText(text) {
+function highlightPlainText(text: string): string {
   if (!text || !compiledRegex) return text;
 
   compiledRegex.lastIndex = 0;
-  let match;
+  let match: RegExpExecArray | null;
   let output = '';
   let lastIdx = 0;
 

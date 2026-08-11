@@ -1,7 +1,16 @@
 import { getAllSessionFileManagerWorkspaces } from './fileWorkbench.js';
-import { sortTerminalPaneCells } from './terminalPaneLayout.js';
+import { sortTerminalPaneCells, type TerminalPaneLayout } from './terminalPaneLayout.js';
 
-export function buildAIWorkspaceTerminalPanelKey(sessionId, terminalId) {
+/** 会话对象（宽松形状，来自连接状态） */
+export interface SessionLike {
+  id?: string;
+  isLocal?: boolean;
+  shellPath?: string;
+  terminals?: Array<{ id?: string }>;
+  [key: string]: unknown;
+}
+
+export function buildAIWorkspaceTerminalPanelKey(sessionId: string, terminalId: string): string {
   const normalizedSessionId = typeof sessionId === 'string' ? sessionId.trim() : '';
   const normalizedTerminalId = typeof terminalId === 'string' ? terminalId.trim() : '';
   if (!normalizedSessionId || !normalizedTerminalId) {
@@ -10,7 +19,7 @@ export function buildAIWorkspaceTerminalPanelKey(sessionId, terminalId) {
   return `${normalizedSessionId}::${normalizedTerminalId}`;
 }
 
-export function formatAIQuotedSelection(text) {
+export function formatAIQuotedSelection(text: string): string {
   const normalizedText = typeof text === 'string' ? text.trim() : '';
   if (!normalizedText) {
     return '';
@@ -18,38 +27,50 @@ export function formatAIQuotedSelection(text) {
   return `[引用]>\`${normalizedText}\`\n----\n`;
 }
 
-export function resolveAIWorkspaceTerminalBindingByTerminalId(sessions, terminalId) {
+export function resolveAIWorkspaceTerminalBindingByTerminalId(
+  sessions: unknown,
+  terminalId: string,
+): { sessionId: string; terminalId: string } | null {
   const normalizedTerminalId = typeof terminalId === 'string' ? terminalId.trim() : '';
   if (!normalizedTerminalId) {
     return null;
   }
-  const list = Array.isArray(sessions) ? sessions : [];
+  const list = Array.isArray(sessions) ? sessions as SessionLike[] : [];
   const exactSession = list.find((session) => session?.id === normalizedTerminalId);
   if (exactSession) {
-    return { sessionId: exactSession.id, terminalId: normalizedTerminalId };
+    return { sessionId: exactSession.id!, terminalId: normalizedTerminalId };
   }
   const parentSession = list.find((session) => Array.isArray(session?.terminals)
-    && session.terminals.some((terminal) => terminal?.id === normalizedTerminalId));
+    && session.terminals!.some((terminal) => terminal?.id === normalizedTerminalId));
   if (parentSession) {
-    return { sessionId: parentSession.id, terminalId: normalizedTerminalId };
+    return { sessionId: parentSession.id!, terminalId: normalizedTerminalId };
   }
   return null;
 }
 
-export function mergeRestoredWorkspaceSessions(currentSessions, nextRestoredSessions, restoringSessionIds) {
-  const currentList = Array.isArray(currentSessions) ? currentSessions : [];
-  const restoredMap = new Map((Array.isArray(nextRestoredSessions) ? nextRestoredSessions : [])
-    .map((session) => [session.id, session]));
+export function mergeRestoredWorkspaceSessions(
+  currentSessions: unknown,
+  nextRestoredSessions: unknown,
+  restoringSessionIds: Set<string>,
+): SessionLike[] {
+  const currentList = Array.isArray(currentSessions) ? currentSessions as SessionLike[] : [];
+  const restoredMap = new Map((Array.isArray(nextRestoredSessions) ? nextRestoredSessions as SessionLike[] : [])
+    .map((session) => [session.id!, session]));
   return currentList.map((session) => {
-    if (!restoringSessionIds.has(session?.id) || !restoredMap.has(session.id)) {
+    if (!restoringSessionIds.has(session?.id!) || !restoredMap.has(session.id!)) {
       return session;
     }
-    return restoredMap.get(session.id);
+    return restoredMap.get(session.id!)!;
   });
 }
 
-export function mergeRestoredWorkspaceLayouts(currentLayouts, nextRestoredLayouts, restoringSessionIds, activeSessionIds) {
-  const merged = {};
+export function mergeRestoredWorkspaceLayouts(
+  currentLayouts: Record<string, TerminalPaneLayout> | null | undefined,
+  nextRestoredLayouts: Record<string, TerminalPaneLayout> | null | undefined,
+  restoringSessionIds: Set<string>,
+  activeSessionIds: Set<string>,
+): Record<string, TerminalPaneLayout> {
+  const merged: Record<string, TerminalPaneLayout> = {};
   Object.entries(currentLayouts || {}).forEach(([layoutId, layout]) => {
     const sessionId = layout?.sessionId;
     if (!sessionId || !restoringSessionIds.has(sessionId)) {
@@ -66,54 +87,83 @@ export function mergeRestoredWorkspaceLayouts(currentLayouts, nextRestoredLayout
   return merged;
 }
 
-export function remapSessionFileManagerWorkspaceMap(workspaces, idMap) {
+export function remapSessionFileManagerWorkspaceMap(
+  workspaces: Record<string, unknown> | null | undefined,
+  idMap: Record<string, string> | null | undefined,
+): Record<string, unknown> {
   const sourceMap = idMap && typeof idMap === 'object' ? idMap : {};
-  const next = {};
+  const next: Record<string, unknown> = {};
   Object.entries(workspaces || {}).forEach(([terminalId, workspace]) => {
     next[sourceMap[terminalId] || terminalId] = workspace;
   });
   return next;
 }
 
-export function cloneSessionFileManagerWorkspaceState(workspace) {
+/** 文件管理器面板状态（宽松形状） */
+export interface FileManagerPaneState {
+  tabId: string;
+  path: string;
+  sortField: string;
+  sortDir: 'asc' | 'desc';
+  selectedPaths: string[];
+  scrollTop: number;
+}
+
+/** 文件管理器工作区状态（宽松形状） */
+export interface FileManagerWorkspaceState {
+  activeTabId: string;
+  activePane: 'left' | 'right';
+  panes: {
+    left: FileManagerPaneState;
+    right: FileManagerPaneState;
+  };
+  tabs: Array<{ selectedPaths?: string[]; [key: string]: unknown }>;
+}
+
+export function cloneSessionFileManagerWorkspaceState(workspace: unknown): FileManagerWorkspaceState | null {
   if (!workspace || typeof workspace !== 'object') {
     return null;
   }
-  const clonePane = (pane) => ({
-    tabId: typeof pane?.tabId === 'string' ? pane.tabId : '',
-    path: typeof pane?.path === 'string' ? pane.path : '',
-    sortField: typeof pane?.sortField === 'string' ? pane.sortField : 'name',
-    sortDir: pane?.sortDir === 'desc' ? 'desc' : 'asc',
-    selectedPaths: Array.isArray(pane?.selectedPaths) ? [...pane.selectedPaths] : [],
-    scrollTop: Number.isFinite(Number(pane?.scrollTop)) ? Number(pane.scrollTop) : 0,
-  });
+  const source = workspace as Record<string, unknown>;
+  const clonePane = (pane: unknown): FileManagerPaneState => {
+    const paneSource = (pane && typeof pane === 'object' ? pane : {}) as Record<string, unknown>;
+    return {
+      tabId: typeof paneSource.tabId === 'string' ? paneSource.tabId : '',
+      path: typeof paneSource.path === 'string' ? paneSource.path : '',
+      sortField: typeof paneSource.sortField === 'string' ? paneSource.sortField : 'name',
+      sortDir: paneSource.sortDir === 'desc' ? 'desc' : 'asc',
+      selectedPaths: Array.isArray(paneSource.selectedPaths) ? [...paneSource.selectedPaths as string[]] : [],
+      scrollTop: Number.isFinite(Number(paneSource.scrollTop)) ? Number(paneSource.scrollTop) : 0,
+    };
+  };
+  const panesSource = (source.panes && typeof source.panes === 'object' ? source.panes : {}) as Record<string, unknown>;
   return {
-    activeTabId: typeof workspace.activeTabId === 'string' ? workspace.activeTabId : '',
-    activePane: workspace.activePane === 'right' ? 'right' : 'left',
+    activeTabId: typeof source.activeTabId === 'string' ? source.activeTabId : '',
+    activePane: source.activePane === 'right' ? 'right' : 'left',
     panes: {
-      left: clonePane(workspace.panes?.left),
-      right: clonePane(workspace.panes?.right),
+      left: clonePane(panesSource.left),
+      right: clonePane(panesSource.right),
     },
-    tabs: Array.isArray(workspace.tabs)
-      ? workspace.tabs
+    tabs: Array.isArray(source.tabs)
+      ? source.tabs
         .filter((tab) => tab && typeof tab === 'object')
         .map((tab) => ({
-          ...tab,
-          selectedPaths: Array.isArray(tab.selectedPaths) ? [...tab.selectedPaths] : [],
+          ...(tab as Record<string, unknown>),
+          selectedPaths: Array.isArray((tab as { selectedPaths?: unknown }).selectedPaths) ? [...(tab as { selectedPaths: string[] }).selectedPaths] : [],
         }))
       : [],
   };
 }
 
-export function escapeTerminalClonePosixPath(value) {
+export function escapeTerminalClonePosixPath(value: string): string {
   return String(value || '').replace(/'/g, "'\\''");
 }
 
-export function escapeTerminalCloneWindowsPath(value) {
+export function escapeTerminalCloneWindowsPath(value: string): string {
   return String(value || '').replace(/"/g, '""');
 }
 
-export function buildTerminalCloneCwdCommand(cwd) {
+export function buildTerminalCloneCwdCommand(cwd: string): string {
   const normalizedCwd = typeof cwd === 'string' ? cwd.trim() : '';
   if (!normalizedCwd) {
     return '';
@@ -129,7 +179,7 @@ export function buildTerminalCloneCwdCommand(cwd) {
   return `cd -- '${escapeTerminalClonePosixPath(normalizedCwd)}'\r`;
 }
 
-export function getTerminalTabDoubleClickAction() {
+export function getTerminalTabDoubleClickAction(): string {
   if (typeof localStorage === 'undefined') {
     return '';
   }
@@ -145,7 +195,7 @@ export function getTerminalTabDoubleClickAction() {
   return action === 'close' ? 'close' : 'duplicate';
 }
 
-export function pickSessionFileManagerWorkspaces(session) {
+export function pickSessionFileManagerWorkspaces(session: SessionLike | null | undefined): Record<string, unknown> {
   const terminalIds = new Set(
     (session?.terminals || [])
       .map((terminal) => (typeof terminal?.id === 'string' ? terminal.id.trim() : ''))
@@ -163,22 +213,28 @@ export function pickSessionFileManagerWorkspaces(session) {
   );
 }
 
-export function normalizeWorkspaceContentTab(value) {
+export type WorkspaceContentTab = 'terminal' | 'files' | 'process' | 'network' | 'history';
+
+export function normalizeWorkspaceContentTab(value: unknown): WorkspaceContentTab {
   return value === 'files' || value === 'process' || value === 'network' || value === 'history'
     ? value
     : 'terminal';
 }
 
 // Windows-native local shells cannot run the POSIX probe backend.
-export function isUnsupportedMonitorSession(session) {
+export function isUnsupportedMonitorSession(session: SessionLike | null | undefined): boolean {
   if (!session?.isLocal) return false;
   const shell = (session.shellPath || '').toLowerCase();
   return shell.includes('powershell') || shell.includes('pwsh') || shell.includes('cmd');
 }
 
-export function remapSessionWorkspaceLayouts(layouts, idMap, targetSessionId) {
+export function remapSessionWorkspaceLayouts(
+  layouts: Record<string, TerminalPaneLayout> | null | undefined,
+  idMap: Record<string, string> | null | undefined,
+  targetSessionId: string,
+): Record<string, TerminalPaneLayout> {
   const sourceMap = idMap && typeof idMap === 'object' ? idMap : {};
-  const next = {};
+  const next: Record<string, TerminalPaneLayout> = {};
   Object.entries(layouts || {}).forEach(([layoutId, layout]) => {
     const mappedLayoutId = sourceMap[layoutId] || layoutId;
     const mappedRootTerminalId = sourceMap[layout?.rootTerminalId || layoutId]
@@ -197,8 +253,8 @@ export function remapSessionWorkspaceLayouts(layouts, idMap, targetSessionId) {
   return next;
 }
 
-export function runSessionWorkspaceSelfCheck() {
-  const assert = (condition, message) => {
+export function runSessionWorkspaceSelfCheck(): void {
+  const assert = (condition: unknown, message: string) => {
     if (!condition) throw new Error(`会话工具自检失败：${message}`);
   };
 
@@ -213,8 +269,8 @@ export function runSessionWorkspaceSelfCheck() {
     tabs: [{ id: 'tab', selectedPaths: ['/b'] }],
   };
   const clonedWorkspace = cloneSessionFileManagerWorkspaceState(workspace);
-  clonedWorkspace.panes.left.selectedPaths.push('/changed');
-  clonedWorkspace.tabs[0].selectedPaths.push('/changed');
+  clonedWorkspace!.panes.left.selectedPaths.push('/changed');
+  clonedWorkspace!.tabs[0].selectedPaths!.push('/changed');
   assert(workspace.panes.left.selectedPaths.length === 1, '面板选择必须深复制');
   assert(workspace.tabs[0].selectedPaths.length === 1, '标签选择必须深复制');
 

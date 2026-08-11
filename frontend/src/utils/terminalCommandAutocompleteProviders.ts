@@ -3,11 +3,56 @@ import {
   buildCommandReplacementValue,
   buildTokenReplacementValue,
   normalizeRemoteAbsolutePath,
+  type CommandInputContext,
 } from './terminalCommandAutocompleteParser.js'
+import type { AutocompletePlan, CommandNode } from './terminalCommandAutocompleteRegistry.js'
 
 const COMMAND_AUTOCOMPLETE_LIMIT = 10
 
-function getAutocompleteBadge(source, fallbackBadge = '') {
+export type AutocompleteItemSource =
+  | 'server-history'
+  | 'global-history'
+  | 'quick'
+  | 'path'
+  | 'subcommand'
+  | 'builtin'
+  | 'literal';
+
+/** 自动补全候选项 */
+export interface AutocompleteItem {
+  source: AutocompleteItemSource;
+  label: string;
+  value: string;
+  description?: string;
+  badge: string;
+  score: number;
+  dedupeKey?: string;
+}
+
+/** 顶层补全数据源 */
+export interface AutocompleteSources {
+  serverHistory?: string[];
+  globalHistory?: string[];
+  quickCommands?: Array<{
+    name?: string;
+    command?: string;
+    groupPath?: string;
+    addCR?: boolean;
+  }>;
+}
+
+/** 路径补全的异步上下文（在 CommandInputContext 上扩展） */
+export interface AsyncPathContext extends CommandInputContext {
+  provider: 'path';
+  listPath: string;
+  candidatePrefix: string;
+  partialName: string;
+  directoryOnly: boolean;
+  fileOnly: boolean;
+  chainPath: string[];
+}
+
+function getAutocompleteBadge(source: string, fallbackBadge = ''): string {
   if (fallbackBadge) {
     return fallbackBadge
   }
@@ -30,7 +75,7 @@ function getAutocompleteBadge(source, fallbackBadge = '') {
   }
 }
 
-function scorePrefixMatch(candidate, query) {
+function scorePrefixMatch(candidate: string, query: string): number {
   if (!candidate || !query) {
     return 0
   }
@@ -43,7 +88,7 @@ function scorePrefixMatch(candidate, query) {
   return 0
 }
 
-function scoreLooseMatch(candidate, query) {
+function scoreLooseMatch(candidate: string, query: string): number {
   if (!candidate || !query) {
     return 0
   }
@@ -59,8 +104,8 @@ function scoreLooseMatch(candidate, query) {
   return 0
 }
 
-function dedupeAutocompleteItems(items) {
-  const bestByValue = new Map()
+function dedupeAutocompleteItems(items: AutocompleteItem[]): AutocompleteItem[] {
+  const bestByValue = new Map<string, AutocompleteItem>()
 
   items.forEach((item) => {
     if (!item || !item.value) {
@@ -84,29 +129,44 @@ function dedupeAutocompleteItems(items) {
     .slice(0, COMMAND_AUTOCOMPLETE_LIMIT)
 }
 
-function normalizeRemoteDirEntries(entries) {
+interface RemoteDirEntry {
+  name: string;
+  isDirectory: boolean;
+}
+
+function normalizeRemoteDirEntries(entries: unknown): RemoteDirEntry[] {
   return Array.isArray(entries)
     ? entries
         .filter((entry) => entry && typeof entry === 'object')
         .map((entry) => ({
-          name: typeof entry.name === 'string' ? entry.name.trim() : '',
-          isDirectory: Boolean(entry.isDirectory),
+          name: typeof (entry as { name?: unknown }).name === 'string' ? ((entry as { name: string }).name.trim()) : '',
+          isDirectory: Boolean((entry as { isDirectory?: unknown }).isDirectory),
         }))
         .filter((entry) => entry.name)
     : []
 }
 
-function joinRemoteAutocompletePath(basePath, name) {
+function joinRemoteAutocompletePath(basePath: string, name: string): string {
   const normalizedBasePath = normalizeRemoteAbsolutePath(basePath) || '/'
   const trimmedBasePath = normalizedBasePath === '/' ? '/' : normalizedBasePath.replace(/\/+$/g, '')
   return trimmedBasePath === '/' ? `/${name}` : `${trimmedBasePath}/${name}`
 }
 
-export function buildTopLevelCommandItems({ context, sources, builtinCommandNames }) {
+export function buildTopLevelCommandItems(options: {
+  context: CommandInputContext;
+  sources?: AutocompleteSources;
+  builtinCommandNames?: string[];
+}): AutocompleteItem[] {
+  const { context, sources, builtinCommandNames } = options
   const query = String(context?.tokenLower || '').trim()
-  const items = []
+  const items: AutocompleteItem[] = []
 
-  const addCandidate = (value, source, scoreBase, { description = '', appendSpace = false } = {}) => {
+  const addCandidate = (
+    value: string,
+    source: AutocompleteItemSource,
+    scoreBase: number,
+    extras: { description?: string; appendSpace?: boolean } = {},
+  ) => {
     const normalizedValue = String(value || '').trim()
     if (!normalizedValue) {
       return
@@ -120,8 +180,8 @@ export function buildTopLevelCommandItems({ context, sources, builtinCommandName
     items.push({
       source,
       label: normalizedValue,
-      value: buildCommandReplacementValue(context, normalizedValue, appendSpace),
-      description,
+      value: buildCommandReplacementValue(context, normalizedValue, extras.appendSpace),
+      description: extras.description,
       badge: getAutocompleteBadge(source),
       score: scoreBase + matchScore,
     })
@@ -132,7 +192,7 @@ export function buildTopLevelCommandItems({ context, sources, builtinCommandName
   })
 
   ;(sources?.quickCommands || []).forEach((item, index) => {
-    addCandidate(item.command, 'quick', 340 - index, {
+    addCandidate(item.command || '', 'quick', 340 - index, {
       description: item.groupPath ? `${item.name} · ${item.groupPath}` : item.name,
     })
   })
@@ -150,14 +210,18 @@ export function buildTopLevelCommandItems({ context, sources, builtinCommandName
   return dedupeAutocompleteItems(items)
 }
 
-export function buildSlashQuickCommandItems({ context, sources }) {
+export function buildSlashQuickCommandItems(options: {
+  context: CommandInputContext;
+  sources?: AutocompleteSources;
+}): AutocompleteItem[] {
+  const { context, sources } = options
   const rawQuery = String(context?.command || '')
   if (!rawQuery.startsWith('/')) {
     return []
   }
 
   const query = rawQuery.slice(1).trim().toLowerCase()
-  const items = (sources?.quickCommands || [])
+  const items: Array<AutocompleteItem | null> = (sources?.quickCommands || [])
     .map((item, index) => {
       const name = String(item?.name || '').trim()
       const command = String(item?.command || '').trim()
@@ -174,7 +238,7 @@ export function buildSlashQuickCommandItems({ context, sources }) {
       }
 
       return {
-        source: 'quick',
+        source: 'quick' as const,
         label: `/${name}`,
         value: buildCommandReplacementValue(context, command),
         description: groupPath ? `${command} · ${groupPath}` : command,
@@ -185,13 +249,17 @@ export function buildSlashQuickCommandItems({ context, sources }) {
     })
     .filter(Boolean)
 
-  return dedupeAutocompleteItems(items)
+  return dedupeAutocompleteItems(items as AutocompleteItem[])
 }
 
-export function buildChildCommandItems({ context, plan }) {
+export function buildChildCommandItems(options: {
+  context: CommandInputContext;
+  plan: Extract<AutocompletePlan, { kind: 'child-command' }>;
+}): AutocompleteItem[] {
+  const { context, plan } = options
   const query = String(context?.tokenLower || '').trim()
-  const items = (plan?.node?.children || [])
-    .map((child, index) => {
+  const items: Array<AutocompleteItem | null> = (plan?.node?.children || [])
+    .map((child: CommandNode, index) => {
       const childName = String(child?.name || '').trim()
       if (!childName) {
         return null
@@ -204,7 +272,7 @@ export function buildChildCommandItems({ context, plan }) {
 
       const label = [...(plan.chainPath || []), childName].join(' ')
       return {
-        source: 'subcommand',
+        source: 'subcommand' as const,
         label,
         value: buildTokenReplacementValue(context, childName, true),
         description: child.description ? t(child.description) : `${(plan.chainPath || []).join(' ')} ${t('子命令')}`,
@@ -214,10 +282,14 @@ export function buildChildCommandItems({ context, plan }) {
     })
     .filter(Boolean)
 
-  return dedupeAutocompleteItems(items)
+  return dedupeAutocompleteItems(items as AutocompleteItem[])
 }
 
-export function buildSyncProviderItems({ context, plan }) {
+export function buildSyncProviderItems(options: {
+  context: CommandInputContext;
+  plan: AutocompletePlan;
+}): AutocompleteItem[] {
+  const { context, plan } = options
   if (plan?.kind !== 'arg-provider') {
     return []
   }
@@ -230,7 +302,7 @@ export function buildSyncProviderItems({ context, plan }) {
   }
 
   const prefixLabel = (plan.chainPath || []).join(' ')
-  const items = argRule.items
+  const items: Array<AutocompleteItem | null> = argRule.items
     .map((item, index) => {
       const value = String(item?.value || '').trim()
       if (!value) {
@@ -243,7 +315,7 @@ export function buildSyncProviderItems({ context, plan }) {
       }
 
       return {
-        source: 'literal',
+        source: 'literal' as const,
         label: prefixLabel ? `${prefixLabel} ${value}` : value,
         value: buildTokenReplacementValue(context, value, true),
         description: item?.description ? t(String(item.description)) : '',
@@ -253,10 +325,14 @@ export function buildSyncProviderItems({ context, plan }) {
     })
     .filter(Boolean)
 
-  return dedupeAutocompleteItems(items)
+  return dedupeAutocompleteItems(items as AutocompleteItem[])
 }
 
-export function buildAsyncProviderContext({ context, plan }) {
+export function buildAsyncProviderContext(options: {
+  context: CommandInputContext;
+  plan: AutocompletePlan;
+}): AsyncPathContext | null {
+  const { context, plan } = options
   if (plan?.kind !== 'arg-provider' || plan.argRule?.provider !== 'path') {
     return null
   }
@@ -303,12 +379,17 @@ export function buildAsyncProviderContext({ context, plan }) {
   }
 }
 
-export async function loadAsyncProviderItems({ sessionId, asyncContext, listDir }) {
+export async function loadAsyncProviderItems(options: {
+  sessionId?: string;
+  asyncContext: AsyncPathContext | null;
+  listDir?: (sessionId: string, path: string) => Promise<unknown>;
+}): Promise<AutocompleteItem[]> {
+  const { sessionId, asyncContext, listDir } = options
   if (!sessionId || !asyncContext || typeof listDir !== 'function') {
     return []
   }
 
-  let entries = []
+  let entries: RemoteDirEntry[] = []
   try {
     entries = normalizeRemoteDirEntries(await listDir(sessionId, asyncContext.listPath))
   } catch (_) {
@@ -325,7 +406,7 @@ export async function loadAsyncProviderItems({ sessionId, asyncContext, listDir 
       const relativePath = `${asyncContext.candidatePrefix}${entry.name}${entry.isDirectory ? '/' : ''}`
       const absolutePath = joinRemoteAutocompletePath(asyncContext.listPath, entry.name)
       return {
-        source: 'path',
+        source: 'path' as const,
         label: prefixLabel ? `${prefixLabel} ${relativePath}` : relativePath,
         value: buildTokenReplacementValue(asyncContext, relativePath),
         description: `${absolutePath}${entry.isDirectory ? '/' : ''}`,

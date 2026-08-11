@@ -20,9 +20,9 @@
  *
  * 仅响应主键（button === 0），右键 mousedown 不置位，避免干扰原生右键菜单。
  *
- * @param {MouseEvent} event - input 的 mousedown 事件
+ * @param event - input 的 mousedown 事件
  */
-export function suppressDragOutClick(event) {
+export function suppressDragOutClick(event: MouseEvent): void {
   if (event.button !== 0) return;
 
   let finished = false;
@@ -32,16 +32,16 @@ export function suppressDragOutClick(event) {
     document.removeEventListener('click', swallow, true);
     document.removeEventListener('mousedown', handleLaterMousedown, true);
   };
-  const swallow = (clickEvent) => {
+  const swallow = (clickEvent: MouseEvent) => {
     clickEvent.stopPropagation();
     clickEvent.preventDefault();
     finish();
   };
   // 孤儿兜底：拖出应用窗口松开时 window 收不到 mouseup，监听会残留。
   // 出现新的 mousedown 说明原拖拽已结束且未派生 click，立即卸载，
-  // 避免残留监听吞掉下一次合法点击（“点一下没反应”）。
+  // 避免残留监听吞掉下一次合法点击（"点一下没反应"）。
   // 派生 click（mouseup→click 同任务）之前不会有新 mousedown，故不影响正常吞 click 路径。
-  const handleLaterMousedown = (e) => {
+  const handleLaterMousedown = (e: MouseEvent) => {
     if (e === event) return;
     finish();
   };

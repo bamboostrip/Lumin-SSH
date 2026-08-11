@@ -54,4 +54,6 @@ export const Z = {
 
   // ── Absolute top (toasts / system notices) ──
   TOAST: 20003,
-};
+} as const;
+
+export type ZIndexKey = keyof typeof Z;

@@ -49,8 +49,8 @@
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | 0 | TS 骨架：tsconfig、vite TS、全局声明、i18n 类型模板 | ✅ 完成 |
-| 1 | 纯逻辑转 TS：`utils/`(17) + `constants/`(2) + `config.js` | 🔄 进行中 |
-| 2 | hooks 转 TS：`hooks/`(17) | ⏳ |
+| 1 | 纯逻辑转 TS：`utils/`(17) + `constants/`(2) + `config.js` | ✅ 完成 |
+| 2 | hooks 转 TS：`hooks/`(17) | 🔄 进行中 |
 | 3 | i18n 类型化：28 个语言文件对齐 `zh-CN` 键 | ⏳ |
 | 4 | 小组件 JSX→TSX（批量） | ⏳ |
 | 5 | 巨兽组件：FileManager / AIPanel / Terminal / SettingsModal / AI 系列 | ⏳ |
@@ -74,15 +74,36 @@
 
 ## 阶段 1：纯逻辑转 TS（详细清单）
 
-### utils/（17 个文件）
-- [ ] 待扫描后逐文件列出
+### utils/（17 个，全部完成 ✅）
+- [x] `platform.ts` — 平台检测（getModKey/formatShortcut）
+- [x] `contextMenu.ts` — 全局右键菜单事件（GlobalContextMenuDetail 类型化）
+- [x] `menuPosition.ts` — 菜单位置夹取
+- [x] `quickCommandParams.ts` — 快捷命令参数占位符
+- [x] `fileTypeClassify.ts` — 文件类型分类
+- [x] `recoveryPasswordSync.ts` — 恢复密码同步（泛型 syncWithRecoveryPassword）
+- [x] `dragOutClickGuard.ts` — 拖拽失焦抑制
+- [x] `terminalCommandAutocompleteParser.ts` — shell 分词器（CommandInputContext 基础类型）
+- [x] `terminalCommandAutocompleteRegistry.ts` — 内置命令树（CommandNode/AutocompletePlan）
+- [x] `terminalCommandAutocompleteProviders.ts` — 补全候选构建（AutocompleteItem/AutocompleteSources）
+- [x] `terminalCommandAutocomplete.ts` — 自动补全入口（对外聚合导出）
+- [x] `terminalPaneLayout.ts` — 分屏布局（TerminalPaneCellId 等）
+- [x] `sessionWorkspace.ts` — 会话工作区工具
+- [x] `terminalKeywordHighlight.ts` — 终端关键字高亮
+- [x] `fileWorkbench.ts` — 文件管理器全局 store（事件订阅）
+- [x] `theme.ts` — 主题系统（ThemePackage/终端主题，1075 行）
+- [x] `programFonts.ts` — 程序字体加载
 
-### constants/（2 个）
-- [ ] `terminalEncodings.js` → `.ts`（枚举 + 编码列表类型）
-- [ ] `zIndex.js` → `.ts`（常量对象，用 `as const`）
+### constants/（2 个，完成 ✅）
+- [x] `terminalEncodings.ts` — 编码分组（TerminalEncodingGroup/Option）
+- [x] `zIndex.ts` — `Z` 常量 `as const` + ZIndexKey 类型
 
-### config.js
-- [ ] `config.js` → `config.ts`（暴露配置结构类型）
+### config.js（完成 ✅）
+- [x] `config.ts` + `src/vite-env.d.ts`（`__APP_BUILD_TIME__` 全局声明）
+
+### 关键决策
+- vite.config.ts 增加自定义 resolve 插件 `lumin-js-to-ts-extension-alias`：
+  存量 `import './foo.js'` 自动回退解析 `foo.ts`/`foo.tsx`（vite 5 无 extensionAlias），
+  **收尾阶段移除**。`tsconfig.json` include 仅 `src`（wailsjs 生成的 .js 带 `// @ts-check`）。
 
 ---
 

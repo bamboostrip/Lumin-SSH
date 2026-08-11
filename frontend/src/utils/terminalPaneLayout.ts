@@ -1,17 +1,51 @@
-export const TERMINAL_PANE_CELL_IDS = ['tl', 'tr', 'bl', 'br'];
+export type TerminalPaneCellId = 'tl' | 'tr' | 'bl' | 'br';
 
-export const TERMINAL_PANE_CELL_META = {
+export const TERMINAL_PANE_CELL_IDS: TerminalPaneCellId[] = ['tl', 'tr', 'bl', 'br'];
+
+export const TERMINAL_PANE_CELL_META: Record<TerminalPaneCellId, { row: number; col: number }> = {
   tl: { row: 0, col: 0 },
   tr: { row: 0, col: 1 },
   bl: { row: 1, col: 0 },
   br: { row: 1, col: 1 },
 };
 
-export function sortTerminalPaneCells(cells) {
+/** 面板在 2x2 网格中占据的矩形 */
+export interface TerminalPaneRect {
+  minRow: number;
+  maxRow: number;
+  minCol: number;
+  maxCol: number;
+  width: number;
+  height: number;
+}
+
+/** 终端面板（布局中的一项） */
+export interface TerminalPaneInfo {
+  id?: string;
+  terminalId: string;
+  cells: TerminalPaneCellId[];
+  [key: string]: unknown;
+}
+
+/** 终端分屏布局 */
+export interface TerminalPaneLayout {
+  sessionId?: string;
+  rootTerminalId?: string;
+  panes: TerminalPaneInfo[];
+  [key: string]: unknown;
+}
+
+/** 拆分方向 */
+export type TerminalPaneSplitDirection = 'left' | 'right' | 'up' | 'down';
+
+/** 停靠目标（角） */
+export type TerminalDockTarget = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+
+export function sortTerminalPaneCells(cells: unknown): TerminalPaneCellId[] {
   return TERMINAL_PANE_CELL_IDS.filter((cellId) => Array.isArray(cells) && cells.includes(cellId));
 }
 
-export function getTerminalPaneRect(cells) {
+export function getTerminalPaneRect(cells: unknown): TerminalPaneRect | null {
   const normalized = sortTerminalPaneCells(cells);
   if (normalized.length === 0) {
     return null;
@@ -32,7 +66,7 @@ export function getTerminalPaneRect(cells) {
   };
 }
 
-export function getTerminalPaneCellsFromRect(rect) {
+export function getTerminalPaneCellsFromRect(rect: TerminalPaneRect | null): TerminalPaneCellId[] {
   if (!rect) {
     return [];
   }
@@ -45,12 +79,12 @@ export function getTerminalPaneCellsFromRect(rect) {
   });
 }
 
-export function getTerminalPaneRemainingCells(panes) {
+export function getTerminalPaneRemainingCells(panes: Array<{ cells?: unknown }> | null | undefined): TerminalPaneCellId[] {
   const occupied = new Set((panes || []).flatMap((pane) => sortTerminalPaneCells(pane.cells)));
   return TERMINAL_PANE_CELL_IDS.filter((cellId) => !occupied.has(cellId));
 }
 
-export function getTerminalDockTargetPreferences(target) {
+export function getTerminalDockTargetPreferences(target: unknown): { primary: TerminalPaneSplitDirection | null; secondary: TerminalPaneSplitDirection | null } {
   switch (target) {
     case 'top-left':
       return { primary: 'up', secondary: 'left' };
@@ -65,7 +99,7 @@ export function getTerminalDockTargetPreferences(target) {
   }
 }
 
-export function getTerminalDockTargetCellId(target) {
+export function getTerminalDockTargetCellId(target: unknown): TerminalPaneCellId | null {
   switch (target) {
     case 'top-left':
       return 'tl';
@@ -80,12 +114,12 @@ export function getTerminalDockTargetCellId(target) {
   }
 }
 
-export function getTerminalPaneSplitDirection(rect, target) {
+export function getTerminalPaneSplitDirection(rect: TerminalPaneRect | null, target: unknown): TerminalPaneSplitDirection | null {
   if (!rect) {
     return null;
   }
   const { primary, secondary } = getTerminalDockTargetPreferences(target);
-  const canSplit = (direction) => {
+  const canSplit = (direction: TerminalPaneSplitDirection) => {
     if (direction === 'left' || direction === 'right') {
       return rect.width >= 2;
     }
@@ -103,7 +137,10 @@ export function getTerminalPaneSplitDirection(rect, target) {
   return null;
 }
 
-export function splitTerminalPaneCells(cells, target) {
+export function splitTerminalPaneCells(
+  cells: unknown,
+  target: unknown,
+): { direction: TerminalPaneSplitDirection; newCells: TerminalPaneCellId[]; remainingCells: TerminalPaneCellId[] } | null {
   const rect = getTerminalPaneRect(cells);
   const direction = getTerminalPaneSplitDirection(rect, target);
   if (!rect || !direction) {
@@ -133,7 +170,7 @@ export function splitTerminalPaneCells(cells, target) {
   };
 }
 
-export function getTerminalPaneGridPlacement(cells) {
+export function getTerminalPaneGridPlacement(cells: unknown): Record<string, string> {
   const rect = getTerminalPaneRect(cells);
   if (!rect) {
     return {};
@@ -144,7 +181,7 @@ export function getTerminalPaneGridPlacement(cells) {
   };
 }
 
-export function getTerminalPaneAbsolutePlacement(cells) {
+export function getTerminalPaneAbsolutePlacement(cells: unknown): Record<string, string> {
   const rect = getTerminalPaneRect(cells);
   if (!rect) {
     return {};
@@ -157,8 +194,12 @@ export function getTerminalPaneAbsolutePlacement(cells) {
   };
 }
 
-export function remapTerminalPaneLayouts(layouts, idMap, sessionId) {
-  const next = {};
+export function remapTerminalPaneLayouts(
+  layouts: Record<string, TerminalPaneLayout> | null | undefined,
+  idMap: Record<string, string>,
+  sessionId: string,
+): Record<string, TerminalPaneLayout> {
+  const next: Record<string, TerminalPaneLayout> = {};
   Object.entries(layouts || {}).forEach(([layoutId, layout]) => {
     if (layout?.sessionId !== sessionId) {
       next[layoutId] = layout;
@@ -180,7 +221,7 @@ export function remapTerminalPaneLayouts(layouts, idMap, sessionId) {
   return next;
 }
 
-export function isTerminalPaneRectangular(cells) {
+export function isTerminalPaneRectangular(cells: unknown): boolean {
   const normalized = sortTerminalPaneCells(cells);
   const rect = getTerminalPaneRect(normalized);
   if (!rect) {
@@ -189,8 +230,13 @@ export function isTerminalPaneRectangular(cells) {
   return sortTerminalPaneCells(getTerminalPaneCellsFromRect(rect)).join(',') === normalized.join(',');
 }
 
-export function getTerminalPaneCellsForOrientation(anchorCellId, orientation) {
-  const meta = TERMINAL_PANE_CELL_META[anchorCellId];
+export function getTerminalPaneCellsForOrientation(
+  anchorCellId: unknown,
+  orientation: unknown,
+): TerminalPaneCellId[] | null {
+  const meta = anchorCellId === 'tl' || anchorCellId === 'tr' || anchorCellId === 'bl' || anchorCellId === 'br'
+    ? TERMINAL_PANE_CELL_META[anchorCellId]
+    : null;
   if (!meta) {
     return null;
   }
@@ -203,7 +249,7 @@ export function getTerminalPaneCellsForOrientation(anchorCellId, orientation) {
   return null;
 }
 
-export function getTerminalPaneDiffCount(sourceCells, targetCells) {
+export function getTerminalPaneDiffCount(sourceCells: unknown, targetCells: unknown): number {
   const source = new Set(sortTerminalPaneCells(sourceCells));
   const target = new Set(sortTerminalPaneCells(targetCells));
   return TERMINAL_PANE_CELL_IDS.reduce((count, cellId) => (
@@ -211,13 +257,25 @@ export function getTerminalPaneDiffCount(sourceCells, targetCells) {
   ), 0);
 }
 
-export function normalizeTwoTerminalPaneLayout(rootCells, pane, preferredOrientation = null) {
+export interface NormalizedTwoPaneLayout {
+  orientation: 'rows' | 'cols';
+  paneCells: TerminalPaneCellId[];
+  rootCells: TerminalPaneCellId[];
+  preferredRank: number;
+  diff: number;
+}
+
+export function normalizeTwoTerminalPaneLayout(
+  rootCells: unknown,
+  pane: { cells?: unknown } | null | undefined,
+  preferredOrientation: 'rows' | 'cols' | null = null,
+): NormalizedTwoPaneLayout | null {
   const anchorCellId = sortTerminalPaneCells(pane?.cells)[0];
   if (!anchorCellId) {
     return null;
   }
 
-  const orientations = preferredOrientation === 'rows' || preferredOrientation === 'cols'
+  const orientations: Array<'rows' | 'cols'> = preferredOrientation === 'rows' || preferredOrientation === 'cols'
     ? [preferredOrientation, preferredOrientation === 'rows' ? 'cols' : 'rows']
     : ['rows', 'cols'];
 
@@ -232,9 +290,9 @@ export function normalizeTwoTerminalPaneLayout(rootCells, pane, preferredOrienta
       paneCells,
       rootCells: nextRootCells,
       preferredRank: index,
-      diff: getTerminalPaneDiffCount(rootCells, nextRootCells) + getTerminalPaneDiffCount(pane.cells, paneCells),
+      diff: getTerminalPaneDiffCount(rootCells, nextRootCells) + getTerminalPaneDiffCount(pane?.cells, paneCells),
     };
-  }).filter(Boolean);
+  }).filter((candidate): candidate is NormalizedTwoPaneLayout => candidate !== null);
 
   if (candidates.length === 0) {
     return null;
@@ -253,11 +311,11 @@ export function normalizeTwoTerminalPaneLayout(rootCells, pane, preferredOrienta
   return candidates[0];
 }
 
-export function runTerminalPaneLayoutSelfCheck() {
-  const assert = (condition, message) => {
+export function runTerminalPaneLayoutSelfCheck(): void {
+  const assert = (condition: unknown, message: string) => {
     if (!condition) throw new Error(`终端布局自检失败：${message}`);
   };
-  const assertPartition = (leftCells, rightCells, message) => {
+  const assertPartition = (leftCells: unknown, rightCells: unknown, message: string) => {
     const left = sortTerminalPaneCells(leftCells);
     const right = sortTerminalPaneCells(rightCells);
     assert(isTerminalPaneRectangular(left) && isTerminalPaneRectangular(right), `${message}必须保持矩形`);
@@ -267,11 +325,11 @@ export function runTerminalPaneLayoutSelfCheck() {
 
   const split = splitTerminalPaneCells(TERMINAL_PANE_CELL_IDS, 'top-right');
   assert(split, '完整面板必须可拆分');
-  assertPartition(split.newCells, split.remainingCells, '拆分结果');
+  assertPartition(split!.newCells, split!.remainingCells, '拆分结果');
 
   const normalized = normalizeTwoTerminalPaneLayout(['tl'], { cells: ['br'] });
   assert(normalized, '双面板布局必须可规范化');
-  assertPartition(normalized.rootCells, normalized.paneCells, '规范化结果');
+  assertPartition(normalized!.rootCells, normalized!.paneCells, '规范化结果');
 
   const remapped = remapTerminalPaneLayouts({
     root: {
@@ -284,7 +342,7 @@ export function runTerminalPaneLayoutSelfCheck() {
     },
   }, { root: 'root-next', child: 'child-next' }, 'session');
   assert(remapped['root-next']?.panes?.length === 2, '终端 ID 映射不能丢失面板');
-  assert(remapped['root-next'].panes[1].terminalId === 'child-next', '终端 ID 映射必须更新子终端');
+  assert(remapped['root-next']!.panes[1].terminalId === 'child-next', '终端 ID 映射必须更新子终端');
 }
 
 if (import.meta.env.DEV) runTerminalPaneLayoutSelfCheck();

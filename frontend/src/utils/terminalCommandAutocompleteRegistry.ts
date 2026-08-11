@@ -1,4 +1,36 @@
-function createArg(provider, config = {}) {
+import type { CommandInputContext } from './terminalCommandAutocompleteParser.js';
+
+/** 参数提供器类型：path=远程路径补全，literal=固定候选项 */
+export type ArgProviderName = 'path' | 'literal';
+
+export interface ArgRuleItem {
+  value: string;
+  description?: string;
+}
+
+export interface ArgRule {
+  provider: ArgProviderName;
+  repeat: boolean;
+  directoryOnly?: boolean;
+  fileOnly?: boolean;
+  badge?: string;
+  items?: ArgRuleItem[];
+}
+
+export interface CommandNode {
+  name: string;
+  description: string;
+  children: CommandNode[];
+  args: ArgRule[];
+}
+
+export type AutocompletePlan =
+  | { kind: 'root-command'; chainPath: string[]; node: CommandNode | null }
+  | { kind: 'child-command'; node: CommandNode; chainPath: string[] }
+  | { kind: 'arg-provider'; node: CommandNode; argRule: ArgRule; argIndex: number; chainPath: string[] }
+  | { kind: 'none'; node: CommandNode | null; chainPath: string[] };
+
+function createArg(provider: ArgProviderName, config: Partial<ArgRule> = {}): ArgRule {
   return {
     provider,
     repeat: false,
@@ -6,7 +38,7 @@ function createArg(provider, config = {}) {
   }
 }
 
-function createNode(name, config = {}) {
+function createNode(name: string, config: Partial<Omit<CommandNode, 'name'>> = {}): CommandNode {
   return {
     name,
     description: '',
@@ -16,7 +48,7 @@ function createNode(name, config = {}) {
   }
 }
 
-const CHMOD_MODE_ITEMS = [
+const CHMOD_MODE_ITEMS: ArgRuleItem[] = [
   { value: '644', description: '普通文件常用：所有者可写，其余只读' },
   { value: '600', description: '私有文件常用：仅所有者可读写' },
   { value: '755', description: '目录常用：所有者可写，其余可读可执行' },
@@ -28,7 +60,7 @@ const CHMOD_MODE_ITEMS = [
   { value: '1777', description: '共享临时目录常用：公开可写但受粘滞位保护' },
 ]
 
-export const ROOT_COMMAND_REGISTRY = [
+export const ROOT_COMMAND_REGISTRY: CommandNode[] = [
   createNode('cd', {
     description: '切换目录',
     args: [
@@ -291,7 +323,7 @@ export const ROOT_COMMAND_REGISTRY = [
 
 const ROOT_COMMAND_MAP = new Map(ROOT_COMMAND_REGISTRY.map((node) => [node.name, node]))
 
-function resolveArgRule(node, argIndex) {
+function resolveArgRule(node: CommandNode, argIndex: number): ArgRule | null {
   if (!node || !Array.isArray(node.args) || argIndex < 0 || node.args.length === 0) {
     return null
   }
@@ -304,11 +336,11 @@ function resolveArgRule(node, argIndex) {
   return lastArg?.repeat ? lastArg : null
 }
 
-export function getBuiltinCommandNames() {
+export function getBuiltinCommandNames(): string[] {
   return ROOT_COMMAND_REGISTRY.map((node) => node.name)
 }
 
-export function resolveAutocompletePlan(context) {
+export function resolveAutocompletePlan(context: CommandInputContext): AutocompletePlan {
   if (!context || context.currentTokenIndex === 0) {
     return {
       kind: 'root-command',
@@ -334,7 +366,7 @@ export function resolveAutocompletePlan(context) {
     }
   }
 
-  let activeNode = rootNode
+  let activeNode: CommandNode = rootNode
   let resolvedDepth = 1
   const chainPath = [rootNode.name]
 

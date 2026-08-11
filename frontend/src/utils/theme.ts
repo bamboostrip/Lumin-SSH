@@ -1,17 +1,142 @@
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 
+declare global {
+  interface Window {
+    /** 强制深色主题（平台级开关，如 Windows 标题栏深色适配） */
+    __luminForceDarkTheme?: boolean;
+  }
+}
+
 const THEME_PACKAGE_SCHEMA_VERSION = 1;
 const DEFAULT_LIGHT_THEME_PACKAGE_ID = 'lumin-light';
 const DEFAULT_DARK_THEME_PACKAGE_ID = 'lumin-dark';
 
-const LEGACY_THEME_PACKAGE_MAP = {
+const LEGACY_THEME_PACKAGE_MAP: Record<string, { light: string; dark: string }> = {
   lumin: { light: 'lumin-light', dark: 'lumin-dark' },
   'tokyo-night': { light: 'tokyo-night-light', dark: 'tokyo-night-dark' },
   catppuccin: { light: 'catppuccin-light', dark: 'catppuccin-dark' },
   dracula: { light: 'dracula-light', dark: 'dracula-dark' },
 };
 
-const TERMINAL_THEME_FAMILIES = {
+export type ThemeModeHint = 'light' | 'dark';
+export type ThemeModePreference = 'light' | 'dark' | 'system';
+
+/** 终端 xterm 调色板 */
+export interface TerminalXtermTheme {
+  background?: string;
+  foreground?: string;
+  cursor?: string;
+  cursorAccent?: string;
+  selectionBackground?: string;
+  selectionForeground?: string;
+  selectionInactiveBackground?: string;
+  black?: string;
+  red?: string;
+  green?: string;
+  yellow?: string;
+  blue?: string;
+  magenta?: string;
+  cyan?: string;
+  white?: string;
+  brightBlack?: string;
+  brightRed?: string;
+  brightGreen?: string;
+  brightYellow?: string;
+  brightBlue?: string;
+  brightMagenta?: string;
+  brightCyan?: string;
+  brightWhite?: string;
+  [key: string]: string | undefined;
+}
+
+/** 终端容器 chrome 配色 */
+export interface TerminalContainerTheme {
+  containerBg?: string;
+  tint?: string;
+  statusBarBg?: string;
+  statusBarBorder?: string;
+  statusBarColor?: string;
+  serverNameColor?: string;
+  inputBarBg?: string;
+  inputBarBorder?: string;
+  inputBg?: string;
+  inputColor?: string;
+  inputPlaceholder?: string;
+  popupBg?: string;
+  popupBorder?: string;
+  popupShadow?: string;
+  contextBg?: string;
+  contextBorder?: string;
+  contextShadow?: string;
+  separator?: string;
+  mutedColor?: string;
+  btnBorder?: string;
+  btnMuted?: string;
+  [key: string]: string | undefined;
+}
+
+/** 组件主题（fileManager / topbar / quickCommands / connectingCard / tabs 等） */
+export interface ThemeComponentStyle {
+  [key: string]: string | undefined;
+}
+
+export interface ThemeComponents {
+  tabs?: ThemeComponentStyle;
+  terminal?: {
+    xterm?: TerminalXtermTheme;
+    container?: TerminalContainerTheme;
+    [key: string]: unknown;
+  };
+  fileManager?: ThemeComponentStyle;
+  topbar?: ThemeComponentStyle;
+  quickCommands?: ThemeComponentStyle;
+  connectingCard?: ThemeComponentStyle;
+  [key: string]: unknown;
+}
+
+/** 主题预览（主题工具面板展示用） */
+export interface ThemePackagePreview {
+  surfaceBase: string;
+  surfaceRaised: string;
+  accent: string;
+  textPrimary: string;
+  terminalBg: string;
+  terminalFg: string;
+  terminalStatusBg: string;
+  terminalStatusColor: string;
+}
+
+/** 规范化后的主题包 */
+export interface ThemePackage {
+  schemaVersion: number;
+  id: string;
+  name: string;
+  description: string;
+  modeHint: ThemeModeHint;
+  source: string;
+  path: string;
+  tokens: Record<string, string>;
+  components: ThemeComponents;
+  resources: Record<string, unknown>;
+  preview?: ThemePackagePreview;
+}
+
+/** 主题设置 */
+export interface ThemePackageSettings {
+  themeMode: ThemeModePreference;
+  lightThemePackageId: string;
+  darkThemePackageId: string;
+}
+
+interface TerminalThemeFamilyMode {
+  name: string;
+  description: string;
+  accent: string;
+  xterm: TerminalXtermTheme;
+  container: TerminalContainerTheme;
+}
+
+const TERMINAL_THEME_FAMILIES: Record<string, Record<ThemeModeHint, TerminalThemeFamilyMode>> = {
   lumin: {
     dark: {
       name: '天青',
@@ -259,16 +384,16 @@ const TERMINAL_THEME_FAMILIES = {
   },
 };
 
-function normalizeThemeModePreference(value) {
+function normalizeThemeModePreference(value: unknown): ThemeModePreference {
   if (value === 'light' || value === 'system') return value;
   return 'dark';
 }
 
-function normalizeModeHint(value) {
+function normalizeModeHint(value: unknown): ThemeModeHint {
   return value === 'light' ? 'light' : 'dark';
 }
 
-function rgbTripletFromHexColor(hex, fallback = '37, 99, 235') {
+function rgbTripletFromHexColor(hex: string, fallback = '37, 99, 235'): string {
   if (!/^#[\da-fA-F]{6}$/.test(String(hex || '').trim())) return fallback;
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
@@ -276,12 +401,12 @@ function rgbTripletFromHexColor(hex, fallback = '37, 99, 235') {
   return `${r}, ${g}, ${b}`;
 }
 
-function rgbaFromHexColor(hex, alpha, fallback) {
+function rgbaFromHexColor(hex: string, alpha: number, fallback: string): string {
   if (!/^#[\da-fA-F]{6}$/.test(String(hex || '').trim())) return fallback;
   return `rgba(${rgbTripletFromHexColor(hex, '0, 0, 0')}, ${alpha})`;
 }
 
-function buildBaseThemeTokens(modeHint, accent) {
+function buildBaseThemeTokens(modeHint: unknown, accent: string): Record<string, string> {
   if (normalizeModeHint(modeHint) === 'light') {
     return {
       surfaceBase: '#f3f4f6',
@@ -360,7 +485,7 @@ function buildBaseThemeTokens(modeHint, accent) {
   };
 }
 
-function buildTabsComponent(modeHint) {
+function buildTabsComponent(modeHint: unknown): ThemeComponentStyle {
   if (normalizeModeHint(modeHint) === 'light') {
     return {
       inactiveBg: '#e4e8ee',
@@ -385,9 +510,20 @@ function buildTabsComponent(modeHint) {
   };
 }
 
-function buildDerivedComponentDefaults(modeHint, tokens = {}, terminalContainer = {}) {
+interface DerivedComponentDefaults {
+  fileManager: ThemeComponentStyle;
+  topbar: ThemeComponentStyle;
+  quickCommands: ThemeComponentStyle;
+  connectingCard: ThemeComponentStyle;
+}
+
+function buildDerivedComponentDefaults(
+  modeHint: unknown,
+  tokens: Record<string, string> = {},
+  terminalContainer: Record<string, string | undefined> = {},
+): DerivedComponentDefaults {
   const isLight = normalizeModeHint(modeHint) === 'light';
-  const fileManager = {
+  const fileManager: ThemeComponentStyle = {
     panelBg: tokens.surfaceBase || (isLight ? '#f3f4f6' : '#0f1319'),
     toolbarBg: tokens.surfaceRaised || (isLight ? '#ffffff' : '#141a23'),
     borderColor: tokens.borderSubtle || (isLight ? 'rgba(28, 35, 45, 0.10)' : 'rgba(72, 86, 110, 0.32)'),
@@ -401,13 +537,13 @@ function buildDerivedComponentDefaults(modeHint, tokens = {}, terminalContainer 
     pathTextColor: tokens.textPrimary || (isLight ? '#111827' : '#eef3f9'),
     folderTextColor: tokens.accent || (isLight ? '#2563eb' : '#4d9eff'),
   };
-  const topbar = {
+  const topbar: ThemeComponentStyle = {
     background: tokens.surfaceRaised || (isLight ? '#ffffff' : '#141a23'),
     borderBottomColor: tokens.borderSubtle || (isLight ? 'rgba(28, 35, 45, 0.10)' : 'rgba(72, 86, 110, 0.32)'),
     titleColor: tokens.textPrimary || (isLight ? '#111827' : '#eef3f9'),
   };
   // 快捷命令是 UI 面板，跟界面 tokens 走；不要优先 terminal.popup（复制深色终端到浅色 UI 会整块变深）
-  const quickCommands = {
+  const quickCommands: ThemeComponentStyle = {
     panelBg: tokens.surfaceOverlay || tokens.surfaceRaised || (isLight ? '#ffffff' : '#1a2130'),
     borderColor: tokens.borderSubtle || (isLight ? 'rgba(28, 35, 45, 0.10)' : 'rgba(72, 86, 110, 0.32)'),
     textColor: tokens.textPrimary || (isLight ? '#111827' : '#eef3f9'),
@@ -426,7 +562,7 @@ function buildDerivedComponentDefaults(modeHint, tokens = {}, terminalContainer 
   quickCommands.mutedColor = quickCommands.mutedTextColor;
   quickCommands.separator = quickCommands.separatorColor;
   // 连接中卡片是 UI 浮层，跟界面 tokens 走；不要优先 terminal.popup
-  const connectingCard = {
+  const connectingCard: ThemeComponentStyle = {
     overlayBg: isLight ? 'rgba(15, 23, 42, 0.28)' : 'rgba(0, 0, 0, 0.42)',
     cardBg: tokens.surfaceOverlay || tokens.surfaceRaised || (isLight ? '#ffffff' : '#1a2130'),
     borderColor: tokens.borderSubtle || (isLight ? 'rgba(28, 35, 45, 0.10)' : 'rgba(72, 86, 110, 0.32)'),
@@ -450,14 +586,14 @@ function buildDerivedComponentDefaults(modeHint, tokens = {}, terminalContainer 
   return { fileManager, topbar, quickCommands, connectingCard };
 }
 
-function getResolvedThemeComponentTheme(themePackage, name) {
+function getResolvedThemeComponentTheme(themePackage: ThemePackage | null | undefined, name: string): ThemeComponentStyle {
   const defaults = buildDerivedComponentDefaults(
     themePackage?.modeHint || 'dark',
     themePackage?.tokens || {},
     themePackage?.components?.terminal?.container || {},
   );
   return {
-    ...(defaults[name] || {}),
+    ...((defaults as unknown as Record<string, ThemeComponentStyle>)[name] || {}),
     ...(themePackage?.components?.[name] || {}),
   };
 }
@@ -502,7 +638,7 @@ const THEME_TOKEN_KEYS = [
   'fileIconShell',
 ];
 
-function clearThemePackageInlineVariables(target) {
+function clearThemePackageInlineVariables(target: HTMLElement | null | undefined): void {
   if (!target?.style) return;
   THEME_TOKEN_KEYS.forEach((key) => {
     target.style.removeProperty(toCssVarName(key));
@@ -512,13 +648,13 @@ function clearThemePackageInlineVariables(target) {
   });
 }
 
-function applyComponentThemeVariables(themePackage) {
+function applyComponentThemeVariables(themePackage: ThemePackage | null | undefined): void {
   if (typeof document === 'undefined') return;
   const target = document.body;
   if (!target) return;
   const fileManager = getResolvedThemeComponentTheme(themePackage, 'fileManager');
   const topbar = getResolvedThemeComponentTheme(themePackage, 'topbar');
-  const mappings = {
+  const mappings: Record<string, string | undefined> = {
     '--file-manager-panel-bg': fileManager.panelBg,
     '--file-manager-toolbar-bg': fileManager.toolbarBg,
     '--file-manager-border-color': fileManager.borderColor,
@@ -542,9 +678,9 @@ function applyComponentThemeVariables(themePackage) {
   });
 }
 
-function buildBuiltinThemePackages() {
+function buildBuiltinThemePackages(): ThemePackage[] {
   return Object.entries(TERMINAL_THEME_FAMILIES).flatMap(([familyKey, family]) => (
-    ['dark', 'light'].map((modeHint) => {
+    (['dark', 'light'] as ThemeModeHint[]).map((modeHint) => {
       const themeKey = `${familyKey}-${modeHint}`;
       const modeTheme = family[modeHint];
       return {
@@ -569,7 +705,7 @@ function buildBuiltinThemePackages() {
   ));
 }
 
-function buildThemePackagePreview(themePackage) {
+function buildThemePackagePreview(themePackage: ThemePackage | null | undefined): ThemePackagePreview {
   const preview = themePackage?.preview;
   if (preview && typeof preview === 'object') {
     return {
@@ -597,17 +733,25 @@ function buildThemePackagePreview(themePackage) {
 
 const BUILTIN_THEME_PACKAGES = buildBuiltinThemePackages();
 
-function buildThemePackageMap(packages) {
+function buildThemePackageMap(packages: ThemePackage[]): Map<string, ThemePackage> {
   return new Map((Array.isArray(packages) ? packages : []).map((item) => [item.id, item]));
 }
 
-function getFallbackThemePackageId(modeHint) {
+function getFallbackThemePackageId(modeHint: unknown): string {
   return normalizeModeHint(modeHint) === 'light'
     ? DEFAULT_LIGHT_THEME_PACKAGE_ID
     : DEFAULT_DARK_THEME_PACKAGE_ID;
 }
 
-function mergeLegacyThemePackageSettings(rawSettings) {
+interface ThemePackageSettingsInput {
+  themeMode?: unknown;
+  lightThemePackageId?: unknown;
+  darkThemePackageId?: unknown;
+  LightThemePackageID?: unknown;
+  DarkThemePackageID?: unknown;
+}
+
+function mergeLegacyThemePackageSettings(rawSettings: ThemePackageSettingsInput): ThemePackageSettingsInput {
   const next = { ...(rawSettings || {}) };
   if (next.lightThemePackageId && next.darkThemePackageId) {
     return next;
@@ -621,7 +765,7 @@ function mergeLegacyThemePackageSettings(rawSettings) {
   };
 }
 
-function readThemePackageSettingsFromLocalStorage() {
+function readThemePackageSettingsFromLocalStorage(): ThemePackageSettingsInput {
   if (typeof window === 'undefined') {
     return {
       themeMode: 'dark',
@@ -636,63 +780,71 @@ function readThemePackageSettingsFromLocalStorage() {
   });
 }
 
-function normalizeThemePackageRecord(record) {
+function normalizeThemePackageRecord(record: unknown): ThemePackage | null {
   if (!record || typeof record !== 'object') return null;
-  const id = String(record.id || '').trim();
+  const raw = record as Record<string, unknown>;
+  const id = String(raw.id || '').trim();
   if (!id) return null;
   const builtin = BUILTIN_THEME_PACKAGES.find((item) => item.id === id);
-  const modeHint = normalizeModeHint(record.modeHint || builtin?.modeHint || (id.endsWith('-light') ? 'light' : 'dark'));
-  const tokens = { ...(builtin?.tokens || {}), ...(record.tokens || {}) };
+  const modeHint = normalizeModeHint(raw.modeHint || builtin?.modeHint || (id.endsWith('-light') ? 'light' : 'dark'));
+  const tokens = { ...(builtin?.tokens || {}), ...(raw.tokens || {}) };
   const builtinTabs = builtin?.components?.tabs || {};
   const builtinTerminal = builtin?.components?.terminal || {};
   const components = {
     ...(builtin?.components || {}),
-    ...(record.components || {}),
+    ...(raw.components || {}),
     tabs: {
       ...builtinTabs,
-      ...(record?.components?.tabs || {}),
+      ...(raw?.components && typeof raw.components === 'object' ? (raw.components as Record<string, unknown>).tabs || {} : {}),
     },
     terminal: {
       ...builtinTerminal,
-      ...(record?.components?.terminal || {}),
+      ...(raw?.components && typeof raw.components === 'object' ? (raw.components as Record<string, unknown>).terminal || {} : {}),
       xterm: {
         ...(builtinTerminal.xterm || {}),
-        ...(record?.components?.terminal?.xterm || {}),
+        ...(raw?.components && typeof raw.components === 'object' && (raw.components as Record<string, unknown>).terminal
+          && typeof (raw.components as Record<string, unknown>).terminal === 'object'
+          ? ((raw.components as Record<string, unknown>).terminal as Record<string, unknown>).xterm || {} : {}),
       },
       container: {
         ...(builtinTerminal.container || {}),
-        ...(record?.components?.terminal?.container || {}),
+        ...(raw?.components && typeof raw.components === 'object' && (raw.components as Record<string, unknown>).terminal
+          && typeof (raw.components as Record<string, unknown>).terminal === 'object'
+          ? ((raw.components as Record<string, unknown>).terminal as Record<string, unknown>).container || {} : {}),
       },
     },
   };
   return {
-    schemaVersion: Number(record.schemaVersion || builtin?.schemaVersion || THEME_PACKAGE_SCHEMA_VERSION),
+    schemaVersion: Number(raw.schemaVersion || builtin?.schemaVersion || THEME_PACKAGE_SCHEMA_VERSION),
     id,
-    name: String(record.name || builtin?.name || id).trim() || id,
-    description: String(record.description || builtin?.description || '').trim(),
+    name: String(raw.name || builtin?.name || id).trim() || id,
+    description: String(raw.description || builtin?.description || '').trim(),
     modeHint,
-    source: String(record.source || builtin?.source || 'builtin').trim() || 'builtin',
-    path: String(record.path || '').trim(),
+    source: String(raw.source || builtin?.source || 'builtin').trim() || 'builtin',
+    path: String(raw.path || '').trim(),
     tokens,
     components,
-    resources: { ...(builtin?.resources || {}), ...(record.resources || {}) },
+    resources: { ...(builtin?.resources || {}), ...(raw.resources || {}) },
     preview: buildThemePackagePreview({
       ...builtin,
-      ...record,
+      ...raw,
       tokens,
       components,
-    }),
+    } as ThemePackage),
   };
 }
 
-let themePackagesCache = BUILTIN_THEME_PACKAGES.map((item) => normalizeThemePackageRecord(item)).filter(Boolean);
+let themePackagesCache: ThemePackage[] = BUILTIN_THEME_PACKAGES.map((item) => normalizeThemePackageRecord(item)).filter((item): item is ThemePackage => item !== null);
 let themePackageMapCache = buildThemePackageMap(themePackagesCache);
-let themePackageSettingsCache = null;
+let themePackageSettingsCache: ThemePackageSettings | null = null;
 let themeRuntimeListenersBound = false;
-let systemThemeChangeUnbind = null;
-let themeToolPreviewPackageCache = null;
+let systemThemeChangeUnbind: (() => void) | null = null;
+let themeToolPreviewPackageCache: ThemePackage | null = null;
 
-function normalizeThemePackageSettings(settings, packageMap = themePackageMapCache) {
+function normalizeThemePackageSettings(
+  settings: ThemePackageSettingsInput | null | undefined,
+  packageMap: Map<string, ThemePackage> = themePackageMapCache,
+): ThemePackageSettings {
   const next = mergeLegacyThemePackageSettings({
     themeMode: settings?.themeMode,
     lightThemePackageId: settings?.lightThemePackageId ?? settings?.LightThemePackageID,
@@ -714,26 +866,26 @@ function normalizeThemePackageSettings(settings, packageMap = themePackageMapCac
   };
 }
 
-function persistThemePackageSettingsToLocalStorage(settings) {
+function persistThemePackageSettingsToLocalStorage(settings: ThemePackageSettings): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem('themeMode', settings.themeMode);
   localStorage.setItem('lightThemePackageId', settings.lightThemePackageId);
   localStorage.setItem('darkThemePackageId', settings.darkThemePackageId);
 }
 
-function getSystemThemeMode() {
+function getSystemThemeMode(): ThemeModeHint {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'dark';
   return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
 }
 
-export function getThemePackageSettings() {
+export function getThemePackageSettings(): ThemePackageSettings {
   if (!themePackageSettingsCache) {
     themePackageSettingsCache = normalizeThemePackageSettings(readThemePackageSettingsFromLocalStorage());
   }
   return { ...themePackageSettingsCache };
 }
 
-export function getAppThemeMode() {
+export function getAppThemeMode(): ThemeModeHint {
   if (typeof window !== 'undefined' && window.__luminForceDarkTheme === true) {
     return 'dark';
   }
@@ -746,14 +898,14 @@ export function getAppThemeMode() {
     : normalizeModeHint(settings.themeMode);
 }
 
-function getActiveThemePackageId(mode = getAppThemeMode()) {
+function getActiveThemePackageId(mode: ThemeModeHint = getAppThemeMode()): string {
   const settings = getThemePackageSettings();
   return mode === 'light'
     ? settings.lightThemePackageId
     : settings.darkThemePackageId;
 }
 
-function getActiveThemePackage(mode = getAppThemeMode()) {
+function getActiveThemePackage(mode: ThemeModeHint = getAppThemeMode()): ThemePackage | undefined {
   if (themeToolPreviewPackageCache) {
     return themeToolPreviewPackageCache;
   }
@@ -761,16 +913,16 @@ function getActiveThemePackage(mode = getAppThemeMode()) {
   return themePackageMapCache.get(id) || themePackageMapCache.get(getFallbackThemePackageId(mode)) || themePackagesCache[0];
 }
 
-function toCssVarName(key) {
+function toCssVarName(key: string): string {
   return `--${String(key || '').replace(/[A-Z]/g, (match) => `-${match.toLowerCase()}`)}`;
 }
 
-function applyTabsThemeComponent(themePackage) {
+function applyTabsThemeComponent(themePackage: ThemePackage | null | undefined): void {
   if (typeof document === 'undefined') return;
   const target = document.body;
   if (!target) return;
   const tabs = themePackage?.components?.tabs || {};
-  const mappings = {
+  const mappings: Record<string, string> = {
     inactiveBg: '--tab-inactive-bg',
     inactiveBgHover: '--tab-inactive-bg-hover',
     inactiveBorder: '--tab-inactive-border',
@@ -788,7 +940,7 @@ function applyTabsThemeComponent(themePackage) {
   });
 }
 
-export function applyStoredThemePackage() {
+export function applyStoredThemePackage(): void {
   if (typeof document === 'undefined') return;
   if (!themePackageSettingsCache) {
     themePackageSettingsCache = normalizeThemePackageSettings(readThemePackageSettingsFromLocalStorage());
@@ -810,7 +962,7 @@ export function applyStoredThemePackage() {
   applyTabsThemeComponent(activeThemePackage);
 }
 
-async function syncThemePackageSettingsToBackend(settings) {
+async function syncThemePackageSettingsToBackend(settings: ThemePackageSettings): Promise<void> {
   const normalizedSettings = normalizeThemePackageSettings(settings);
   try {
     await AppGo.SaveThemePackageSettings({
@@ -821,17 +973,18 @@ async function syncThemePackageSettingsToBackend(settings) {
   } catch (_) {}
 }
 
-function mergeThemePackagesFromBackend(records) {
+function mergeThemePackagesFromBackend(records: unknown): ThemePackage[] {
   if (!Array.isArray(records) || records.length === 0) {
     return themePackagesCache;
   }
   const normalized = records
     .map((record) => normalizeThemePackageRecord(record))
-    .filter(Boolean);
+    .filter((item): item is ThemePackage => item !== null);
   return normalized.length > 0 ? normalized : themePackagesCache;
 }
 
-function handleThemeRuntimeRefresh({ syncBackend = false } = {}) {
+function handleThemeRuntimeRefresh(options: { syncBackend?: boolean } = {}): void {
+  const { syncBackend = false } = options;
   const nextSettings = normalizeThemePackageSettings(readThemePackageSettingsFromLocalStorage());
   const changed = JSON.stringify(nextSettings) !== JSON.stringify(themePackageSettingsCache || {});
   themePackageSettingsCache = nextSettings;
@@ -842,7 +995,7 @@ function handleThemeRuntimeRefresh({ syncBackend = false } = {}) {
   }
 }
 
-function bindThemeRuntimeListeners() {
+function bindThemeRuntimeListeners(): void {
   if (themeRuntimeListenersBound || typeof window === 'undefined') return;
   themeRuntimeListenersBound = true;
   window.addEventListener('theme-mode-changed', () => {
@@ -869,7 +1022,7 @@ function bindThemeRuntimeListeners() {
   }
 }
 
-export async function loadThemePackages() {
+export async function loadThemePackages(): Promise<{ packages: ThemePackage[]; settings: ThemePackageSettings }> {
   bindThemeRuntimeListeners();
   themePackageSettingsCache = normalizeThemePackageSettings(readThemePackageSettingsFromLocalStorage());
   persistThemePackageSettingsToLocalStorage(themePackageSettingsCache);
@@ -886,7 +1039,7 @@ export async function loadThemePackages() {
     applyStoredThemePackage();
     await syncThemePackageSettingsToBackend(themePackageSettingsCache);
   } catch (_) {
-    themePackagesCache = BUILTIN_THEME_PACKAGES.map((item) => normalizeThemePackageRecord(item)).filter(Boolean);
+    themePackagesCache = BUILTIN_THEME_PACKAGES.map((item) => normalizeThemePackageRecord(item)).filter((item): item is ThemePackage => item !== null);
     themePackageMapCache = buildThemePackageMap(themePackagesCache);
     themePackageSettingsCache = normalizeThemePackageSettings(themePackageSettingsCache, themePackageMapCache);
     persistThemePackageSettingsToLocalStorage(themePackageSettingsCache);
@@ -898,7 +1051,7 @@ export async function loadThemePackages() {
   };
 }
 
-export async function saveThemePackageSettings(nextSettings) {
+export async function saveThemePackageSettings(nextSettings: ThemePackageSettingsInput): Promise<ThemePackageSettings> {
   bindThemeRuntimeListeners();
   themePackageSettingsCache = normalizeThemePackageSettings({
     ...getThemePackageSettings(),
@@ -915,15 +1068,15 @@ export async function saveThemePackageSettings(nextSettings) {
   return { ...themePackageSettingsCache };
 }
 
-export function listThemePackages() {
+export function listThemePackages(): ThemePackage[] {
   return themePackagesCache.map((item) => ({ ...item }));
 }
 
-export function getThemeComponentTheme(name) {
+export function getThemeComponentTheme(name: string): ThemeComponentStyle {
   return getResolvedThemeComponentTheme(getActiveThemePackage(), String(name || '').trim());
 }
 
-export function setThemeToolPreviewPackage(record) {
+export function setThemeToolPreviewPackage(record: unknown): void {
   const normalized = normalizeThemePackageRecord(record);
   if (!normalized) {
     return;
@@ -936,7 +1089,7 @@ export function setThemeToolPreviewPackage(record) {
   }
 }
 
-export function clearThemeToolPreviewPackage() {
+export function clearThemeToolPreviewPackage(): void {
   if (!themeToolPreviewPackageCache) {
     return;
   }
@@ -948,12 +1101,12 @@ export function clearThemeToolPreviewPackage() {
   }
 }
 
-function relativeLuminanceFromThemeColor(value) {
+function relativeLuminanceFromThemeColor(value: string): number | null {
   const raw = String(value || '').trim();
   if (!raw) return null;
-  let r;
-  let g;
-  let b;
+  let r: number;
+  let g: number;
+  let b: number;
   if (/^#[\da-fA-F]{6}$/i.test(raw)) {
     r = parseInt(raw.slice(1, 3), 16);
     g = parseInt(raw.slice(3, 5), 16);
@@ -970,7 +1123,7 @@ function relativeLuminanceFromThemeColor(value) {
 }
 
 // 颜色是否为「全透明」值（#00000000 / 任意 alpha=0 的 8 位 hex / rgba(...,0) / transparent）
-function isFullyTransparentColor(value) {
+function isFullyTransparentColor(value: string): boolean {
   const raw = String(value || '').trim();
   if (!raw || raw.toLowerCase() === 'transparent') return true;
   if (/^#[\da-f]{8}$/i.test(raw)) return raw.slice(7).toLowerCase() === '00';
@@ -980,16 +1133,16 @@ function isFullyTransparentColor(value) {
 // xterm 的默认背景必须是不透明色：nano/vim 等 TUI 的反转显示（SGR 7，如 nano 底部
 // 快捷键栏、粘贴/选区高亮）会用主题 background 与前景互换；若 background 是透明值，
 // 互换结果退化成黑色，浅色模式下出现「黑字黑底」完全不可见
-export function getSolidTerminalBackground(terminalTheme) {
+export function getSolidTerminalBackground(terminalTheme: { xterm?: TerminalXtermTheme; container?: TerminalContainerTheme } | null | undefined): string {
   const xterm = terminalTheme?.xterm || {};
   const container = terminalTheme?.container || {};
-  if (!isFullyTransparentColor(xterm.background)) return xterm.background;
-  if (!isFullyTransparentColor(container.containerBg)) return container.containerBg;
+  if (!isFullyTransparentColor(xterm.background || '')) return xterm.background || '';
+  if (!isFullyTransparentColor(container.containerBg || '')) return container.containerBg || '';
   return isDarkTerminalSurface(terminalTheme) ? '#0e1218' : '#f3f4f6';
 }
 
 // 按终端输出区底色判断深浅（不要看 inputBar：浅色 UI 会改成浅色 chrome）
-export function isDarkTerminalSurface(terminalTheme) {
+export function isDarkTerminalSurface(terminalTheme: { xterm?: TerminalXtermTheme; container?: TerminalContainerTheme } | null | undefined): boolean {
   const container = terminalTheme?.container || {};
   const xterm = terminalTheme?.xterm || {};
   const bgCandidate = String(xterm.background || '').trim();
@@ -999,14 +1152,21 @@ export function isDarkTerminalSurface(terminalTheme) {
     ? bgCandidate
     : '';
   const bgLuma = relativeLuminanceFromThemeColor(solidXtermBg)
-    ?? relativeLuminanceFromThemeColor(container.containerBg);
+    ?? relativeLuminanceFromThemeColor(container.containerBg || '');
   if (bgLuma != null) return bgLuma < 0.45;
-  const fgLuma = relativeLuminanceFromThemeColor(xterm.foreground);
+  const fgLuma = relativeLuminanceFromThemeColor(xterm.foreground || '');
   if (fgLuma != null) return fgLuma > 0.55;
   return getAppThemeMode() !== 'light';
 }
 
-export function getTerminalTheme() {
+/** 终端主题（xterm 调色板 + 容器 chrome） */
+export interface TerminalTheme {
+  xterm: TerminalXtermTheme;
+  container: TerminalContainerTheme;
+  [key: string]: unknown;
+}
+
+export function getTerminalTheme(): TerminalTheme {
   const activeThemePackage = getActiveThemePackage();
   const terminal = activeThemePackage?.components?.terminal || {
     xterm: {},
@@ -1025,7 +1185,7 @@ export function getTerminalTheme() {
 
   // 浅色 UI：输入条/搜索栏等 chrome 跟界面一致，终端输出区仍用包内 xterm
   if (normalizeModeHint(activeThemePackage?.modeHint) !== 'light') {
-    return { ...terminal, xterm: sourceXterm };
+    return { ...terminal, container: terminal.container || {}, xterm: sourceXterm };
   }
   const tokens = activeThemePackage?.tokens || {};
   const sourceContainer = terminal.container || {};
@@ -1060,7 +1220,7 @@ export function getTerminalTheme() {
   };
 }
 
-export function hexToRgb(hex) {
+export function hexToRgb(hex: string): string {
   if (!/^#[\da-fA-F]{6}$/.test(String(hex || '').trim())) {
     return '0, 0, 0';
   }

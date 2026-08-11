@@ -25,7 +25,7 @@ const VIEWABLE_EXTS = new Set([
 ]);
 
 // 提取文件名最后一个扩展名（小写），无扩展名返回 ''
-function lastExt(name) {
+function lastExt(name: string): string {
   const base = String(name || '');
   const idx = base.lastIndexOf('.');
   if (idx <= 0 || idx === base.length - 1) return '';
@@ -34,24 +34,24 @@ function lastExt(name) {
 
 /**
  * 是否为压缩包
- * @param {string} name 文件名（不含路径）
+ * @param name 文件名（不含路径）
  */
-export function isArchive(name) {
+export function isArchive(name: string): boolean {
   return ARCHIVE_EXTS.has(lastExt(name));
 }
 
 /**
  * 是否为不适合编辑的二进制文件
- * @param {string} name 文件名（不含路径）
+ * @param name 文件名（不含路径）
  */
-export function isBinaryLike(name) {
+export function isBinaryLike(name: string): boolean {
   return BINARY_EXTS.has(lastExt(name));
 }
 
 /**
  * 是否为适合系统关联程序查看的媒体文件（图片/音视频/PDF）
- * @param {string} name 文件名（不含路径）
+ * @param name 文件名（不含路径）
  */
-export function isViewable(name) {
+export function isViewable(name: string): boolean {
   return VIEWABLE_EXTS.has(lastExt(name));
 }

@@ -1,20 +1,37 @@
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js'
+import type { programfonts } from '../../wailsjs/go/models.js'
 
 export const PROGRAM_FONT_STORAGE_KEYS = {
   ui: 'programFont.ui.fileName',
   terminal: 'programFont.terminal.fileName',
   ai: 'programFont.ai.fileName',
-}
+} as const;
+
+export type ProgramFontTarget = keyof typeof PROGRAM_FONT_STORAGE_KEYS;
 
 export const DEFAULT_PROGRAM_FONT_STACKS = {
   ui: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
   terminal: "'JetBrains Mono', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Fira Code', monospace",
   ai: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+} as const;
+
+/** 程序字体分配（目标 → 字体文件名） */
+export interface ProgramFontAssignments {
+  uiFileName: string;
+  terminalFileName: string;
+  aiFileName: string;
 }
 
-const loadedProgramFontFamilies = new Map()
+/** 解析后的程序字体偏好（含最终 font-family） */
+export interface ProgramFontPreferences extends ProgramFontAssignments {
+  uiFontFamily: string;
+  terminalFontFamily: string;
+  aiFontFamily: string;
+}
 
-let cachedProgramFontPreferences = {
+const loadedProgramFontFamilies = new Map<string, string>()
+
+let cachedProgramFontPreferences: ProgramFontPreferences = {
   uiFileName: '',
   terminalFileName: '',
   aiFileName: '',
@@ -23,19 +40,19 @@ let cachedProgramFontPreferences = {
   aiFontFamily: DEFAULT_PROGRAM_FONT_STACKS.ai,
 }
 
-function getProgramFontStorageKey(target) {
+function getProgramFontStorageKey(target: string): string {
   if (target === 'ui' || target === 'terminal' || target === 'ai') {
     return PROGRAM_FONT_STORAGE_KEYS[target]
   }
   return ''
 }
 
-function createProgramFontFaceFamily(fileName) {
+function createProgramFontFaceFamily(fileName: string): string {
   const normalizedName = String(fileName || '').trim().replace(/[^a-zA-Z0-9_-]+/g, '_')
   return `LuminProgramFont_${normalizedName || 'Custom'}_${Date.now().toString(36)}`
 }
 
-function getStoredProgramFontFileName(target) {
+function getStoredProgramFontFileName(target: string): string {
   const storageKey = getProgramFontStorageKey(target)
   if (!storageKey) {
     return ''
@@ -44,7 +61,7 @@ function getStoredProgramFontFileName(target) {
   return typeof storedValue === 'string' ? storedValue.trim() : ''
 }
 
-function setStoredProgramFontFileName(target, fileName) {
+function setStoredProgramFontFileName(target: string, fileName: string): void {
   const storageKey = getProgramFontStorageKey(target)
   if (!storageKey) {
     return
@@ -57,7 +74,7 @@ function setStoredProgramFontFileName(target, fileName) {
   localStorage.removeItem(storageKey)
 }
 
-function invalidateLoadedProgramFont(fileName) {
+function invalidateLoadedProgramFont(fileName: unknown): void {
   const normalizedFileName = typeof fileName === 'string' ? fileName.trim() : ''
   if (!normalizedFileName) {
     return
@@ -65,7 +82,7 @@ function invalidateLoadedProgramFont(fileName) {
   loadedProgramFontFamilies.delete(normalizedFileName)
 }
 
-async function ensureProgramFontLoaded(fileName) {
+async function ensureProgramFontLoaded(fileName: string): Promise<string> {
   const normalizedFileName = typeof fileName === 'string' ? fileName.trim() : ''
   if (!normalizedFileName) {
     return ''
@@ -86,7 +103,7 @@ async function ensureProgramFontLoaded(fileName) {
   return familyName
 }
 
-function buildResolvedProgramFontFamily(fileName, fallbackFontFamily) {
+function buildResolvedProgramFontFamily(fileName: string, fallbackFontFamily: string): string {
   const normalizedFileName = typeof fileName === 'string' ? fileName.trim() : ''
   const fallback = typeof fallbackFontFamily === 'string' && fallbackFontFamily.trim() ? fallbackFontFamily : 'sans-serif'
   const familyName = normalizedFileName ? loadedProgramFontFamilies.get(normalizedFileName) || '' : ''
@@ -96,7 +113,7 @@ function buildResolvedProgramFontFamily(fileName, fallbackFontFamily) {
   return `"${familyName}", ${fallback}`
 }
 
-function normalizeProgramFontAssignments(preferences = {}) {
+function normalizeProgramFontAssignments(preferences: Partial<ProgramFontAssignments> = {}): ProgramFontAssignments {
   return {
     uiFileName: typeof preferences.uiFileName === 'string' ? preferences.uiFileName.trim() : '',
     terminalFileName: typeof preferences.terminalFileName === 'string' ? preferences.terminalFileName.trim() : '',
@@ -104,11 +121,11 @@ function normalizeProgramFontAssignments(preferences = {}) {
   }
 }
 
-export function getResolvedProgramFontPreferences() {
+export function getResolvedProgramFontPreferences(): ProgramFontPreferences {
   return { ...cachedProgramFontPreferences }
 }
 
-export async function applyProgramFontPreferences() {
+export async function applyProgramFontPreferences(): Promise<ProgramFontPreferences> {
   const uiFileName = getStoredProgramFontFileName('ui')
   const terminalFileName = getStoredProgramFontFileName('terminal')
   const aiFileName = getStoredProgramFontFileName('ai')
@@ -128,27 +145,27 @@ export async function applyProgramFontPreferences() {
     terminalFontFamily,
     aiFontFamily,
   }
-  window.dispatchEvent(new CustomEvent('program-font-settings-changed', {
+  window.dispatchEvent(new CustomEvent<ProgramFontPreferences>('program-font-settings-changed', {
     detail: { ...cachedProgramFontPreferences },
   }))
   return getResolvedProgramFontPreferences()
 }
 
-export async function setProgramFontPreference(target, fileName) {
+export async function setProgramFontPreference(target: string, fileName: string): Promise<ProgramFontPreferences> {
   setStoredProgramFontFileName(target, fileName)
   return applyProgramFontPreferences()
 }
 
-export function getProgramFontPreference(target) {
+export function getProgramFontPreference(target: string): string {
   return getStoredProgramFontFileName(target)
 }
 
-export async function listProgramFonts() {
+export async function listProgramFonts(): Promise<programfonts.ProgramFontInfo[]> {
   const fonts = await AppGo.ListProgramFonts()
   return Array.isArray(fonts) ? fonts : []
 }
 
-export async function importProgramFontFiles(filePaths) {
+export async function importProgramFontFiles(filePaths: unknown): Promise<programfonts.ProgramFontInfo[]> {
   const normalizedPaths = Array.isArray(filePaths)
     ? filePaths.filter((item) => typeof item === 'string' && item.trim()).map((item) => item.trim())
     : []
@@ -162,12 +179,12 @@ export async function importProgramFontFiles(filePaths) {
   return resolvedFonts
 }
 
-export async function selectAndImportProgramFontFiles() {
+export async function selectAndImportProgramFontFiles(): Promise<programfonts.ProgramFontInfo[]> {
   const selectedPaths = await AppGo.SelectProgramFontFiles()
   return importProgramFontFiles(selectedPaths)
 }
 
-export async function deleteProgramFont(fileName) {
+export async function deleteProgramFont(fileName: string): Promise<ProgramFontAssignments> {
   const normalizedFileName = typeof fileName === 'string' ? fileName.trim() : ''
   if (!normalizedFileName) {
     return getProgramFontAssignmentSnapshot()
@@ -184,6 +201,6 @@ export async function deleteProgramFont(fileName) {
   return getProgramFontAssignmentSnapshot()
 }
 
-export function getProgramFontAssignmentSnapshot() {
+export function getProgramFontAssignmentSnapshot(): ProgramFontAssignments {
   return normalizeProgramFontAssignments(getResolvedProgramFontPreferences())
 }

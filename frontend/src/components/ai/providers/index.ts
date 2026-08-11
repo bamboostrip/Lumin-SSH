@@ -1,5 +1,4 @@
-// @ts-nocheck
-// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
+// 桥接模块（自 .js 收编后类型化）：AI 供应商注册表
 import { compatibleProvider } from './compatibleProvider.ts'
 import { messagesProvider } from './messagesProvider.ts'
 import { responsesProvider } from './responsesProvider.ts'
@@ -17,11 +16,11 @@ export const availableAIProviderOptions = availableAIProviders.map((provider) =>
 
 const providerMap = new Map(availableAIProviders.map((provider) => [provider.value, provider]))
 
-export function getAIProviderDefinition(value) {
+export function getAIProviderDefinition(value: unknown) {
   const nextValue = typeof value === 'string' ? value.trim() : ''
   return providerMap.get(nextValue) || compatibleProvider
 }
 
-export function canUseDedicatedWebSearchCandidate(value) {
+export function canUseDedicatedWebSearchCandidate(value: unknown): boolean {
   return getAIProviderDefinition(value).supportsDedicatedWebSearchCandidate === true
 }

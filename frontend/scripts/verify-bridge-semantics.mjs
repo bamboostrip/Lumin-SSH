@@ -15,6 +15,8 @@ const I18N = 'export const t = (k) => k; export const getLanguage = () => "zh-CN
 function installWindowMock() {
   global.window = {
     dispatchEvent: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
     go: {
       wailsapp: {
         AIBindings: {
@@ -24,6 +26,22 @@ function installWindowMock() {
           DeleteAIConversationBackup: async () => {},
           GetProxyNodes: async () => [{ id: 'p1', host: 'h', port: 1080 }],
           SaveProxyNodes: async () => {},
+          ListAIConversations: async () => [{ id: 'c1', title: 'T' }],
+          CreateAIConversation: async (t) => ({ id: 'c-new', title: t || 'x' }),
+          GetAIAssistantFirstReply: async () => 'reply',
+          GetAIConversation: async () => ({ id: 'c1', messages: [{ id: 'm1', kind: 'user' }] }),
+          SearchAIConversationMessages: async () => [{ conversationId: 'c1', role: 'user' }],
+          SaveAIConversation: async (s) => JSON.parse(s),
+          DeleteAIConversation: async () => {},
+          CondenseAIConversationContext: async () => ({ id: 'c1', snapshot: { id: 'c1' } }),
+          PreviewAIConversationContextCondense: async () => ({ id: 'c1', snapshot: { id: 'c1' } }),
+          ProbeAIProviderLiveness: async () => true,
+          CreateAIConversationSummarySubtask: async () => ({ snapshot: { id: 'c1' }, continueText: 'ct' }),
+          OpenAIConversationFolder: async () => {},
+          PreprocessAIConversationLongText: async () => 'pp',
+          ReadAIConversationWrappedFile: async () => 'wrapped',
+          BuildAIConversationTokenLedger: async () => ({ systemRawTokens: '10', entries: [{ messageId: 'm1', rawTokens: '5' }], contextTokens: '3' }),
+          CountAIConversationAPIMessageRawTokens: async () => [{ messageId: 'm1', rawTokens: '5' }],
         },
         App: {
           GetProxyNodes: async () => [{ id: 'p1', host: 'h', port: 1080 }],
@@ -201,6 +219,52 @@ for (const file of files) {
     for (const v of [undefined, null, '', 'data:image/png;base64,AAAA', 'rawbase64data', 'a,b']) {
       await compare(`size#${String(v)}`, (m) => m.calculateBase64Size(v));
     }
+  } else if (idx === 'compatibleProvider' || idx === 'responsesProvider') {
+    for (const v of [undefined, null, '', 'gpt-5.4', 'gpt-5.2-x', 'gpt-5.1', 'gpt-5-chat', 'gpt-5', 'gpt-5-2025-06-01', 'o4-mini-high', 'o3-mini-low', 'o3', 'o1-preview', 'codex-mini', 'gpt-4o', '  GPT-5.4  ', 42]) {
+      await compare(`cap#${String(v)}`, (m) => m[idx === 'compatibleProvider' ? 'compatibleProvider' : 'responsesProvider'].getModelCapability(v));
+    }
+    if (idx === 'responsesProvider') {
+      for (const v of [undefined, '', 'gpt-5.6', 'gpt-5.5-x', 'gpt-5.4', 'gpt-5.2', 'gpt-5', 'gpt-4.1', 'gpt-3.5', 'unknown-model']) {
+        await compare(`cache#${String(v)}`, (m) => m.responsesProvider.getPromptCacheStrategyOptions(v));
+      }
+    }
+  } else if (idx === 'index') {
+    for (const v of [undefined, null, '', 'Compatible', 'Responses', 'Messages', 'nope', ' compatible ']) {
+      await compare(`def#${String(v)}`, (m) => m.getAIProviderDefinition(v).value);
+      await compare(`web#${String(v)}`, (m) => m.canUseDedicatedWebSearchCandidate(v));
+    }
+    await compare('options', (m) => m.availableAIProviderOptions);
+    await compare('providers', (m) => m.availableAIProviders.map((p) => p.value));
+  } else if (idx === 'aiConversationBridge') {
+    const snapshotCases = [undefined, null, {}, { id: 'c1', title: 'T', messages: [{ id: 'm1', kind: 'user', text: 'hi' }], apiMessages: [{ role: 'user', content: 'x' }], settings: { alwaysAllowWrite: true } }, { id: '  c2  ', archived: true, messageCount: 3, promptCacheBypassTimestamp: 'ts' }];
+    for (let i = 0; i < snapshotCases.length; i++) {
+      await compare(`snap#${i}`, (m) => m.normalizeAIConversationSnapshot(snapshotCases[i]));
+      await compare(`summ#${i}`, (m) => m.normalizeAIConversationSummary(snapshotCases[i]));
+      await compare(`task#${i}`, (m) => m.normalizeAIConversationTaskSettings(snapshotCases[i]));
+    }
+    const messageCases = [undefined, null, {}, { id: 'm1', kind: 'tool', question: 'q', questions: [{ text: 'q1', type: 'multi_select', options: [{ answer: 'a' }, {}] }], images: ['i1', '', 5], extra: { a: 1 } }];
+    for (let i = 0; i < messageCases.length; i++) {
+      await compare(`msg#${i}`, (m) => m.normalizeAIConversationMessage(messageCases[i]));
+      await compare(`api#${i}`, (m) => m.normalizeAIConversationAPIMessage(messageCases[i]));
+    }
+    await compare('search', (m) => m.normalizeAIConversationMessageSearchResult({ conversationId: ' c ', role: 'user', updatedAt: 5 }));
+    await compare('list', (m) => m.listAIConversations());
+    await compare('create', (m) => m.createAIConversation('title'));
+    await compare('first', (m) => m.getAIAssistantFirstReply());
+    await compare('get', (m) => m.getAIConversation('c1'));
+    await compare('searchMsgs', (m) => m.searchAIConversationMessages('q', 'c1', 10));
+    await compare('save', (m) => m.saveAIConversation({ id: 'c1', messages: [] }));
+    await compare('delete', (m) => m.deleteAIConversation('c1'));
+    await compare('condense', (m) => m.condenseAIConversationContext('c1', 's1'));
+    await compare('preview', (m) => m.previewAIConversationContextCondense('c1', 's1'));
+    await compare('probe', (m) => m.probeAIProviderLiveness('c1', 's1'));
+    await compare('subtask', (m) => m.createAIConversationSummarySubtask('c1', 's1'));
+    await compare('openFolder', (m) => m.openAIConversationFolder('c1'));
+    await compare('preprocess', (m) => m.preprocessAIConversationLongText('c1', 'text'));
+    await compare('readWrapped', (m) => m.readAIConversationWrappedFile('c1', '/p'));
+    await compare('ledger', (m) => m.buildAIConversationTokenLedger('s1', { id: 'c1' }));
+    await compare('countTokens', (m) => m.countAIConversationAPIMessageRawTokens('s1', 'c1', [{ role: 'user', content: 'x' }]));
+    await compare('subscribe', (m) => { const off = m.subscribeAIConversationChanges(() => {}); const r = typeof off === 'function'; off(); return r; });
   } else {
     console.log(`${idx}: 未知模块（无测试用例），跳过`);
   }

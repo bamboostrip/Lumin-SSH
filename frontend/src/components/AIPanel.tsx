@@ -89,7 +89,7 @@ interface AIMessage {
 }
 
 interface APIHistoryMessage {
-  role: 'user' | 'assistant' | 'system'
+  role: string
   content: string
   messageId: string
   uiMessageIds: string[]
@@ -2065,8 +2065,8 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       return {
         ...current,
         conversation: saved,
-        messages: saved.messages,
-        apiMessages: saved.apiMessages,
+        messages: saved.messages || [],
+        apiMessages: saved.apiMessages || [],
       }
     })
     void refreshAIConversationContextTokens(saved, targetPanelKey)

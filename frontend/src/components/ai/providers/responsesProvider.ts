@@ -1,5 +1,6 @@
-// @ts-nocheck
-// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
+// 桥接模块（自 .js 收编后类型化）：Responses 供应商模型能力与 Prompt Cache 策略
+import type { ModelCapability } from './messagesProvider.ts'
+
 const VALID_REASONING_EFFORTS = new Set(['disable', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh'])
 const GPT_VERSION_PATTERN = /^gpt-(\d+)(?:\.(\d+))?/
 const RESPONSES_24H_ONLY_PATTERN = /^gpt-5\.5(?:$|[-.])/
@@ -12,7 +13,7 @@ const RESPONSES_24H_CAPABLE_PATTERNS = [
   /^gpt-4\.1(?:$|[-.])/,
 ]
 
-const CONSERVATIVE_CAPABILITY = {
+const CONSERVATIVE_CAPABILITY: ModelCapability = {
   known: false,
   supportsPromptCache: false,
   promptCacheRetention: 'in_memory',
@@ -28,7 +29,14 @@ const CONSERVATIVE_CAPABILITY = {
   supportsTemperature: true,
 }
 
-const capabilityRules = [
+interface CapabilityRule {
+  matchExact?: string
+  matchPrefix?: string
+  matchContains?: string
+  capability: Partial<ModelCapability>
+}
+
+const capabilityRules: CapabilityRule[] = [
   {
     matchPrefix: 'gpt-5.4',
     capability: {
@@ -198,12 +206,12 @@ const capabilityRules = [
   },
 ]
 
-function normalizeReasoningEffortOptions(values) {
+function normalizeReasoningEffortOptions(values: unknown): string[] {
   if (!Array.isArray(values)) {
     return []
   }
-  const seen = new Set()
-  const normalized = []
+  const seen = new Set<string>()
+  const normalized: string[] = []
   values.forEach((value) => {
     const nextValue = typeof value === 'string' ? value.trim().toLowerCase() : ''
     if (!VALID_REASONING_EFFORTS.has(nextValue) || seen.has(nextValue)) {
@@ -215,7 +223,7 @@ function normalizeReasoningEffortOptions(values) {
   return normalized
 }
 
-function buildCapability(modelId, patch = {}) {
+function buildCapability(modelId: unknown, patch: Partial<ModelCapability> = {}): ModelCapability {
   return {
     ...CONSERVATIVE_CAPABILITY,
     modelId: typeof modelId === 'string' ? modelId.trim() : '',
@@ -225,7 +233,7 @@ function buildCapability(modelId, patch = {}) {
   }
 }
 
-function matchesRule(rule, normalizedModelId) {
+function matchesRule(rule: CapabilityRule, normalizedModelId: string): boolean {
   if (rule.matchExact) {
     return normalizedModelId === rule.matchExact.toLowerCase()
   }
@@ -238,7 +246,7 @@ function matchesRule(rule, normalizedModelId) {
   return false
 }
 
-function getModelCapability(modelId) {
+function getModelCapability(modelId: unknown): ModelCapability {
   const normalizedModelId = typeof modelId === 'string' ? modelId.trim().toLowerCase() : ''
   if (!normalizedModelId) {
     return buildCapability(modelId)
@@ -247,11 +255,11 @@ function getModelCapability(modelId) {
   return matchedRule ? buildCapability(modelId, matchedRule.capability) : buildCapability(modelId)
 }
 
-function normalizePromptCacheModelId(modelId) {
+function normalizePromptCacheModelId(modelId: unknown): string {
   return typeof modelId === 'string' ? modelId.trim().toLowerCase() : ''
 }
 
-function supportsResponsesPromptCacheTTL(modelId) {
+function supportsResponsesPromptCacheTTL(modelId: string): boolean {
   const normalizedModelId = normalizePromptCacheModelId(modelId)
   const match = normalizedModelId.match(GPT_VERSION_PATTERN)
   if (!match) {
@@ -265,7 +273,7 @@ function supportsResponsesPromptCacheTTL(modelId) {
   return majorVersion > 5 || (majorVersion === 5 && minorVersion >= 6)
 }
 
-function supportsResponsesExtendedPromptCacheRetention(modelId, capability) {
+function supportsResponsesExtendedPromptCacheRetention(modelId: string, capability: ModelCapability | null | undefined): boolean {
   if (capability?.promptCacheRetention === '24h') {
     return true
   }
@@ -273,8 +281,14 @@ function supportsResponsesExtendedPromptCacheRetention(modelId, capability) {
   return RESPONSES_24H_CAPABLE_PATTERNS.some((pattern) => pattern.test(normalizedModelId))
 }
 
-function buildPromptCacheOptions(values) {
-  const labelKeyMap = {
+/** Prompt Cache 策略选项 */
+export interface PromptCacheStrategyOption {
+  value: string
+  labelKey: string
+}
+
+function buildPromptCacheOptions(values: string[]): PromptCacheStrategyOption[] {
+  const labelKeyMap: Record<string, string> = {
     off: '强制关闭',
     model: '基于模型能力',
     '30m': '30分钟',
@@ -287,7 +301,7 @@ function buildPromptCacheOptions(values) {
   }))
 }
 
-function getPromptCacheStrategyOptions(modelId) {
+function getPromptCacheStrategyOptions(modelId: unknown): PromptCacheStrategyOption[] {
   const normalizedModelId = normalizePromptCacheModelId(modelId)
   const capability = getModelCapability(modelId)
   if (!normalizedModelId) {

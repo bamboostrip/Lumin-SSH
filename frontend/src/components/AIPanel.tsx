@@ -8,10 +8,11 @@ import AIConversationBackupSettings from './ai/AIConversationBackupSettings.tsx'
 import AIPanelSettingsOverlay from './ai/AIPanelSettingsOverlay.tsx'
 import AIComposer from './ai/AIComposer.tsx'
 import { approveAIChatTools, assignAIChatToolTerminal, cancelAIChat, continueAIChatTool, disableAIChatCollaboration, listAIChatCommandTerminalCandidates, previewAIChatToolDiff, previewAIChatToolRestore, rejectAIChatTools, rejectAIChatToolsForQueuedSubmission, resolveAIChatFollowup, restoreAIChatTool, setAIChatSkipNextAutomaticRequest, startAIChat, startAIChatCollaboration, terminateAIChatTool } from './ai/aiChatBridge.ts'
-import { buildAIConversationTokenLedger, condenseAIConversationContext, countAIConversationAPIMessageRawTokens, createAIConversation, createAIConversationSummarySubtask, deleteAIConversation, getAIAssistantFirstReply, getAIConversation, listAIConversations, normalizeAIConversationMessageSearchResult, normalizeAIConversationSnapshot, normalizeAIConversationTaskSettings, openAIConversationFolder, preprocessAIConversationLongText, readAIConversationWrappedFile, saveAIConversation, searchAIConversationMessages, subscribeAIConversationChanges } from './ai/aiConversationBridge.ts'
+import { buildAIConversationTokenLedger, condenseAIConversationContext, countAIConversationAPIMessageRawTokens, createAIConversation, createAIConversationSummarySubtask, deleteAIConversation, getAIAssistantFirstReply, getAIConversation, listAIConversations, normalizeAIConversationMessageSearchResult, normalizeAIConversationSnapshot, normalizeAIConversationTaskSettings, openAIConversationFolder, preprocessAIConversationLongText, readAIConversationWrappedFile, saveAIConversation, searchAIConversationMessages, subscribeAIConversationChanges, type AIConversationMessageSearchResult } from './ai/aiConversationBridge.ts'
 import { buildExecutionContextDetails, getExecutionContextSnapshot } from './ai/aiExecutionContext.ts'
-import { getAIGlobalSettings, normalizeAIGlobalSettings, saveAIGlobalSettings } from './ai/aiGlobalSettingsBridge.ts'
-import { getAIProviderState, getAIProviderTokenGroup } from './ai/aiProviderBridge.ts'
+import { getAIGlobalSettings, normalizeAIGlobalSettings, saveAIGlobalSettings, type AIGlobalSettings } from './ai/aiGlobalSettingsBridge.ts'
+import { getAIProviderState, getAIProviderTokenGroup, type AIProviderState } from './ai/aiProviderBridge.ts'
+import type { AIProviderLike } from './ai/AIProviderSelector.tsx'
 import { clearThemeToolPreviewPackage, loadThemePackages, setThemeToolPreviewPackage } from '../utils/theme.ts'
 import { getMCPSettingsState, saveMCPGlobalServer, reloadMCPGlobalServers, deleteMCPGlobalServer, restartMCPClientServer, toggleMCPClientServer, toggleMCPClientServerDisabledForPrompts, updateMCPClientServerTimeout } from './ai/mcpClientBridge.ts'
 import { processRemoteFileMentions } from './ai/aiMentions.ts'
@@ -26,10 +27,39 @@ import Tiptop from './Tiptop.tsx'
 // ============================================================
 // AIPanel 类型契约（props 见 AIPanelProps；内部数据模型见下）
 // ============================================================
+// 来自 Go 桥或事件 payload 的外部数据形状：字段均以 typeof 守卫读取，
+// 无索引签名（字段名拼错编译期报错）；新增字段时在此补充。
+// ============================================================
 
-// 来自 Go 桥或事件 payload 的外部数据，字段形状以运行时为准，
-// 收尾阶段可对高频路径按需收窄为具体接口。
-type BridgeData = any
+/** AI 事件 payload 的宽松形状（按需取用字段） */
+interface AIEventPayloadShape {
+  sound?: unknown
+}
+
+/** AI 请求指标/耗时 payload（buildMetrics/buildReasoningDuration 输入） */
+interface AIMetricsPayload {
+  firstTokenMs?: unknown
+  elapsedMs?: unknown
+  tokensPerSecond?: unknown
+}
+
+/** API 历史消息的宽松形状（upsertAPIHistoryMessage 输入，字段守卫读取） */
+interface AIAPIHistoryMessageLike {
+  role?: unknown
+  content?: unknown
+  images?: unknown
+  uiMessageIds?: unknown
+  turnId?: unknown
+  messageId?: unknown
+  ts?: unknown
+  cacheObjects?: unknown
+}
+
+/** AIPanel props 传入的设置形状（防御性可选，App 当前不传） */
+interface AIPanelSettings {
+  terminalOutputLineLimit?: unknown
+  terminalOutputCharacterLimit?: unknown
+}
 
 interface AIPanelProps {
   width: string
@@ -37,6 +67,7 @@ interface AIPanelProps {
   sessionId: string
   terminalId: string
   sessionTerminals?: Array<{ id: string; label?: string }>
+  settings?: AIPanelSettings
   onDevilModeChange?: (enabled: boolean) => void
   addToast?: (message: string | Error, type?: string, duration?: number, actions?: unknown[]) => number
 }
@@ -52,7 +83,7 @@ interface AIConversationSnapshot {
   messageCount?: number
   messages?: AIMessage[]
   apiMessages?: APIHistoryMessage[]
-  settings?: BridgeData
+  settings?: unknown
   transient?: boolean
   toolScope?: string
   toolScopeSlot?: string
@@ -714,13 +745,14 @@ function normalizeAIContextTokensValue(value: unknown) {
   return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed) : 0
 }
 
-function cloneAIConversationCacheObjects(cacheObjects: BridgeData) {
+function cloneAIConversationCacheObjects(cacheObjects: unknown) {
   if (!cacheObjects || typeof cacheObjects !== 'object') {
     return null
   }
-  const openaiResponses = cacheObjects?.openaiResponses && typeof cacheObjects.openaiResponses === 'object'
+  const cacheObject = cacheObjects as Record<string, unknown>
+  const openaiResponses = cacheObject.openaiResponses && typeof cacheObject.openaiResponses === 'object'
     ? (() => {
-        const source = cacheObjects.openaiResponses as BridgeData
+        const source = cacheObject.openaiResponses as Record<string, unknown>
         const rawOutput = source.output
         const rawInclude = source.include
         return {
@@ -770,7 +802,7 @@ function createAPIHistoryMessage({ role, content, messageId = '', uiMessageIds =
   }
 }
 
-function shouldUseAssistantFirstReplyForConversation(conversation: BridgeData) {
+function shouldUseAssistantFirstReplyForConversation(conversation: AIConversationSnapshot | null) {
   const rawUiMessages = conversation?.messages
   const rawApiMessages = conversation?.apiMessages
   const uiMessages = Array.isArray(rawUiMessages) ? rawUiMessages : []
@@ -780,7 +812,7 @@ function shouldUseAssistantFirstReplyForConversation(conversation: BridgeData) {
   return !hasAssistantUIMessage && !hasAssistantAPIMessage
 }
 
-function buildAIFollowupAnswerPayload(answer: BridgeData) {
+function buildAIFollowupAnswerPayload(answer: string | AIMessage) {
   if (typeof answer === 'string' && answer.trim()) {
     const readableText = answer.trim()
     return {
@@ -855,7 +887,7 @@ function findApiAnchorIndexByUiMessageId(apiMessages: unknown, uiMessageId: unkn
     : -1
 }
 
-function upsertAPIHistoryMessage(apiMessages: unknown, rawMessage: BridgeData, currentMessages: unknown = []): APIHistoryMessage[] {
+function upsertAPIHistoryMessage(apiMessages: unknown, rawMessage: AIAPIHistoryMessageLike, currentMessages: unknown = []): APIHistoryMessage[] {
   const role = rawMessage?.role === 'assistant' ? 'assistant' : rawMessage?.role === 'system' ? 'system' : 'user'
   const content = typeof rawMessage?.content === 'string' ? rawMessage.content.trim() : ''
   const images = normalizeMessageImages(rawMessage?.images)
@@ -900,7 +932,7 @@ function trimLatestAssistantAPIHistoryMessage(apiMessages: unknown) {
   return list
 }
 
-function buildMetrics(payload: BridgeData) {
+function buildMetrics(payload: AIMetricsPayload) {
   const metrics = []
 
   if (typeof payload.firstTokenMs === 'number' && payload.firstTokenMs > 0) {
@@ -918,7 +950,7 @@ function buildMetrics(payload: BridgeData) {
   return metrics
 }
 
-function buildReasoningDuration(payload: BridgeData) {
+function buildReasoningDuration(payload: AIMetricsPayload) {
   if (typeof payload.firstTokenMs === 'number' && payload.firstTokenMs > 0) {
     return `${(payload.firstTokenMs / 1000).toFixed(1)}s`
   }
@@ -928,7 +960,7 @@ function buildReasoningDuration(payload: BridgeData) {
   return ''
 }
 
-function buildAIRequestModelMeta(provider: BridgeData) {
+function buildAIRequestModelMeta(provider: AIProviderLike | null | undefined) {
   const providerName = typeof provider?.name === 'string' ? provider.name.trim() : ''
   const providerType = typeof provider?.provider === 'string' && provider.provider.trim() ? provider.provider.trim() : 'Compatible'
   const providerDefinition = getAIProviderDefinition(providerType)
@@ -989,7 +1021,7 @@ function parseAICollaborationStreamBuffer(value: unknown) {
   }
 }
 
-function upsertConversationSummary(list: unknown, snapshot: BridgeData): ConversationSummary[] {
+function upsertConversationSummary(list: unknown, snapshot: AIConversationSnapshot): ConversationSummary[] {
   const nextSummary = {
     id: snapshot.id,
     title: snapshot.title,
@@ -1102,13 +1134,13 @@ function buildAIConversationDisplayList(list: unknown): DisplayConversationItem[
     }
     return item.parentTitleSnapshot
   }
-  const groups = new Map<string, BridgeData>()
+  const groups = new Map<string, { rootId: string; groupUpdatedAt: number; items: ConversationSummary[] }>()
   normalizedItems.forEach((item) => {
     const rootId = resolveRootConversationId(item) || item.id
     const existingGroup = groups.get(rootId) || {
       rootId,
       groupUpdatedAt: 0,
-      items: [],
+      items: [] as ConversationSummary[],
     }
     existingGroup.items.push(item)
     existingGroup.groupUpdatedAt = Math.max(existingGroup.groupUpdatedAt, item.updatedAt || 0)
@@ -1123,7 +1155,7 @@ function buildAIConversationDisplayList(list: unknown): DisplayConversationItem[
     })
     .flatMap((group) => group.items
       .slice()
-      .sort((left: BridgeData, right: BridgeData) => {
+      .sort((left, right) => {
         if (left.createdAt !== right.createdAt) {
           return left.createdAt - right.createdAt
         }
@@ -1132,7 +1164,7 @@ function buildAIConversationDisplayList(list: unknown): DisplayConversationItem[
         }
         return String(left.id).localeCompare(String(right.id))
       })
-      .map((item: BridgeData) => ({
+      .map((item) => ({
         ...item,
         depth: resolveDepth(item),
         parentDisplayTitle: resolveParentDisplayTitle(item),
@@ -1174,7 +1206,7 @@ function isAIBusinessTurnMessageKind(kind: unknown) {
   return Boolean(kind) && kind !== 'assistant' && kind !== 'reasoning' && kind !== 'user'
 }
 
-function updateAILastAssistantTurnState(currentState: BridgeData, message: BridgeData, fallbackTurnId = ''): Partial<Pick<PanelState, 'lastAssistantTurnId' | 'lastTurnBusinessMessageKind'>> {
+function updateAILastAssistantTurnState(currentState: Pick<PanelState, 'lastAssistantTurnId'>, message: AIMessage, fallbackTurnId = ''): Partial<Pick<PanelState, 'lastAssistantTurnId' | 'lastTurnBusinessMessageKind'>> {
   const kind = typeof message?.kind === 'string' ? message.kind.trim() : ''
   if (!kind) {
     return {}
@@ -1252,7 +1284,7 @@ function normalizeAIConversationSearchQuery(value: unknown) {
   return String(value || '').trim().replace(/\s+/g, ' ')
 }
 
-function extractAIConversationSearchText(message: BridgeData) {
+function extractAIConversationSearchText(message: AIMessage) {
   const kind = typeof message?.kind === 'string' ? message.kind.trim() : ''
   if (kind === 'followup') {
     const parts = []
@@ -1339,7 +1371,7 @@ function buildAIConversationSearchSnippet(text: unknown, query: unknown) {
   return snippet
 }
 
-function resolveAIEventSound(payload: BridgeData, fallbackSound = '', allowPayloadOverride = true) { 
+function resolveAIEventSound(payload: AIEventPayloadShape, fallbackSound = '', allowPayloadOverride = true) { 
   if (allowPayloadOverride && payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'sound')) {
     return typeof payload.sound === 'string' ? payload.sound.trim() : ''
   }
@@ -1350,8 +1382,8 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   const { t } = useTranslation()
   const audioPlayersRef = useRef<Map<string, HTMLAudioElement>>(new Map())
   const [mcpInfo, setMcpInfo] = useState<McpInfoState>({ url: '', transport: 'streamable-http', endpoint: '/mcp', instructions: '', logs: '', tools: [] })
-  const [aiProviderState, setAIProviderState] = useState<{ currentProviderId: string; providers: BridgeData[] }>({ currentProviderId: '', providers: [] })
-  const [mcpClientServers, setMCPClientServers] = useState<BridgeData[]>([])
+  const [aiProviderState, setAIProviderState] = useState<AIProviderState>({ currentProviderId: '', providers: [] })
+  const [mcpClientServers, setMCPClientServers] = useState<unknown[]>([])
   const [mcpClientGlobalConfigPath, setMCPClientGlobalConfigPath] = useState('')
   const [mcpClientGlobalConfigText, setMCPClientGlobalConfigText] = useState('{\n  "mcpServers": {}\n}')
   const [showSettingsPanel, setShowSettingsPanel] = useState(false)
@@ -1360,7 +1392,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   const [tasksDirMigrating, setTasksDirMigrating] = useState(false)
   const [isDevilMode, setIsDevilMode] = useState(false)
   const [conversationList, setConversationList] = useState<ConversationSummary[]>([])
-  const [globalAISettings, setGlobalAISettings] = useState<BridgeData>(null)
+  const [globalAISettings, setGlobalAISettings] = useState<AIGlobalSettings | null>(null)
   const [terminalOutputLineLimit, setTerminalOutputLineLimit] = useState(500)
   const [terminalOutputCharacterLimit, setTerminalOutputCharacterLimit] = useState(35000)
   const [terminalPanels, setTerminalPanels] = useState<Record<string, PanelState>>({})
@@ -1373,7 +1405,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false)
   const [globalSearchQuery, setGlobalSearchQuery] = useState('')
   const [globalSearchLoading, setGlobalSearchLoading] = useState(false)
-  const [globalSearchResults, setGlobalSearchResults] = useState<BridgeData[]>([])
+  const [globalSearchResults, setGlobalSearchResults] = useState<AIConversationMessageSearchResult[]>([])
   const [conversationSearchOpen, setConversationSearchOpen] = useState(false)
   const [conversationSearchQuery, setConversationSearchQuery] = useState('')
   const [conversationSearchIndex, setConversationSearchIndex] = useState(0)
@@ -1398,27 +1430,30 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     setConversationSearchIndex(0)
   }, [])
 
-  const applyMCPInfo = useCallback((info: BridgeData) => {
-    if (!panelMountedRef.current || !info) {
+  const applyMCPInfo = useCallback((info: unknown) => {
+    const rawInfo = info && typeof info === 'object' ? info as Record<string, unknown> : null
+    if (!panelMountedRef.current || !rawInfo) {
       return
     }
     setMcpInfo({
-      url: info.url || '',
-      transport: info.transport || 'streamable-http',
-      endpoint: info.endpoint || '/mcp',
-      instructions: info.instructions || '',
-      logs: info.logs || '',
-      tools: Array.isArray(info.tools) ? info.tools : [],
+      url: typeof rawInfo.url === 'string' ? rawInfo.url : '',
+      transport: typeof rawInfo.transport === 'string' ? rawInfo.transport : 'streamable-http',
+      endpoint: typeof rawInfo.endpoint === 'string' ? rawInfo.endpoint : '/mcp',
+      instructions: typeof rawInfo.instructions === 'string' ? rawInfo.instructions : '',
+      logs: typeof rawInfo.logs === 'string' ? rawInfo.logs : '',
+      tools: Array.isArray(rawInfo.tools) ? rawInfo.tools : [],
     })
   }, [])
-  const applyMCPSettingsState = useCallback((state: BridgeData) => {
-    if (!panelMountedRef.current || !state) {
+  const applyMCPSettingsState = useCallback((state: unknown) => {
+    const rawState = state && typeof state === 'object' ? state as Record<string, unknown> : null
+    if (!panelMountedRef.current || !rawState) {
       return
     }
-    applyMCPInfo(state.service || {})
-    setMCPClientServers(Array.isArray(state.client?.servers) ? state.client.servers : [])
-    setMCPClientGlobalConfigPath(typeof state.client?.globalConfigPath === 'string' ? state.client.globalConfigPath : '')
-    setMCPClientGlobalConfigText(typeof state.client?.globalConfigText === 'string' && state.client.globalConfigText.trim() ? state.client.globalConfigText : '{\n  "mcpServers": {}\n}')
+    applyMCPInfo(rawState.service || {})
+    const rawClient = rawState.client && typeof rawState.client === 'object' ? rawState.client as Record<string, unknown> : null
+    setMCPClientServers(Array.isArray(rawClient?.servers) ? rawClient.servers : [])
+    setMCPClientGlobalConfigPath(typeof rawClient?.globalConfigPath === 'string' ? rawClient.globalConfigPath : '')
+    setMCPClientGlobalConfigText(typeof rawClient?.globalConfigText === 'string' && rawClient.globalConfigText.trim() ? rawClient.globalConfigText : '{\n  "mcpServers": {}\n}')
   }, [applyMCPInfo])
   const refreshMCPServerInfo = useCallback(async () => {
     try {
@@ -1487,7 +1522,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     }
   }, [refreshMCPOutputCompressionSettings, refreshMCPServerInfo])
 
-  const showAlert = useCallback(async (message: BridgeData) => {
+  const showAlert = useCallback(async (message: string) => {
     // message 为动态内容（可能不在翻译表），t() 内部有兜底
     const finalMessage = typeof message === 'string' && message.trim() ? translate(message.trim() as I18nKey) : translate('当前状态不支持还原')
     if (window?.luminDialog?.alert) {
@@ -1625,10 +1660,10 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       addToast?.(t('当前Token分组校验失败,无法进入恶魔模式'), 'warning', 2400)
     }
   }, [addToast, isDevilMode, selectedAIProvider, t])
-  const resolveFirstAvailableProviderId = useCallback((providers: BridgeData[] = []) => {
+  const resolveFirstAvailableProviderId = useCallback((providers: AIProviderLike[] = []) => {
     return typeof providers[0]?.id === 'string' ? providers[0].id.trim() : ''
   }, [])
-  const resolveAvailableProviderId = useCallback((providers: BridgeData[] = [], preferredProviderId = '') => {
+  const resolveAvailableProviderId = useCallback((providers: AIProviderLike[] = [], preferredProviderId = '') => {
     const normalizedPreferredProviderId = typeof preferredProviderId === 'string' ? preferredProviderId.trim() : ''
     if (normalizedPreferredProviderId && providers.some((item) => item?.id === normalizedPreferredProviderId)) {
       return normalizedPreferredProviderId
@@ -1640,7 +1675,8 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       return snapshot
     }
     const normalizedProviderId = typeof providerId === 'string' ? providerId.trim() : ''
-    const currentProviderId = typeof snapshot?.settings?.currentProviderId === 'string' ? snapshot.settings.currentProviderId.trim() : ''
+    const rawSettings = snapshot.settings && typeof snapshot.settings === 'object' ? snapshot.settings as Record<string, unknown> : null
+    const currentProviderId = typeof rawSettings?.currentProviderId === 'string' ? rawSettings.currentProviderId.trim() : ''
     if (currentProviderId === normalizedProviderId) {
       return snapshot
     }
@@ -1648,7 +1684,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       ...snapshot,
       updatedAt: Date.now(),
       settings: normalizeAIConversationTaskSettings({
-        ...snapshot.settings,
+        ...(rawSettings || {}),
         currentProviderId: normalizedProviderId,
       }),
     }
@@ -1657,7 +1693,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     availableAIProviders,
     typeof aiProviderState?.currentProviderId === 'string' ? aiProviderState.currentProviderId.trim() : '',
   )
-  const resolveAIRequestModelMeta = useCallback((providerId = '', providers: BridgeData = null) => {
+  const resolveAIRequestModelMeta = useCallback((providerId = '', providers: AIProviderLike[] | null = null) => {
     const normalizedProviderId = typeof providerId === 'string' ? providerId.trim() : ''
     const sourceProviders = Array.isArray(providers) ? providers : (Array.isArray(aiProviderState?.providers) ? aiProviderState.providers : [])
     const matchedProvider = normalizedProviderId
@@ -1702,7 +1738,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     && !collaborationActive
     && !panelState.isCondensingContext
     && (!panelState.lastTurnBusinessMessageKind || (panelState.lastTurnBusinessMessageKind !== 'completion' && panelState.lastTurnBusinessMessageKind !== 'followup'))
-  const playAISound = useCallback((type: BridgeData) => {
+  const playAISound = useCallback((type: string) => {
     if (normalizedGlobalAISettings.soundEnabled === false) {
       return
     }
@@ -1911,7 +1947,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     }
   }, [getMessageApiLengthBefore])
 
-  const applyAITokenFudgeFactor = useCallback((rawTokens: BridgeData) => {
+  const applyAITokenFudgeFactor = useCallback((rawTokens: unknown) => {
     if (!Number.isFinite(Number(rawTokens)) || Number(rawTokens) <= 0) {
       return 0
     }
@@ -2093,23 +2129,28 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     const handler = (event: Event) => {
       const newProxyNodes = (event as CustomEvent).detail
       if (!Array.isArray(newProxyNodes)) return
-      setGlobalAISettings((prev: BridgeData) => prev ? { ...prev, proxyNodes: newProxyNodes } : prev)
+      setGlobalAISettings((prev) => prev ? { ...prev, proxyNodes: newProxyNodes } : prev)
     }
     window.addEventListener('lumin:proxy-nodes-changed', handler)
     return () => window.removeEventListener('lumin:proxy-nodes-changed', handler)
   }, [])
 
-  useEffect(() => subscribeAIConversationChanges((change: BridgeData) => {
-    if (change?.type === 'upsert' && change.summary?.id) {
-      setConversationList((current) => upsertConversationSummary(current, change.summary))
+  useEffect(() => subscribeAIConversationChanges((change: unknown) => {
+    const rawChange = change && typeof change === 'object' ? change as Record<string, unknown> : null
+    if (!rawChange) {
       return
     }
-    if (change?.type !== 'delete' || !change.conversationId) {
+    const summary = rawChange.summary as AIConversationSnapshot | null | undefined
+    if (rawChange.type === 'upsert' && summary?.id) {
+      setConversationList((current) => upsertConversationSummary(current, summary))
       return
     }
-    setConversationList((current) => current.filter((item) => item.id !== change.conversationId))
+    if (rawChange.type !== 'delete' || !rawChange.conversationId) {
+      return
+    }
+    setConversationList((current) => current.filter((item) => item.id !== rawChange.conversationId))
     const panel = terminalPanelsRef.current[panelInstanceKey]
-    if (panel?.activeConversationId !== change.conversationId) {
+    if (panel?.activeConversationId !== rawChange.conversationId) {
       return
     }
     const requestId = panel.activeRequestId
@@ -2733,15 +2774,15 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         }
         const rawToolMessages = payload.messages
         const toolMessages = rawToolMessages
-          .filter((message: BridgeData) => message && typeof message === 'object')
-          .map((message: BridgeData) => message)
+          .filter((message: AIMessage) => message && typeof message === 'object')
+          .map((message: AIMessage) => message)
         let nextConversation = null
         setPanelState(matchedPanelKey, (current) => {
           const anchorAssistantMessageId = current.activeAssistantMessageId || requestId
           const lastToolMessage = toolMessages.length > 0 ? toolMessages[toolMessages.length - 1] : null
           let nextMessages = Array.isArray(current.messages) ? [...current.messages] : []
-          nextMessages = nextMessages.filter((message) => !toolMessages.some((toolMessage: BridgeData) => toolMessage.id && toolMessage.id === message.id))
-          toolMessages.forEach((toolMessage: BridgeData) => {
+          nextMessages = nextMessages.filter((message) => !toolMessages.some((toolMessage: AIMessage) => toolMessage.id && toolMessage.id === message.id))
+          toolMessages.forEach((toolMessage: AIMessage) => {
             nextMessages = insertMessageBeforeAssistant(nextMessages, anchorAssistantMessageId, toolMessage)
           })
           nextConversation = {
@@ -3578,8 +3619,9 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     void rebuildAIConversationTokenLedger(nextSnapshot, panelInstanceKey)
   }, [aiProviderState, availableAIProviders, buildConversationWithProviderId, panelInstanceKey, rebuildAIConversationTokenLedger, resetComposerEditState, resolveAvailableProviderId, saveConversationSnapshot, setPanelState])
 
-  const handleRestoreConversationBackup = useCallback(async (snapshot: BridgeData) => {
-    if (!snapshot?.id) {
+  const handleRestoreConversationBackup = useCallback(async (snapshot: unknown) => {
+    const rawSnapshot = snapshot && typeof snapshot === 'object' ? snapshot as AIConversationSnapshot : null
+    if (!rawSnapshot?.id) {
       return
     }
     clearThemeToolPreviewPackage()
@@ -3587,12 +3629,12 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     resetComposerEditState()
     resetGlobalSearchState()
     resetConversationSearchState()
-    setConversationList((prev) => upsertConversationSummary(prev, snapshot))
+    setConversationList((prev) => upsertConversationSummary(prev, rawSnapshot))
     setPanelState(panelInstanceKey, {
-      activeConversationId: snapshot.id,
-      conversation: snapshot,
-      messages: snapshot.messages,
-      apiMessages: snapshot.apiMessages,
+      activeConversationId: rawSnapshot.id,
+      conversation: rawSnapshot,
+      messages: rawSnapshot.messages,
+      apiMessages: rawSnapshot.apiMessages,
       activeRequestId: '',
       activeAssistantMessageId: '',
       activeToolExecution: null,
@@ -3604,7 +3646,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       skipNextAutomaticRequest: false,
       resumeAfterCancelRequestId: '',
       recoverableToolStopReason: '',
-      ...computeAILastAssistantTurnState(snapshot.messages),
+      ...computeAILastAssistantTurnState(rawSnapshot.messages),
       contextTokens: 0,
       isCondensingContext: false,
       activeChangeReview: null,
@@ -3616,7 +3658,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       collaborationFollowupRequestId: '',
     })
     // 恢复备份: 全量重建账本 (100% 可靠)
-    void rebuildAIConversationTokenLedger(snapshot, panelInstanceKey)
+    void rebuildAIConversationTokenLedger(rawSnapshot, panelInstanceKey)
   }, [panelInstanceKey, rebuildAIConversationTokenLedger, resetComposerEditState, setPanelState])
 
   const handleOpenConversationFolder = useCallback(async (conversationId: string) => {
@@ -3725,7 +3767,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     })
   }, [conversationSearchResults.length])
 
-  const handleSelectGlobalSearchResult = useCallback(async (result: BridgeData) => {
+  const handleSelectGlobalSearchResult = useCallback(async (result: AIConversationMessageSearchResult) => {
     const conversationId = typeof result?.conversationId === 'string' ? result.conversationId.trim() : ''
     const messageId = typeof result?.messageId === 'string' ? result.messageId.trim() : ''
     if (!conversationId || !messageId) {
@@ -3798,7 +3840,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         ...activeConversation,
         updatedAt: Date.now(),
         settings: {
-          ...activeConversation.settings,
+          ...((activeConversation?.settings as Record<string, unknown> | null) || {}),
           currentProviderId: normalizedProviderId,
         },
       }
@@ -3847,7 +3889,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     })
   }, [activeConversation, panelInstanceKey, panelState.activeRequestId, panelState.collaborationInterruptedRequestId, panelState.collaborationLocked, panelState.requestPhase, setPanelState, shouldLockAssistantCollaboration])
 
-  const handlePatchAutoApprovalSettings = useCallback(async (patch: BridgeData) => {
+  const handlePatchAutoApprovalSettings = useCallback(async (patch: Record<string, unknown>) => {
     const { allowedCommands, deniedCommands, ...taskPatch } = patch || {}
     const hasGlobalOnlyPatch = allowedCommands !== undefined || deniedCommands !== undefined
 
@@ -3865,7 +3907,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         ...activeConversation,
         updatedAt: Date.now(),
         settings: normalizeAIConversationTaskSettings({
-          ...activeConversation.settings,
+          ...((activeConversation?.settings as Record<string, unknown> | null) || {}),
           ...taskPatch,
         }),
       }
@@ -3920,11 +3962,11 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     }
   }, [activeConversation, globalAISettings, panelInstanceKey, panelState.activeRequestId, saveConversationSnapshot, setPanelState])
 
-  const handleCollaborationExtraPromptChange = useCallback(async (nextValue: BridgeData) => {
+  const handleCollaborationExtraPromptChange = useCallback(async (nextValue: string) => {
     await handlePatchAutoApprovalSettings({ collaborationExtraPrompt: typeof nextValue === 'string' ? nextValue : '' })
   }, [handlePatchAutoApprovalSettings])
 
-  const handleCollaborationPromptPresetsChange = useCallback(async (nextPresets: BridgeData) => {
+  const handleCollaborationPromptPresetsChange = useCallback(async (nextPresets: unknown) => {
     const nextGlobalSettings = await saveAIGlobalSettings({
       ...normalizeAIGlobalSettings(globalAISettings),
       collaborationPromptPresets: Array.isArray(nextPresets) ? nextPresets : [],
@@ -3932,7 +3974,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     setGlobalAISettings(nextGlobalSettings)
   }, [globalAISettings])
 
-  const handleSaveAIPanelGlobalSettings = useCallback(async (patch: BridgeData) => {
+  const handleSaveAIPanelGlobalSettings = useCallback(async (patch: Record<string, unknown>) => {
     const nextSettings = await saveAIGlobalSettings({
       ...normalizedGlobalAISettings,
       ...patch,
@@ -3978,7 +4020,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     await AppGo.SaveMCPOutputCompressionSettings(nextLineLimit, nextCharacterLimit)
   }, [])
 
-  async function requestDeleteConfirmation(message: BridgeData) {
+  async function requestDeleteConfirmation(message: string) {
     if (!normalizedGlobalAISettings.confirmDelete) {
       return true
     }
@@ -4022,7 +4064,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     saveMCPOutputCompressionSettings(terminalOutputLineLimit, value).catch(() => {})
   }, [saveMCPOutputCompressionSettings, terminalOutputLineLimit])
 
-  const handleSendMessage = useCallback(async (text: string, sendOptionsOrEditState: BridgeData = null, explicitEditState: BridgeData = null, runtimeOptions: BridgeData = {}) => {
+  const handleSendMessage = useCallback(async (text: string, sendOptionsOrEditState: Record<string, unknown> | null = null, explicitEditState: Record<string, unknown> | null = null, runtimeOptions: Record<string, unknown> = {}) => {
     const perfStages: Array<{ label: string; ms: number }> = []
     let perfLastMark = performance.now()
     const recordPerfStage = (label: string) => {
@@ -4048,7 +4090,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     clearRestorePreview()
 
     const targetConversationFromOptions = normalizedRuntimeOptions?.targetConversationSnapshot && typeof normalizedRuntimeOptions.targetConversationSnapshot === 'object'
-      ? normalizedRuntimeOptions.targetConversationSnapshot
+      ? normalizedRuntimeOptions.targetConversationSnapshot as AIConversationSnapshot
       : null
     const activeConversationToolScope = typeof activeConversation?.toolScope === 'string' ? activeConversation.toolScope.trim() : ''
     const activeConversationToolScopeSlot = typeof activeConversation?.toolScopeSlot === 'string' ? activeConversation.toolScopeSlot.trim() : ''
@@ -4077,9 +4119,11 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     recordPerfStage('获取供应商状态')
     const latestProviders = Array.isArray(latestProviderState?.providers) ? latestProviderState.providers : []
     const preferredProviderId = targetConversationSnapshot
-      ? targetConversationSnapshot?.settings?.currentProviderId
+      ? (targetConversationSnapshot.settings && typeof targetConversationSnapshot.settings === 'object'
+        ? (targetConversationSnapshot.settings as Record<string, unknown>).currentProviderId
+        : undefined)
       : latestProviderState?.currentProviderId
-    const resolvedProviderId = resolveAvailableProviderId(latestProviders, preferredProviderId)
+    const resolvedProviderId = resolveAvailableProviderId(latestProviders, typeof preferredProviderId === 'string' ? preferredProviderId : undefined)
     const nextConversationSnapshot = targetConversationSnapshot
       ? buildConversationWithProviderId(targetConversationSnapshot, resolvedProviderId)
       : null
@@ -4091,7 +4135,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
 
     if (targetConversationSnapshot && nextConversationSnapshot !== targetConversationSnapshot) {
       targetConversationSnapshot = nextConversationSnapshot
-      setConversationList((prev) => upsertConversationSummary(prev, nextConversationSnapshot))
+      setConversationList((prev) => upsertConversationSummary(prev, nextConversationSnapshot!))
       setPanelState(panelInstanceKey, (current) => ({
         ...current,
         conversation: nextConversationSnapshot,
@@ -4118,8 +4162,8 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         kind: isEditingExistingMessage ? 'edit' : isRetryingMessage ? 'retry_user' : 'chat',
         text: nextText,
         images: messageImages,
-        targetMessageId: activeComposerState?.targetMessageId || '',
-        targetMessageText: activeComposerState?.targetMessageText || nextText,
+        targetMessageId: typeof activeComposerState?.targetMessageId === 'string' ? activeComposerState.targetMessageId : '',
+        targetMessageText: typeof activeComposerState?.targetMessageText === 'string' ? activeComposerState.targetMessageText : nextText,
         toolScope: effectiveToolScope,
         toolScopeSlot: effectiveToolScopeSlot,
         forceNewConversation: runtimeOptions?.forceNewConversation === true,
@@ -4160,7 +4204,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         }
       } else {
         targetConversation = await createAIConversation(truncateConversationTitle(nextText))
-        setConversationList((prev) => upsertConversationSummary(prev, targetConversation))
+        setConversationList((prev) => upsertConversationSummary(prev, targetConversation!))
       }
     }
 
@@ -4200,7 +4244,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
       .trim()
 
     const baseConversation = isEditingExistingMessage || isRetryingMessage
-      ? truncateConversationAfterMessage(targetConversation, activeComposerState.targetMessageId)
+      ? truncateConversationAfterMessage(targetConversation, String(activeComposerState.targetMessageId || ''))
       : targetConversation
     const shouldInjectAssistantFirstReply = shouldUseAssistantFirstReplyForConversation(baseConversation)
 
@@ -4324,7 +4368,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         ...nextConversation,
         updatedAt: Date.now(),
         status: 'error',
-        messages: (nextConversation.messages || []).map((message: BridgeData) => {
+        messages: (nextConversation.messages || []).map((message: AIMessage) => {
           if (message.id !== requestId || message.kind !== 'assistant') {
             return message
           }
@@ -4369,7 +4413,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     }
   }, [activeConversation, aiProviderState, availableAIProviders, buildConversationWithProviderId, composerEditState, composerImages, effectiveAutoApprovalEnabled, getAIAssistantFirstReply, globalAISettings, isDevilMode, isQueueBlocked, normalizedGlobalAISettings.slashCommands, panelInstanceKey, panelState.activeRequestId, panelState.requestPhase, requestConversationSmoothScrollToBottom, resetComposerEditState, resolveAIRequestModelMeta, resolveAvailableProviderId, saveConversationSnapshot, setPanelState, shouldLockAssistantCollaboration, terminalId, terminalOutputCharacterLimit, terminalOutputLineLimit, truncateConversationAfterMessage])
 
-  const handleFollowupResponse = useCallback(async (payload: BridgeData) => {
+  const handleFollowupResponse = useCallback(async (payload: Record<string, unknown>) => {
     if (!payload || typeof payload !== 'object') {
       return false
     }
@@ -4403,7 +4447,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     if (!currentConversation?.id) {
       return false
     }
-    const { readableText, content: followupContent } = buildAIFollowupAnswerPayload(payload.answer)
+    const { readableText, content: followupContent } = buildAIFollowupAnswerPayload(payload.answer as string | AIMessage)
     if (!readableText || !followupContent) {
       return false
     }
@@ -4413,7 +4457,8 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     const followupMessageId = typeof followupMessage?.id === 'string' ? followupMessage.id.trim() : ''
     const timestamp = Date.now()
     const userMessageId = `${followupMessageId || requestId}-followup-answer-${timestamp}`
-    const followupProviderId = typeof currentConversation?.settings?.currentProviderId === 'string' ? currentConversation.settings.currentProviderId.trim() : ''
+    const rawFollowupSettings = currentConversation?.settings && typeof currentConversation.settings === 'object' ? currentConversation.settings as Record<string, unknown> : null
+    const followupProviderId = typeof rawFollowupSettings?.currentProviderId === 'string' ? rawFollowupSettings.currentProviderId.trim() : ''
     const requestModelMeta = resolveAIRequestModelMeta(followupProviderId)
     const userMessage = {
       id: userMessageId,
@@ -4574,7 +4619,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     }
   }, [activeConversation, effectiveAutoApprovalEnabled, isDevilMode, panelInstanceKey, requestConversationSmoothScrollToBottom, resolveAIRequestModelMeta, saveConversationSnapshot, setPanelState, shouldLockAssistantCollaboration, terminalId])
 
-  const handleConversationUserMessage = useCallback(async (payload: BridgeData) => {
+  const handleConversationUserMessage = useCallback(async (payload: string | Record<string, unknown>) => {
     if (payload && typeof payload === 'object' && payload.kind === 'followup-response') {
       if (collaborationFollowupInteractionLocked) {
         return false
@@ -4585,7 +4630,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     return handleSendMessage(text, { images: [] })
   }, [collaborationFollowupInteractionLocked, handleFollowupResponse, handleSendMessage])
 
-  const handleComposerSendMessage = useCallback(async (text: string, sendOptionsOrEditState: BridgeData = null, explicitEditState: BridgeData = null, runtimeOptions: BridgeData = {}) => {
+  const handleComposerSendMessage = useCallback(async (text: string, sendOptionsOrEditState: Record<string, unknown> | null = null, explicitEditState: Record<string, unknown> | null = null, runtimeOptions: Record<string, unknown> = {}) => {
     const pendingFollowupRequestId = panelState.collaborationAwaitingManualFollowup ? panelState.collaborationFollowupRequestId : ''
     if (pendingFollowupRequestId) {
       const followupImages = normalizeMessageImages(sendOptionsOrEditState?.images)
@@ -4629,7 +4674,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     return () => window.removeEventListener('ai-theme-tuning-start', handleStartThemeTuning)
   }, [handleSendMessage, sessionId, terminalId])
 
-  const handleRetryUserMessage = useCallback(async (messageId: string, text: string, images: BridgeData = []) => {
+  const handleRetryUserMessage = useCallback(async (messageId: string, text: string, images: unknown[] = []) => {
     if (!activeConversation) {
       return
     }
@@ -4779,7 +4824,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         ...nextConversation,
         updatedAt: Date.now(),
         status: 'error',
-        messages: (nextConversation.messages || []).map((message: BridgeData) => {
+        messages: (nextConversation.messages || []).map((message: AIMessage) => {
           if (message.id !== requestId || message.kind !== 'assistant') {
             return message
           }
@@ -4824,7 +4869,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     }
   }, [activeConversation, effectiveAutoApprovalEnabled, isDevilMode, isQueueBlocked, panelInstanceKey, panelState.activeRequestId, panelState.requestPhase, requestConversationSmoothScrollToBottom, resetComposerEditState, saveConversationSnapshot, setPanelState, shouldLockAssistantCollaboration, terminalId, truncateConversationAfterMessage])
 
-  const handleEditUserMessage = useCallback((messageId: string, text: string, images: BridgeData = []) => {
+  const handleEditUserMessage = useCallback((messageId: string, text: string, images: unknown[] = []) => {
     if (!activeConversation) {
       return
     }
@@ -4889,7 +4934,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     }))
     try {
       const result = await condenseAIConversationContext(activeConversation.id, terminalId)
-      const nextSnapshot = normalizeAIConversationSnapshot((result as BridgeData)?.snapshot || result)
+      const nextSnapshot = normalizeAIConversationSnapshot((result as { snapshot?: unknown } | null)?.snapshot || result)
       setConversationList((prev) => upsertConversationSummary(prev, nextSnapshot))
       setPanelState(panelInstanceKey, (current) => ({
         ...current,
@@ -4908,7 +4953,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     }
   }, [activeConversation, panelInstanceKey, panelState.isCondensingContext, rebuildAIConversationTokenLedger, runtimePhase, setPanelState, terminalId])
 
-  const continueAIConversationSummarySubtask = useCallback(async (conversationSnapshot: BridgeData, continueText: string, options: BridgeData = {}) => {
+  const continueAIConversationSummarySubtask = useCallback(async (conversationSnapshot: AIConversationSnapshot, continueText: string, options: Record<string, unknown> = {}) => {
     const nextConversationSnapshot = normalizeAIConversationSnapshot(conversationSnapshot)
     const normalizedContinueText = typeof continueText === 'string' ? continueText.trim() : ''
     const normalizedOptions = options && typeof options === 'object' ? options : {}
@@ -4925,7 +4970,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     })
   }, [handleSendMessage])
 
-  const runAIConversationSummarySubtaskFlow = useCallback(async (conversationSnapshot: BridgeData, options: BridgeData = {}) => {
+  const runAIConversationSummarySubtaskFlow = useCallback(async (conversationSnapshot: AIConversationSnapshot, options: Record<string, unknown> = {}) => {
     const nextConversationSnapshot = normalizeAIConversationSnapshot(conversationSnapshot)
     const normalizedOptions = options && typeof options === 'object' ? options : {}
     const summaryRequestId = typeof normalizedOptions.requestId === 'string' && normalizedOptions.requestId.trim()
@@ -5010,7 +5055,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
     void runAIConversationSummarySubtaskFlow(activeConversation)
   }, [activeConversation, panelState.isCondensingContext, runAIConversationSummarySubtaskFlow, runtimePhase])
 
-  const resumeAIChatFromConversation = useCallback(async (conversationSnapshot: BridgeData, targetPanelKey = panelInstanceKey, options: BridgeData = {}) => {
+  const resumeAIChatFromConversation = useCallback(async (conversationSnapshot: AIConversationSnapshot, targetPanelKey = panelInstanceKey, options: Record<string, unknown> = {}) => {
     if (!conversationSnapshot || !effectiveProviderId) {
       return false
     }
@@ -5109,7 +5154,7 @@ export default function AIPanel({ width, side, terminalId = 'global', sessionId 
         ...nextConversation,
         updatedAt: Date.now(),
         status: 'error',
-        messages: (nextConversation.messages || []).map((message: BridgeData) => {
+        messages: (nextConversation.messages || []).map((message: AIMessage) => {
           if (message.id !== requestId || message.kind !== 'assistant') {
             return message
           }

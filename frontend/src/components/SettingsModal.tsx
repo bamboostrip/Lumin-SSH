@@ -56,14 +56,14 @@ interface ProviderDefinition<F extends Record<string, unknown>> {
   defaultForm: F;
   test: (form: F) => Promise<unknown>;
   save: (form: F) => Promise<unknown>;
-  sync: () => Promise<Record<string, any>>;
-  backup: () => Promise<Record<string, any>>;
-  list: () => Promise<Array<Record<string, any>>>;
+  sync: () => Promise<Record<string, unknown>>;
+  backup: () => Promise<Record<string, unknown>>;
+  list: () => Promise<Array<Record<string, unknown>>>;
   restore: (name: string) => Promise<unknown>;
   restoreWithPassword: (name: string, password: string) => Promise<unknown>;
-  getConfig: () => Promise<Record<string, any>>;
+  getConfig: () => Promise<Record<string, unknown>>;
   isConfigured: (form: F) => boolean;
-  applyConfig: (data: Record<string, any>) => F;
+  applyConfig: (data: Record<string, unknown>) => F;
   // 参数加宽到 SyncTab 的宽松 ProviderForm，保证 PROVIDERS 整体可赋给 SyncTab providers
   summaryFields: (form: F | Record<string, string | number>) => SummaryField[];
 }
@@ -166,7 +166,7 @@ const PROVIDERS: { [K in ProviderKey]: ProviderDefinition<ProviderFormMap[K]> } 
     restoreWithPassword: (name, pw) => AppGo.RestoreFromWebdavFileWithPassword(name, pw),
     getConfig: () => AppGo.GetWebdavConfig(),
     isConfigured: (f) => !!f.username,
-    applyConfig: (data) => ({ url: data.url || '', username: data.username || '', password: data.password || '', remotePath: data.remotePath || '/Lumin/', maxBackups: data.maxBackups || '' }),
+    applyConfig: (data) => ({ url: (data.url as string) || '', username: (data.username as string) || '', password: (data.password as string) || '', remotePath: (data.remotePath as string) || '/Lumin/', maxBackups: (data.maxBackups as string) || '' }),
     summaryFields: (form) => {
       const f = form as WebdavForm;
       return [
@@ -194,7 +194,7 @@ const PROVIDERS: { [K in ProviderKey]: ProviderDefinition<ProviderFormMap[K]> } 
     restoreWithPassword: (name, pw) => AppGo.RestoreFromR2FileWithPassword(name, pw),
     getConfig: () => AppGo.GetR2Config(),
     isConfigured: (f) => !!(f.bucket && f.endpoint),
-    applyConfig: (data) => ({ accessKeyId: data.accessKeyId || '', secretAccessKey: data.secretAccessKey || '', bucket: data.bucket || '', endpoint: data.endpoint || '', region: data.region || 'auto', prefix: data.prefix || 'Lumin/', maxBackups: data.maxBackups || '' }),
+    applyConfig: (data) => ({ accessKeyId: (data.accessKeyId as string) || '', secretAccessKey: (data.secretAccessKey as string) || '', bucket: (data.bucket as string) || '', endpoint: (data.endpoint as string) || '', region: (data.region as string) || 'auto', prefix: (data.prefix as string) || 'Lumin/', maxBackups: (data.maxBackups as string) || '' }),
     summaryFields: (form) => {
       const f = form as R2Form;
       return [
@@ -222,7 +222,7 @@ const PROVIDERS: { [K in ProviderKey]: ProviderDefinition<ProviderFormMap[K]> } 
     restoreWithPassword: (name, pw) => AppGo.RestoreFromFTPFileWithPassword(name, pw),
     getConfig: () => AppGo.GetFTPConfig(),
     isConfigured: (f) => !!f.host,
-    applyConfig: (data) => ({ mode: data.mode || 'explicit_tls', host: data.host || '', port: data.port || 21, username: data.username || '', password: data.password || '', remoteDir: data.remoteDir || '/Lumin/', maxBackups: data.maxBackups || '' }),
+    applyConfig: (data) => ({ mode: (data.mode as string) || 'explicit_tls', host: (data.host as string) || '', port: (data.port as number) || 21, username: (data.username as string) || '', password: (data.password as string) || '', remoteDir: (data.remoteDir as string) || '/Lumin/', maxBackups: (data.maxBackups as string) || '' }),
     summaryFields: (form) => {
       const f = form as FTPForm;
       return [
@@ -252,7 +252,7 @@ const PROVIDERS: { [K in ProviderKey]: ProviderDefinition<ProviderFormMap[K]> } 
     restoreWithPassword: (name, pw) => AppGo.RestoreFromSFTPFileWithPassword(name, pw),
     getConfig: () => AppGo.GetSFTPConfig(),
     isConfigured: (f) => !!f.host,
-    applyConfig: (data) => ({ host: data.host || '', port: data.port || 22, username: data.username || '', password: data.password || '', authMethod: data.authMethod || 'password', privateKey: data.privateKey || '', remoteDir: data.remoteDir || '/Lumin/', maxBackups: data.maxBackups || '' }),
+    applyConfig: (data) => ({ host: (data.host as string) || '', port: (data.port as number) || 22, username: (data.username as string) || '', password: (data.password as string) || '', authMethod: (data.authMethod as string) || 'password', privateKey: (data.privateKey as string) || '', remoteDir: (data.remoteDir as string) || '/Lumin/', maxBackups: (data.maxBackups as string) || '' }),
     summaryFields: (form) => {
       const f = form as SFTPForm;
       return [
@@ -375,7 +375,7 @@ export default function SettingsModal({
   const [confirmRestore, setConfirmRestore] = useState(false);
   const [confirmRestoreProvider, setConfirmRestoreProvider] = useState(false);
   // 备份列表来自 AppGo.List*Backups()（wailsjs 生成类型为 Record<string, any>）
-  const [backupsList, setBackupsList] = useState<Array<Record<string, any>>>([]);
+  const [backupsList, setBackupsList] = useState<Array<Record<string, unknown>>>([]);
   const [selectedBackup, setSelectedBackup] = useState<string | null>(null);
   const [restoreProvider, setRestoreProvider] = useState<ProviderKey | null>(null);
   const [failedRestoreProviders, setFailedRestoreProviders] = useState<ProviderKey[]>([]);
@@ -1901,10 +1901,10 @@ export default function SettingsModal({
         if (syncMode === 'all') setConfirmRestoreProvider(true);
         return;
       }
-      list.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+      list.sort((a, b) => new Date(b.time as string | number).getTime() - new Date(a.time as string | number).getTime());
       setRestoreProvider(providerKey);
       setBackupsList(list);
-      setSelectedBackup(list[0].name);
+      setSelectedBackup(list[0].name as string);
       setConfirmRestoreProvider(false);
       setConfirmRestore(true);
     } catch (err) {
@@ -2586,8 +2586,8 @@ export default function SettingsModal({
             <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 20, background: 'var(--surface-base)', borderRadius: 'var(--radius-md)', padding: 8 }}>
               {backupsList.map(bk => (
                 <div 
-                  key={bk.name}
-                  onClick={() => setSelectedBackup(bk.name)}
+                  key={bk.name as string}
+                  onClick={() => setSelectedBackup(bk.name as string)}
                   style={{
                     padding: '10px 12px',
                     borderRadius: 'var(--radius-sm)',
@@ -2595,20 +2595,20 @@ export default function SettingsModal({
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    background: selectedBackup === bk.name ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
-                    border: `1px solid ${selectedBackup === bk.name ? 'var(--primary)' : 'transparent'}`,
+                    background: selectedBackup === (bk.name as string) ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
+                    border: `1px solid ${selectedBackup === (bk.name as string) ? 'var(--primary)' : 'transparent'}`,
                     marginBottom: 4,
                     transition: 'all 0.2s'
                   }}
                 >
                   <div style={{ color: selectedBackup === bk.name ? 'var(--primary)' : 'var(--text-primary)' }}>
-                    {bk.time}
+                    {bk.time as string}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: 12 }}>
-                    <span style={{ padding: '2px 6px', borderRadius: 999, border: '1px solid var(--border)', color: getBackupFormatLabel(bk.name) === 'LUMIN2' ? 'var(--success)' : 'var(--text-secondary)' }}>
-                      {getBackupFormatLabel(bk.name)}
+                    <span style={{ padding: '2px 6px', borderRadius: 999, border: '1px solid var(--border)', color: getBackupFormatLabel(bk.name as string) === 'LUMIN2' ? 'var(--success)' : 'var(--text-secondary)' }}>
+                      {getBackupFormatLabel(bk.name as string)}
                     </span>
-                    <span>{(bk.size / 1024).toFixed(1)} KB</span>
+                    <span>{((bk.size as number) / 1024).toFixed(1)} KB</span>
                   </div>
                 </div>
               ))}

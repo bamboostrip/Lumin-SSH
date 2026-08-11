@@ -1,14 +1,50 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ChangeEvent, type FormEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import { Eye, EyeOff, Plus, X, Monitor, Key, FolderOpen, SquarePen, KeyRound, Globe } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 import { useTranslation } from '../i18n.js';
 import { TERMINAL_ENCODING_GROUPS } from '../constants/terminalEncodings.js';
 import SearchableGroupedSelect from './SearchableGroupedSelect.jsx';
 import { getAIGlobalSettings } from './ai/aiGlobalSettingsBridge.js';
+import type { ServerFormData } from '../hooks/useServerCatalog.js';
+import type { config } from '../../wailsjs/go/models.js';
 
 const PROXY_NODES_CHANGED_EVENT = 'lumin:proxy-nodes-changed';
 
-const defaultForm = {
+/** 编辑器表单字段（含历史遗留 authType/group；index signature 供 set(key) 计算键更新） */
+interface ServerEditorForm {
+  name: string;
+  host: string;
+  port: string;
+  username: string;
+  authType: string;
+  password: string;
+  privateKey: string;
+  passphrase: string;
+  terminalInitPath: string;
+  fileManagerInitPath: string;
+  terminalEncoding: string;
+  allowLegacySshRsa: boolean;
+  proxyMode: string;
+  proxyNodeId: string;
+  proxyType: string;
+  proxyHost: string;
+  proxyPort: string;
+  proxyUsername: string;
+  proxyPassword: string;
+  group?: string;
+  [key: string]: unknown;
+}
+
+/** 代理节点（来自 AI 全局设置） */
+interface ProxyNode {
+  id?: string;
+  name?: string;
+  type?: string;
+  host?: string;
+  port?: string | number;
+}
+
+const defaultForm: ServerEditorForm = {
   name: '',
   host: '',
   port: '',
@@ -30,15 +66,27 @@ const defaultForm = {
   proxyPassword: '',
 };
 
-export default function AddServerModal({ server, onSave, onSaveAndConnect, onClose, allGroups = [], credentials = [], onOpenCredentials, inline = false, shiningFields = {} }) {
+export interface AddServerModalProps {
+  server: (config.Connection & { authType?: string }) | null;
+  onSave: (data: ServerFormData, shouldClearAfterAdd?: boolean) => Promise<config.Connection | null>;
+  onSaveAndConnect?: (data: ServerFormData, shouldClearAfterAdd?: boolean) => Promise<config.Connection | null>;
+  onClose: () => void;
+  allGroups?: string[];
+  credentials?: config.Credential[];
+  onOpenCredentials?: () => void;
+  inline?: boolean;
+  shiningFields?: Record<string, unknown>;
+}
+
+export default function AddServerModal({ server, onSave, onSaveAndConnect, onClose, allGroups = [], credentials = [], onOpenCredentials, inline = false, shiningFields = {} }: AddServerModalProps) {
   const { t } = useTranslation();
-  const [form, setForm] = useState(defaultForm);
+  const [form, setForm] = useState<ServerEditorForm>(defaultForm);
   const [saving, setSaving] = useState(false);
 
   const [showPassword, setShowPassword] = useState(false);
   const [showPassphrase, setShowPassphrase] = useState(false);
   const [showProxyPassword, setShowProxyPassword] = useState(false);
-  const [proxyNodes, setProxyNodes] = useState([]);
+  const [proxyNodes, setProxyNodes] = useState<ProxyNode[]>([]);
 
   const [authMode, setAuthMode] = useState('custom'); // 'custom' | 'credential'
   const [selectedCredId, setSelectedCredId] = useState('');
@@ -60,7 +108,7 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
     if (server) {
       const useCred = !!server.credentialId;
       setAuthMode(useCred ? 'credential' : 'custom');
-      setSelectedCredId(useCred ? server.credentialId : '');
+      setSelectedCredId(useCred && server.credentialId ? server.credentialId : '');
       setForm({
         ...defaultForm,
         ...server,
@@ -85,7 +133,7 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
 
   // Esc 关闭模态框
   useEffect(() => {
-    const handleKeyDown = (e) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         onClose();
@@ -108,8 +156,8 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
           setProxyNodes([]);
         });
     };
-    const handleProxyNodesChanged = (event) => {
-      setProxyNodes(Array.isArray(event?.detail) ? event.detail : []);
+    const handleProxyNodesChanged = (event: Event) => {
+      setProxyNodes(Array.isArray((event as CustomEvent)?.detail) ? (event as CustomEvent).detail : []);
     };
     loadProxyNodes();
     window.addEventListener(PROXY_NODES_CHANGED_EVENT, handleProxyNodesChanged);
@@ -119,9 +167,9 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
     };
   }, []);
 
-  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
-  const inputClass = (key) => `input${shiningFields?.[key] ? ' editor-field-shine' : ''}`;
-  const inputShellClass = (key) => `editor-field-shell${shiningFields?.[key] ? ' editor-field-shell-shine' : ''}`;
+  const set = (key: string) => (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => setForm((f) => ({ ...f, [key]: e.target.value }));
+  const inputClass = (key: string) => `input${shiningFields?.[key] ? ' editor-field-shine' : ''}`;
+  const inputShellClass = (key: string) => `editor-field-shell${shiningFields?.[key] ? ' editor-field-shell-shine' : ''}`;
 
   const submitForm = async (submitAction = 'save') => {
     if (Date.now() < suppressSubmitUntilRef.current) return;
@@ -133,8 +181,8 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
 
     setSaving(true);
     try {
-      const data = { ...form };
-      data.port = parseInt(data.port, 10) || 22;
+      const data: ServerFormData = { ...form };
+      data.port = parseInt(String(data.port), 10) || 22;
       data.terminalInitPath = String(data.terminalInitPath || '').trim();
       data.fileManagerInitPath = String(data.fileManagerInitPath || '').trim();
       data.terminalEncoding = String(data.terminalEncoding || '').trim() || 'utf-8';
@@ -184,9 +232,9 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const submitAction = e?.nativeEvent?.submitter?.dataset?.submitAction || 'save';
+    const submitAction = (e.nativeEvent as SubmitEvent)?.submitter?.dataset?.submitAction || 'save';
     await submitForm(submitAction);
   };
 
@@ -201,7 +249,7 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
     }
   };
 
-  const handleCancel = (e) => {
+  const handleCancel = (e?: ReactMouseEvent) => {
     e?.preventDefault();
     e?.stopPropagation();
     suppressSubmitUntilRef.current = Date.now() + 300;
@@ -587,7 +635,7 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
                       ? 'UTF-8'
                       : item.value === 'gb18030'
                         ? t('GB18030(兼容 GBK/GB2312)')
-                        : item.label
+                        : (item.label || '')
                   )}
                 />
                 <div style={{ color: 'var(--text-tertiary)', fontSize: 11, marginTop: 6 }}>

@@ -4,15 +4,38 @@ import { useTranslation, t } from '../i18n.js';
 import Tiptop from './Tiptop.jsx';
 import { Z } from '../constants/zIndex';
 
-const DIALOG_PRIORITY = {
+const DIALOG_PRIORITY: Record<string, number> = {
   default: 0,
   settings: 1,
   system: 2,
 };
 
-const getDialogPriority = (options) => DIALOG_PRIORITY[options?.priority] ?? DIALOG_PRIORITY.default;
+const getDialogPriority = (options?: { priority?: string }): number => {
+  const priority = options?.priority;
+  const resolved = priority ? DIALOG_PRIORITY[priority] : undefined;
+  return resolved !== undefined ? resolved : DIALOG_PRIORITY.default;
+};
 
-const insertDialogByPriority = (dialogs, dialog) => {
+/** 队列中的弹窗条目（type 为宽松字符串，字段按需可选） */
+interface QueuedDialog {
+  id: number;
+  type: string;
+  priority: number;
+  title: string;
+  message: string;
+  copyable?: boolean;
+  defaultValue?: string;
+  inputType?: 'password' | 'text';
+  validate?: ((value: string) => string | null | undefined | Promise<string | null | undefined>) | null;
+  checkboxLabel?: string;
+  buttons?: Array<{ label: string; value: unknown; primary?: boolean; secondary?: boolean }>;
+  onClose?: () => void;
+  onCancel?: () => void;
+  onConfirm?: (val: unknown, checked: boolean) => void;
+  onChoice?: (val: unknown, checked: boolean) => void;
+}
+
+const insertDialogByPriority = <T extends { priority: number }>(dialogs: T[], dialog: T): T[] => {
   const insertAt = dialogs.findIndex((queued) => queued.priority < dialog.priority);
   return insertAt === -1
     ? [...dialogs, dialog]
@@ -22,26 +45,30 @@ const insertDialogByPriority = (dialogs, dialog) => {
 if (import.meta.env.DEV) {
   const ordered = [0, 2, 1, 1].reduce(
     (dialogs, priority) => insertDialogByPriority(dialogs, { priority }),
-    [],
+    [] as Array<{ priority: number }>,
   );
   console.assert(ordered.map(({ priority }) => priority).join(',') === '2,1,1,0', '弹窗优先级排序自检失败');
 }
 
-export default function GlobalDialog({ suspendDefault = false }) {
-  const [dialogs, setDialogs] = useState([]);
+interface GlobalDialogProps {
+  suspendDefault?: boolean;
+}
+
+export default function GlobalDialog({ suspendDefault = false }: GlobalDialogProps) {
+  const [dialogs, setDialogs] = useState<QueuedDialog[]>([]);
   // ponytail: 队列同时存一份 ref。去重判定必须同步进行——同一 tick 内连续调用时
   // state 尚未更新，只比对 state 会漏判；ref 与 state 始终同步写入，二者不会漂移。
-  const dialogsRef = useRef([]);
+  const dialogsRef = useRef<QueuedDialog[]>([]);
 
   // 入队；命中去重返回 false。调用方据此立即 resolve，避免 Promise 永久挂起。
-  const pushDialog = useCallback((dialog, isDuplicate) => {
+  const pushDialog = useCallback((dialog: QueuedDialog, isDuplicate: (d: QueuedDialog) => boolean) => {
     if (dialogsRef.current.some(isDuplicate)) return false;
     dialogsRef.current = insertDialogByPriority(dialogsRef.current, dialog);
     setDialogs(dialogsRef.current);
     return true;
   }, []);
 
-  const removeDialog = useCallback((id) => {
+  const removeDialog = useCallback((id: number) => {
     dialogsRef.current = dialogsRef.current.filter((dialog) => dialog.id !== id);
     setDialogs(dialogsRef.current);
   }, []);
@@ -49,9 +76,9 @@ export default function GlobalDialog({ suspendDefault = false }) {
   useEffect(() => {
     // 注册全局 API
     window.luminDialog = {
-      alert: (message, title = t('提示'), options = {}) => {
+      alert: (message: string, title = t('提示'), options: Record<string, unknown> = {}) => {
         const normalizedMessage = typeof message === 'string' ? message : String(message ?? '');
-        return new Promise((resolve) => {
+        return new Promise<void>((resolve) => {
           const queued = pushDialog({
             id: Date.now() + Math.random(),
             type: 'alert',
@@ -64,8 +91,8 @@ export default function GlobalDialog({ suspendDefault = false }) {
           if (!queued) resolve();
         });
       },
-      confirm: (message, title = t('操作确认'), checkboxLabel = '', options = {}) => {
-        return new Promise((resolve) => {
+      confirm: (message: string, title = t('操作确认'), checkboxLabel = '', options: Record<string, unknown> = {}) => {
+        return new Promise<boolean | { confirmed: boolean; checked: boolean }>((resolve) => {
           const queued = pushDialog({
             id: Date.now() + Math.random(),
             type: 'confirm',
@@ -80,8 +107,8 @@ export default function GlobalDialog({ suspendDefault = false }) {
           if (!queued) resolve(checkboxLabel ? { confirmed: false, checked: false } : false);
         });
       },
-      prompt: (message, defaultValue = '', title = t('输入信息'), checkboxLabel = '', options = {}) => {
-        return new Promise((resolve) => {
+      prompt: (message: string, defaultValue = '', title = t('输入信息'), checkboxLabel = '', options: { inputType?: 'password' | 'text'; validate?: (value: string) => string | null | undefined | Promise<string | null | undefined>; priority?: string; [key: string]: unknown } = {}) => {
+        return new Promise<string | null | { value: string; checked: boolean }>((resolve) => {
           const queued = pushDialog({
             id: Date.now() + Math.random(),
             type: 'prompt',
@@ -93,21 +120,21 @@ export default function GlobalDialog({ suspendDefault = false }) {
             inputType: options?.inputType === 'password' ? 'password' : 'text',
             // validate(value) => null/undefined 通过；返回字符串则保留弹窗并展示错误
             validate: typeof options?.validate === 'function' ? options.validate : null,
-            onConfirm: (val, checked) => resolve(checkboxLabel ? { value: val, checked } : val),
+            onConfirm: (val, checked) => resolve(checkboxLabel ? { value: val as string, checked } : val as string),
             onCancel: () => resolve(null)
           }, d => d.type === 'prompt' && d.priority === getDialogPriority(options) && d.message === message);
           if (!queued) resolve(null);
         });
       },
-      choice: (message, title, buttons, checkboxLabel = '', options = {}) => {
-        return new Promise((resolve) => {
+      choice: (message: string, title: string, buttons: unknown[], checkboxLabel = '', options: Record<string, unknown> = {}) => {
+        return new Promise<unknown>((resolve) => {
           const queued = pushDialog({
             id: Date.now() + Math.random(),
             type: 'choice',
             priority: getDialogPriority(options),
             title,
             message,
-            buttons,
+            buttons: buttons as QueuedDialog['buttons'],
             checkboxLabel,
             onChoice: (val, checked) => resolve(checkboxLabel ? { value: val, checked } : val),
             onClose: () => resolve(null)
@@ -144,11 +171,11 @@ export default function GlobalDialog({ suspendDefault = false }) {
           if (dialog.onCancel && dialog.type !== 'alert') dialog.onCancel();
           removeDialog(dialog.id);
         };
-        const handleConfirm = (val, checked) => {
+        const handleConfirm = (val: unknown, checked: boolean) => {
           if (dialog.onConfirm) dialog.onConfirm(val, checked);
           removeDialog(dialog.id);
         };
-        const handleChoice = (val, checked) => {
+        const handleChoice = (val: unknown, checked: boolean) => {
           if (dialog.onChoice) dialog.onChoice(val, checked);
           removeDialog(dialog.id);
         };
@@ -168,23 +195,31 @@ export default function GlobalDialog({ suspendDefault = false }) {
   );
 }
 
-function DialogContent({ current, active, onClose, onConfirm, onChoice }) {
+interface DialogContentProps {
+  current: QueuedDialog;
+  active: boolean;
+  onClose: () => void;
+  onConfirm: (val: unknown, checked: boolean) => void;
+  onChoice: (val: unknown, checked: boolean) => void;
+}
+
+function DialogContent({ current, active, onClose, onConfirm, onChoice }: DialogContentProps) {
   const { t } = useTranslation();
   const controlId = useId();
-  const dialogRef = useRef(null);
-  const lastFocusedRef = useRef(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const lastFocusedRef = useRef<HTMLElement | null>(null);
   const wasActiveRef = useRef(false);
-  const [inputValue, setInputValue] = useState(current.defaultValue || '');
+  const [inputValue, setInputValue] = useState<string>(current.defaultValue || '');
   const [inputError, setInputError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [checked, setChecked] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   // confirm: 默认落在「取消」，避免回车误关连接；左右切换后回车确认
-  const [focusAction, setFocusAction] = useState(() => {
+  const [focusAction, setFocusAction] = useState<number | 'cancel' | 'confirm'>(() => {
     if (current.type === 'confirm') return 'cancel';
     if (current.type === 'choice') {
       const primaryIdx = current.buttons?.findIndex((btn) => btn.primary);
-      return primaryIdx >= 0 ? primaryIdx : 0;
+      return primaryIdx !== undefined && primaryIdx >= 0 ? primaryIdx : 0;
     }
     return 'confirm';
   });
@@ -208,7 +243,7 @@ function DialogContent({ current, active, onClose, onConfirm, onChoice }) {
           : current.type === 'choice'
             ? `[data-dialog-choice="${focusAction}"]`
             : 'textarea:not(:disabled), button:not(:disabled)';
-      const fallback = dialogRef.current?.querySelector(selector);
+      const fallback = dialogRef.current?.querySelector(selector) as HTMLElement | null;
       const target = previous?.isConnected ? previous : fallback;
       target?.focus({ preventScroll: true });
     });
@@ -220,7 +255,7 @@ function DialogContent({ current, active, onClose, onConfirm, onChoice }) {
       setFocusAction('cancel');
     } else if (current.type === 'choice') {
       const primaryIdx = current.buttons?.findIndex((btn) => btn.primary);
-      setFocusAction(primaryIdx >= 0 ? primaryIdx : 0);
+      setFocusAction(primaryIdx !== undefined && primaryIdx >= 0 ? primaryIdx : 0);
     } else {
       setFocusAction('confirm');
     }
@@ -232,14 +267,15 @@ function DialogContent({ current, active, onClose, onConfirm, onChoice }) {
       setSubmitting(true);
       try {
         const result = await current.validate(inputValue);
-        if (result != null && result !== true && result !== '') {
+        if (result != null && result !== '') {
           setInputError(String(result));
           return;
         }
         setInputError('');
         onConfirm(inputValue, checked);
       } catch (err) {
-        setInputError(String(err?.message || err || t('操作失败')));
+        const errMsg = err instanceof Error ? err.message : String(err);
+        setInputError(errMsg || t('操作失败'));
       } finally {
         setSubmitting(false);
       }
@@ -251,7 +287,7 @@ function DialogContent({ current, active, onClose, onConfirm, onChoice }) {
 
   useEffect(() => {
     if (!active) return undefined;
-    const handleKeyDown = (e) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopImmediatePropagation();
@@ -320,7 +356,7 @@ function DialogContent({ current, active, onClose, onConfirm, onChoice }) {
   return (
     <div
       ref={dialogRef}
-      onFocusCapture={(event) => { lastFocusedRef.current = event.target; }}
+      onFocusCapture={(event) => { lastFocusedRef.current = event.target as HTMLElement; }}
       className={isLongTextAlert ? 'modal modal-md' : 'modal modal-sm'}
       style={{
         padding: 32,
@@ -500,7 +536,7 @@ function DialogContent({ current, active, onClose, onConfirm, onChoice }) {
       {current.type === 'choice' ? (
         <>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-          {current.buttons.map((btn, i) => (
+          {current.buttons?.map((btn, i) => (
             <button
               key={i}
               data-dialog-choice={i}

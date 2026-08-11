@@ -1,9 +1,59 @@
-// @ts-nocheck
-// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
-import { normalizeAISlashCommands } from './aiSlashCommands.ts'
-import { getProxyNodes } from '../settings/proxyNodesBridge.ts'
+// 桥接模块（自 .js 收编后类型化）：AI 全局设置归一化与持久化
+import { normalizeAISlashCommands, type AISlashCommand } from './aiSlashCommands.ts'
+import { getProxyNodes, type ProxyNode } from '../settings/proxyNodesBridge.ts'
 
-const DEFAULT_AI_GLOBAL_SETTINGS = {
+/** AI 协作提示预设 */
+export interface AICollaborationPromptPreset {
+  id: string
+  title: string
+  text: string
+}
+
+/** 审批按钮顺序 */
+export type ApprovalButtonOrder = 'reject-approve' | 'approve-reject'
+/** 命令操作按钮顺序 */
+export type CommandActionButtonOrder = 'terminate-continue' | 'continue-terminate'
+
+/** 归一化后的 AI 全局设置（normalizeAIGlobalSettings 输出；type 而非 interface 以兼容消费方索引签名） */
+export type AIGlobalSettings = {
+  currentProviderId: string
+  autoApprovalEnabled: boolean
+  alwaysAllowReadOnly: boolean
+  alwaysAllowReadOnlyOutsideWorkspace: boolean
+  alwaysAllowWrite: boolean
+  alwaysAllowWriteOutsideWorkspace: boolean
+  alwaysAllowWriteProtected: boolean
+  alwaysAllowExecute: boolean
+  alwaysAllowExecuteReadOnly: boolean
+  alwaysAllowExecuteAllCommands: boolean
+  allowedCommands: string[]
+  deniedCommands: string[]
+  slashCommands: AISlashCommand[]
+  collaborationPromptPresets: AICollaborationPromptPreset[]
+  collaborationExtraPrompt: string
+  alwaysAllowMcp: boolean
+  alwaysAllowModeSwitch: boolean
+  alwaysAllowSubtasks: boolean
+  alwaysAllowFollowupQuestions: boolean
+  soundEnabled: boolean
+  soundVolume: number
+  mcpEnabled: boolean
+  mcpAllowBrowserCalls: boolean
+  terminalIsolation: boolean
+  confirmDelete: boolean
+  continueAfterToolRejection: boolean
+  conversationAutoBackupEnabled: boolean
+  messageActionBarAtBottom: boolean
+  messageNavEnabled: boolean
+  approvalButtonOrder: ApprovalButtonOrder
+  commandActionButtonOrder: CommandActionButtonOrder
+  toolResultTokenThreshold: number
+  aiRequestProxyId: string
+  updatedAt: number
+  proxyNodes: ProxyNode[]
+}
+
+const DEFAULT_AI_GLOBAL_SETTINGS: AIGlobalSettings = {
   currentProviderId: '',
   autoApprovalEnabled: false,
   alwaysAllowReadOnly: false,
@@ -48,12 +98,12 @@ function getAppBridge() {
   return window?.go?.wailsapp?.AIBindings || window?.go?.wailsapp?.App
 }
 
-function normalizeStringList(values) {
+function normalizeStringList(values: unknown): string[] {
   if (!Array.isArray(values)) {
     return []
   }
-  const seen = new Set()
-  const normalized = []
+  const seen = new Set<string>()
+  const normalized: string[] = []
   values.forEach((value) => {
     if (typeof value !== 'string') {
       return
@@ -68,17 +118,17 @@ function normalizeStringList(values) {
   return normalized
 }
 
-function normalizeApprovalButtonOrder(value) {
+function normalizeApprovalButtonOrder(value: unknown): ApprovalButtonOrder {
   const nextValue = typeof value === 'string' ? value.trim() : ''
-  return VALID_APPROVAL_BUTTON_ORDERS.has(nextValue) ? nextValue : 'reject-approve'
+  return (VALID_APPROVAL_BUTTON_ORDERS.has(nextValue) ? nextValue : 'reject-approve') as ApprovalButtonOrder
 }
 
-function normalizeCommandActionButtonOrder(value) {
+function normalizeCommandActionButtonOrder(value: unknown): CommandActionButtonOrder {
   const nextValue = typeof value === 'string' ? value.trim() : ''
-  return VALID_COMMAND_ACTION_BUTTON_ORDERS.has(nextValue) ? nextValue : 'terminate-continue'
+  return (VALID_COMMAND_ACTION_BUTTON_ORDERS.has(nextValue) ? nextValue : 'terminate-continue') as CommandActionButtonOrder
 }
 
-function normalizeSoundVolume(value) {
+function normalizeSoundVolume(value: unknown): number {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) {
     return 0.06
@@ -92,7 +142,7 @@ function normalizeSoundVolume(value) {
   return parsed
 }
 
-function normalizeToolResultTokenThreshold(value) {
+function normalizeToolResultTokenThreshold(value: unknown): number {
   const parsed = Number(value)
   if (!Number.isFinite(parsed) || parsed <= 0) {
     return 350000
@@ -100,49 +150,51 @@ function normalizeToolResultTokenThreshold(value) {
   return Math.max(1, Math.trunc(parsed))
 }
 
-function normalizeProxyType(value) {
+function normalizeProxyType(value: unknown): 'http' | 'socks5' {
   return String(value || '').trim().toLowerCase() === 'http' ? 'http' : 'socks5'
 }
 
-function normalizeProxyNode(node, index = 0) {
-  const host = typeof node?.host === 'string' ? node.host.trim() : ''
+function normalizeProxyNode(node: unknown, index = 0): ProxyNode | null {
+  const n = (node ?? {}) as Record<string, unknown>
+  const host = typeof n.host === 'string' ? n.host.trim() : ''
   if (!host) {
     return null
   }
-  const parsedPort = parseInt(String(node?.port ?? '').trim(), 10)
+  const parsedPort = parseInt(String(n.port ?? '').trim(), 10)
   const port = Number.isFinite(parsedPort) && parsedPort > 0 && parsedPort <= 65535 ? parsedPort : 1080
-  const type = normalizeProxyType(node?.type)
+  const type = normalizeProxyType(n.type)
   const generatedId = `proxy-${type}-${host.toLowerCase()}-${port}-${index + 1}`
-  const id = typeof node?.id === 'string' && node.id.trim() ? node.id.trim() : generatedId
+  const id = typeof n.id === 'string' && n.id.trim() ? n.id.trim() : generatedId
   return {
     id,
-    name: typeof node?.name === 'string' ? node.name.trim() : '',
+    name: typeof n.name === 'string' ? n.name.trim() : '',
     type,
     host,
     port,
-    username: typeof node?.username === 'string' ? node.username.trim() : '',
-    password: typeof node?.password === 'string' ? node.password : '',
-    updatedAt: Number.isFinite(Number(node?.updatedAt)) && Number(node?.updatedAt) > 0 ? Number(node.updatedAt) : Date.now(),
+    username: typeof n.username === 'string' ? n.username.trim() : '',
+    password: typeof n.password === 'string' ? n.password : '',
+    updatedAt: Number.isFinite(Number(n.updatedAt)) && Number(n.updatedAt) > 0 ? Number(n.updatedAt) : Date.now(),
   }
 }
 
-export function normalizeAICollaborationPromptPresets(values) {
+export function normalizeAICollaborationPromptPresets(values: unknown): AICollaborationPromptPreset[] {
   if (!Array.isArray(values)) {
     return []
   }
-  const seen = new Set()
-  const normalized = []
+  const seen = new Set<string>()
+  const normalized: AICollaborationPromptPreset[] = []
   values.forEach((value, index) => {
-    const text = typeof value?.text === 'string' ? value.text.replace(/\r\n/g, '\n').trim() : ''
+    const v = value as Record<string, unknown> | null | undefined
+    const text = typeof v?.text === 'string' ? v.text.replace(/\r\n/g, '\n').trim() : ''
     if (!text) {
       return
     }
-    const rawId = typeof value?.id === 'string' ? value.id.trim() : ''
+    const rawId = typeof v?.id === 'string' ? v.id.trim() : ''
     const id = rawId || `collab-preset-${Date.now()}-${index + 1}`
     if (seen.has(id)) {
       return
     }
-    const rawTitle = typeof value?.title === 'string' ? value.title.trim() : ''
+    const rawTitle = typeof v?.title === 'string' ? v.title.trim() : ''
     seen.add(id)
     normalized.push({
       id,
@@ -153,12 +205,12 @@ export function normalizeAICollaborationPromptPresets(values) {
   return normalized
 }
 
-function normalizeProxyNodes(values) {
+function normalizeProxyNodes(values: unknown): ProxyNode[] {
   if (!Array.isArray(values)) {
     return []
   }
-  const seen = new Set()
-  const normalized = []
+  const seen = new Set<string>()
+  const normalized: ProxyNode[] = []
   values.forEach((value, index) => {
     const nextNode = normalizeProxyNode(value, index)
     if (!nextNode || seen.has(nextNode.id)) {
@@ -170,33 +222,34 @@ function normalizeProxyNodes(values) {
   return normalized
 }
 
-export function normalizeAIGlobalSettings(settings) {
-  const alwaysAllowReadOnly = Boolean(settings?.alwaysAllowReadOnly)
-  const alwaysAllowWrite = Boolean(settings?.alwaysAllowWrite)
-  const alwaysAllowExecute = Boolean(settings?.alwaysAllowExecute)
-  const alwaysAllowExecuteReadOnly = Boolean(settings?.alwaysAllowExecuteReadOnly)
-  const allowedCommands = normalizeStringList(settings?.allowedCommands)
-  const deniedCommands = normalizeStringList(settings?.deniedCommands)
-  const slashCommands = normalizeAISlashCommands(settings?.slashCommands)
-  const collaborationPromptPresets = normalizeAICollaborationPromptPresets(settings?.collaborationPromptPresets)
-  const proxyNodes = normalizeProxyNodes(settings?.proxyNodes)
-  const rawAIRequestProxyId = typeof settings?.aiRequestProxyId === 'string' ? settings.aiRequestProxyId.trim() : ''
+export function normalizeAIGlobalSettings(settings: unknown): AIGlobalSettings {
+  const s = (settings ?? {}) as Record<string, unknown>
+  const alwaysAllowReadOnly = Boolean(s.alwaysAllowReadOnly)
+  const alwaysAllowWrite = Boolean(s.alwaysAllowWrite)
+  const alwaysAllowExecute = Boolean(s.alwaysAllowExecute)
+  const alwaysAllowExecuteReadOnly = Boolean(s.alwaysAllowExecuteReadOnly)
+  const allowedCommands = normalizeStringList(s.allowedCommands)
+  const deniedCommands = normalizeStringList(s.deniedCommands)
+  const slashCommands = normalizeAISlashCommands(s.slashCommands)
+  const collaborationPromptPresets = normalizeAICollaborationPromptPresets(s.collaborationPromptPresets)
+  const proxyNodes = normalizeProxyNodes(s.proxyNodes)
+  const rawAIRequestProxyId = typeof s.aiRequestProxyId === 'string' ? s.aiRequestProxyId.trim() : ''
   const aiRequestProxyId = proxyNodes.some((node) => node.id === rawAIRequestProxyId) ? rawAIRequestProxyId : ''
-  const updatedAt = Number.isFinite(Number(settings?.updatedAt)) && Number(settings?.updatedAt) > 0 ? Number(settings.updatedAt) : Date.now()
-  const soundEnabled = settings?.soundEnabled !== false
-  const soundVolume = normalizeSoundVolume(settings?.soundVolume)
-  const toolResultTokenThreshold = normalizeToolResultTokenThreshold(settings?.toolResultTokenThreshold)
+  const updatedAt = Number.isFinite(Number(s.updatedAt)) && Number(s.updatedAt) > 0 ? Number(s.updatedAt) : Date.now()
+  const soundEnabled = s.soundEnabled !== false
+  const soundVolume = normalizeSoundVolume(s.soundVolume)
+  const toolResultTokenThreshold = normalizeToolResultTokenThreshold(s.toolResultTokenThreshold)
 
   return {
     ...DEFAULT_AI_GLOBAL_SETTINGS,
-    ...settings,
-    currentProviderId: typeof settings?.currentProviderId === 'string' ? settings.currentProviderId.trim() : '',
+    ...s,
+    currentProviderId: typeof s.currentProviderId === 'string' ? s.currentProviderId.trim() : '',
     autoApprovalEnabled: alwaysAllowReadOnly || alwaysAllowWrite || alwaysAllowExecute,
     alwaysAllowReadOnly,
-    alwaysAllowReadOnlyOutsideWorkspace: Boolean(settings?.alwaysAllowReadOnlyOutsideWorkspace),
+    alwaysAllowReadOnlyOutsideWorkspace: Boolean(s.alwaysAllowReadOnlyOutsideWorkspace),
     alwaysAllowWrite,
-    alwaysAllowWriteOutsideWorkspace: Boolean(settings?.alwaysAllowWriteOutsideWorkspace),
-    alwaysAllowWriteProtected: Boolean(settings?.alwaysAllowWriteProtected),
+    alwaysAllowWriteOutsideWorkspace: Boolean(s.alwaysAllowWriteOutsideWorkspace),
+    alwaysAllowWriteProtected: Boolean(s.alwaysAllowWriteProtected),
     alwaysAllowExecute,
     alwaysAllowExecuteReadOnly,
     alwaysAllowExecuteAllCommands: allowedCommands.includes('*'),
@@ -204,31 +257,31 @@ export function normalizeAIGlobalSettings(settings) {
     deniedCommands,
     slashCommands,
     collaborationPromptPresets,
-    collaborationExtraPrompt: typeof settings?.collaborationExtraPrompt === 'string' ? settings.collaborationExtraPrompt.replace(/\r\n/g, '\n').trim() : '',
-    alwaysAllowMcp: Boolean(settings?.alwaysAllowMcp),
-    alwaysAllowModeSwitch: Boolean(settings?.alwaysAllowModeSwitch),
-    alwaysAllowSubtasks: Boolean(settings?.alwaysAllowSubtasks),
-    alwaysAllowFollowupQuestions: Boolean(settings?.alwaysAllowFollowupQuestions),
+    collaborationExtraPrompt: typeof s.collaborationExtraPrompt === 'string' ? s.collaborationExtraPrompt.replace(/\r\n/g, '\n').trim() : '',
+    alwaysAllowMcp: Boolean(s.alwaysAllowMcp),
+    alwaysAllowModeSwitch: Boolean(s.alwaysAllowModeSwitch),
+    alwaysAllowSubtasks: Boolean(s.alwaysAllowSubtasks),
+    alwaysAllowFollowupQuestions: Boolean(s.alwaysAllowFollowupQuestions),
     soundEnabled,
     soundVolume,
     toolResultTokenThreshold,
-    mcpEnabled: settings?.mcpEnabled !== false,
-    mcpAllowBrowserCalls: Boolean(settings?.mcpAllowBrowserCalls),
-    terminalIsolation: settings?.terminalIsolation !== false,
-    confirmDelete: settings?.confirmDelete !== false,
-    continueAfterToolRejection: settings?.continueAfterToolRejection !== false,
-    conversationAutoBackupEnabled: settings?.conversationAutoBackupEnabled !== false,
-    messageActionBarAtBottom: Boolean(settings?.messageActionBarAtBottom),
-    messageNavEnabled: settings?.messageNavEnabled !== false,
-    approvalButtonOrder: normalizeApprovalButtonOrder(settings?.approvalButtonOrder),
-    commandActionButtonOrder: normalizeCommandActionButtonOrder(settings?.commandActionButtonOrder),
+    mcpEnabled: s.mcpEnabled !== false,
+    mcpAllowBrowserCalls: Boolean(s.mcpAllowBrowserCalls),
+    terminalIsolation: s.terminalIsolation !== false,
+    confirmDelete: s.confirmDelete !== false,
+    continueAfterToolRejection: s.continueAfterToolRejection !== false,
+    conversationAutoBackupEnabled: s.conversationAutoBackupEnabled !== false,
+    messageActionBarAtBottom: Boolean(s.messageActionBarAtBottom),
+    messageNavEnabled: s.messageNavEnabled !== false,
+    approvalButtonOrder: normalizeApprovalButtonOrder(s.approvalButtonOrder),
+    commandActionButtonOrder: normalizeCommandActionButtonOrder(s.commandActionButtonOrder),
     aiRequestProxyId,
     updatedAt,
     proxyNodes,
   }
 }
 
-export async function getAIGlobalSettings() {
+export async function getAIGlobalSettings(): Promise<AIGlobalSettings> {
   const bridge = getAppBridge()
   if (!bridge?.GetAIGlobalSettings) {
     return DEFAULT_AI_GLOBAL_SETTINGS
@@ -241,12 +294,12 @@ export async function getAIGlobalSettings() {
   }
 }
 
-export async function saveAIGlobalSettings(settings) {
+export async function saveAIGlobalSettings(settings: unknown): Promise<AIGlobalSettings> {
   const normalizedSettings = {
     ...normalizeAIGlobalSettings(settings),
     updatedAt: Date.now(),
   }
-  const settingsToSave = { ...normalizedSettings }
+  const settingsToSave = { ...normalizedSettings } as Omit<AIGlobalSettings, 'proxyNodes'> & { proxyNodes?: ProxyNode[] }
   delete settingsToSave.proxyNodes
   const bridge = getAppBridge()
   if (!bridge?.SaveAIGlobalSettings) {

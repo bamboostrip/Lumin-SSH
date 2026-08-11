@@ -1,5 +1,4 @@
-// @ts-nocheck
-// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
+// 桥接模块（自 .js 收编后类型化）：AI 图片压缩（base64 体积计算与 Canvas 缩放）
 import { t } from '../../i18n.ts'
 
 const COMPRESSION_QUALITY_MAP = new Map([
@@ -13,14 +12,14 @@ const COMPRESSION_QUALITY_MAP = new Map([
 const LARGE_FILE_THRESHOLD = 5 * 1024 * 1024
 const SCALE_DOWN_RATIO = 0.8
 
-export function calculateBase64Size(base64) {
+export function calculateBase64Size(base64: unknown): number {
   const source = typeof base64 === 'string' ? base64 : ''
   const commaIndex = source.indexOf(',')
   const base64Length = commaIndex >= 0 ? source.length - (commaIndex + 1) : source.length
   return Math.round((base64Length * 3) / 4)
 }
 
-function loadImage(src) {
+function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image()
     image.onload = () => resolve(image)
@@ -29,7 +28,7 @@ function loadImage(src) {
   })
 }
 
-function detectAlpha(context, width, height) {
+function detectAlpha(context: CanvasRenderingContext2D, width: number, height: number): boolean {
   const totalPixels = width * height
   const sampleSize = Math.min(100, totalPixels)
   const step = Math.max(1, Math.floor(totalPixels / sampleSize))
@@ -43,11 +42,11 @@ function detectAlpha(context, width, height) {
   return false
 }
 
-function shouldScaleDown(fileSize) {
+function shouldScaleDown(fileSize: number): boolean {
   return fileSize > LARGE_FILE_THRESHOLD
 }
 
-function getCompressionQuality(mimeType, hasAlpha) {
+function getCompressionQuality(mimeType: string, hasAlpha: boolean): { format: string; quality: number } {
   if (mimeType.includes('png')) {
     if (hasAlpha) {
       return { format: 'image/png', quality: COMPRESSION_QUALITY_MAP.get('image/png') || 1.0 }
@@ -63,10 +62,19 @@ function getCompressionQuality(mimeType, hasAlpha) {
   return { format: 'image/jpeg', quality: 0.8 }
 }
 
-export async function compressImage(base64Image) {
+/** 压缩结果（compressImage 输出） */
+export interface CompressedImageResult {
+  data: string
+  originalSize: number
+  compressedSize: number
+  reduction: number
+  wasScaled: boolean
+}
+
+export async function compressImage(base64Image: unknown): Promise<CompressedImageResult> {
   const originalSize = calculateBase64Size(base64Image)
   const mimeType = String(base64Image || '').match(/data:([^;]+);/)?.[1] || 'image/jpeg'
-  const image = await loadImage(base64Image)
+  const image = await loadImage(String(base64Image || ''))
   const canvas = document.createElement('canvas')
   const context = canvas.getContext('2d')
   if (!context) {

@@ -173,6 +173,34 @@ for (const file of files) {
     await compare('save', (m) => m.saveRuntimeEnvironmentSettings({ environmentType: 'uv', targetPathTemplate: '/t' }));
     await compare('getst', (m) => m.getRuntimeEnvironmentStatus());
     await compare('inst', (m) => m.installRuntimeEnvironment());
+  } else if (idx === 'aiSlashCommands') {
+    const cmdCases = [undefined, null, [], [{ name: '/ls', prompt: 'list' }], [{ name: 'a b', prompt: 'x' }], [{ name: 'dup', prompt: '1' }, { name: 'DUP', prompt: '2' }], [{ name: 'ok', prompt: '' }], [{ name: '', prompt: 'p' }], 'str'];
+    for (let i = 0; i < cmdCases.length; i++) {
+      await compare(`norm#${i}`, (m) => m.normalizeAISlashCommands(cmdCases[i]));
+      await compare(`find#${i}`, (m) => m.findAISlashCommandByName(cmdCases[i], '/dup'));
+      await compare(`menu#${i}`, (m) => m.buildSlashCommandMenuItems(cmdCases[i], ''));
+    }
+    for (const [text, pos] of [['/ls hello', 3], ['plain', 2], ['/ab', 3], ['/x y', 2], ['', 0], ['/foo\nbar', 4]]) {
+      await compare(`ctx#${pos}`, (m) => m.getSlashCommandMenuContext(text, pos));
+      await compare(`insert#${pos}`, (m) => m.insertSlashCommandToken(text, pos, '/ls'));
+      await compare(`expand#${pos}`, (m) => m.expandFirstSlashCommandForPrompt(text, [{ name: 'ls', prompt: 'list files' }]));
+    }
+  } else if (idx === 'messagesProvider') {
+    for (const v of [undefined, null, '', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-4-x', 'claude-3.7-sonnet-x', 'claude-anything', 'gpt-4o', '  CLAUDE-OPUS-4-8  ', 42]) {
+      await compare(`cap#${String(v)}`, (m) => m.messagesProvider.getModelCapability(v));
+    }
+  } else if (idx === 'aiGlobalSettingsBridge') {
+    const cases = [undefined, null, {}, { currentProviderId: ' p ', soundVolume: '0.5' }, { allowedCommands: ['a', 'a', '', 5], soundEnabled: false }, { approvalButtonOrder: 'bogus' }, { alwaysAllowWrite: true, toolResultTokenThreshold: '100' }, { slashCommands: [{ name: 'x', prompt: 'p' }] }, { collaborationPromptPresets: [{ id: 'c1', title: 't', text: 'x' }] }, { proxyNodes: [{ id: 'n1', host: 'h', port: 8080, type: 'http' }], aiRequestProxyId: 'n1' }, { aiRequestProxyId: 'missing' }];
+    for (let i = 0; i < cases.length; i++) {
+      await compare(`norm#${i}`, (m) => m.normalizeAIGlobalSettings(cases[i]));
+    }
+    await compare('presets', (m) => m.normalizeAICollaborationPromptPresets([{ id: 'p1', text: 'a' }, { text: 'b' }, { text: '' }]));
+    await compare('get', (m) => m.getAIGlobalSettings());
+    await compare('save', (m) => m.saveAIGlobalSettings({ currentProviderId: 'x' }));
+  } else if (idx === 'aiImageCompression') {
+    for (const v of [undefined, null, '', 'data:image/png;base64,AAAA', 'rawbase64data', 'a,b']) {
+      await compare(`size#${String(v)}`, (m) => m.calculateBase64Size(v));
+    }
   } else {
     console.log(`${idx}: 未知模块（无测试用例），跳过`);
   }

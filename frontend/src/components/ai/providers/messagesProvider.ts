@@ -1,6 +1,23 @@
-// @ts-nocheck
-// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
-const CONSERVATIVE_CAPABILITY = {
+// 桥接模块（自 .js 收编后类型化）：Messages 供应商模型能力表
+/** 模型能力（保守默认 + 规则覆盖，modelId 由 buildCapability 注入；type 而非 interface 以兼容消费方索引签名） */
+export type ModelCapability = {
+  known: boolean
+  supportsPromptCache: boolean
+  promptCacheRetention: string
+  supportsReasoningBinary: boolean
+  supportsReasoningBudget: boolean
+  requiredReasoningBudget: boolean
+  supportsReasoningEffort: string[]
+  requiredReasoningEffort: boolean
+  reasoningEffort: string
+  reasoningMode: string
+  maxTokens: number
+  maxThinkingTokens: number
+  supportsTemperature: boolean
+  modelId?: string
+}
+
+const CONSERVATIVE_CAPABILITY: ModelCapability = {
   known: false,
   supportsPromptCache: false,
   promptCacheRetention: 'in_memory',
@@ -16,7 +33,14 @@ const CONSERVATIVE_CAPABILITY = {
   supportsTemperature: true,
 }
 
-const capabilityRules = [
+interface CapabilityRule {
+  matchExact?: string
+  matchPrefix?: string
+  matchContains?: string
+  capability: Partial<ModelCapability>
+}
+
+const capabilityRules: CapabilityRule[] = [
   {
     matchExact: 'claude-opus-4-8',
     capability: {
@@ -94,7 +118,7 @@ const capabilityRules = [
   },
 ]
 
-function buildCapability(modelId, patch = {}) {
+function buildCapability(modelId: unknown, patch: Partial<ModelCapability> = {}): ModelCapability {
   return {
     ...CONSERVATIVE_CAPABILITY,
     modelId: typeof modelId === 'string' ? modelId.trim() : '',
@@ -102,7 +126,7 @@ function buildCapability(modelId, patch = {}) {
   }
 }
 
-function matchesRule(rule, normalizedModelId) {
+function matchesRule(rule: CapabilityRule, normalizedModelId: string): boolean {
   if (rule.matchExact) {
     return normalizedModelId === rule.matchExact.toLowerCase()
   }
@@ -115,7 +139,7 @@ function matchesRule(rule, normalizedModelId) {
   return false
 }
 
-function getModelCapability(modelId) {
+function getModelCapability(modelId: unknown): ModelCapability {
   const normalizedModelId = typeof modelId === 'string' ? modelId.trim().toLowerCase() : ''
   if (!normalizedModelId) {
     return buildCapability(modelId)

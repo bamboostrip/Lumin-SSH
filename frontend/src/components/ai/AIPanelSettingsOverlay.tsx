@@ -158,7 +158,7 @@ export interface AIPanelSettingsOverlayProps {
   configText: string
   configRows: number
   globalAISettings: GlobalAISettingsLike
-  onSaveGlobalAISettings?: (settings: Record<string, unknown>) => Promise<void> | void
+  onSaveGlobalAISettings?: (settings: Record<string, unknown>) => Promise<unknown> | void
   aiTerminalIsolation: boolean
   onToggleAiTerminalIsolation: () => void
   confirmDelete: boolean

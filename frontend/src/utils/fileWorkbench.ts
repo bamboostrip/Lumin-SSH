@@ -314,30 +314,63 @@ export function subscribeSessionWorkbenchState(sessionGroupId: unknown, callback
   return () => root.removeEventListener(workbenchEventName(key), handler);
 }
 
-export function getSessionUploadQueue(sessionGroupId: unknown): unknown[] {
+/** 传输分块（FileManager 上报的宽松结构） */
+export interface TransferChunk {
+  index: number;
+  status: string;
+  attempt?: number;
+  error?: string;
+}
+
+/** 传输队列条目（FileManager 上报的宽松结构） */
+export interface TransferQueueItem {
+  id: string;
+  name?: string;
+  direction?: string;
+  status: string;
+  mode?: string;
+  phase?: string;
+  phaseDetail?: string;
+  phaseCurrent?: string;
+  phaseProgress?: number;
+  progress?: number;
+  error?: string;
+  localPath?: string;
+  remotePath?: string;
+  createdAt?: number;
+  bytesUploaded?: number;
+  bytesTotal?: number;
+  chunkSizeBytes?: number;
+  chunksCompleted?: number;
+  chunksFailed?: number;
+  chunks?: TransferChunk[];
+  [key: string]: unknown;
+}
+
+export function getSessionUploadQueue(sessionGroupId: unknown): TransferQueueItem[] {
   const store = ensureUploadQueueStore();
   const key = normalizeSessionGroupId(sessionGroupId);
-  return Array.isArray(store[key]) ? store[key] as unknown[] : [];
+  return Array.isArray(store[key]) ? store[key] as TransferQueueItem[] : [];
 }
 
 export function updateSessionUploadQueue(
   sessionGroupId: unknown,
-  updater: unknown[] | ((current: unknown[]) => unknown[]),
-): unknown[] {
+  updater: TransferQueueItem[] | ((current: TransferQueueItem[]) => TransferQueueItem[]),
+): TransferQueueItem[] {
   const root = getRoot();
   const store = ensureUploadQueueStore();
   const key = normalizeSessionGroupId(sessionGroupId);
   const current = getSessionUploadQueue(key);
   const next = typeof updater === 'function' ? updater(current) : updater;
   store[key] = Array.isArray(next) ? next : [];
-  root.dispatchEvent(new CustomEvent<unknown[]>(uploadQueueEventName(key), { detail: store[key] as unknown[] }));
-  return store[key] as unknown[];
+  root.dispatchEvent(new CustomEvent<TransferQueueItem[]>(uploadQueueEventName(key), { detail: store[key] as TransferQueueItem[] }));
+  return store[key] as TransferQueueItem[];
 }
 
-export function subscribeSessionUploadQueue(sessionGroupId: unknown, callback: (queue: unknown[]) => void): () => void {
+export function subscribeSessionUploadQueue(sessionGroupId: unknown, callback: (queue: TransferQueueItem[]) => void): () => void {
   const root = getRoot();
   const key = normalizeSessionGroupId(sessionGroupId);
-  const handler = (event: Event) => callback((event as CustomEvent<unknown[]>).detail);
+  const handler = (event: Event) => callback((event as CustomEvent<TransferQueueItem[]>).detail);
   callback(getSessionUploadQueue(key));
   root.addEventListener(uploadQueueEventName(key), handler);
   return () => root.removeEventListener(uploadQueueEventName(key), handler);

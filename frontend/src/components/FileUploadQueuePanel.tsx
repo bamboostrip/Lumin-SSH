@@ -2,41 +2,9 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { Upload, Download, FolderOpen, X, CheckCircle2, AlertCircle, Clock3, ClipboardList, type LucideIcon } from 'lucide-react';
 import { useTranslation, type I18nKey } from '../i18n.ts';
 import Tiptop from './Tiptop.tsx';
+import { type TransferChunk, type TransferQueueItem } from '../utils/fileWorkbench.ts';
 
 const MAX_RENDER_UPLOAD_CARDS = 1000;
-
-/** 传输分块（FileManager 上报的宽松结构） */
-export interface TransferChunk {
-  index: number;
-  status: string;
-  attempt?: number;
-  error?: string;
-}
-
-/** 传输队列条目（FileManager 上报的宽松结构） */
-export interface TransferQueueItem {
-  id: string;
-  name?: string;
-  direction?: string;
-  status: string;
-  mode?: string;
-  phase?: string;
-  phaseDetail?: string;
-  phaseCurrent?: string;
-  phaseProgress?: number;
-  progress?: number;
-  error?: string;
-  localPath?: string;
-  remotePath?: string;
-  createdAt?: number;
-  bytesUploaded?: number;
-  bytesTotal?: number;
-  chunkSizeBytes?: number;
-  chunksCompleted?: number;
-  chunksFailed?: number;
-  chunks?: TransferChunk[];
-  [key: string]: unknown;
-}
 
 /** helper 的 t 参数使用严格 I18nKey 签名（与 useTranslation 返回值一致） */
 type LooseT = (key: I18nKey, vars?: Record<string, unknown>) => string;

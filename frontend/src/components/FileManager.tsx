@@ -10,6 +10,8 @@ import { clampMenuPosition } from '../utils/menuPosition.ts';
 import { isArchive, isBinaryLike, isViewable } from '../utils/fileTypeClassify.ts';
 import { suppressDragOutClick } from '../utils/dragOutClickGuard.ts';
 import FileUploadQueuePanel from './FileUploadQueuePanel.tsx';
+import { type TransferChunk, type TransferQueueItem } from '../utils/fileWorkbench.ts';
+import type { FileEditorFile } from './FileEditor.tsx';
 import Tiptop from './Tiptop.tsx';
 import {
   getSessionCachedFileManagerPathItems,
@@ -45,8 +47,110 @@ import {
 // FileManager 类型契约（props 见 FileManagerProps；内部数据模型见下）
 // ============================================================
 
-// 来自 Go 桥或事件 payload 的外部数据，字段形状以运行时为准。
-type BridgeData = any
+// 来自 Go 桥/事件/localStorage 持久化数据的外部形状：字段以守卫读取，
+// 均带索引签名（运行时宽松数据，新字段无需改接口）。
+
+/** 工作区持久化文件标签（extractManualPinnedTabsFromWorkspace 输入） */
+interface FileManagerWorkspaceTab {
+  pinned?: unknown
+  systemPinned?: unknown
+  id?: unknown
+  path?: unknown
+  customTitle?: unknown
+}
+
+/** 工作区对象（含 tabs 列表） */
+interface FileManagerWorkspace {
+  tabs?: FileManagerWorkspaceTab[]
+}
+
+/** 虚拟滚动行条目（paneState.rows 元素） */
+interface FileManagerVirtualRowEntry {
+  logicalPath?: unknown
+  rowType?: unknown
+  item?: unknown
+  [key: string]: unknown
+}
+
+/** 文件管理面板状态（paneState：虚拟滚动面板形状，见 renderFileManagerVirtualViewport 字面量） */
+interface FileManagerPaneStateLike {
+  rows: FileManagerVirtualRow[]
+  [key: string]: unknown
+}
+
+/** 虚拟滚动可见区间 */
+interface FileManagerVirtualRange {
+  startIndex?: unknown
+  endIndex?: unknown
+  [key: string]: unknown
+}
+
+/** 下载冲突（PreviewDownloadConflicts 返回项 / buildDownloadConflictMessage 输入） */
+interface FileManagerDownloadConflict {
+  relativePath?: unknown
+  localSize?: unknown
+  remoteSize?: unknown
+  localModifyTime?: unknown
+  remoteModifyTime?: unknown
+  localPath?: unknown
+  remotePath?: unknown
+  [key: string]: unknown
+}
+
+/** 下载冲突解决设置（buildDownloadConflictOptionsPayload 输入） */
+interface FileManagerDownloadConflictSettings {
+  strategy?: unknown
+  diffBySize?: unknown
+  diffByMtime?: unknown
+  renameSuffixMode?: unknown
+  pathStrategies?: unknown
+}
+
+/** 文件项宽松形状（handleOpenSystemEditor/WithEditor 输入） */
+interface FileManagerFileLike {
+  name?: unknown
+  path?: unknown
+  content?: unknown
+  size?: unknown
+  permission?: unknown
+  mode?: unknown
+  uid?: unknown
+  gid?: unknown
+}
+
+/** 双面板拖拽 payload 项 */
+interface FileManagerDualPaneDragItem {
+  path?: unknown
+  isDirectory?: unknown
+  [key: string]: unknown
+}
+
+/** 双面板拖拽 payload（confirmDualPaneDirectoryDrag 输入） */
+interface FileManagerDualPaneDragPayload {
+  items?: FileManagerDualPaneDragItem[]
+  paths?: unknown
+  [key: string]: unknown
+}
+
+/** 标签拖放指示器（setFileManagerTabDropIndicator 状态） */
+interface FileManagerTabDropIndicator {
+  tabId?: unknown
+  [key: string]: unknown
+}
+
+/** chmod 目标（setChmodTarget 状态，{ item, path, mode, includeSubdirectories, showIncludeSubdirectories }） */
+interface FileManagerChmodTarget {
+  item: FileManagerFileItem | null
+  path: string
+  mode: string
+  includeSubdirectories?: boolean
+  showIncludeSubdirectories?: boolean
+  rememberedMode?: string
+  autoApplyLastSettings?: boolean
+  ownerCandidates?: IdentityPresetOption[]
+  groupCandidates?: IdentityPresetOption[]
+  [key: string]: unknown
+}
 
 interface FileManagerProps {
   sessionId: string
@@ -90,8 +194,8 @@ interface FileManagerPaneEffectState {
 }
 
 interface FileManagerPaneViewState {
-  pendingRestore: BridgeData
-  lastVisibleAnchor: BridgeData
+  pendingRestore: FileListViewAnchor | null
+  lastVisibleAnchor: FileListViewAnchor | null
 }
 
 interface DownloadConflictSettings {
@@ -193,8 +297,8 @@ interface LoadDirOptions {
 // 跨实例共享的剪贴板/编辑器状态（挂在 window 上，形状以运行时为准）
 declare global {
   interface Window {
-    __luminClipboards?: Record<string, BridgeData>
-    __luminEditorStates?: Record<string, BridgeData>
+    __luminClipboards?: Record<string, unknown>
+    __luminEditorStates?: Record<string, unknown>
   }
 }
 
@@ -491,7 +595,7 @@ function areFileManagerTabStatesEqual(left: FileManagerTabLike | null | undefine
     && getFileManagerSystemTabType(left) === getFileManagerSystemTabType(right);
 }
 
-function createLocalItemShell(name: unknown, isDirectory: boolean, sourceItem: BridgeData = {}): FileManagerFileItem {
+function createLocalItemShell(name: unknown, isDirectory: boolean, sourceItem: Record<string, unknown> = {}): FileManagerFileItem {
   const normalizedName = String(name || '').trim();
   return {
     name: normalizedName,
@@ -499,7 +603,7 @@ function createLocalItemShell(name: unknown, isDirectory: boolean, sourceItem: B
     size: Boolean(isDirectory) ? 0 : Number(sourceItem?.size || 0),
     permission: String(sourceItem?.permission || '').trim(),
     mode: String(sourceItem?.mode || '').trim(),
-    modifyTime: sourceItem?.modifyTime || Date.now(),
+    modifyTime: typeof sourceItem?.modifyTime === 'number' ? sourceItem.modifyTime : Date.now(),
     uid: String(sourceItem?.uid || '-').trim() || '-',
     gid: String(sourceItem?.gid || '-').trim() || '-',
   };
@@ -555,7 +659,7 @@ function shouldInvertFileManagerDualPaneDragModifier() {
   return localStorage.getItem('fileManagerDualPaneDragInvertModifier') === 'true';
 }
 
-function createFileManagerTab(path = '', options: BridgeData = {}): FileManagerTab {
+function createFileManagerTab(path = '', options: Record<string, unknown> = {}): FileManagerTab {
   fileManagerTabSequence += 1;
   return {
     id: `file-manager-tab-${Date.now()}-${fileManagerTabSequence}`,
@@ -571,7 +675,7 @@ function createFileManagerTab(path = '', options: BridgeData = {}): FileManagerT
   };
 }
 
-function extractManualPinnedTabsFromWorkspace(workspace: BridgeData) {
+function extractManualPinnedTabsFromWorkspace(workspace: FileManagerWorkspace) {
   const rawTabs = workspace?.tabs
   const tabs = Array.isArray(rawTabs) ? rawTabs : [];
   return tabs
@@ -584,7 +688,7 @@ function extractManualPinnedTabsFromWorkspace(workspace: BridgeData) {
     .filter((tab) => tab.id);
 }
 
-function mergeSharedPinnedTabsIntoWorkspaceTabs(localTabs: BridgeData[], sharedPinnedTabs: BridgeData[]): FileManagerTab[] {
+function mergeSharedPinnedTabsIntoWorkspaceTabs(localTabs: FileManagerWorkspaceTab[], sharedPinnedTabs: FileManagerWorkspaceTab[]): FileManagerTab[] {
   const tabs = Array.isArray(localTabs) ? localTabs : [];
   const shared = Array.isArray(sharedPinnedTabs) ? sharedPinnedTabs : [];
   const homeTabs = tabs.filter((tab) => tab && tab.systemPinned === true);
@@ -628,7 +732,8 @@ function mergeSharedPinnedTabsIntoWorkspaceTabs(localTabs: BridgeData[], sharedP
       return true;
     })
     .map((tab) => (tab.pinned === true ? { ...tab, pinned: false } : tab));
-  return [...homeTabs, ...mappedPinnedTabs, ...remainderTabs];
+  // homeTabs/remainderTabs 为持久化 tab（字段已归一化），断言为完整 FileManagerTab
+  return [...homeTabs, ...mappedPinnedTabs, ...remainderTabs] as FileManagerTab[];
 }
 
 function getFileManagerTabLabel(path: unknown, t: LooseT, customTitle: unknown = '') {
@@ -750,7 +855,7 @@ function findFileManagerVirtualRowIndex(rows: FileManagerVirtualRow[], rowKey: u
   return Array.isArray(rows) ? rows.findIndex((row) => row?.rowKey === rowKey) : -1;
 }
 
-function isFileManagerVirtualRangeVisible(range: BridgeData, index: number) {
+function isFileManagerVirtualRangeVisible(range: FileManagerVirtualRange, index: number) {
   if (!range || index < 0) return false;
   return index >= Number(range.startIndex ?? 0) && index <= Number(range.endIndex ?? -1);
 }
@@ -854,7 +959,7 @@ function getDownloadConflictSettingsFromStorage(): DownloadConflictSettings {
   };
 }
 
-function buildDownloadConflictOptionsPayload(settings: BridgeData, overrides: BridgeData = {}) {
+function buildDownloadConflictOptionsPayload(settings: FileManagerDownloadConflictSettings, overrides: FileManagerDownloadConflictSettings = {}) {
   const next = { ...settings, ...overrides };
   return JSON.stringify({
     strategy: next.strategy || DOWNLOAD_CONFLICT_STRATEGY_AUTO_RENAME,
@@ -1013,7 +1118,7 @@ function resolveIdentityInputValue(currentId: unknown, presets: IdentityPresetOp
   return formatIdentityDisplay(matched?.name || '', normalizedCurrentId);
 }
 
-function resolveIdentityInputSpec(value: unknown, options: IdentityOption[], fallbackId: unknown = '') {
+function resolveIdentityInputSpec(value: unknown, options: IdentityPresetOption[], fallbackId: unknown = '') {
   const trimmed = String(value ?? '').trim();
   const candidates = Array.isArray(options) ? options : [];
   if (!trimmed || trimmed === '-') {
@@ -1036,7 +1141,7 @@ function resolveIdentityInputSpec(value: unknown, options: IdentityOption[], fal
   return trimmed;
 }
 
-function resolveIdentityCompareKey(value: unknown, options: IdentityOption[], fallbackId: unknown = '') {
+function resolveIdentityCompareKey(value: unknown, options: IdentityPresetOption[], fallbackId: unknown = '') {
   const trimmed = String(value ?? '').trim();
   const fallback = normalizeIdentityId(fallbackId);
   const candidates = Array.isArray(options) ? options : [];
@@ -1708,7 +1813,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   const [fileManagerDualPaneDragPromptOnDirectory, setFileManagerDualPaneDragPromptOnDirectory] = useState(() => shouldPromptFileManagerDualPaneDragDirectory());
   const [fileManagerDualPaneDragInvertModifier, setFileManagerDualPaneDragInvertModifier] = useState(() => shouldInvertFileManagerDualPaneDragModifier());
   const [fileManagerPaneDropTarget, setFileManagerPaneDropTarget] = useState('');
-  const internalFileManagerDragPayloadRef = useRef<BridgeData>(null);
+  const internalFileManagerDragPayloadRef = useRef<Record<string, unknown> | null>(null);
   const [fileManagerDragTip, setFileManagerDragTip] = useState<{ x: number; y: number; text: string } | null>(null);
   const [fileManagerSidebarOpen, setFileManagerSidebarOpen] = useState(false);
   const [fileManagerDoubleClickUncompressArchive, setFileManagerDoubleClickUncompressArchive] = useState(false);
@@ -1907,10 +2012,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   const fileLocatorInputRef = useRef<HTMLInputElement | null>(null);
   const handleFileListScrollRef = useRef<((event?: React.UIEvent<HTMLDivElement>) => void) | null>(null);
   const handleFileListKeyDownRef = useRef<((event: React.KeyboardEvent<HTMLDivElement>) => void) | null>(null);
-  const paneVirtuosoRefCallbacksRef = useRef<{ left: BridgeData | null; right: BridgeData | null }>({ left: null, right: null });
-  const paneScrollerRefCallbacksRef = useRef<{ left: BridgeData | null; right: BridgeData | null }>({ left: null, right: null });
-  const paneScrollerRefOptionsRef = useRef<{ left: BridgeData; right: BridgeData }>({ left: {}, right: {} });
-  const paneVirtuosoRefs = useRef<{ left: BridgeData | null; right: BridgeData | null }>({ left: null, right: null });
+  const paneVirtuosoRefCallbacksRef = useRef<{ left: unknown; right: unknown }>({ left: null, right: null });
+  const paneScrollerRefCallbacksRef = useRef<{ left: unknown; right: unknown }>({ left: null, right: null });
+  const paneScrollerRefOptionsRef = useRef<{ left: Record<string, unknown>; right: Record<string, unknown> }>({ left: {}, right: {} });
+  const paneVirtuosoRefs = useRef<{ left: unknown; right: unknown }>({ left: null, right: null });
   const paneVisibleRangesRef = useRef<{ left: { startIndex: number; endIndex: number }; right: { startIndex: number; endIndex: number } }>({
     left: { startIndex: 0, endIndex: -1 },
     right: { startIndex: 0, endIndex: -1 },
@@ -1926,7 +2031,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   const [fileManagerTabCanScrollRight, setFileManagerTabCanScrollRight] = useState(false);
   const [draggingFileManagerTabId, setDraggingFileManagerTabId] = useState('');
   const draggingFileManagerTabIdRef = useRef('');
-  const [fileManagerTabDropIndicator, setFileManagerTabDropIndicator] = useState<BridgeData>(null);
+  const [fileManagerTabDropIndicator, setFileManagerTabDropIndicator] = useState<FileManagerTabDropIndicator | null>(null);
   const tabItemsCacheRef = useRef<Map<string, { path: string; items: FileManagerFileItem[] }>>(new Map());
   const getCachedTabItems = useCallback((tabId: unknown, path = '') => {
     const key = String(tabId || '').trim();
@@ -2124,7 +2229,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }, 1500);
   }, []);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
-  const openFileManagerPathInNewTabRef = useRef<BridgeData>(null);
+  const openFileManagerPathInNewTabRef = useRef<unknown>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null); // { pos, item }
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
   const lastClickedPathRef = useRef<string | null>(null);
@@ -2557,7 +2662,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       : (paneKey === activePaneKey ? activeVirtualRows : []);
     const paneEffectState = getPaneEffectState(paneKey);
     const rowIndex = findFileManagerVirtualRowIndex(paneRows, rowKey);
-    const virtuosoHandle = paneVirtuosoRefs.current[paneKey];
+    const virtuosoHandle = paneVirtuosoRefs.current[paneKey] as { scrollToIndex?: (opts: { index: number; align?: string; behavior?: string }) => void } | null | undefined;
     if (rowIndex >= 0 && virtuosoHandle) {
       paneEffectState.suppressUserScrollTrackingUntil = Date.now() + 800;
       const paneViewState = getPaneViewState(paneKey);
@@ -2749,7 +2854,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   // 并发互斥闸门：用 ref 在同步阶段立即生效，避免两个快速事件都读到 stale 的 state 而双双放行
   const operationInProgressRef = useRef(false);
 
-  const updateClipboard = (newClipboard: BridgeData) => {
+  const updateClipboard = (newClipboard: unknown) => {
     if (!window.__luminClipboards) {
       window.__luminClipboards = {};
     }
@@ -2758,7 +2863,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     } else {
       delete window.__luminClipboards[sessionGroupId];
     }
-    setClipboard(newClipboard);
+    setClipboard(newClipboard as { paths: string[]; mode: 'copy' | 'cut'; srcDir: string } | null);
     window.dispatchEvent(new CustomEvent('lumin-clipboard-changed', {
       detail: { sessionGroupId, clipboard: newClipboard }
     }));
@@ -2766,7 +2871,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
 
   useEffect(() => {
     const cached = (window.__luminClipboards && window.__luminClipboards[sessionGroupId]) || null;
-    setClipboard(cached);
+    setClipboard(cached as { paths: string[]; mode: 'copy' | 'cut'; srcDir: string } | null);
 
     const handleClipboardChange = (e: Event) => {
       const detail = (e as CustomEvent).detail || {}
@@ -2790,13 +2895,13 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     };
   }, [sessionGroupId]);
 
-  const [renamingItem, setRenamingItem] = useState<BridgeData>(null);
+  const [renamingItem, setRenamingItem] = useState<FileManagerFileItem | null>(null);
   // 跟踪重命名 input 是否仍挂在 DOM：Virtuoso 把行滚出视口会卸载 input，此时
   // renamingItem 仍残留。F2 入口据此判断是否需要先提交残留的重命名再继续。
   const renamingInputMountedRef = useRef<HTMLInputElement | null>(null);
-  const [chmodTarget, setChmodTarget] = useState<BridgeData>(null); // { item, path, mode, includeSubdirectories, showIncludeSubdirectories }
-  const [openEditFiles, setOpenEditFiles] = useState<BridgeData[]>([]);      // [{ path, name, content }]
-  const openEditFilesRef = useRef<BridgeData[]>([]);
+  const [chmodTarget, setChmodTarget] = useState<FileManagerChmodTarget | null>(null); // { item, path, mode, includeSubdirectories, showIncludeSubdirectories }
+  const [openEditFiles, setOpenEditFiles] = useState<FileEditorFile[]>([]);      // [{ path, name, content }]
+  const openEditFilesRef = useRef<FileEditorFile[]>([]);
   useEffect(() => { openEditFilesRef.current = openEditFiles; }, [openEditFiles]);
   const [activeEditPath, setActiveEditPath] = useState<string | null>(null);  // 当前激活的文件路径
   useEffect(() => {
@@ -2832,14 +2937,14 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     window.addEventListener('file-manager-default-open-mode-changed', onMode);
     return () => window.removeEventListener('file-manager-default-open-mode-changed', onMode);
   }, []);
-  const setTransferInfo = useCallback((info: BridgeData) => {}, []);
+  const setTransferInfo = useCallback((info: unknown) => {}, []);
   const [isDragOver, setIsDragOver] = useState(false);
   const dragCounterRef = useRef(0);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const uploadFolderInputRef = useRef<HTMLInputElement | null>(null);
   const [workbenchState, setWorkbenchStateState] = useState(() => getSessionWorkbenchState(sessionGroupId));
   const [uploadPanelState, setUploadPanelState] = useState(() => getSessionUploadPanelState(sessionGroupId, sessionId));
-  const [uploadQueueItems, setUploadQueueItems] = useState<BridgeData[]>(() => getSessionUploadQueue(sessionGroupId));
+  const [uploadQueueItems, setUploadQueueItems] = useState<TransferQueueItem[]>(() => getSessionUploadQueue(sessionGroupId));
   const activeUploadCount = useMemo(() => uploadQueueItems.filter((item) => item.status === 'queued' || item.status === 'uploading').length, [uploadQueueItems]);
   const uploadPanelCloseTimerRef = useRef(0);
   const [uploadPanelClosing, setUploadPanelClosing] = useState(false);
@@ -3185,7 +3290,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
   }, [sessionId, addToast, normalizePath, t, queueFileListViewRestore, updateItemsPreservingView, isDeletedPlaceholderItem, didItemMetadataChange, queueRowEffect, createDeletedPlaceholder, beginFileListSwitch, commitFileListSwitch, cancelFileListSwitch, getCachedPathItems]);
 
-  const applyAnimatedFileListSnapshot = useCallback((path: unknown, nextItems: FileManagerFileItem[], options: BridgeData = {}) => {
+  const applyAnimatedFileListSnapshot = useCallback((path: unknown, nextItems: FileManagerFileItem[], options: Record<string, unknown> = {}) => {
     const normalizedPath = normalizePath(path) || '/';
     const targetTabId = String(
       options.tabId
@@ -3344,7 +3449,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     };
   }, [normalizePath]);
 
-  const applyTerminalCwdFollow = useCallback(async (cwd: unknown, options: BridgeData = {}) => {
+  const applyTerminalCwdFollow = useCallback(async (cwd: unknown, options: Record<string, unknown> = {}) => {
     const followTarget = resolveTerminalCwdFollowTarget(cwd);
     if (!followTarget?.path || !followTarget?.tabId) {
       pendingTerminalCwdRef.current = '';
@@ -3401,7 +3506,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       preserveView: false,
       trackDiff: false,
       showLoading: options.showLoading === true,
-      transitionMode: options.transitionMode || 'directory',
+      transitionMode: typeof options.transitionMode === 'string' ? options.transitionMode : 'directory',
     });
   }, [activePaneKey, commitFileManagerWorkspace, loadDir, resolveTerminalCwdFollowTarget, syncCurrentTabToWorkspace]);
 
@@ -3461,6 +3566,8 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           });
         }
         getPaneViewState(resolvedInitialPaneKey).pendingRestore = {
+          key: '',
+          offset: 0,
           scrollTop: Number(existingPane.scrollTop ?? existingTab.scrollTop) || 0,
         };
         let ok = await loadDir(targetPath, {
@@ -3475,7 +3582,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         }
         if (!ok && !cancelled && existingTab.pinned !== true) {
           setPaneSelectionRestore(resolvedInitialPaneKey, { selectedPaths: [], lastClickedPath: null });
-          getPaneViewState(resolvedInitialPaneKey).pendingRestore = { scrollTop: 0 };
+          getPaneViewState(resolvedInitialPaneKey).pendingRestore = { key: '', offset: 0, scrollTop: 0 };
           ok = await loadDir('/root', {
             tabId: existingTab.id,
             silent: true,
@@ -3531,7 +3638,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       const uploadId = typeof payload.uploadId === 'string' ? payload.uploadId.trim() : '';
       if (!uploadId) return;
       if (abortedUploadIdsRef.current.has(uploadId)) return;
-      updateSessionUploadQueue(sessionGroupId, (current) => current.map((item: BridgeData) => {
+      updateSessionUploadQueue(sessionGroupId, (current) => current.map((item) => {
         if (item.id !== uploadId) return item;
         const nextPhase = payload.phase || item.phase || 'preparing';
         const nextPhaseProgress = Math.max(0, Math.min(100, Number(payload.phaseProgress) || 0));
@@ -3560,7 +3667,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       const downloadId = typeof payload.downloadId === 'string' ? payload.downloadId.trim() : '';
       if (!downloadId) return;
       if (abortedUploadIdsRef.current.has(downloadId)) return;
-      updateSessionUploadQueue(sessionGroupId, (current) => current.map((item: BridgeData) => {
+      updateSessionUploadQueue(sessionGroupId, (current) => current.map((item: TransferQueueItem) => {
         if (item.id !== downloadId) return item;
         const nextStatus = payload.status || item.status || 'uploading';
         const nextPhase = payload.phase || item.phase || '';
@@ -3621,7 +3728,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     localStorage.getItem('fileManagerDownloadDefaultDir') || DEFAULT_FILE_MANAGER_DOWNLOAD_DIR
   ).trim() || DEFAULT_FILE_MANAGER_DOWNLOAD_DIR, []);
   const getDownloadConflictSettings = useCallback(() => getDownloadConflictSettingsFromStorage(), []);
-  const buildDownloadConflictMessage = useCallback((conflict: BridgeData, fallbackName: unknown) => {
+  const buildDownloadConflictMessage = useCallback((conflict: FileManagerDownloadConflict, fallbackName: unknown) => {
     const relativePath = String(conflict?.relativePath || '').trim() || fallbackName || t('当前文件');
     const localSize = conflict?.localSize === undefined || conflict?.localSize === null ? '-' : fmtSize(Number(conflict.localSize) || 0);
     const remoteSize = conflict?.remoteSize === undefined || conflict?.remoteSize === null ? '-' : fmtSize(Number(conflict.remoteSize) || 0);
@@ -3643,7 +3750,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     lines.push(t('请选择本次冲突的处理方式'));
     return lines.join('\n');
   }, [t]);
-  const resolvePromptDownloadConflict = useCallback(async (item: FileManagerFileItem, remotePath: unknown, localPath: string, settings: BridgeData) => {
+  const resolvePromptDownloadConflict = useCallback(async (item: FileManagerFileItem, remotePath: unknown, localPath: string, settings: FileManagerDownloadConflictSettings) => {
     const previewDownloadConflicts = window?.go?.wailsapp?.App?.PreviewDownloadConflicts;
     const resolveDownloadLocalPath = window?.go?.wailsapp?.App?.ResolveDownloadLocalPath;
     if (typeof previewDownloadConflicts !== 'function') {
@@ -3726,16 +3833,16 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     };
   }, [buildDownloadConflictMessage, sessionId, t]);
 
-  const isUploadAbortable = useCallback((item: BridgeData) => {
+  const isUploadAbortable = useCallback((item: TransferQueueItem) => {
     if (!item) return false;
     if (item.direction === 'download') {
       if (item.mode === 'download-compressed') {
-        return ['preparing', 'compressing', 'downloading', 'extracting'].includes(item.phase);
+        return ['preparing', 'compressing', 'downloading', 'extracting'].includes(item.phase ?? '');
       }
       return item.status === 'queued' || item.status === 'uploading';
     }
     if (item.mode === 'compressed') {
-      return ['preparing', 'scanning', 'compressing', 'uploading', 'uploading-file', 'verifying', 'extracting'].includes(item.phase);
+      return ['preparing', 'scanning', 'compressing', 'uploading', 'uploading-file', 'verifying', 'extracting'].includes(item.phase ?? '');
     }
     return item.status === 'queued' || item.status === 'uploading';
   }, []);
@@ -3743,7 +3850,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   const markUploadAborted = useCallback((queueId: unknown, detail: string = t('已终止')) => {
     if (!queueId) return;
     abortedUploadIdsRef.current.add(String(queueId));
-    updateSessionUploadQueue(sessionGroupId, (current) => current.map((item: BridgeData) => (
+    updateSessionUploadQueue(sessionGroupId, (current) => current.map((item) => (
       item.id === queueId
         ? {
             ...item,
@@ -3757,7 +3864,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     )));
   }, [sessionGroupId, t]);
 
-  const abortUploadItem = useCallback(async (item: BridgeData, detail: string = t('已终止')) => {
+  const abortUploadItem = useCallback(async (item: TransferQueueItem, detail: string = t('已终止')) => {
     if (!item) return;
     markUploadAborted(item.id, detail);
     try {
@@ -3770,7 +3877,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         return;
       }
       if (item.taskId && item.fileId) {
-        await AppGo.AbortChunkedUploadFile(item.taskId, item.fileId).catch(() => {});
+        await AppGo.AbortChunkedUploadFile(String(item.taskId), String(item.fileId)).catch(() => {});
       }
     } catch (_) {}
   }, [markUploadAborted, t]);
@@ -3787,7 +3894,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     normalizedIds.forEach((id) => abortedUploadIdsRef.current.delete(id));
     let shouldClosePanel = false;
     updateSessionUploadQueue(sessionGroupId, (current) => {
-      const next = current.filter((item: BridgeData) => !normalizedIds.has(item.id));
+      const next = current.filter((item) => !normalizedIds.has(item.id));
       shouldClosePanel = next.length === 0;
       return next;
     });
@@ -3796,8 +3903,8 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
   }, [closeUploadPanel, sessionGroupId]);
 
-  const abortUploadItems = useCallback((items: BridgeData[], detail: string = t('已终止')) => {
-    (items || []).forEach((item: BridgeData) => {
+  const abortUploadItems = useCallback((items: TransferQueueItem[], detail: string = t('已终止')) => {
+    (items || []).forEach((item) => {
       if (item) {
         void abortUploadItem(item, detail);
       }
@@ -3807,9 +3914,9 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   const abortActiveUploadsForSession = useCallback((disconnectedSessionId: unknown, detail: string = t('已终止')) => {
     if (!disconnectedSessionId || disconnectedSessionId !== sessionId) return;
     const queue = getSessionUploadQueue(sessionGroupId)
-      .filter((item: BridgeData) => item?.sourceTerminalId === disconnectedSessionId)
-      .filter((item: BridgeData) => isUploadAbortable(item));
-    queue.forEach((item: BridgeData) => {
+      .filter((item) => item?.sourceTerminalId === disconnectedSessionId)
+      .filter((item) => isUploadAbortable(item));
+    queue.forEach((item) => {
       void abortUploadItem(item, detail);
     });
   }, [abortUploadItem, isUploadAbortable, sessionGroupId, sessionId, t]);
@@ -3928,10 +4035,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
   }, [isActive, loadDir, currentPath]);
 
-  const fileManagerUndoStackRef = useRef<BridgeData[]>([]);
+  const fileManagerUndoStackRef = useRef<unknown[]>([]);
 
-  const pushFileManagerUndoEntry = useCallback((entry: BridgeData) => {
-    if (!entry || typeof entry.undo !== 'function') {
+  const pushFileManagerUndoEntry = useCallback((entry: unknown) => {
+    if (!entry || typeof (entry as { undo?: unknown }).undo !== 'function') {
       return;
     }
     fileManagerUndoStackRef.current = [...fileManagerUndoStackRef.current, entry].slice(-100);
@@ -3948,7 +4055,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     operationInProgressRef.current = true;
     setOperationProgress({ message: t('正在撤销中...') });
     try {
-      await undoEntry.undo();
+      await (undoEntry as { undo: () => unknown }).undo();
       addToast?.(t('已撤销'), 'success');
     } catch (err) {
       fileManagerUndoStackRef.current = [...fileManagerUndoStackRef.current, undoEntry].slice(-100);
@@ -3969,7 +4076,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     openTransferQueueIfNeeded();
     const settings = getUploadSettings();
     const createdAt = Date.now();
-    const queueSeed: BridgeData[] = localPaths.map((localPath, index) => {
+    const queueSeed: TransferQueueItem[] = localPaths.map((localPath, index) => {
       const name = localPath.split(/[\\/]/).filter(Boolean).pop() || t('文件');
       return {
         id: `native-upload-${createdAt}-${index}`,
@@ -3998,8 +4105,8 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       };
     });
     updateSessionUploadQueue(sessionGroupId, (current) => [...queueSeed, ...current]);
-    const patchQueueItem = (queueId: unknown, patch: BridgeData | ((item: BridgeData) => BridgeData)) => {
-      updateSessionUploadQueue(sessionGroupId, (current) => current.map((item: BridgeData) => (
+    const patchQueueItem = (queueId: unknown, patch: Record<string, unknown> | ((item: TransferQueueItem) => TransferQueueItem)) => {
+      updateSessionUploadQueue(sessionGroupId, (current) => current.map((item: TransferQueueItem) => (
         item.id === queueId
           ? { ...item, ...(typeof patch === 'function' ? patch(item) : patch) }
           : item
@@ -4057,11 +4164,11 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
   }, [sessionId, sessionGroupId, currentPath, addToast, t, getTransferTaskRunner, getUploadSettings, openTransferQueueIfNeeded, normalizePath, refreshDirectoryAfterTransfer]);
 
-  const uploadEntries = useCallback(async (entries: BridgeData[]) => {
+  const uploadEntries = useCallback(async (entries: Array<Record<string, unknown>>) => {
     const uploadEntriesList = entries
-      .filter((entry: BridgeData) => entry?.file && entry?.relativePath)
+      .filter((entry) => entry?.file && entry?.relativePath)
       .map((entry) => ({
-        file: entry.file,
+        file: entry.file as File,
         relativePath: String(entry.relativePath).replace(/^\/+/, '').replace(/\\/g, '/'),
       }))
       .filter((entry) => entry.relativePath !== '');
@@ -4120,24 +4227,24 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     let uploadedBytes = 0;
     let completedFiles = 0;
     const failures: string[] = [];
-    const patchQueueItem = (queueId: unknown, patch: BridgeData | ((item: BridgeData) => BridgeData)) => {
-      updateSessionUploadQueue(sessionGroupId, (current) => current.map((item: BridgeData) => (
+    const patchQueueItem = (queueId: unknown, patch: Record<string, unknown> | ((item: TransferQueueItem) => TransferQueueItem)) => {
+      updateSessionUploadQueue(sessionGroupId, (current) => current.map((item: TransferQueueItem) => (
         item.id === queueId
           ? { ...item, ...(typeof patch === 'function' ? patch(item) : patch) }
           : item
       )));
     };
-    const patchQueueChunk = (queueId: unknown, chunkIndex: number, patch: BridgeData | ((chunk: BridgeData) => BridgeData)) => {
-      updateSessionUploadQueue(sessionGroupId, (current) => current.map((item: BridgeData) => {
+    const patchQueueChunk = (queueId: unknown, chunkIndex: number, patch: Record<string, unknown> | ((chunk: TransferChunk) => TransferChunk)) => {
+      updateSessionUploadQueue(sessionGroupId, (current) => current.map((item: TransferQueueItem) => {
         if (item.id !== queueId) return item;
-        const chunks = Array.isArray(item.chunks) ? item.chunks.map((chunk: BridgeData) => (
+        const chunks = Array.isArray(item.chunks) ? item.chunks.map((chunk) => (
           chunk.index === chunkIndex ? { ...chunk, ...(typeof patch === 'function' ? patch(chunk) : patch) } : chunk
         )) : [];
         return {
           ...item,
           chunks,
-          chunksCompleted: chunks.filter((chunk: BridgeData) => chunk.status === 'completed').length,
-          chunksFailed: chunks.filter((chunk: BridgeData) => chunk.status === 'failed').length,
+          chunksCompleted: chunks.filter((chunk) => chunk.status === 'completed').length,
+          chunksFailed: chunks.filter((chunk) => chunk.status === 'failed').length,
           updatedAt: Date.now(),
         };
       }));
@@ -4275,7 +4382,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       if (data.parentSessionId) ids.add(data.parentSessionId);
       if (Array.isArray(data.terminalIds)) {
         const rawTerminalIds = data.terminalIds
-        rawTerminalIds.forEach((id: BridgeData) => id && ids.add(String(id)));
+        rawTerminalIds.forEach((id: unknown) => id && ids.add(String(id)));
       }
       ids.forEach((id) => abortActiveUploadsForSession(id, t('已终止')));
     });
@@ -4602,8 +4709,8 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     return false;
   }, [addToast, currentPath, items, normalizePath, queueRowEffect, refreshDirectoryAfterTransfer, sessionId, t, updateItemsPreservingView]);
 
-  const handleDownload = useCallback(async (item: FileManagerFileItem, options: BridgeData = {}) => {
-    const basePath = typeof options === 'string' ? options : (options.basePath || currentPath);
+  const handleDownload = useCallback(async (item: FileManagerFileItem, options: Record<string, unknown> = {}) => {
+    const basePath = typeof options.basePath === 'string' ? options.basePath : currentPath;
     const remotePath = joinPath(basePath, item.name);
     const defaultDownloadDir = getDefaultDownloadDir();
     const askDownloadEveryTime = localStorage.getItem('fileManagerAskDownloadEveryTime') === 'true';
@@ -4617,9 +4724,9 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     const createdAt = Date.now();
     let queueId = '';
 
-    const patchQueueItem = (id: unknown, patch: BridgeData | ((queueItem: BridgeData) => BridgeData)) => {
+    const patchQueueItem = (id: unknown, patch: Record<string, unknown> | ((queueItem: TransferQueueItem) => TransferQueueItem)) => {
       if (!id) return;
-      updateSessionUploadQueue(sessionGroupId, (current) => current.map((queueItem: BridgeData) => (
+      updateSessionUploadQueue(sessionGroupId, (current) => current.map((queueItem) => (
         queueItem.id === id
           ? { ...queueItem, ...(typeof patch === 'function' ? patch(queueItem) : patch) }
           : queueItem
@@ -4807,25 +4914,31 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
   }, [sessionId, addToast, t, rememberExternalEditorPath, maxEditSizeMB]);
 
-  const handleOpenSystemEditor = useCallback(async (file: BridgeData, content: unknown, readOnly = false) => {
-    if (!file?.path) return;
-    if (openingFilesRef.current.has(`${sessionId}:${file.path}`)) {
+  const handleOpenSystemEditor = useCallback(async (file: FileManagerFileLike, content: unknown, readOnly = false) => {
+    const filePath = typeof file?.path === 'string' ? file.path : '';
+    const fileContent = typeof file?.content === 'string' ? file.content : '';
+    const fileSize = typeof file?.size === 'number' ? file.size : 0;
+    if (!filePath) return;
+    if (openingFilesRef.current.has(`${sessionId}:${filePath}`)) {
       addToast?.(t('文件正在打开中，请稍候...'), 'warning');
       return;
     }
     try {
-      addOpeningFile(sessionId, file.path);
+      addOpeningFile(sessionId, filePath);
       addToast?.(t('正在打开文件...'), 'info');
-      await openExternalEditor(file.path, content ?? file.content ?? '', '', readOnly, file?.size || 0);
+      await openExternalEditor(filePath, content ?? fileContent, '', readOnly, fileSize);
     } finally {
-      removeOpeningFile(sessionId, file.path);
+      removeOpeningFile(sessionId, filePath);
     }
   }, [sessionId, openExternalEditor, addToast, t]);
 
   // forcePick=true：始终弹出选择框；false：有记忆路径则直接打开（对齐 electerm）
-  const handleOpenWithEditor = useCallback(async (file: BridgeData, content: unknown, forcePick = false, readOnly = false) => {
-    if (!file?.path) return;
-    if (openingFilesRef.current.has(`${sessionId}:${file.path}`)) {
+  const handleOpenWithEditor = useCallback(async (file: FileManagerFileLike, content: unknown, forcePick = false, readOnly = false) => {
+    const filePath = typeof file?.path === 'string' ? file.path : '';
+    const fileContent = typeof file?.content === 'string' ? file.content : '';
+    const fileSize = typeof file?.size === 'number' ? file.size : 0;
+    if (!filePath) return;
+    if (openingFilesRef.current.has(`${sessionId}:${filePath}`)) {
       addToast?.(t('文件正在打开中，请稍候...'), 'warning');
       return;
     }
@@ -4843,13 +4956,13 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           return;
         }
       }
-      const ok = await openExternalEditor(file.path, content ?? file.content ?? '', editorPath, readOnly, file?.size || 0);
+      const ok = await openExternalEditor(filePath, content ?? fileContent, editorPath, readOnly, fileSize);
       // 记忆路径失效时，自动再选一次
       if (!ok && !forcePick && (localStorage.getItem('fileEditorPreferredApp') || '').trim()) {
         localStorage.removeItem('fileEditorPreferredApp');
         const nextPath = await AppGo.SelectExternalEditor();
         if (nextPath) {
-          await openExternalEditor(file.path, content ?? file.content ?? '', nextPath, readOnly, file?.size || 0);
+          await openExternalEditor(filePath, content ?? fileContent, nextPath, readOnly, fileSize);
         }
       }
     } catch (err) {
@@ -4918,7 +5031,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       await AppGo.WriteFile(sessionId, path, String(content ?? ''));
       addToast?.(t('文件保存成功'), 'success');
       // 更新 openEditFiles 中对应文件的内容
-      setOpenEditFiles(prev => prev.map(f => f.path === path ? { ...f, content } : f));
+      setOpenEditFiles(prev => prev.map(f => f.path === path ? { ...f, content: typeof content === 'string' ? content : String(content ?? '') } : f));
       // 只有弹窗模式才在保存后自动关闭编辑器，popup/split 保持打开
       if (editorMode === 'modal') {
         closeEditFile(path);
@@ -5008,7 +5121,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     });
     if (isDualPane) {
       setPaneSelectionRestore(activePaneKey, { selectedPaths: [], lastClickedPath: null });
-      getPaneViewState(activePaneKey).pendingRestore = { scrollTop: 0 };
+      getPaneViewState(activePaneKey).pendingRestore = { key: '', offset: 0, scrollTop: 0 };
       const cachedItems = getCachedPathItems(targetPath) || getCachedTabItems(tabId, targetPath);
       if (cachedItems) {
         applyAnimatedFileListSnapshot(targetPath, cachedItems, {
@@ -5046,7 +5159,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           selectedPaths: nextSelectedPaths,
           lastClickedPath: nextSelectedPaths[nextSelectedPaths.length - 1] || null,
         });
-        getPaneViewState(activePaneKey).pendingRestore = { scrollTop: Number(targetTab.scrollTop) || 0 };
+        getPaneViewState(activePaneKey).pendingRestore = { key: '', offset: 0, scrollTop: Number(targetTab.scrollTop) || 0 };
       }
       applyAnimatedFileListSnapshot(targetPath, cachedItems, {
         tabId,
@@ -5083,7 +5196,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       selectedPaths: nextSelectedPaths,
       lastClickedPath: nextSelectedPaths[nextSelectedPaths.length - 1] || null,
     });
-    getPaneViewState(activePaneKey).pendingRestore = { scrollTop: Number(targetTab.scrollTop) || 0 };
+    getPaneViewState(activePaneKey).pendingRestore = { key: '', offset: 0, scrollTop: Number(targetTab.scrollTop) || 0 };
     let resolvedPath = targetPath;
     let ok = await loadDir(targetPath, {
       tabId,
@@ -5098,7 +5211,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
     if (!ok && targetPath !== '/') {
       setPaneSelectionRestore(activePaneKey, { selectedPaths: [], lastClickedPath: null });
-      getPaneViewState(activePaneKey).pendingRestore = { scrollTop: 0 };
+      getPaneViewState(activePaneKey).pendingRestore = { key: '', offset: 0, scrollTop: 0 };
       resolvedPath = '/';
       ok = await loadDir('/', {
         tabId,
@@ -5159,7 +5272,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           selectedPaths: nextSelectedPaths,
           lastClickedPath: nextSelectedPaths[nextSelectedPaths.length - 1] || null,
         });
-        paneViewStateRef.current[normalizeFileManagerPaneKey(nextPaneKey)].pendingRestore = { scrollTop: Number(targetPane.scrollTop) || 0 };
+        paneViewStateRef.current[normalizeFileManagerPaneKey(nextPaneKey)].pendingRestore = { key: '', offset: 0, scrollTop: Number(targetPane.scrollTop) || 0 };
       }
       applyAnimatedFileListSnapshot(targetPath, cachedItems, {
         tabId: targetTabId,
@@ -5194,7 +5307,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       selectedPaths: nextSelectedPaths,
       lastClickedPath: nextSelectedPaths[nextSelectedPaths.length - 1] || null,
     });
-    paneViewStateRef.current[normalizeFileManagerPaneKey(nextPaneKey)].pendingRestore = { scrollTop: Number(targetPane.scrollTop) || 0 };
+    paneViewStateRef.current[normalizeFileManagerPaneKey(nextPaneKey)].pendingRestore = { key: '', offset: 0, scrollTop: Number(targetPane.scrollTop) || 0 };
     await loadDir(targetPath, {
       tabId: targetTabId,
       silent: true,
@@ -5278,7 +5391,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       return;
     }
     setPaneSelectionRestore(activePaneKey, { selectedPaths: [], lastClickedPath: null });
-    getPaneViewState(activePaneKey).pendingRestore = { scrollTop: 0 };
+    getPaneViewState(activePaneKey).pendingRestore = { key: '', offset: 0, scrollTop: 0 };
     let resolvedPath = candidatePaths[0];
     for (const candidatePath of candidatePaths) {
       const ok = await loadDir(candidatePath, {
@@ -5454,7 +5567,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           selectedPaths: nextSelectedPaths,
           lastClickedPath: nextSelectedPaths[nextSelectedPaths.length - 1] || null,
         });
-        getPaneViewState(activePaneKey).pendingRestore = { scrollTop: Number(nextActiveTab.scrollTop) || 0 };
+        getPaneViewState(activePaneKey).pendingRestore = { key: '', offset: 0, scrollTop: Number(nextActiveTab.scrollTop) || 0 };
       }
       applyAnimatedFileListSnapshot(targetPath, cachedItems, {
         tabId: nextActiveTab.id,
@@ -5491,7 +5604,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       selectedPaths: nextSelectedPaths,
       lastClickedPath: nextSelectedPaths[nextSelectedPaths.length - 1] || null,
     });
-    getPaneViewState(activePaneKey).pendingRestore = { scrollTop: Number(nextActiveTab.scrollTop) || 0 };
+    getPaneViewState(activePaneKey).pendingRestore = { key: '', offset: 0, scrollTop: Number(nextActiveTab.scrollTop) || 0 };
     await loadDir(targetPath, {
       tabId: nextActiveTab.id,
       silent: true,
@@ -5790,7 +5903,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
   };
 
-  const updateFileManagerTabPath = useCallback((tabId: string, nextPath: unknown, options: BridgeData = {}) => {
+  const updateFileManagerTabPath = useCallback((tabId: string, nextPath: unknown, options: Record<string, unknown> = {}) => {
     const normalizedNextPath = normalizePath(nextPath) || '/';
     const resetSelection = options.resetSelection === true;
     const clearCache = options.clearCache === true;
@@ -5899,8 +6012,8 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   }, [addToast, fileManagerWorkspace, loadDir, normalizePath, sessionId, t, updateFileManagerTabPath]);
 
   // Compress
-  const handleCompress = async (item: FileManagerFileItem, options: BridgeData = {}) => {
-    const basePath = typeof options === 'string' ? options : (options.basePath || currentPath);
+  const handleCompress = async (item: FileManagerFileItem, options: Record<string, unknown> = {}) => {
+    const basePath = typeof options.basePath === 'string' ? options.basePath : currentPath;
     const remotePath = joinPath(basePath, item.name);
     try {
       addToast?.(`${t('正在压缩')} ${item.name}...`, 'info');
@@ -5915,8 +6028,8 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   };
 
   // Uncompress
-  const handleUncompress = async (item: FileManagerFileItem, options: BridgeData = {}) => {
-    const basePath = typeof options === 'string' ? options : (options.basePath || currentPath);
+  const handleUncompress = async (item: FileManagerFileItem, options: Record<string, unknown> = {}) => {
+    const basePath = typeof options.basePath === 'string' ? options.basePath : currentPath;
     const remotePath = joinPath(basePath, item.name);
     const isZip = String(item.name || '').toLowerCase().endsWith('.zip');
     const autoInstallAttempted = typeof options === 'object' && options !== null && options.__autoInstallUnzipAttempted === true;
@@ -5996,7 +6109,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     const nextName = String(nextValue ?? '').trim();
     if (!nextName || nextName === targetItem.name) {
       // 函数式更新 + 身份比较：避免异步窗口内清掉刚启动的新重命名
-      setRenamingItem((current: BridgeData) => (current === targetItem ? null : current));
+      setRenamingItem((current: FileManagerFileItem | null) => (current === targetItem ? null : current));
       if (refocus) fileListRef.current?.focus();
       return;
     }
@@ -6035,7 +6148,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       addToast?.(`${t('重命名失败')}: ${err}`, 'error');
     } finally {
       if (renameCommittingRef.current === targetItem) renameCommittingRef.current = null;
-      setRenamingItem((current: BridgeData) => (current === targetItem ? null : current));
+      setRenamingItem((current: FileManagerFileItem | null) => (current === targetItem ? null : current));
       if (refocus) fileListRef.current?.focus();
     }
   };
@@ -6062,13 +6175,13 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       try {
         const ownership = await getPathOwnership(sessionId, String(itemPath || ''));
         if (ownership && typeof ownership === 'object') {
-          const ownershipData = ownership as BridgeData
+          const ownershipData = ownership as unknown as Record<string, unknown>
           resolvedItem = {
             ...item,
-            permission: ownershipData.permission || item?.permission || '',
-            mode: ownershipData.mode || item?.mode || '',
-            uid: ownershipData.uid || item?.uid || '-',
-            gid: ownershipData.gid || item?.gid || '-',
+            permission: typeof ownershipData.permission === 'string' ? ownershipData.permission : String(item?.permission || ''),
+            mode: typeof ownershipData.mode === 'string' ? ownershipData.mode : String(item?.mode || ''),
+            uid: typeof ownershipData.uid === 'string' ? ownershipData.uid : String(item?.uid || '-'),
+            gid: typeof ownershipData.gid === 'string' ? ownershipData.gid : String(item?.gid || '-'),
           };
         }
       } catch (error) {
@@ -6078,7 +6191,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     const actualMode = normalizeChmodMode(resolvedItem?.mode);
     setChmodTarget({
       item: resolvedItem,
-      path: itemPath,
+      path: String(itemPath ?? ''),
       mode: actualMode || '',
       rememberedMode,
       autoApplyLastSettings: rememberedAutoApplyLastSettings,
@@ -6093,7 +6206,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
     try {
       const nextCandidates = await listOwnershipCandidates(sessionId);
-      setChmodTarget((current: BridgeData) => {
+      setChmodTarget((current: FileManagerChmodTarget | null) => {
         if (!current || current.path !== itemPath) {
           return current;
         }
@@ -6123,8 +6236,9 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     const recursive = Boolean(chmodTarget.showIncludeSubdirectories && rememberedIncludeSubdirectories);
     const ownerCandidates = Array.isArray(chmodTarget.ownerCandidates) ? chmodTarget.ownerCandidates : [];
     const groupCandidates = Array.isArray(chmodTarget.groupCandidates) ? chmodTarget.groupCandidates : [];
-    const currentOwnerId = normalizeIdentityId(chmodTarget.item.uid);
-    const currentGroupId = normalizeIdentityId(chmodTarget.item.gid);
+    const chmodItem = chmodTarget.item as FileManagerFileItem;
+    const currentOwnerId = normalizeIdentityId(chmodItem.uid);
+    const currentGroupId = normalizeIdentityId(chmodItem.gid);
     const ownerChanged = resolveIdentityCompareKey(ownerValue, ownerCandidates, currentOwnerId) !== (currentOwnerId ? `id:${currentOwnerId}` : '');
     const groupChanged = resolveIdentityCompareKey(groupValue, groupCandidates, currentGroupId) !== (currentGroupId ? `id:${currentGroupId}` : '');
     const ownerSpec = ownerChanged ? resolveIdentityInputSpec(ownerValue, ownerCandidates, currentOwnerId) : '';
@@ -6345,14 +6459,14 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       const sourceDir = normalizePath(parsedPayload?.sourceDir) || '/';
       const rawPaths = parsedPayload?.paths
       const paths = Array.isArray(rawPaths)
-        ? rawPaths.map((path: BridgeData) => String(path || '').trim()).filter(Boolean)
+        ? rawPaths.map((path: unknown) => String(path || '').trim()).filter(Boolean)
         : [];
       if (!paths.length) {
         return null;
       }
       const rawItems = parsedPayload?.items
       const payloadItems = Array.isArray(rawItems)
-        ? rawItems.map((item: BridgeData, index) => ({
+        ? rawItems.map((item: FileManagerDualPaneDragItem, index) => ({
           path: paths[index] || String(item?.path || '').trim(),
           isDirectory: item?.isDirectory === true,
         }))
@@ -6368,17 +6482,17 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
   }, [normalizePath]);
 
-  const confirmDualPaneDirectoryDrag = useCallback(async (mode: string, paneState: BridgeData, payload: BridgeData) => {
+  const confirmDualPaneDirectoryDrag = useCallback(async (mode: string, paneState: FileManagerPaneStateLike, payload: FileManagerDualPaneDragPayload) => {
     if (!fileManagerDualPaneDragPromptOnDirectory) {
       return true;
     }
-    if (!Array.isArray(payload?.items) || !payload.items.some((item: BridgeData) => item?.isDirectory === true)) {
+    if (!Array.isArray(payload?.items) || !payload.items.some((item: FileManagerDualPaneDragItem) => item?.isDirectory === true)) {
       return true;
     }
     const actionLabel = mode === 'cut' ? t('移动') : t('复制');
     const normalizedTargetDirPath = normalizePath(paneState?.path) || '/';
     const normalizedPaths = Array.isArray(payload?.paths)
-      ? payload.paths.map((path: BridgeData) => normalizePath(path)).filter(Boolean)
+      ? payload.paths.map((path: unknown) => normalizePath(path)).filter(Boolean)
       : [];
     const primarySourcePath = normalizedPaths[0] || normalizePath(payload?.sourceDir) || '/';
     const sourceName = primarySourcePath.split('/').filter(Boolean).pop() || '';
@@ -6411,7 +6525,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     });
   }, [normalizePath, resolveDualPaneDragTransferMode, t]);
 
-  const handleDualPaneTransferDragOver = useCallback((event: React.DragEvent, paneState: BridgeData) => {
+  const handleDualPaneTransferDragOver = useCallback((event: React.DragEvent, paneState: FileManagerPaneStateLike) => {
     if (fileManagerLayoutMode !== FILE_MANAGER_LAYOUT_MODE_SIDEBAR_DUAL || !fileManagerDualPaneDragTransferEnabled) {
       return;
     }
@@ -6431,10 +6545,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     event.stopPropagation();
     event.dataTransfer.dropEffect = mode === 'cut' ? 'move' : 'copy';
     updateFileManagerDragTip(event.clientX, event.clientY, paneState.path, event.ctrlKey);
-    setFileManagerPaneDropTarget(paneState.key);
+    setFileManagerPaneDropTarget(String(paneState.key ?? ''));
   }, [activePaneKey, fileManagerDualPaneDragTransferEnabled, fileManagerLayoutMode, resolveDualPaneDragTransferMode, sessionId, updateFileManagerDragTip]);
 
-  const handleDualPaneTransferDrop = useCallback(async (event: React.DragEvent, paneState: BridgeData) => {
+  const handleDualPaneTransferDrop = useCallback(async (event: React.DragEvent, paneState: FileManagerPaneStateLike) => {
     setFileManagerPaneDropTarget('');
     hideFileManagerDragTip();
     if (fileManagerLayoutMode !== FILE_MANAGER_LAYOUT_MODE_SIDEBAR_DUAL || !fileManagerDualPaneDragTransferEnabled) {
@@ -6788,7 +6902,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     flushPendingRowEffects('right', rightFileManagerPane.rows, rightListElement);
   }, [activePaneKey, flushPendingRowEffects, leftFileManagerPane.rows, rightFileManagerPane.rows]);
 
-  const bindFileManagerPaneScroller = useCallback((paneKey: unknown, element: HTMLElement | null, options: BridgeData = {}) => {
+  const bindFileManagerPaneScroller = useCallback((paneKey: unknown, element: HTMLElement | null, options: Record<string, unknown> = {}) => {
     const normalizedPaneKey = paneKey === 'right' ? 'right' : 'left';
     const previousElement = paneScrollerElementsRef.current[normalizedPaneKey];
     const previousCleanup = paneScrollerCleanupRef.current[normalizedPaneKey];
@@ -6840,11 +6954,11 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   const getPaneVirtuosoRefCallback = useCallback((paneKey: unknown) => {
     const normalizedPaneKey = normalizeFileManagerPaneKey(paneKey);
     if (!paneVirtuosoRefCallbacksRef.current[normalizedPaneKey]) {
-      paneVirtuosoRefCallbacksRef.current[normalizedPaneKey] = (handle: BridgeData) => {
+      paneVirtuosoRefCallbacksRef.current[normalizedPaneKey] = (handle: unknown) => {
         paneVirtuosoRefs.current[normalizedPaneKey] = handle;
       };
     }
-    return paneVirtuosoRefCallbacksRef.current[normalizedPaneKey];
+    return paneVirtuosoRefCallbacksRef.current[normalizedPaneKey] as ((handle: unknown) => void) | undefined;
   }, []);
 
   const getPaneScrollerRefCallback = useCallback((paneKey: unknown) => {
@@ -6854,10 +6968,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         bindFileManagerPaneScroller(normalizedPaneKey, element, paneScrollerRefOptionsRef.current[normalizedPaneKey] || {});
       };
     }
-    return paneScrollerRefCallbacksRef.current[normalizedPaneKey];
+    return paneScrollerRefCallbacksRef.current[normalizedPaneKey] as ((ref: unknown) => void) | undefined;
   }, [bindFileManagerPaneScroller]);
 
-  const renderFileManagerVirtualRow = useCallback((row: FileManagerVirtualRow, paneState: BridgeData, options: BridgeData = {}) => {
+  const renderFileManagerVirtualRow = useCallback((row: FileManagerVirtualRow, paneState: FileManagerPaneStateLike, options: Record<string, unknown> = {}) => {
     const isInteractive = options.interactive === true;
     const basePath = paneState?.path || '/';
     const normalizedBasePath = normalizePath(basePath) || '/';
@@ -6942,16 +7056,16 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         lastClickedPathRef.current = itemPath;
       } else if (event.shiftKey && lastClickedPathRef.current) {
         window.getSelection()?.removeAllRanges();
-        const lastIndex = paneState.rows.findIndex((entry: BridgeData) => entry?.logicalPath === lastClickedPathRef.current);
-        const currentIndex = paneState.rows.findIndex((entry: BridgeData) => entry?.logicalPath === itemPath);
+        const lastIndex = paneState.rows.findIndex((entry: FileManagerVirtualRow) => entry?.logicalPath === lastClickedPathRef.current);
+        const currentIndex = paneState.rows.findIndex((entry: FileManagerVirtualRow) => entry?.logicalPath === itemPath);
         if (lastIndex >= 0 && currentIndex >= 0) {
           const startIndex = Math.min(lastIndex, currentIndex);
           const endIndex = Math.max(lastIndex, currentIndex);
           setSelectedPaths(
             paneState.rows
               .slice(startIndex, endIndex + 1)
-              .filter((entry: BridgeData) => entry?.rowType === FILE_MANAGER_VIRTUAL_ROW_ITEM && !isDeletedPlaceholderItem(entry?.item))
-              .map((entry: BridgeData) => entry.logicalPath)
+              .filter((entry: FileManagerVirtualRow) => entry?.rowType === FILE_MANAGER_VIRTUAL_ROW_ITEM && !isDeletedPlaceholderItem(entry?.item))
+              .map((entry: FileManagerVirtualRow) => entry.logicalPath)
           );
         }
       } else {
@@ -7135,7 +7249,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     );
   }, [activePaneKey, activeRowEffects, addToast, buildFileManagerDragPayload, clipboard, confirmRename, contextMenuTargetPath, defaultOpenMode, effectiveLocatorActiveRowKey, fileManagerDoubleClickUncompressArchive, fileManagerDualPaneDragTransferEnabled, handleChmod, handleDelete, handleDownload, handleEdit, handleOpenSystemEditor, handleOpenWithEditor, handleUncompress, hideFileManagerDragTip, isDeletedPlaceholderItem, isDualPaneLayout, navigate, normalizePath, renamingItem, t, updateFileManagerDragTip, openingFiles, sessionId]);
 
-  const renderFileManagerVirtualViewport = useCallback((paneState: BridgeData, options: BridgeData = {}) => {
+  const renderFileManagerVirtualViewport = useCallback((paneState: FileManagerPaneStateLike, options: Record<string, unknown> = {}) => {
     const normalizedPaneKey = paneState?.key === 'right' ? 'right' : 'left';
     const paneRows = Array.isArray(paneState?.rows) ? paneState.rows : [];
     const showEmptyState = options.loading !== true && Array.isArray(paneState?.items) && paneState.items.length === 0;
@@ -7196,7 +7310,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     );
   }, [applyPanePendingRestoreIfReady, captureFileListViewAnchor, fileListSwitchGhostHtml, fileListSwitchStage, flushPendingRowEffects, getPaneScrollerRefCallback, getPaneVirtuosoRefCallback, renderFileManagerVirtualRow, syncFileManagerPaneScrollTop, t]);
 
-  const renderInactiveFileManagerPane = useCallback((paneState: BridgeData) => {
+  const renderInactiveFileManagerPane = useCallback((paneState: FileManagerPaneStateLike) => {
     const isDropTarget = fileManagerPaneDropTarget === paneState.key;
     return (
       <div
@@ -7235,8 +7349,8 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderTop: '2px solid transparent', borderBottom: '1px solid var(--border)', background: 'var(--surface-base)' }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{paneState.label}</span>
-          <span style={{ fontSize: 11, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{paneState.path || '/'}</span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{String(paneState.label ?? '')}</span>
+          <span style={{ fontSize: 11, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(paneState.path || '/')}</span>
         </div>
         <div className="file-list" style={{ flex: 1, minWidth: 0 }}>
           <div className="file-list-header">
@@ -7642,7 +7756,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
             }
             event.preventDefault();
             event.stopPropagation();
-            setFileManagerTabDropIndicator((current: BridgeData) => (
+            setFileManagerTabDropIndicator((current: FileManagerTabDropIndicator | null) => (
               current?.tabId === appendTarget.id && current?.side === 'after'
                 ? current
                 : { tabId: appendTarget.id, side: 'after' }
@@ -7652,7 +7766,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
             if (event.currentTarget.contains(event.relatedTarget as Node)) {
               return;
             }
-            setFileManagerTabDropIndicator((current: BridgeData) => (
+            setFileManagerTabDropIndicator((current: FileManagerTabDropIndicator | null) => (
               current?.side === 'after' ? null : current
             ));
           }}
@@ -7684,7 +7798,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
             const isCwdSystemTabHighlightVisible = isCwdSystemPinnedTab && cwdSystemTabHighlight.tabId === tab.id;
             const isDraggingTab = draggingFileManagerTabId === tab.id;
             const showDropIndicator = fileManagerTabDropIndicator?.tabId === tab.id;
-            const dropIndicatorSide = fileManagerTabDropIndicator?.side || 'after';
+            const dropIndicatorSide = typeof fileManagerTabDropIndicator?.side === 'string' ? fileManagerTabDropIndicator.side : 'after';
             const tabDropPreviewText = showDropIndicator
               ? getFileManagerTabDropPreviewText(draggingFileManagerTabIdRef.current || draggingFileManagerTabId, tab, dropIndicatorSide)
               : '';
@@ -7720,7 +7834,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
                   event.preventDefault();
                   event.stopPropagation();
                   const side = resolveFileManagerTabDropSide(event, tab);
-                  setFileManagerTabDropIndicator((current: BridgeData) => (
+                  setFileManagerTabDropIndicator((current: FileManagerTabDropIndicator | null) => (
                     current?.tabId === tab.id && current?.side === side
                       ? current
                       : { tabId: tab.id, side }
@@ -7728,7 +7842,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
                 }}
                 onDragLeave={(event) => {
                   event.stopPropagation();
-                  setFileManagerTabDropIndicator((current: BridgeData) => (current?.tabId === tab.id ? null : current));
+                  setFileManagerTabDropIndicator((current: FileManagerTabDropIndicator | null) => (current?.tabId === tab.id ? null : current));
                 }}
                 onDrop={(event) => {
                   const draggedTabId = event.dataTransfer.getData('text/plain') || draggingFileManagerTabIdRef.current || draggingFileManagerTabId;
@@ -7823,7 +7937,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
                 }
                 event.preventDefault();
                 event.stopPropagation();
-                setFileManagerTabDropIndicator((current: BridgeData) => (
+                setFileManagerTabDropIndicator((current: FileManagerTabDropIndicator | null) => (
                   current?.tabId === appendTarget.id && current?.side === 'after'
                     ? current
                     : { tabId: appendTarget.id, side: 'after' }
@@ -8241,12 +8355,12 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       {chmodTarget && (
         <ChmodDialog
           path={chmodTarget.path}
-          permission={chmodTarget.item.permission}
+          permission={(chmodTarget.item as FileManagerFileItem).permission ?? ''}
           mode={chmodTarget.mode}
           rememberedMode={chmodTarget.rememberedMode}
           autoApplyLastSettings={chmodTarget.autoApplyLastSettings}
-          uid={chmodTarget.item.uid}
-          gid={chmodTarget.item.gid}
+          uid={(chmodTarget.item as FileManagerFileItem).uid ?? ''}
+          gid={(chmodTarget.item as FileManagerFileItem).gid ?? ''}
           ownerCandidates={chmodTarget.ownerCandidates}
           groupCandidates={chmodTarget.groupCandidates}
           includeSubdirectories={chmodTarget.includeSubdirectories}

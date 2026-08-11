@@ -13,14 +13,14 @@ import {
 import { handleInputDragSelectAll } from './inputDragSelect.ts'
 import type { AIProviderLike } from './AIProviderSelector.tsx'
 
-const defaultCacheOptions = [
+const defaultCacheOptions: Array<{ value: string; labelKey: I18nKey }> = [
   { value: 'model', labelKey: '基于模型能力' },
   { value: 'off', labelKey: '强制关闭' },
   { value: '5m', labelKey: '5分钟' },
   { value: '1h', labelKey: '1小时' },
 ]
 
-const reasoningEffortLabels: Record<string, string> = {
+const reasoningEffortLabels: Record<string, I18nKey> = {
   disable: '无',
   none: '无',
   minimal: '最少',
@@ -33,7 +33,7 @@ const reasoningEffortLabels: Record<string, string> = {
 const DEFAULT_MAX_OUTPUT_TOKENS = 16384
 const DEFAULT_MAX_THINKING_TOKENS = 8192
 const DEFAULT_EFFORT_REASONING_OPTIONS = ['low', 'medium', 'high', 'xhigh']
-const providerHighlightLabelKeys: Record<string, string> = {
+const providerHighlightLabelKeys: Record<string, I18nKey> = {
   Compatible: '高兼容',
   Responses: '高缓存',
 }
@@ -47,6 +47,7 @@ function getProviderDisplayLabel(provider: { value?: string; label?: string } | 
   if (!highlightLabelKey) {
     return provider.label || ''
   }
+  // providerValue 为动态值，key 可能不在翻译表，t() 内部有兜底
   return `(${t(highlightLabelKey as I18nKey)})${provider.label || ''}`
 }
 

@@ -193,8 +193,8 @@ export default function GeneralTab({
                 key={option.id}
                 definition={option}
                 selected={binding.value === option.value}
-                label={$t((option.titleKey || '') as I18nKey)}
-                description={option.descriptionKey ? $t(option.descriptionKey as I18nKey) : ''}
+                label={option.titleKey ? $t(option.titleKey) : ''}
+                description={option.descriptionKey ? $t(option.descriptionKey) : ''}
                 onClick={() => binding.onChange(String(option.value ?? ''))}
               />
             ))}

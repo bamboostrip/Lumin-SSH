@@ -20,8 +20,9 @@ export const SETTINGS_PANEL_STYLE = {
 /** 设置定义节点（来自 settingDefinitions.ts 的数据结构，字段按需取用） */
 export interface SettingsDefinitionNode {
   id?: string;
-  titleKey?: string;
-  descriptionKey?: string;
+  /** 翻译键（可能为空串表示无标题，消费方先判空再 t()） */
+  titleKey?: I18nKey | '';
+  descriptionKey?: I18nKey | '';
   type?: string;
   alias?: string;
   control?: string;
@@ -58,8 +59,7 @@ interface SettingsSectionTitleProps {
 }
 
 export function SettingsSectionTitle({ children, definition, style = {} }: SettingsSectionTitleProps) {
-  // titleKey 为动态 key（可能不在翻译表），t() 内部有兜底
-  return <h3 data-settings-section-id={definition?.id} style={{ ...SETTINGS_SECTION_TITLE_STYLE, ...style }}>{definition?.titleKey ? $t(definition.titleKey as I18nKey) : children}</h3>;
+  return <h3 data-settings-section-id={definition?.id} style={{ ...SETTINGS_SECTION_TITLE_STYLE, ...style }}>{definition?.titleKey ? $t(definition.titleKey) : children}</h3>;
 }
 
 interface SettingsPanelProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -82,8 +82,8 @@ export interface SettingsFieldProps {
 }
 
 export function SettingsField({ definition, title, description, action, children, alignItems = 'center', gap = 16, style = {} }: SettingsFieldProps) {
-  const resolvedTitle = title ?? (definition?.titleKey ? $t(definition.titleKey as I18nKey) : title);
-  const resolvedDescription = description ?? (definition?.descriptionKey ? $t(definition.descriptionKey as I18nKey) : description);
+  const resolvedTitle = title ?? (definition?.titleKey ? $t(definition.titleKey) : title);
+  const resolvedDescription = description ?? (definition?.descriptionKey ? $t(definition.descriptionKey) : description);
   return (
     <div data-settings-field-id={definition?.id} style={{ ...style, ...(children ? { display: 'flex', flexDirection: 'column', gap: 8 } : { display: 'flex', justifyContent: 'space-between', alignItems, gap }) }}>
       <div style={{ minWidth: 0 }}>

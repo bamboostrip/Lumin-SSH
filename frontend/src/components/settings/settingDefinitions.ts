@@ -1,4 +1,5 @@
 // 桥接模块（自 .js 收编后类型化）：设置树定义与注册表构建
+import type { I18nKey } from '../../i18n.ts'
 import type { SettingsDefinitionNode } from './SharedComponents.tsx'
 
 /** 设置节点类型集合 */
@@ -11,7 +12,11 @@ export interface SettingsTreeNode extends SettingsDefinitionNode {
   parentId?: string;
   providerId?: string;
   targetId?: string;
-  breadcrumbTitleKeys?: string[];
+  /** 静态翻译键（空串表示无标题） */
+  titleKey: I18nKey | '';
+  descriptionKey: I18nKey | '';
+  breadcrumbTitleKeys?: I18nKey[];
+  children: SettingsTreeNode[];
 }
 
 /** 单个 Tab 的注册表（按 alias 索引 sections/fields） */
@@ -29,9 +34,10 @@ export interface SettingsSearchDefinition {
   section: string
   providerId: string
   targetId: string
-  titleKey: string
-  descriptionKey: string
-  breadcrumbTitleKeys: string[]
+  /** 进入搜索索引的节点 titleKey 必非空 */
+  titleKey: I18nKey
+  descriptionKey: I18nKey | ''
+  breadcrumbTitleKeys: I18nKey[]
 }
 
 function createSettingsNode(config: Record<string, unknown> | null | undefined): SettingsTreeNode {
@@ -58,8 +64,8 @@ export function createSettingsSectionDefinition(config: Record<string, unknown> 
 }
 
 const rootNode = (...children: SettingsTreeNode[]): SettingsTreeNode => createSettingsNode({ type: 'root', id: 'settings', children });
-const tabNode = (id: string, titleKey: string, icon: string, children: SettingsTreeNode[] = []): SettingsTreeNode => createSettingsNode({ type: 'tab', id, alias: id, titleKey, icon, children });
-const sectionNode = (tabId: string, alias: string, titleKey: string, children: SettingsTreeNode[] = [], extra: Record<string, unknown> = {}): SettingsTreeNode => createSettingsSectionDefinition({
+const tabNode = (id: string, titleKey: I18nKey | '', icon: string, children: SettingsTreeNode[] = []): SettingsTreeNode => createSettingsNode({ type: 'tab', id, alias: id, titleKey, icon, children });
+const sectionNode = (tabId: string, alias: string, titleKey: I18nKey | '', children: SettingsTreeNode[] = [], extra: Record<string, unknown> = {}): SettingsTreeNode => createSettingsSectionDefinition({
   id: `${tabId}.section.${alias}`,
   tab: tabId,
   alias,
@@ -69,7 +75,7 @@ const sectionNode = (tabId: string, alias: string, titleKey: string, children: S
 });
 const panelNode = (id: string, children: SettingsTreeNode[] = []): SettingsTreeNode => createSettingsNode({ type: 'panel', id, children });
 const conditionalNode = (id: string, when: unknown, children: SettingsTreeNode[] = []): SettingsTreeNode => createSettingsNode({ type: 'conditional', id, when, children });
-const fieldNode = (id: string, alias: string, titleKey: string, descriptionKey = '', extra: Record<string, unknown> = {}): SettingsTreeNode => createSettingsNode({
+const fieldNode = (id: string, alias: string, titleKey: I18nKey | '', descriptionKey: I18nKey | '' = '', extra: Record<string, unknown> = {}): SettingsTreeNode => createSettingsNode({
   type: 'field',
   id,
   alias,
@@ -78,7 +84,7 @@ const fieldNode = (id: string, alias: string, titleKey: string, descriptionKey =
   targetId: extra.targetId || id,
   ...extra,
 });
-const fieldGroupNode = (id: string, alias: string, titleKey: string, descriptionKey = '', children: SettingsTreeNode[] = [], extra: Record<string, unknown> = {}): SettingsTreeNode => createSettingsNode({
+const fieldGroupNode = (id: string, alias: string, titleKey: I18nKey | '', descriptionKey: I18nKey | '' = '', children: SettingsTreeNode[] = [], extra: Record<string, unknown> = {}): SettingsTreeNode => createSettingsNode({
   type: 'field-group',
   id,
   alias,
@@ -88,7 +94,7 @@ const fieldGroupNode = (id: string, alias: string, titleKey: string, description
   targetId: extra.targetId || id,
   ...extra,
 });
-const optionNode = (id: string, alias: string, titleKey: string, descriptionKey = '', extra: Record<string, unknown> = {}): SettingsTreeNode => createSettingsNode({
+const optionNode = (id: string, alias: string, titleKey: I18nKey | '', descriptionKey: I18nKey | '' = '', extra: Record<string, unknown> = {}): SettingsTreeNode => createSettingsNode({
   type: 'option',
   id,
   alias,
@@ -97,7 +103,7 @@ const optionNode = (id: string, alias: string, titleKey: string, descriptionKey 
   targetId: extra.targetId || id,
   ...extra,
 });
-const actionNode = (id: string, alias: string, titleKey: string, descriptionKey = '', extra: Record<string, unknown> = {}): SettingsTreeNode => createSettingsNode({
+const actionNode = (id: string, alias: string, titleKey: I18nKey | '', descriptionKey: I18nKey | '' = '', extra: Record<string, unknown> = {}): SettingsTreeNode => createSettingsNode({
   type: 'action',
   id,
   alias,
@@ -111,7 +117,7 @@ interface SettingsTreeContext {
   tab: string;
   section: string;
   providerId: string;
-  breadcrumbs: string[];
+  breadcrumbs: I18nKey[];
 }
 
 function normalizeSettingsTree(node: SettingsTreeNode, parent: SettingsTreeNode | null = null, context: SettingsTreeContext = { tab: '', section: '', providerId: '', breadcrumbs: [] }): SettingsTreeNode {

@@ -48,11 +48,11 @@ type ProviderFormMap = { webdav: WebdavForm; r2: R2Form; ftp: FTPForm; sftp: SFT
 /** 云同步提供方定义（test/save 等方法均由 wailsjs 生成类型，返回 Record<string, any> 直接透传） */
 interface ProviderDefinition<F extends Record<string, unknown>> {
   name: string;
-  titleKey: string;
-  subtitleKey: string;
+  titleKey: I18nKey;
+  subtitleKey: I18nKey;
   accent: string;
   accentRgb: string;
-  successMsgKey: string;
+  successMsgKey: I18nKey;
   defaultForm: F;
   test: (form: F) => Promise<unknown>;
   save: (form: F) => Promise<unknown>;
@@ -88,7 +88,7 @@ interface SummaryField { label: string; value: string; primary?: boolean; fullWi
 
 const TAB_ICON: Record<string, LucideIcon> = { general: SlidersHorizontal, network: Globe, fileManager: Folder, runtimeEnvironment: Database, appearance: Palette, shortcuts: Keyboard, sync: Cloud, app: Info };
 
-const TAB_LABELS: Record<string, string> = { general: '通用', network: '网络', fileManager: '文件管理器', runtimeEnvironment: '运行环境', appearance: '外观', shortcuts: '快捷键', sync: '同步与云', app: '关于' };
+const TAB_LABELS: Record<string, I18nKey> = { general: '通用', network: '网络', fileManager: '文件管理器', runtimeEnvironment: '运行环境', appearance: '外观', shortcuts: '快捷键', sync: '同步与云', app: '关于' };
 
 const TABS = [
   { id: 'general' },
@@ -599,7 +599,7 @@ export default function SettingsModal({
 
   // settingDefinitions.ts 已类型化，直接使用导出定义
   const settingsSectionTitleMap = useMemo(() => Object.fromEntries(
-    SETTINGS_SECTIONS.map((item): [string, string] => [item.id || '', $t((item.titleKey || '') as I18nKey)]),
+    SETTINGS_SECTIONS.map((item): [string, string] => [item.id || '', item.titleKey ? $t(item.titleKey) : '']),
   ), [language]);
   const availableSettingsSearchDefinitions = useMemo(() => SETTINGS_SEARCH_DEFINITIONS.filter((item) => {
     if (supportsWebviewGpuDisable) {
@@ -615,12 +615,12 @@ export default function SettingsModal({
     const typePriority: Record<string, number> = { action: 0, option: 1, field: 2, 'field-group': 3, section: 4 };
     const deduped = new Map();
     availableSettingsSearchDefinitions.forEach((item) => {
-      const title = item.titleKey ? $t(item.titleKey as I18nKey) : '';
-      const description = item.descriptionKey ? $t(item.descriptionKey as I18nKey) : '';
-      const tabLabel = TAB_LABELS[item.tab] ? $t(TAB_LABELS[item.tab] as I18nKey) : '';
+      const title = item.titleKey ? $t(item.titleKey) : '';
+      const description = item.descriptionKey ? $t(item.descriptionKey) : '';
+      const tabLabel = TAB_LABELS[item.tab] ? $t(TAB_LABELS[item.tab]) : '';
       const sectionLabel = item.section && item.section !== item.id ? (settingsSectionTitleMap[item.section] || '') : '';
       const breadcrumbLabels = Array.isArray(item.breadcrumbTitleKeys)
-        ? item.breadcrumbTitleKeys.map((key) => $t(key as I18nKey)).filter(Boolean)
+        ? item.breadcrumbTitleKeys.map((key) => $t(key)).filter(Boolean)
         : [];
       const resolvedBreadcrumbLabels = breadcrumbLabels.length > 0 ? breadcrumbLabels : [tabLabel, sectionLabel].filter(Boolean);
       const searchText = [...resolvedBreadcrumbLabels, title, description].filter(Boolean).join(' ').toLowerCase();
@@ -2251,7 +2251,7 @@ export default function SettingsModal({
                   fontSize: 13,
                 }}
               >
-                <span style={{ display: 'inline-flex', alignItems: 'center' }}>{(() => { const IC = TAB_ICON[tab.id]; return IC ? <IC size={15} /> : null; })()}</span> {$t(TAB_LABELS[tab.id] as I18nKey)}
+                <span style={{ display: 'inline-flex', alignItems: 'center' }}>{(() => { const IC = TAB_ICON[tab.id]; return IC ? <IC size={15} /> : null; })()}</span> {$t(TAB_LABELS[tab.id])}
               </div>
             ))}
           </div>

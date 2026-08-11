@@ -7,12 +7,12 @@ import { settings } from './settingDefinitions';
 
 const PROVIDER_ICON_CMP: Record<string, LucideIcon> = { webdav: Cloud, r2: Database, ftp: Folder, sftp: Lock };
 
-/** 同步提供方描述（来自 SettingsModal 未转 JS，宽松形状） */
+/** 同步提供方描述（来自 SettingsModal，宽松形状） */
 interface SyncProviderDef {
   accent: string;
-  titleKey: string;
-  subtitleKey: string;
-  successMsgKey: string;
+  titleKey: I18nKey;
+  subtitleKey: I18nKey;
+  successMsgKey: I18nKey;
   summaryFields: (form: Record<string, string | number>) => Array<{ label: string; value: string; primary?: boolean; fullWidth?: boolean }>;
 }
 
@@ -54,8 +54,8 @@ function ProviderCard({ provider, providerKey, form, configured, editing, onEdit
       <div data-settings-field-id={definition?.id} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
         <div style={{ width: 40, height: 40, borderRadius: 8, background: 'var(--surface-sunken)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>{IC ? <IC size={20} /> : null}</div>
         <div>
-          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>{$t(provider.titleKey as I18nKey)}</div>
-          <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{$t(provider.subtitleKey as I18nKey)}</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>{$t(provider.titleKey)}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{$t(provider.subtitleKey)}</div>
         </div>
       </div>
       {configured && !editing ? (
@@ -64,7 +64,7 @@ function ProviderCard({ provider, providerKey, form, configured, editing, onEdit
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ width: 10, height: 10, borderRadius: '50%', background: accent }}></div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.3px' }}>{$t(provider.successMsgKey as I18nKey)}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.3px' }}>{$t(provider.successMsgKey)}</div>
             </div>
             <button onClick={onEdit} style={{ padding: '6px 14px', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 500, background: 'var(--surface-hover)', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 6 }} onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-sunken)'; e.currentTarget.style.color = 'var(--text-primary)'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>

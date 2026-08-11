@@ -43,7 +43,7 @@ const embeddedBrowserAuthRequestType = 'lumin-builtin-provider-auth-request'
 // 原 .jsx 引用未定义的 defaultTokenStoreTitle（潜在 ReferenceError），补默认值
 const defaultTokenStoreTitle = 'LuminSSH'
 
-const cacheStrategyLabelKeys: Record<string, string> = {
+const cacheStrategyLabelKeys: Record<string, I18nKey> = {
   model: '基于模型能力',
   off: '强制关闭',
   '5m': '5分钟',
@@ -52,11 +52,10 @@ const cacheStrategyLabelKeys: Record<string, string> = {
 
 function getCacheStrategyLabel(t: (key: I18nKey) => string, value: unknown) {
   const nextValue = typeof value === 'string' ? value.trim() : ''
-  // 动态 key：cacheStrategyLabelKeys 的值均为合法 i18n 键
-  return t((cacheStrategyLabelKeys[nextValue] || cacheStrategyLabelKeys.model) as I18nKey)
+  return t(cacheStrategyLabelKeys[nextValue] || cacheStrategyLabelKeys.model)
 }
 
-const reasoningEffortLabelKeys: Record<string, string> = {
+const reasoningEffortLabelKeys: Record<string, I18nKey> = {
   none: '无',
   minimal: '最少',
   low: '低',

@@ -62,7 +62,7 @@ export default function ShortcutsTab({ shortcuts, listeningKey, onSetListeningKe
               data-settings-field-id={resetNode.id}
               onClick={onResetShortcuts}
             >
-              {$t(resetNode.titleKey as I18nKey)}
+              {resetNode.titleKey ? $t(resetNode.titleKey) : ''}
             </button>
           ) : null}
         </div>
@@ -71,7 +71,7 @@ export default function ShortcutsTab({ shortcuts, listeningKey, onSetListeningKe
             <ShortcutRow
               key={node.id}
               definition={node}
-              label={$t(node.titleKey as I18nKey)}
+              label={node.titleKey ? $t(node.titleKey) : ''}
               keyName={node.alias || ''}
               shortcuts={shortcuts}
               listeningKey={listeningKey}

@@ -20,7 +20,7 @@
 
 ## 2. 已完成工作（阶段 0-2 ✅）
 
-### 提交历史（5 个 commit，全部可构建）
+### 提交历史（6 个 commit，全部可构建）
 
 | Commit | 内容 |
 |---|---|
@@ -28,6 +28,7 @@
 | `9cd8248` | 阶段 1：纯逻辑 20 文件转 TS |
 | `27c4618` / `c6d3844` | 阶段 2：hooks 转 TS（12/17 → 16/17） |
 | `b6a2533` | 阶段 2 完成：全部 17 个 hooks |
+| `b6b81ea` | 阶段 3：i18n 类型化（i18n.js→i18n.ts，I18nKey/LanguageCode 接入） |
 
 ### 已转文件清单
 
@@ -49,7 +50,11 @@
 **阶段 2 — hooks（17 个全部）**
 - useToasts、useWindowState、usePanelLayout、usePortForwardDialog、useServerPing、useDashboardPreferences、useWorkspaceSettings、useSessionWorkspaceModel、useImportExport、useServerCatalog、useUpdateChecker、useWorkspacePersistence（WorkspaceSessionSnapshot/SnapshotOverrides）、useWorkspacePanelDocking（DockRect）、useAIReview（AIChangeReview/ConversationDiffPanel）、useTerminalSubTabs、useTerminalDocking、useSessionConnections（1408 行，ConnectingServer/SessionAuthPrompt/SshChannelUsage）
 
-**当前统计**：41 个 .ts / 78 个 .jsx / 51 个 .js（i18n 28 + components 23 + 根 3）
+**阶段 3 — i18n 类型化（1 个）**
+- `src/i18n.js` → `src/i18n.ts`（git mv 保留历史）：`t()` key 参数改为 `I18nKey`，`setLanguage`/`loadLanguage` 等改用 `LanguageCode`
+- `src/i18n/types.ts` 新增 `LanguageCode`（28 语言代码联合类型，新增语言目录时需同步）
+
+**当前统计**：42 个 .ts（39 .ts + 3 .d.ts）/ 78 个 .jsx / 50 个 .js（i18n 28 语言文件 + components 22）
 
 ---
 
@@ -82,7 +87,7 @@
 ### 3.5 类型风格约定
 - `SessionLike`（`utils/sessionWorkspace.ts`）— 会话对象的宽松类型，带 `[key: string]: unknown` 索引签名。**注意**：索引签名导致 `session.serverId` 等未声明字段是 `unknown`，赋值给 string 字段需 `String(...)` 包装
 - JSON.parse 结果：用显式接口断言（如 `RestoredSnapshotSession`），避免 any
-- `t()` 翻译函数签名：`(key: string, vars?: Record<string, unknown>) => string`
+- `t()` 翻译函数签名：`(key: string, vars?: Record<string, unknown>) => string`；`src/i18n.ts` 的 t 已收紧为 `(key: I18nKey, ...)`（字面量 key 拼错直接报错），动态 key 用 `t(raw as I18nKey)` 逃生；被注入的 t 参数（如 useAIReview 的 options.t）仍保持宽松 string 签名
 - `addToast` 签名：`(message: string | Error, type?: string, duration?: number, actions?: unknown[]) => number`
 - 任何 `any` 使用需注释说明（目前代码中基本没有显式 any，用 unknown + 收窄代替）
 
@@ -95,20 +100,16 @@
 
 ## 4. 剩余工作（阶段 3-6）
 
-### 阶段 3：i18n 类型化（28 个语言文件）🔄 下一个做这个
+### 阶段 3：i18n 类型化（28 个语言文件）✅ 已完成
 
-**现状**：
-- `src/i18n/types.ts` 已建好模板：`import type zhCN from './zh-CN/basic.js'` → `I18nKey = keyof I18nDict`
-- 28 个语言文件在 `src/i18n/<lang>/basic.js`，每个 1800+ 行，导出 `LANGUAGE_LABEL` + `export default {...}`（中文 key → 译文）
+**完成内容**：
+- `i18n.js` → `i18n.ts`（git mv），`t()` 的 key 参数改为 `I18nKey`（1810 个中文键字面量联合，拼写错误直接被 tsc 捕获）
+- 新增 `LanguageCode` 联合类型（28 语言代码），`setLanguage`/`loadLanguage`/`initializeI18n`/`getLanguage`/`useTranslation` 全部类型化
+- 语言文件本身保持 .js 不动（28 个 × 1800+ 行），用 `npm run i18n:check` 验证键一致性（全部通过）
+- 动态 key 逃生：`t(raw as I18nKey)` 共 4 处（useUpdateChecker ×2、terminalCommandAutocompleteProviders ×2），t() 内部对未知 key 有原样兜底
+- 验证：`tsc --noEmit` 零错误 + `npm run i18n:check` 通过 + `npm run build` 通过
 
-**执行步骤**：
-1. 把 `I18nKey` 类型接入 `src/i18n.js` 的 `t()` 函数与 `setLanguage`/`loadLanguage`（`t` 的 key 参数改为 `I18nKey`，注意现有代码大量传中文 key 字符串，转型后受益最大）
-2. **语言文件本身保持 .js 不动**（避免 28 个文件 × 1800 行无谓转换）；用 `npm run i18n:check`（`scripts/check-i18n.mjs`）验证键一致性
-3. 验证：`tsc --noEmit` + `npm run build`
-
-**注意**：`i18n.js` 用 `import.meta.glob('./i18n/*/basic.js')` 动态加载，glob 匹配真实 .js 文件不受影响。
-
-### 阶段 4：小组件 JSX→TSX（批量）
+### 阶段 4：小组件 JSX→TSX（批量）🔄 下一个做这个
 
 **剩余组件规模**（`src/components/` 98 个文件，含 ai/chat/settings 子目录）：
 - 先从**小文件**开始：如 SyncFailureToast、SerialConfigModal、CredentialsModal、CommandHistory 等（<300 行）
@@ -182,6 +183,8 @@ npm run i18n:check        # i18n 键完整性（阶段 3 用）
 | JSON.parse 结果访问属性报错 | 定义接口断言（如 `as RestoredSnapshotSession`） |
 | npm install 后 `@types/react` 装成 19.x | 项目是 React 18，必须 `@types/react@^18.3` |
 | 安装 typescript 装成 7.x（原生版） | 用 `typescript@^5.9`（稳定版） |
+| 块注释里写 `src/i18n/*/basic.js` | `*/` 会提前终止块注释导致语法错误，改用 `src/i18n/<lang>/basic.js` |
+| useEffect 清理函数 `return () => set.delete(x)` | `Set.delete` 返回 boolean，与 React Destructor 类型不符，改花括号块体 |
 
 ---
 
@@ -198,7 +201,7 @@ npm run i18n:check        # i18n 键完整性（阶段 3 用）
 
 1. **先跑一遍验证**：`cd frontend && npx tsc --noEmit && npm run build` 确认接手时环境健康
 2. 读一遍 `docs/TSX-MIGRATION.md`（进度清单）确认状态一致
-3. 开始**阶段 3：i18n 类型化**（把 `I18nKey` 接入 i18n.js 的 t()）
-4. 之后按阶段 4 → 5 → 6 顺序推进，每阶段一个 commit
+3. 开始**阶段 4：小组件 JSX→TSX**（先转 <300 行的小文件：SyncFailureToast、SerialConfigModal、CredentialsModal、CommandHistory 等，转换模板见 §4）
+4. 之后按阶段 5 → 6 顺序推进，每阶段一个 commit
 
-接手人加油！💪 剩余组件虽多（98 个），但基础类型体系已经全部就位，剩下的主要是机械转换 + 逐个补 props 类型。
+接手人加油！💪 剩余组件虽多（98 个），但基础类型体系已经全部就位（纯逻辑 + hooks + i18n），剩下的主要是机械转换 + 逐个补 props 类型。

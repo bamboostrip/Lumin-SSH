@@ -51,7 +51,7 @@
 | 0 | TS 骨架：tsconfig、vite TS、全局声明、i18n 类型模板 | ✅ 完成 |
 | 1 | 纯逻辑转 TS：`utils/`(17) + `constants/`(2) + `config.js` | ✅ 完成 |
 | 2 | hooks 转 TS：`hooks/`(17) | ✅ 完成 |
-| 3 | i18n 类型化：28 个语言文件对齐 `zh-CN` 键 | 🔄 进行中 |
+| 3 | i18n 类型化：28 个语言文件对齐 `zh-CN` 键 | ✅ 完成 |
 | 4 | 小组件 JSX→TSX（批量） | ⏳ |
 | 5 | 巨兽组件：FileManager / AIPanel / Terminal / SettingsModal / AI 系列 | ⏳ |
 | 6 | 收尾：移除 allowJs、严格模式全量通过、回归验证 | ⏳ |
@@ -82,6 +82,18 @@
 - `src/types/luminDialog.d.ts` — window.luminDialog 全局 API
 - `wails.d.ts` 补充 window.runtime 声明
 - `recoveryPasswordSync.ts` 的 sync 参数改为可选（initialError 场景）
+
+---
+
+## 阶段 3：i18n 类型化（完成 ✅）
+
+- [x] `i18n.js` → `i18n.ts`（git mv 保留历史），语言文件保持 `.js` 不动（28 个 × 1810 键）
+- [x] `t()` key 参数类型化：`I18nKey`（`keyof typeof zh-CN/basic.js`，字面量 key 拼写错误直接 tsc 报错）
+- [x] `setLanguage`/`loadLanguage`/`initializeI18n`/`getLanguage` 类型化：`LanguageCode`（28 语言代码联合类型，`src/i18n/types.ts` 新增）
+- [x] `getAvailableLanguages` 返回 `{ code: LanguageCode; label: string }[]`
+- [x] 动态 key 逃生：`t(raw as I18nKey)` 共 4 处（useUpdateChecker ×2、terminalCommandAutocompleteProviders ×2），`t()` 内部对未知 key 原样兜底
+- [x] `useTranslation` 返回 `{ t: typeof t; lang: LanguageCode }`
+- [x] 验证：`tsc --noEmit` 零错误 + `npm run i18n:check` 通过（28 语言 1810 键一致）+ `npm run build` 通过
 
 ---
 

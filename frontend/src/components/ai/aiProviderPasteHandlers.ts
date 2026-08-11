@@ -1,10 +1,9 @@
-// @ts-nocheck
-// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
-function normalizeToken(value) {
+// 桥接模块（自 .js 收编后类型化）：AI 供应商 API Key 粘贴解析器
+function normalizeToken(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-function pickTokenFromEntries(entries) {
+function pickTokenFromEntries(entries: unknown): string {
   if (!Array.isArray(entries)) {
     return ''
   }
@@ -14,12 +13,13 @@ function pickTokenFromEntries(entries) {
   for (const expectedKey of priorityKeys) {
     const normalizedExpectedKey = expectedKey.toLowerCase()
     const matched = entries.find((entry) => {
-      const entryKey = typeof entry?.key === 'string'
-        ? entry.key.trim()
-        : (typeof entry?.name === 'string' ? entry.name.trim() : '')
+      const e = entry as { key?: unknown; name?: unknown; value?: unknown } | null | undefined
+      const entryKey = typeof e?.key === 'string'
+        ? e.key.trim()
+        : (typeof e?.name === 'string' ? e.name.trim() : '')
       return entryKey.toLowerCase().includes(normalizedExpectedKey)
     })
-    const token = normalizeToken(matched?.value)
+    const token = normalizeToken((matched as { value?: unknown } | undefined)?.value)
     if (token) {
       return token
     }
@@ -27,7 +27,12 @@ function pickTokenFromEntries(entries) {
   return ''
 }
 
-export function builtinKimiLocalStorageJsonV1(rawText, apiKeyField, helpers = {}) {
+/** 粘贴处理器辅助能力 */
+export interface PasteHandlerHelpers {
+  resolveEmbeddedBrowserAPIKey?: (payload: unknown, apiKeyField: unknown) => string
+}
+
+export function builtinKimiLocalStorageJsonV1(rawText: unknown, apiKeyField: unknown, helpers: PasteHandlerHelpers = {}): string {
   const text = typeof rawText === 'string' ? rawText.trim() : ''
   if (!text) {
     return ''
@@ -62,11 +67,13 @@ export function builtinKimiLocalStorageJsonV1(rawText, apiKeyField, helpers = {}
   return text
 }
 
-export const aiProviderPasteHandlerRegistry = {
+type AIPasteHandler = (rawText: unknown, apiKeyField: unknown, helpers?: PasteHandlerHelpers) => string
+
+export const aiProviderPasteHandlerRegistry: Record<string, AIPasteHandler> = {
   'builtin-kimi-local-storage-json-v1': builtinKimiLocalStorageJsonV1,
 }
 
-export function runAIProviderPasteHandlerById(handlerId, rawText, apiKeyField, helpers = {}) {
+export function runAIProviderPasteHandlerById(handlerId: unknown, rawText: unknown, apiKeyField: unknown, helpers: PasteHandlerHelpers = {}): string {
   const normalizedText = typeof rawText === 'string' ? rawText : ''
   const normalizedHandlerId = typeof handlerId === 'string' ? handlerId.trim() : ''
   const handler = normalizedHandlerId ? aiProviderPasteHandlerRegistry[normalizedHandlerId] : null

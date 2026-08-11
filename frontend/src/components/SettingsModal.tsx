@@ -1130,9 +1130,8 @@ export default function SettingsModal({
   const [fileManagerPreferredExternalApp, setFileManagerPreferredExternalApp] = useState(
     () => (localStorage.getItem('fileEditorPreferredApp') || '').trim(),
   );
-  // bridge 的 DEFAULT_RUNTIME_ENVIRONMENT_SETTINGS 实际无 enabled 字段（原 .jsx 同样读取 undefined，运行期按 !undefined 工作）
-  const [runtimeEnvironmentEnabled, setRuntimeEnvironmentEnabled] = useState((DEFAULT_RUNTIME_ENVIRONMENT_SETTINGS as typeof DEFAULT_RUNTIME_ENVIRONMENT_SETTINGS & { enabled?: boolean }).enabled);
-  const [runtimeEnvironmentType, setRuntimeEnvironmentType] = useState(DEFAULT_RUNTIME_ENVIRONMENT_SETTINGS.environmentType);
+  const [runtimeEnvironmentEnabled, setRuntimeEnvironmentEnabled] = useState(DEFAULT_RUNTIME_ENVIRONMENT_SETTINGS.enabled);
+  const [runtimeEnvironmentType, setRuntimeEnvironmentType] = useState<string>(DEFAULT_RUNTIME_ENVIRONMENT_SETTINGS.environmentType);
   const [runtimeEnvironmentTargetPathTemplate, setRuntimeEnvironmentTargetPathTemplate] = useState(DEFAULT_RUNTIME_ENVIRONMENT_SETTINGS.targetPathTemplate);
   const [runtimeEnvironmentModulePath, setRuntimeEnvironmentModulePath] = useState(DEFAULT_RUNTIME_ENVIRONMENT_SETTINGS.modulePath);
 

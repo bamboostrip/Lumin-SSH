@@ -1,8 +1,13 @@
-// @ts-nocheck
-// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
+// 桥接模块（自 .js 收编后类型化）：输入框拖拽选择守卫
 // Text input types whose selection can be programmatically changed via select().
 // number/email/etc. throw InvalidStateError on select()/setSelectionRange().
 const SELECTABLE_INPUT_TYPES = ['text', 'search', 'url', 'tel', 'password']
+
+/** 兼容 React.MouseEvent<HTMLInputElement> 的最小结构 */
+interface DragSelectMouseEvent {
+  buttons: number
+  currentTarget: HTMLInputElement
+}
 
 /**
  * onMouseLeave handler for text inputs: while the primary button is held down
@@ -11,7 +16,7 @@ const SELECTABLE_INPUT_TYPES = ['text', 'search', 'url', 'tel', 'password']
  *
  * Safe to bind on any input: non-drag leaves and non-text inputs are no-ops.
  */
-export function handleInputDragSelectAll(event) {
+export function handleInputDragSelectAll(event: DragSelectMouseEvent): void {
   if (event.buttons !== 1) {
     return
   }

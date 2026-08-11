@@ -1,33 +1,53 @@
-// @ts-nocheck
-// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
+// 桥接模块（自 .js 收编后类型化）：AI 对话备份的归一化与恢复
 import { normalizeAIConversationSnapshot, publishAIConversationUpsert } from './aiConversationBridge.ts'
 
 function getAppBridge() {
   return window?.go?.wailsapp?.AIBindings || window?.go?.wailsapp?.App
 }
 
-export function normalizeAIConversationBackup(backup) {
+/** 归一化后的对话备份项（type 而非 interface 以兼容消费方索引签名） */
+export type AIConversationBackup = {
+  id: string
+  ts: number
+  message: string
+  messageRole: string
+  type: string
+}
+
+/** 归一化后的备份历史条目 */
+export type AIConversationBackupHistoryEntry = {
+  role: string
+  content: string | unknown[]
+  ts: number
+  messageId: string
+  uiMessageIds: string[]
+  images: string[]
+}
+
+export function normalizeAIConversationBackup(backup: unknown): AIConversationBackup {
+  const b = (backup ?? {}) as Record<string, unknown>
   return {
-    id: typeof backup?.id === 'string' ? backup.id.trim() : '',
-    ts: typeof backup?.ts === 'number' ? backup.ts : 0,
-    message: typeof backup?.message === 'string' ? backup.message : '',
-    messageRole: typeof backup?.messageRole === 'string' ? backup.messageRole : '',
-    type: typeof backup?.type === 'string' ? backup.type : 'auto',
+    id: typeof b.id === 'string' ? b.id.trim() : '',
+    ts: typeof b.ts === 'number' ? b.ts : 0,
+    message: typeof b.message === 'string' ? b.message : '',
+    messageRole: typeof b.messageRole === 'string' ? b.messageRole : '',
+    type: typeof b.type === 'string' ? b.type : 'auto',
   }
 }
 
-export function normalizeAIConversationBackupHistoryEntry(entry) {
+export function normalizeAIConversationBackupHistoryEntry(entry: unknown): AIConversationBackupHistoryEntry {
+  const e = (entry ?? {}) as Record<string, unknown>
   return {
-    role: typeof entry?.role === 'string' ? entry.role : '',
-    content: typeof entry?.content === 'string' || Array.isArray(entry?.content) ? entry.content : '',
-    ts: typeof entry?.ts === 'number' ? entry.ts : 0,
-    messageId: typeof entry?.messageId === 'string' ? entry.messageId : '',
-    uiMessageIds: Array.isArray(entry?.uiMessageIds) ? entry.uiMessageIds.filter((item) => typeof item === 'string') : [],
-    images: Array.isArray(entry?.images) ? entry.images.filter((item) => typeof item === 'string') : [],
+    role: typeof e.role === 'string' ? e.role : '',
+    content: typeof e.content === 'string' || Array.isArray(e.content) ? e.content : '',
+    ts: typeof e.ts === 'number' ? e.ts : 0,
+    messageId: typeof e.messageId === 'string' ? e.messageId : '',
+    uiMessageIds: Array.isArray(e.uiMessageIds) ? e.uiMessageIds.filter((item) => typeof item === 'string') : [],
+    images: Array.isArray(e.images) ? e.images.filter((item) => typeof item === 'string') : [],
   }
 }
 
-export async function listAIConversationBackups(conversationId) {
+export async function listAIConversationBackups(conversationId: string): Promise<AIConversationBackup[]> {
   const bridge = getAppBridge()
   if (!bridge?.ListAIConversationBackups) {
     return []
@@ -36,7 +56,7 @@ export async function listAIConversationBackups(conversationId) {
   return Array.isArray(result) ? result.map(normalizeAIConversationBackup) : []
 }
 
-export async function getAIConversationBackupHistory(conversationId, backupId) {
+export async function getAIConversationBackupHistory(conversationId: string, backupId: string): Promise<AIConversationBackupHistoryEntry[]> {
   const bridge = getAppBridge()
   if (!bridge?.GetAIConversationBackupHistory) {
     return []
@@ -45,7 +65,7 @@ export async function getAIConversationBackupHistory(conversationId, backupId) {
   return Array.isArray(result) ? result.map(normalizeAIConversationBackupHistoryEntry) : []
 }
 
-export async function restoreAIConversationBackup(conversationId, backupId) {
+export async function restoreAIConversationBackup(conversationId: string, backupId: string): Promise<unknown> {
   const bridge = getAppBridge()
   if (!bridge?.RestoreAIConversationBackup) {
     return null
@@ -55,7 +75,7 @@ export async function restoreAIConversationBackup(conversationId, backupId) {
   return snapshot
 }
 
-export async function deleteAIConversationBackup(conversationId, backupId) {
+export async function deleteAIConversationBackup(conversationId: string, backupId: string): Promise<void> {
   const bridge = getAppBridge()
   if (!bridge?.DeleteAIConversationBackup) {
     return

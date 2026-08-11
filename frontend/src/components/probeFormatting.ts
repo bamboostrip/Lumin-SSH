@@ -1,18 +1,17 @@
-// @ts-nocheck
-// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
+// 桥接模块（自 .js 收编后类型化）：探针面板数据格式化
 const STORAGE_UNITS = ['M', 'G', 'T', 'P'];
 const RATE_UNITS = ['KB/s', 'MB/s', 'GB/s', 'TB/s'];
 
-const finiteNumber = (value) => {
+const finiteNumber = (value: unknown): number => {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
 };
 
-export const clampPanelWidth = (width, min = 280, max = 560) => {
+export const clampPanelWidth = (width: unknown, min = 280, max = 560): number => {
   return Math.max(min, Math.min(max, Math.round(finiteNumber(width))));
 };
 
-export const formatCapacity = (mb, decimals = 1) => {
+export const formatCapacity = (mb: unknown, decimals = 1): string => {
   let value = finiteNumber(mb);
   if (value <= 0) return '0M';
 
@@ -26,14 +25,14 @@ export const formatCapacity = (mb, decimals = 1) => {
   return `${value.toFixed(decimals)}${STORAGE_UNITS[unitIndex]}`;
 };
 
-export const formatTransferTotal = (mb) => {
+export const formatTransferTotal = (mb: unknown): string => {
   const value = finiteNumber(mb);
   if (value <= 0) return '0 B';
   if (value < 1) return `${(value * 1024).toFixed(0)} KB`;
   return `${formatCapacity(value, value < 1024 ? 1 : 2)}B`;
 };
 
-export const formatRate = (kb) => {
+export const formatRate = (kb: unknown): string => {
   let value = finiteNumber(kb);
   if (value <= 0) return '0 B/s';
   if (value < 1) return `${(value * 1024).toFixed(0)} B/s`;
@@ -48,7 +47,7 @@ export const formatRate = (kb) => {
   return `${value.toFixed(2)} ${RATE_UNITS[unitIndex]}`;
 };
 
-export const formatPartitionCapacity = (raw) => {
+export const formatPartitionCapacity = (raw: unknown): string => {
   if (typeof raw === 'number') return formatCapacity(raw, 1);
   if (raw == null) return '0M';
 

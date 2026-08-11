@@ -28,6 +28,9 @@ declare global {
       BrowserOpenURL?: (url: string) => void;
       [key: string]: unknown;
     };
+    /** 文件管理器/编辑器状态注入（App 调用处桥接，AI 上下文快照读取） */
+    __luminEditorStates?: Record<string, { openFilePaths?: unknown; activeFilePath?: unknown }>;
+    __luminFileManagerPaths?: Record<string, unknown>;
   }
 }
 

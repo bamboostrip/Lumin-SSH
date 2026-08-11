@@ -1,11 +1,10 @@
-// @ts-nocheck
-// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
-export const CALLMY_VIP_PROVIDER_HOSTS = [
+// 桥接模块（自 .js 收编后类型化）：CallMyVIP 特供供应商主机识别
+export const CALLMY_VIP_PROVIDER_HOSTS: readonly string[] = [
   'newapi.callmy.vip',
   'newapi2.callmy.vip',
 ]
 
-export function isCallMyVipProviderHost(value) {
+export function isCallMyVipProviderHost(value: unknown): boolean {
   const rawBaseURL = typeof value === 'string' ? value.trim() : ''
   if (!rawBaseURL) {
     return false

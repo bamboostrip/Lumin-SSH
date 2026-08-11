@@ -1,9 +1,8 @@
-// @ts-nocheck
-// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
+// 桥接模块（自 .js 收编后类型化）：AI 上下文快照（终端/文件/时区）
 import { getLanguage } from '../../i18n.ts'
 import { isValidRemoteAbsolutePath } from './aiMentions.ts'
 
-function normalizeFilePaths(paths) {
+function normalizeFilePaths(paths: unknown): string[] {
   return Array.isArray(paths)
     ? paths
         .filter((item) => typeof item === 'string' && item.trim())
@@ -11,7 +10,7 @@ function normalizeFilePaths(paths) {
     :[]
 }
 
-function formatUserTimeZone(now) {
+function formatUserTimeZone(now: Date): string {
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Unknown'
   const offsetMinutes = -now.getTimezoneOffset()
   const sign = offsetMinutes >= 0 ? '+' :'-'
@@ -21,9 +20,20 @@ function formatUserTimeZone(now) {
   return `${timeZone}, UTC${sign}${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
 }
 
-function buildExecutionContextLines(snapshot) {
+/** AI 上下文快照（getExecutionContextSnapshot 输出） */
+export interface ExecutionContextSnapshot {
+  sessionId: string
+  terminalId: string
+  currentPath: string
+  openFilePaths: string[]
+  activeFilePath: string
+  currentTimeISO: string
+  userTimeZone: string
+}
+
+function buildExecutionContextLines(snapshot: ExecutionContextSnapshot): string[] {
   const isChinese = String(getLanguage() || '').toLowerCase().startsWith('zh')
-  const lines = []
+  const lines: string[] = []
   lines.push(isChinese ? '# 当前终端会话' : '# Current terminal session')
   if (snapshot.sessionId) {
     lines.push(`${isChinese ? '会话ID' : 'Session ID'}:${snapshot.sessionId}`)
@@ -49,9 +59,9 @@ function buildExecutionContextLines(snapshot) {
   return lines
 }
 
-export function getExecutionContextSnapshot({ sessionId = '', terminalId = '' } = {}) {
+export function getExecutionContextSnapshot({ sessionId = '', terminalId = '' } = {}): ExecutionContextSnapshot {
   const now = new Date()
-  const editorState = window?.__luminEditorStates?.[sessionId] || {}
+  const editorState = (window?.__luminEditorStates?.[sessionId] ?? {}) as Record<string, unknown>
   const openFilePaths = normalizeFilePaths(editorState.openFilePaths)
   const activeFilePath = normalizeFilePaths([editorState.activeFilePath])[0] || ''
   const currentPath = isValidRemoteAbsolutePath(window?.__luminFileManagerPaths?.[sessionId]) || '/'
@@ -67,12 +77,12 @@ export function getExecutionContextSnapshot({ sessionId = '', terminalId = '' } 
   }
 }
 
-export function buildExecutionContextCardText(snapshot) {
+export function buildExecutionContextCardText(snapshot: ExecutionContextSnapshot): string {
   const lines = buildExecutionContextLines(snapshot)
   return lines.join('\n').trim()
 }
 
-export function buildExecutionContextDetails(snapshot) {
+export function buildExecutionContextDetails(snapshot: ExecutionContextSnapshot): string {
   const detailsText = buildExecutionContextCardText(snapshot)
   if (!detailsText) {
     return ''

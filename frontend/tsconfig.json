@@ -12,8 +12,6 @@
     "jsx": "react-jsx",
     "skipLibCheck": true,
     "strict": true,
-    "allowJs": true,
-    "checkJs": false,
     "noFallthroughCasesInSwitch": true,
     "types": ["vite/client"]
   },

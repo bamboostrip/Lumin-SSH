@@ -53,7 +53,7 @@
 | 2 | hooks 转 TS：`hooks/`(17) | ✅ 完成 |
 | 3 | i18n 类型化：28 个语言文件对齐 `zh-CN` 键 | ✅ 完成 |
 | 4 | 小组件 JSX→TSX（批量） | ✅ 完成（66/76 + main.tsx） |
-| 5 | 巨兽组件：FileManager / AIPanel / Terminal / SettingsModal / AI 系列 | 🔄 进行中（10/12 已转，剩 2 个） |
+| 5 | 巨兽组件：FileManager / AIPanel / Terminal / SettingsModal / AI 系列 | 🔄 进行中（11/12 已转，剩 1 个） |
 | 6 | 收尾：移除 allowJs、严格模式全量通过、回归验证 | ⏳ |
 
 ---
@@ -176,9 +176,9 @@
 
 ---
 
-## 阶段 5：巨兽组件（进行中 ✅ 10/12，剩余 2 个）
+## 阶段 5：巨兽组件（进行中 ✅ 11/12，剩余 1 个）
 
-**已转（10 个，均含 tsc + build 验证，10 个独立提交）**：
+**已转（11 个，均含 tsc + build 验证，11 个独立提交）**：
 - `App.tsx`（1709 行，前置契约）— 17 处边界桥接：looseAddToast/looseT（`actions?: unknown[]` / `(key: string, vars?)`）、setContentTabLoose、serversRef 经 unknown 桥接 PingServerLike、enqueueChangeReview/setSyncFailed/setTabContextMenu 等 Dispatch 协变桥接、`sessionTerminals={... as never[]}`（AIPanel 未转时的临时断言）
 - `ProbePanel.tsx`（1137 行）— 导出 ProbeSnapshot/ProbeInfo/ProbePanelProps；App 的 probeSnapshots 状态随之类型化
 - `FileEditor.tsx`（1178 行）— CodeMirror 语言映射用 `Extension`（StreamLanguage.define 返回 Language 而非 LanguageSupport）；导出 FileEditorFile/FileEditorProps
@@ -189,6 +189,7 @@
 - `SessionWorkspace.tsx`（1310 行，承上启下）— 7 组分 props 契约化（dashboard/session/fileManager/terminalTabs/ai/quickCommands/shared）；函数类型参数必须**精确匹配 App 侧**（contravariance，宽松 unknown 反而报错）
 - `SettingsModal.tsx`（2554 行）— ProviderDefinition<F> 泛型契约化（`{ [K in ProviderKey]: ProviderDefinition<ProviderFormMap[K]]> }` mapped type + makeTestHandler/makeSaveHandler/makeSecureTestHandler 泛型化）；summaryFields 参数加宽到 `F | Record<string, string | number>` 兼容 SyncTab 宽松形状（内部 `form as XxxForm` 收窄）；providerState 四份同构 state 映射类型注解；ftp/sftp summaryFields 端口 String(f.port)（SyncTab 的 SummaryField.value 是 string）；发现缺失 i18n 键「搜索结果」
 - `Terminal.tsx`（4382 行）— refs 全量类型化（XTerm/FitAddon/SearchAddon/HTML 元素/`ReturnType<typeof setTimeout>` timer refs）；tsRingRef/cbBlocksRef 用 `null!` 惰性初始化惯用法；`lineToTextAndCols` 用 `IBufferLine | undefined`（xterm 导出）；右键菜单 union 因字面量拓宽（`type: 'action'` → string）无法收窄 → 显式 `TerminalContextMenuItem` 判别联合 + `as TerminalContextMenuItem[]`；CustomEvent 监听器改 `(e: Event)` + 内部 `as CustomEvent<X>` 收窄（EventListener 严格逆变，方法式接口不豁免）；`useRef` 窄化分支内赋值改用局部变量；移除 SessionWorkspace 两处 `as never[]`（TerminalProps.connectedSessions 放宽为 `Array<{ id?: string }>`）；发现缺失 i18n 键「终端输出搜索」「搜索命令历史」
+- `AIPanel.tsx`（5905 行）— 全量类型化（props 契约即 App 调用处，见下）；发现并修复 3 个潜在 bug：AIPanelHeader 的 `.jsx` 残留传参 `conversationTitle/showRenameConversationButton/onRenameConversation`（组件已不使用，直接删除）；TS 5.9 `typeof any === 'object'` 会把参数收窄为 `object` 导致属性链回调查参 TS7006（局部变量接住或 `as BridgeData` 桥接）；`new Map()` 推断 `Map<unknown, unknown>` 导致 sort/flatMap 回调查参 TS7006（显式 `Map<string, BridgeData>()` 或标注回调查参）
 
 **已确立的新转换模式**（阶段 5 新增）：
 1. 函数类型参数方向：接收方 props 的参数类型必须 ≥ 调用方参数类型（contravariance）——宽松 `(x: unknown) => void` 接收 `(x: Specific) => void` 会报错，需精确匹配调用方
@@ -198,22 +199,21 @@
 5. `declare global { interface Window }` 局部全局声明（__luminFileManagerPaths 等）
 6. git mv 后 Write 需先 Read 新路径（工具要求）
 
-**剩余（2 个 .jsx，约 13.9k 行）**：
-- `AIPanel.jsx`（5905 行）— 被 App 以 `sessionTerminals as never[]` 临时断言调用，转换后可移除（App.tsx 一处），转换要点见下
+**剩余（1 个 .jsx，8,038 行）**：
 - `FileManager.jsx`（8038 行）— 最大的一个，建议最后转
 
-**AIPanel.jsx 转换要点**（下次接手直接照做）：
-- props 契约（App.tsx 1284 行调用处）：`width: string`、`side: 'left' | 'right'`、`sessionId: string`、`terminalId: string`、`sessionTerminals: Array<{ id: string; label?: string }>`、`addToast`（宽松，同 SettingsModalProps）、`onDevilModeChange: (enabled: boolean) => void`
-- `sessionTerminals` 契约即 App 的 `getEffectiveTerminals(s)` 返回形状（`Array<{ id: string; label?: string }>`），转换后 App.tsx 1290 行断言改回 `sessionTerminals={getEffectiveTerminals(s)}`
-- App 调用处 `sessionId={s.id}` 是 SessionLike 索引签名（unknown），需 `String(s.id ?? '')` 桥接（同 Terminal 调用处处理方式，见 f651462）
-- 转换后 `npx tsc --noEmit` 的错误清单即完整改造点：先跑 tsc 分类（useRef(null) → never 是最大头，同 Terminal 模式），再批量修
-- 提示：被 AIPanel 引用的子组件大多是已转 TSX 的 ai/ 系列（AIPanelHeader/AIComposer/AIProviderSelector 等），props 契约已在各子组件导出；`t()` 是严格 I18nKey 签名，缺失键用 `as I18nKey` 逃生并登记到下方清单
+**AIPanel 转换记录**（已随提交落地，要点保留备查）：
+- props 契约（App.tsx 调用处）：`width: string`、`side: 'left' | 'right'`、`sessionId: string`、`terminalId: string`、`sessionTerminals?: Array<{ id: string; label?: string }>`、`addToast`（宽松，同 SettingsModalProps）、`onDevilModeChange?: (enabled: boolean) => void`
+- `sessionTerminals` 契约即 App 的 `getEffectiveTerminals(s)` 返回形状；App 调用处断言已移除（改回直接传）；`sessionId={String(s.id ?? '')}` 桥接（SessionLike 索引签名 unknown）；`addToast` 改传 `looseAddToast`（App 的 ToastAction[] 参数与宽松 unknown[] 逆变不兼容）
+- 类型资产：`BridgeData = any` 别名（外部数据桥接，带注释）、`AIPanelProps`/`PanelState`/`AIMessage`/`APIHistoryMessage`/`ConversationSummary`/`AIQueuedSubmission`/`TokenLedger` 等接口；`createEmptyPanelState(): PanelState` 返回类型标注后，`setPanelState(panelKey, updater: ((current: PanelState) => PanelState) | Partial<PanelState>)` 让事件流中大量 `(current) => ...` 回调查参自动类型化
+- 关键坑（TS 5.9）：`typeof any === 'object'` 收窄为 `object` → 后续 `obj.prop.filter(cb)` 回调查参报 TS7006；`Array.isArray(obj?.prop)` 后再写 `obj.prop` 同理 → **局部变量先接住**（`const raw = obj?.prop`）或 `as BridgeData` 桥接；`new Map()` 推断 `Map<unknown, unknown>` → sort/flatMap 回调报 TS7006 → 显式 `Map<string, X>()`
+- 转换后 App.tsx 的 `as never[]` 断言清零；被 AIPanel 引用的子组件均为已转 TSX（props 契约已在各子组件导出），AIPanelHeader 的 3 个残留 props（conversationTitle/showRenameConversationButton/onRenameConversation）组件已不使用，直接删除
 
 **FileManager.jsx 转换提示**：被 App 的 renderSessionFileManagers 严格调用（sessionId/sessionGroupId/addToast/isActive/initialPath）；其内部还用 FileEditor（已转，FileEditorFile 可直接复用）、FileUploadQueuePanel（已转）。
 
 **已发现缺失 i18n 键（收尾阶段需补 28 语言键）**：`AI 输入框`（AIComposer）、`搜索结果`（SettingsModal）、`终端输出搜索` + `搜索命令历史`（Terminal）——当前均 `as I18nKey` 逃生，t() 原样兜底显示中文。
 
-> SettingsModal/Terminal 的转换要点已随各自提交落地（c80f66b / f651462），历史要点不再赘述。
+> SettingsModal/Terminal/AIPanel 的转换要点已随各自提交落地（c80f66b / f651462 / 本次提交），历史要点不再赘述。
 
 ---
 

@@ -1284,11 +1284,11 @@ export default function App() {
               <AIPanel
                 width="100%"
                 side={probePanelPosition}
-                sessionId={s.id}
+                sessionId={String(s.id ?? '')}
                 terminalId={t.id}
-                // AIPanel 尚未转 TSX：.jsx 推断 sessionTerminals=[] → never[]，转 TSX 后移除断言
-                sessionTerminals={getEffectiveTerminals(s) as never[]}
-                addToast={addToast}
+                // AIPanel 已转 TSX：sessionTerminals 契约 = getEffectiveTerminals 返回形状
+                sessionTerminals={getEffectiveTerminals(s)}
+                addToast={looseAddToast}
                 onDevilModeChange={(enabled: boolean) => {
                   const panelKey = buildAIWorkspaceTerminalPanelKey(s.id || '', t.id);
                   if (!panelKey) {

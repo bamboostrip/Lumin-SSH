@@ -258,7 +258,7 @@ export default function App() {
     dashboardHostPageMode,
   });
   const [showQuickCommands, setShowQuickCommands] = useState(false);
-  const quickCmdsRef = useRef<QuickCommandsHandle | null>(null);
+  const quickCmdsRef = useRef<QuickCommandsHandle>(null);
   const showQuickCommandsRef = useRef(false);
   useEffect(() => { showQuickCommandsRef.current = showQuickCommands; }, [showQuickCommands]);
 
@@ -527,7 +527,7 @@ export default function App() {
   const tabScrollRef = useRef<HTMLDivElement>(null);
   const tabListRef = useRef<HTMLDivElement>(null);
   const tabActionsRef = useRef<HTMLDivElement>(null);
-  const terminalSubTabScrollRef = useRef<HTMLElement>(null);
+  const terminalSubTabScrollRef = useRef<HTMLDivElement>(null);
   const terminalSubTabActionsRef = useRef<HTMLDivElement>(null);
   const [terminalSubTabOverflow, setTerminalSubTabOverflow] = useState(false);
   const terminalSubTabDragSuppressUntilRef = useRef(0);
@@ -1900,7 +1900,7 @@ export default function App() {
       {/* ── Main Area ─────────────────────────────────────── */}
       <SessionWorkspace
         dashboard={{ allGroups, batchSelectionMode, clearRecentConnections, connectLocal, connectSerial, connectServer, connectedSessions, credentials, dashboardHostPageMode, editFlyAnimation, editFlyShiningFields, filteredServers, handleBatchConnect, handleBatchDelete, handleBatchExport, handleBatchMoveGroup, handleDeleteServer, handleGroupDelete, handleMoveGroup, handleOpenImportExport, handleRefreshPing, handleRenameGroup, handleSaveAndConnectServer, handleSaveServer, hideSensitive, isRefreshingPing, pingCounts, pingEnabled, pings, recentConnectionIds, removeRecentConnection, saveFlowHighlights, searchQuery, selectedServerIds, serverEditor, serverListViewMode, servers, setBatchSelectionMode, setDashboardHostPageMode, setHideSensitive, setSearchQuery, setServerEditor, setServerListViewMode, setShowCredentials, setShowSerialModal, startAddGuideAnimation, startEditFlyAnimation, toggleBatchSelection }}
-        session={{ activeSession, activeSessionId, activeSessionRootTerminals, activeTerminalId, connectingServers, contentTab, getEffectiveTerminals, getSessionPanes, getSessionRootPaneCells, getSessionWorkspaceTabs, handleCancelConnection, isActiveSessionConnected, isCreatingTerminal, isSessionWorkspaceVisible, markWorkspaceRestoreNavigationOverride, mountedSessions, openNewTerminal, persistWorkspaceSnapshotRef, rememberSessionActiveTerminal, resolveHostKeyChoice, resolvePasswordPrompt, restoringWorkspaceSessionIds, sessionAuthPrompts, sessions, setActiveTerminalId, setContentTab, setTabContextMenu, setTerminalTabContextMenu, terminalPaneLayouts }}
+        session={{ activeSession, activeSessionId, activeSessionRootTerminals, activeTerminalId, connectingServers, contentTab, getEffectiveTerminals, getSessionPanes, getSessionRootPaneCells, getSessionWorkspaceTabs, handleCancelConnection, isActiveSessionConnected, isCreatingTerminal, isSessionWorkspaceVisible, markWorkspaceRestoreNavigationOverride, mountedSessions, openNewTerminal, persistWorkspaceSnapshotRef, rememberSessionActiveTerminal, resolveHostKeyChoice, resolvePasswordPrompt, restoringWorkspaceSessionIds, sessionAuthPrompts, sessions, setActiveTerminalId, setContentTab: setContentTabLoose, setTabContextMenu, setTerminalTabContextMenu, terminalPaneLayouts }}
         fileManager={{ bottomSplitHeight, collapseDragIntent, fileManagerCollapsed, fileManagerDockConfirmTarget, fileManagerDockDropzones, fileManagerDockPreview, fileManagerDockTabAnchorRef, fileManagerPosition, leftSplitWidth, probePanelCollapsed, probePanelNode, probePanelPosition, probePanelWidth, renderSessionFileManagers, setFileManagerCollapsedPersistent, setProbePanelCollapsedPersistent, shouldIgnoreResizerClick, startDrag }}
         terminalTabs={{ closeTerminal, closeTerminalGroup, closeTerminalPane, handleTerminalSubTabClickCapture, handleTerminalSubTabDockMouseDown, handleTerminalSubTabMouseDown, handleTerminalSubTabScroll, handleTerminalSubTabWheel, shouldIgnoreTerminalDockClick, terminalDockDragPreview, terminalSubTabActionsRef, terminalSubTabOverflow, terminalSubTabScrollRef, terminalSubTabScrollStyle, terminalToolbarIconOnly }}
         ai={{ activeChangeReview, activeChangeReviewQueue, activeConversationDiffPanel, activeRestorePreviewReview, activeWorkspaceTerminalKey, aiPanelNode, handleApplyConversationDiffRestore, handleReapplyConversationDiffItem, handleSelectConversationDiffItem, setAIPanelVisibility, setConversationDiffPanels, setRestorePreviewReviews, showAIPanel }}

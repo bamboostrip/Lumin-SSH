@@ -1,5 +1,4 @@
-// @ts-nocheck
-// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
+// 桥接模块（自 .js 收编后类型化）：AI 输入区 mention/@ 提及解析与远端路径补全
 import { t, getLanguage } from '../../i18n.ts'
 
 const longTextWrapExtension = '.long_text_wrap'
@@ -14,15 +13,15 @@ const maxRemoteMentionResults = 60
 const maxRemoteMentionVisitedDirs = 160
 const maxRemoteMentionDepth = 6
 
-export function escapeMentionPathSpaces(value) {
+export function escapeMentionPathSpaces(value: unknown): string {
   return String(value || '').replace(/ /g, '\\ ')
 }
 
-export function unescapeMentionPathSpaces(value) {
+export function unescapeMentionPathSpaces(value: unknown): string {
   return String(value || '').replace(/\\ /g, ' ')
 }
 
-export function normalizeMentionAbsolutePath(value) {
+export function normalizeMentionAbsolutePath(value: unknown): string {
   let normalized = String(value || '').trim()
   normalized = normalized.replace(/^['"]|['"]$/g, '')
   if (normalized.startsWith('@')) {
@@ -31,16 +30,16 @@ export function normalizeMentionAbsolutePath(value) {
   return normalized.startsWith('/') ? normalized : ''
 }
 
-export function isValidRemoteAbsolutePath(value) {
+export function isValidRemoteAbsolutePath(value: unknown): string {
   return normalizeMentionAbsolutePath(value)
 }
 
-function isLongTextWrapPath(value) {
+function isLongTextWrapPath(value: unknown): boolean {
   const normalized = normalizeMentionAbsolutePath(value)
   return normalized.toLowerCase().endsWith(longTextWrapExtension)
 }
 
-export function buildRemoteFileMention(value) {
+export function buildRemoteFileMention(value: unknown): string {
   const remotePath = isValidRemoteAbsolutePath(value)
   if (!remotePath) {
     return ''
@@ -48,7 +47,7 @@ export function buildRemoteFileMention(value) {
   return `@${escapeMentionPathSpaces(remotePath.replace(/\/+$/g, ''))}`
 }
 
-export function buildRemoteFolderMention(value) {
+export function buildRemoteFolderMention(value: unknown): string {
   const remotePath = isValidRemoteAbsolutePath(value)
   if (!remotePath) {
     return ''
@@ -57,11 +56,11 @@ export function buildRemoteFolderMention(value) {
   return `@${escapeMentionPathSpaces(`${normalizedPath}/`)}`
 }
 
-export function buildTerminalMention() {
+export function buildTerminalMention(): string {
   return '@terminal'
 }
 
-export function insertRemoteFileMention(text, position, mention) {
+export function insertRemoteFileMention(text: unknown, position: number, mention: unknown): { newValue: string; mentionIndex: number } {
   const sourceText = typeof text === 'string' ? text : ''
   const mentionValue = String(mention || '').trim().replace(/^@/, '')
   const beforeCursor = sourceText.slice(0, position)
@@ -85,7 +84,7 @@ export function insertRemoteFileMention(text, position, mention) {
   return { newValue, mentionIndex }
 }
 
-export function removeMention(text, position) {
+export function removeMention(text: unknown, position: number): { newText: string; newPosition: number } {
   const sourceText = typeof text === 'string' ? text : ''
   const beforeCursor = sourceText.slice(0, position)
   const afterCursor = sourceText.slice(position)
@@ -101,9 +100,16 @@ export function removeMention(text, position) {
   return { newText: sourceText, newPosition: position }
 }
 
-export function getMentionContext(text, position) {
+/** 光标处的 mention 上下文（@ 之后到光标前的文本） */
+export interface MentionContext {
+  mentionIndex: number
+  query: string
+  afterCursor: string
+}
+
+export function getMentionContext(text: unknown, position: unknown): MentionContext | null {
   const sourceText = typeof text === 'string' ? text : ''
-  const cursorPosition = Number.isFinite(position) ? position : sourceText.length
+  const cursorPosition = typeof position === 'number' && Number.isFinite(position) ? position : sourceText.length
   const beforeCursor = sourceText.slice(0, cursorPosition)
   const lastAtIndex = beforeCursor.lastIndexOf('@')
   if (lastAtIndex === -1) {
@@ -125,11 +131,24 @@ export function getMentionContext(text, position) {
   }
 }
 
+/** 远端目录条目（listDir 回调产出的宽松形状归一化） */
+interface NormalizedRemoteDirEntry {
+  name: string
+  isDirectory: boolean
+}
 
-function normalizeRemoteDirEntries(entries) {
+/** 远端 mention 补全候选 */
+export interface RemoteMentionCandidate {
+  type: 'folder' | 'file'
+  path: string
+  label: string
+  description: string
+}
+
+function normalizeRemoteDirEntries(entries: unknown): NormalizedRemoteDirEntry[] {
   return Array.isArray(entries)
     ? entries
-        .filter((entry) => entry && typeof entry === 'object')
+        .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object')
         .map((entry) => ({
           name: typeof entry.name === 'string' ? entry.name.trim() : '',
           isDirectory: Boolean(entry.isDirectory),
@@ -138,13 +157,13 @@ function normalizeRemoteDirEntries(entries) {
     : []
 }
 
-function joinRemotePath(basePath, name) {
+function joinRemotePath(basePath: string, name: string): string {
   const normalizedBasePath = isValidRemoteAbsolutePath(basePath) || '/'
   const trimmedBasePath = normalizedBasePath === '/' ? '/' : normalizedBasePath.replace(/\/+$/g, '')
   return trimmedBasePath === '/' ? `/${name}` : `${trimmedBasePath}/${name}`
 }
 
-function sortRemoteMentionCandidates(candidates) {
+function sortRemoteMentionCandidates(candidates: RemoteMentionCandidate[]): RemoteMentionCandidate[] {
   const locale = getLanguage() || 'zh-CN'
   return [...candidates].sort((left, right) => {
     if (left.type !== right.type) {
@@ -154,13 +173,21 @@ function sortRemoteMentionCandidates(candidates) {
   })
 }
 
+interface RemoteMentionSearchOptions {
+  sessionId: string
+  explicitAbsoluteQuery: string
+  selectedType: 'folder' | 'file' | null
+  listDir: (sessionId: string, path: string) => Promise<unknown> | unknown
+  maxResults: number
+}
+
 async function searchDirectAbsoluteMentionCandidates({
   sessionId,
   explicitAbsoluteQuery,
   selectedType,
   listDir,
   maxResults = maxRemoteMentionResults,
-}) {
+}: RemoteMentionSearchOptions): Promise<RemoteMentionCandidate[]> {
   const normalizedAbsoluteQuery = isValidRemoteAbsolutePath(explicitAbsoluteQuery)
   if (!normalizedAbsoluteQuery || typeof listDir !== 'function' || !sessionId) {
     return []
@@ -179,14 +206,14 @@ async function searchDirectAbsoluteMentionCandidates({
     ? ''
     : normalizedQueryWithoutTrailingSlash.slice(normalizedQueryWithoutTrailingSlash.lastIndexOf('/') + 1).toLowerCase()
 
-  let entries = []
+  let entries: NormalizedRemoteDirEntry[] = []
   try {
     entries = normalizeRemoteDirEntries(await listDir(sessionId, parentDir))
   } catch {
     return []
   }
 
-  const results = []
+  const results: RemoteMentionCandidate[] = []
   for (const entry of entries) {
     const absolutePath = joinRemotePath(parentDir, entry.name)
     const mentionPath = entry.isDirectory ? `${absolutePath.replace(/\/+$/g, '')}/` : absolutePath
@@ -212,16 +239,27 @@ async function searchDirectAbsoluteMentionCandidates({
   return sortRemoteMentionCandidates(results)
 }
 
-async function resolveRemoteMentionBaseDir(sessionId, getCurrentCwd) {
+async function resolveRemoteMentionBaseDir(sessionId: string, getCurrentCwd: unknown): Promise<string> {
   if (!sessionId || typeof getCurrentCwd !== 'function') {
     return '/'
   }
   try {
-    const cwd = await getCurrentCwd(sessionId)
+    const cwd = await (getCurrentCwd as (sessionId: string) => Promise<unknown> | unknown)(sessionId)
     return isValidRemoteAbsolutePath(cwd) || '/'
   } catch {
     return '/'
   }
+}
+
+export interface RemoteMentionQueryOptions {
+  sessionId?: string
+  query?: string
+  selectedType?: 'folder' | 'file' | null
+  getCurrentCwd?: (sessionId: string) => Promise<unknown> | unknown
+  listDir?: (sessionId: string, path: string) => Promise<unknown> | unknown
+  maxResults?: number
+  maxVisitedDirs?: number
+  maxDepth?: number
 }
 
 export async function searchRemoteMentionCandidates({
@@ -233,7 +271,7 @@ export async function searchRemoteMentionCandidates({
   maxResults = maxRemoteMentionResults,
   maxVisitedDirs = maxRemoteMentionVisitedDirs,
   maxDepth = maxRemoteMentionDepth,
-}) {
+}: RemoteMentionQueryOptions): Promise<RemoteMentionCandidate[]> {
   if (!sessionId || typeof listDir !== 'function') {
     return []
   }
@@ -254,9 +292,9 @@ export async function searchRemoteMentionCandidates({
 
   const queryNeedle = normalizedQuery.toLowerCase()
   const shouldRecurse = queryNeedle.length > 0
-  const seen = new Set()
-  const results = []
-  const queue = [{ path: baseDir, depth: 0 }]
+  const seen = new Set<string>()
+  const results: RemoteMentionCandidate[] = []
+  const queue: Array<{ path: string; depth: number }> = [{ path: baseDir, depth: 0 }]
   let visitedDirs = 0
 
   while (queue.length > 0 && results.length < maxResults && visitedDirs < maxVisitedDirs) {
@@ -267,7 +305,7 @@ export async function searchRemoteMentionCandidates({
 
     visitedDirs += 1
 
-    let entries = []
+    let entries: NormalizedRemoteDirEntry[] = []
     try {
       entries = normalizeRemoteDirEntries(await listDir(sessionId, current.path))
     } catch {
@@ -310,7 +348,12 @@ export async function searchRemoteMentionCandidates({
   return sortRemoteMentionCandidates(results)
 }
 
-async function buildRemoteFolderMentionContent(sessionId, remotePath, listDir, readFile) {
+async function buildRemoteFolderMentionContent(
+  sessionId: string,
+  remotePath: string | undefined,
+  listDir: unknown,
+  readFile: unknown,
+): Promise<string> {
   const normalizedFolderPath = isValidRemoteAbsolutePath(remotePath)
   if (!normalizedFolderPath) {
     throw new Error('Invalid remote folder path')
@@ -321,13 +364,13 @@ async function buildRemoteFolderMentionContent(sessionId, remotePath, listDir, r
   }
 
   const folderPathWithoutTrailingSlash = normalizedFolderPath.replace(/\/+$/g, '')
-  const entries = normalizeRemoteDirEntries(await listDir(sessionId, folderPathWithoutTrailingSlash))
+  const entries = normalizeRemoteDirEntries(await (listDir as (sessionId: string, path: string) => Promise<unknown> | unknown)(sessionId, folderPathWithoutTrailingSlash))
   if (entries.length === 0) {
     return '(Empty folder)'
   }
 
-  const treeLines = []
-  const fileContents = []
+  const treeLines: string[] = []
+  const fileContents: string[] = []
 
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index]
@@ -340,7 +383,7 @@ async function buildRemoteFolderMentionContent(sessionId, remotePath, listDir, r
     }
 
     try {
-      const content = await readFile(sessionId, childPath)
+      const content = await (readFile as (sessionId: string, path: string) => Promise<unknown> | unknown)(sessionId, childPath)
       fileContents.push(
         `<file_content path="${escapeMentionPathSpaces(childPath)}">\n${String(content || '').trim()}\n</file_content>`,
       )
@@ -355,24 +398,40 @@ async function buildRemoteFolderMentionContent(sessionId, remotePath, listDir, r
   return `${treeLines.join('\n')}${fileContents.length > 0 ? `\n\n${fileContents.join('\n\n')}` : ''}`.trim()
 }
 
+/** AI 输入区 @mention 种类 */
+type AIMentionKind = 'terminal' | 'file' | 'folder' | 'wrapped'
+
+interface AIMention {
+  kind: AIMentionKind
+  path?: string
+}
+
+export interface AIMentionProcessOptions {
+  sessionId?: string
+  readFile?: (sessionId: string, path: string) => Promise<unknown> | unknown
+  listDir?: (sessionId: string, path: string) => Promise<unknown> | unknown
+  getTerminalOutput?: () => Promise<unknown> | unknown
+  readLocalWrappedFile?: (path: string) => Promise<unknown> | unknown
+}
+
 export async function processAIMentions(
-  text,
+  text: unknown,
   {
     sessionId = '',
     readFile,
     listDir,
     getTerminalOutput,
     readLocalWrappedFile,
-  } = {},
-) {
+  }: AIMentionProcessOptions = {},
+): Promise<string> {
   const sourceText = typeof text === 'string' ? text : ''
   const trimmedText = sourceText.trim()
   if (!trimmedText) {
     return trimmedText
   }
 
-  const mentions = []
-  const mentionKeys = new Set()
+  const mentions: AIMention[] = []
+  const mentionKeys = new Set<string>()
 
   let replacedText = trimmedText.replace(terminalMentionRegexGlobal, () => {
     if (!mentionKeys.has('terminal')) {
@@ -382,7 +441,7 @@ export async function processAIMentions(
     return 'Terminal Output (see below for output)'
   })
 
-  replacedText = replacedText.replace(remotePathMentionRegexGlobal, (match, mention) => {
+  replacedText = replacedText.replace(remotePathMentionRegexGlobal, (match: string, mention: string) => {
     const unescapedPath = unescapeMentionPathSpaces(mention)
     const normalizedPath = normalizeMentionAbsolutePath(unescapedPath)
     if (!normalizedPath) {
@@ -407,7 +466,7 @@ export async function processAIMentions(
     return trimmedText
   }
 
-  const contentBlocks = []
+  const contentBlocks: string[] = []
 
   for (const mention of mentions) {
     if (mention.kind === 'terminal') {
@@ -435,7 +494,7 @@ export async function processAIMentions(
     if (mention.kind === 'wrapped') {
       const pathLabel = escapeMentionPathSpaces(mention.path)
       try {
-        const content = typeof readLocalWrappedFile === 'function' ? await readLocalWrappedFile(mention.path) : ''
+        const content = typeof readLocalWrappedFile === 'function' ? await readLocalWrappedFile(mention.path || '') : ''
         contentBlocks.push(`<file_content path="${pathLabel}">\n${String(content || '').trim()}\n</file_content>`)
       } catch (error) {
         const errorText = error instanceof Error ? error.message : String(error)
@@ -458,7 +517,7 @@ export async function processAIMentions(
 
     const pathLabel = escapeMentionPathSpaces(mention.path)
     try {
-      const content = typeof readFile === 'function' ? await readFile(sessionId, mention.path) : ''
+      const content = typeof readFile === 'function' ? await readFile(sessionId, mention.path || '') : ''
       contentBlocks.push(`<file_content path="${pathLabel}">\n${String(content || '').trim()}\n</file_content>`)
     } catch (error) {
       const errorText = error instanceof Error ? error.message : String(error)
@@ -469,12 +528,16 @@ export async function processAIMentions(
   return `${replacedText.trim()}\n\n${contentBlocks.join('\n\n')}`.trim()
 }
 
-export async function processRemoteFileMentions(text, sessionIdOrOptions, readFile?) {
+export async function processRemoteFileMentions(
+  text: unknown,
+  sessionIdOrOptions: unknown,
+  readFile?: (sessionId: string, path: string) => Promise<unknown> | unknown,
+): Promise<string> {
   if (sessionIdOrOptions && typeof sessionIdOrOptions === 'object') {
-    return processAIMentions(text, sessionIdOrOptions)
+    return processAIMentions(text, sessionIdOrOptions as AIMentionProcessOptions)
   }
   return processAIMentions(text, {
-    sessionId: sessionIdOrOptions,
+    sessionId: (sessionIdOrOptions as string | undefined) || '',
     readFile,
   })
 }

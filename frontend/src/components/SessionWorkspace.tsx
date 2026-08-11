@@ -1154,14 +1154,13 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                                       <div style={{ flex: 1, minHeight: 0 }}>
                                         <ErrorBoundary label={`终端 ${term.id} 渲染出错`}>
                                           <Terminal
-                                            sessionId={term.id}
-                                            serverId={s.id}
-                                            historyServerId={s.serverId}
-                                            status={s.status}
+                                            sessionId={term.id || ''}
+                                            serverId={String(s.id ?? '')}
+                                            historyServerId={String(s.serverId ?? '')}
+                                            status={String(s.status ?? '')}
                                             isActive={isTermVisible}
-                                            serverName={s.serverName}
-                                            // Terminal 尚未转 TSX：.jsx 推断 connectedSessions=[] → never[]，转 TSX 后移除断言
-                                            connectedSessions={connectedSessions as never[]}
+                                            serverName={String(s.serverName ?? '')}
+                                            connectedSessions={connectedSessions}
                                             showCommands={showQuickCommands && isTermVisible}
                                             onQuickCommandsOpenChange={handleQuickCommandsOpenChange}
                                             quickCmdsRef={quickCmdsRef}
@@ -1185,14 +1184,13 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                                   }}>
                                     <ErrorBoundary label={`终端 ${t.id} 渲染出错`}>
                                       <Terminal
-                                        sessionId={t.id}
-                                        serverId={s.id}
-                                        historyServerId={s.serverId}
-                                        status={s.status}
+                                        sessionId={t.id || ''}
+                                        serverId={String(s.id ?? '')}
+                                        historyServerId={String(s.serverId ?? '')}
+                                        status={String(s.status ?? '')}
                                         isActive={activeSessionId === s.id && activeTerminalId === t.id && (contentTab === 'terminal' || fileManagerPosition !== 'tab')}
-                                        serverName={s.serverName}
-                                        // Terminal 尚未转 TSX：.jsx 推断 connectedSessions=[] → never[]，转 TSX 后移除断言
-                                        connectedSessions={connectedSessions as never[]}
+                                        serverName={String(s.serverName ?? '')}
+                                        connectedSessions={connectedSessions}
                                         showCommands={showQuickCommands && activeSessionId === s.id && activeTerminalId === t.id}
                                         onQuickCommandsOpenChange={handleQuickCommandsOpenChange}
                                         quickCmdsRef={quickCmdsRef}

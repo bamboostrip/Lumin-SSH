@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
+import type { IBufferLine, IBufferRange, IMarker, ITerminalInitOnlyOptions, ITerminalOptions } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { Copy, Clipboard, Trash2, CheckSquare, Play, Clock, X, Zap, MessageSquarePlus, ExternalLink, Search, ChevronUp, ChevronDown, CaseSensitive } from 'lucide-react';
@@ -16,15 +17,44 @@ import {
   normalizeHistoryCommands,
   normalizeQuickCommandItems,
   normalizeRemoteAbsolutePath,
+  type AutocompleteItem,
+  type AutocompleteSources,
+  type FlattenedQuickCommand,
 } from '../utils/terminalCommandAutocomplete.js';
 import Tiptop from './Tiptop.jsx';
+import type { QuickCommandsHandle } from './QuickCommands.jsx';
 import '@xterm/xterm/css/xterm.css';
-import { useTranslation } from '../i18n.js';
+import { useTranslation, type I18nKey } from '../i18n.js';
 import defaultTermBg from '../assets/term_bg.webp';
 import { Z } from '../constants/zIndex';
-import { getTerminalTheme, getAppThemeMode, isDarkTerminalSurface, getSolidTerminalBackground } from '../utils/theme.js';
+import { getTerminalTheme, getAppThemeMode, isDarkTerminalSurface, getSolidTerminalBackground, type TerminalTheme } from '../utils/theme.js';
 import { getResolvedProgramFontPreferences } from '../utils/programFonts.js';
-import { highlightKeywords, loadKeywordRulesFromStorage, setKeywordRules, createHighlightState } from '../utils/terminalKeywordHighlight.js';
+import { highlightKeywords, loadKeywordRulesFromStorage, setKeywordRules, createHighlightState, type KeywordRule } from '../utils/terminalKeywordHighlight.js';
+
+// 终端快照供 FileManager 等模块读取当前 buffer 文本（FileManager.jsx 亦写入同名键）
+declare global {
+  interface Window {
+    __luminTerminalSnapshots?: Record<string, () => string>;
+  }
+}
+
+/** 时间戳 ring 条目 / 命令块状态 */
+interface CommandBlockState {
+  id: number;
+  commandLineText: string;
+  occurrence: number;
+  collapsed: boolean;
+  savedOutput: string[] | null;
+  savedOutputTs: string[] | null;
+}
+
+/** 逻辑行分段（宽字符列对齐用） */
+interface LineSegment {
+  y0: number;
+  text: string;
+  colAt: number[];
+  widthAt: number[];
+}
 
 // 启动时从 localStorage 加载自定义关键字规则（模块级，仅执行一次）
 loadKeywordRulesFromStorage();
@@ -46,7 +76,7 @@ const DEFAULT_TERMINAL_SHORTCUTS = Object.freeze({
 
 // SearchAddon 只上背景、不改字色。按终端底色选高亮，不按界面 mode。
 // 深色终端必须用「够深」的底：偏亮的半透明底会触发 minimumContrastRatio 把白字压成黑字。
-function getTermSearchDecorations(terminalTheme) {
+function getTermSearchDecorations(terminalTheme: TerminalTheme) {
   if (!isDarkTerminalSurface(terminalTheme)) {
     return {
       matchBackground: '#fbbf24',
@@ -64,12 +94,12 @@ function getTermSearchDecorations(terminalTheme) {
 }
 
 function formatTerminalTimestamp(date = new Date()) {
-  const pad = (value) => String(value).padStart(2, '0');
+  const pad = (value: number) => String(value).padStart(2, '0');
   // 固定 [HH:MM:SS]，括号内不加空格，避免 gutter 对齐时看起来「多一格」
   return `[${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}]`;
 }
 
-function getTerminalBufferSnapshotText(term) {
+function getTerminalBufferSnapshotText(term: XTerm | null) {
   if (!term?.buffer?.active) {
     return ''
   }
@@ -90,7 +120,7 @@ function getTerminalBufferSnapshotText(term) {
 // 排除 ; | 等 shell 分隔符，避免 curl ...sh;else 把后续命令粘进链接
 const TERMINAL_URL_REGEX = /(https?|HTTPS?):[/]{2}[^\s"'!*(){}|\\^<>`;]*[^\s"':,.!?{}|\\^~\[\]`()<>;]/;
 
-function isTerminalHttpUrl(urlString) {
+function isTerminalHttpUrl(urlString: string) {
   try {
     const url = new URL(urlString);
     const base = url.password && url.username
@@ -108,7 +138,7 @@ function isTerminalHttpUrl(urlString) {
  * 当前正在输入的逻辑行起始（0-based，含上键历史回显 / 多行 wrap）。
  * 该行及之后不识别链接：只有「已经执行过」滚到输出区的内容才可点/高亮。
  */
-function getTerminalInputStartLine(term) {
+function getTerminalInputStartLine(term: XTerm | null) {
   const buf = term?.buffer?.active;
   if (!buf) return Number.POSITIVE_INFINITY;
   let line = (buf.baseY || 0) + (buf.cursorY || 0);
@@ -125,7 +155,7 @@ function getTerminalInputStartLine(term) {
  * 宽字符（CJK/emoji 等）占 2 列，不能用字符串下标当列号，否则高亮会整体偏左。
  * 行为对齐 translateToString(true)：跳过 width=0 的占位格，并去掉行尾空白。
  */
-function lineToTextAndCols(line) {
+function lineToTextAndCols(line: IBufferLine | undefined) {
   if (!line) return { text: '', colAt: [], widthAt: [] };
   let text = '';
   const colAt = [];
@@ -162,7 +192,7 @@ function lineToTextAndCols(line) {
  * 取含 bufferLine0 的逻辑行各段（处理 isWrapped 换行 URL）。
  * isWrapped=true 表示本行是上一行的续行。
  */
-function getLogicalLineSegments(term, bufferLine0) {
+function getLogicalLineSegments(term: XTerm, bufferLine0: number): LineSegment[] {
   const buf = term.buffer.active;
   let start = bufferLine0;
   while (start > 0) {
@@ -189,7 +219,7 @@ function getLogicalLineSegments(term, bufferLine0) {
  * edge='start'：该字符起始列（1-based）；edge='end'：该字符占用的末列（1-based 含），
  * 供下划线绘制 endCol = end.x 使用（与单宽时「末字符 1-based 列」一致，宽字符覆盖两列）。
  */
-function joinedIndexToPos(segs, index, edge = 'start') {
+function joinedIndexToPos(segs: LineSegment[], index: number, edge: 'start' | 'end' = 'start') {
   if (!segs.length) return { x: 1, y: 1 };
   let rem = index;
   for (const seg of segs) {
@@ -213,7 +243,7 @@ function joinedIndexToPos(segs, index, edge = 'start') {
  * 扫描逻辑行（含 wrap）上的 http(s) 链接。
  * 换行 URL 会拼完整再匹配，range 可跨多行。输入逻辑行返回空。
  */
-function findTerminalHttpLinksOnLine(term, bufferLineNumber) {
+function findTerminalHttpLinksOnLine(term: XTerm, bufferLineNumber: number) {
   const line0 = bufferLineNumber - 1;
   if (line0 >= getTerminalInputStartLine(term)) return [];
   const segs = getLogicalLineSegments(term, line0);
@@ -221,8 +251,8 @@ function findTerminalHttpLinksOnLine(term, bufferLineNumber) {
   const joined = segs.map((s) => s.text).join('');
   if (!joined) return [];
   const rex = new RegExp(TERMINAL_URL_REGEX.source, (TERMINAL_URL_REGEX.flags || '') + 'g');
-  const links = [];
-  let match;
+  const links: Array<{ text: string; range: IBufferRange }> = [];
+  let match: RegExpExecArray | null;
   while ((match = rex.exec(joined))) {
     const value = match[0];
     if (!isTerminalHttpUrl(value)) continue;
@@ -233,7 +263,7 @@ function findTerminalHttpLinksOnLine(term, bufferLineNumber) {
   return links;
 }
 
-function isInteractivePromptText(value) {
+function isInteractivePromptText(value: unknown) {
   const text = String(value || '').trim()
   if (!text) return false
   if (/^(choose|select|enter|input|please enter|press enter|would you like|do you have|port to use)\b/i.test(text)) return true
@@ -263,7 +293,7 @@ const SHELL_PROMPT_PREFIX_PATTERNS = [
   // REPL 提示符：Python/Node 等的 >>> 与续行 ...
   /^(?:>>>|\.\.\.)\s+/,
 ]
-function extractCommandFromBufferLine(line) {
+function extractCommandFromBufferLine(line: string) {
   if (!line) return ''
   let t = String(line)
   for (const re of SHELL_PROMPT_PREFIX_PATTERNS) {
@@ -276,7 +306,7 @@ function extractCommandFromBufferLine(line) {
   return t.trim()
 }
 
-function splitTrailingIncompleteEscapeSequence(input) {
+function splitTrailingIncompleteEscapeSequence(input: string) {
   if (!input) {
     return { complete: '', carry: '' }
   }
@@ -316,7 +346,7 @@ function splitTrailingIncompleteEscapeSequence(input) {
   return { complete: input, carry: '' }
 }
 
-function getTextareaAutocompletePopupPosition(textarea, popupWidth = 760, popupHeight = 260) {
+function getTextareaAutocompletePopupPosition(textarea: HTMLTextAreaElement | null, popupWidth = 760, popupHeight = 260) {
   if (!textarea || typeof window === 'undefined' || typeof document === 'undefined') {
     return null
   }
@@ -329,7 +359,8 @@ function getTextareaAutocompletePopupPosition(textarea, popupWidth = 760, popupH
   const marker = document.createElement('span')
   const mirroredText = textarea.value.slice(0, selectionStart)
 
-  const mirroredProperties = [
+  // 镜像属性均为 CSSStyleDeclaration 的字符串字段（Extract 排除 Symbol.iterator 等 symbol 键）
+  const mirroredProperties: Array<Extract<keyof CSSStyleDeclaration, string>> = [
     'boxSizing',
     'width',
     'fontFamily',
@@ -365,7 +396,7 @@ function getTextareaAutocompletePopupPosition(textarea, popupWidth = 760, popupH
   mirror.style.overflow = 'hidden'
 
   mirroredProperties.forEach((property) => {
-    mirror.style[property] = style[property]
+    (mirror.style as unknown as Record<string, string>)[property] = (style as unknown as Record<string, string>)[property];
   })
 
   mirror.textContent = mirroredText
@@ -398,7 +429,7 @@ function getTextareaAutocompletePopupPosition(textarea, popupWidth = 760, popupH
   }
 }
 
-function buildWrappedMultiLineCommand(command) {
+function buildWrappedMultiLineCommand(command: string) {
   const source = String(command ?? '').replace(/\r\n?/g, '\n')
   let marker = '__LUMIN_WRAP_EOF__'
   while (source.includes(marker)) {
@@ -408,7 +439,7 @@ function buildWrappedMultiLineCommand(command) {
 }
 
 /** 粘贴到终端：统一换行并清掉尾部连续回车，避免右键粘贴时直接连发多次执行 */
-function normalizeTerminalPasteText(text) {
+function normalizeTerminalPasteText(text: string) {
   return String(text ?? '')
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
@@ -417,7 +448,7 @@ function normalizeTerminalPasteText(text) {
 }
 
 // 命令栏按钮样式辅助函数
-const btnStyle = (color) => ({
+const btnStyle = (color: string) => ({
   border: '1px solid var(--border)',
   background: 'var(--surface-raised)',
   color: color === 'red' ? 'var(--danger)' : 'var(--text-secondary)',
@@ -425,16 +456,37 @@ const btnStyle = (color) => ({
   borderRadius: 'var(--radius-xs)',
   padding: '3px 8px',
 });
-const iconBtnStyle = (color) => ({
+const iconBtnStyle = (color: string, background?: string) => ({
   display: 'flex', alignItems: 'center', justifyContent: 'center',
   width: 24, height: 24,
-  background: 'var(--surface-raised)',
+  background: background || 'var(--surface-raised)',
   border: '1px solid var(--border)',
   borderRadius: 'var(--radius-xs)',
   color,
   cursor: 'pointer',
   transition: 'var(--transition-fast)',
 });
+
+/** 右键菜单项：type 为判别属性（字面量类型），保证三元表达式里的 union 可收窄 */
+type TerminalContextMenuItem =
+  | { type: 'action'; icon: React.ReactNode; label: string; action: string; shortcut?: string; disabled?: boolean }
+  | { type: 'separator' };
+
+export interface TerminalProps {
+  sessionId: string;
+  serverId: string;
+  historyServerId: string;
+  status: string;
+  isActive: boolean;
+  serverName: string;
+  connectedSessions?: Array<{ id?: string }>;
+  showCommands?: boolean;
+  onQuickCommandsOpenChange?: (open: boolean) => void;
+  quickCmdsRef?: React.RefObject<QuickCommandsHandle>;
+  // 重连触发器：串口/本地复用同一 sessionId 重连时，wsRebuildKey 自增，
+  // 让下方建立 xterm+WebSocket 的主 effect 重跑，重建 WS（对齐 SSH 重连靠新 terminalId 触发的行为）。
+  wsRebuildKey?: number;
+}
 
 export default function Terminal({
   sessionId,
@@ -447,47 +499,45 @@ export default function Terminal({
   showCommands = false,
   onQuickCommandsOpenChange,
   quickCmdsRef,
-  // 重连触发器：串口/本地复用同一 sessionId 重连时，wsRebuildKey 自增，
-  // 让下方建立 xterm+WebSocket 的主 effect 重跑，重建 WS（对齐 SSH 重连靠新 terminalId 触发的行为）。
   wsRebuildKey = 0,
-}) {
+}: TerminalProps) {
   const { t } = useTranslation();
-  const containerRef   = useRef(null);
-  const wrapperRef     = useRef(null);
-  const termRef        = useRef(null);
-  const fitAddonRef    = useRef(null);
-  const searchAddonRef = useRef(null);
-  const termSearchInputRef = useRef(null);
-  const wsRef          = useRef(null);
+  const containerRef   = useRef<HTMLDivElement | null>(null);
+  const wrapperRef     = useRef<HTMLDivElement | null>(null);
+  const termRef        = useRef<XTerm | null>(null);
+  const fitAddonRef    = useRef<FitAddon | null>(null);
+  const searchAddonRef = useRef<SearchAddon | null>(null);
+  const termSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const wsRef          = useRef<WebSocket | null>(null);
   const statusRef      = useRef(status);
   useEffect(() => { statusRef.current = status; }, [status]);
   const serverIdRef    = useRef(serverId);
   serverIdRef.current  = serverId;
   const [themeToggle, setThemeToggle]     = useState(0); // 用于强制重渲染（浅色/深色模式切换）
-  const [contextMenu, setContextMenu]         = useState(null);
-  const [linkMenu, setLinkMenu]               = useState(null); // { x, y, url }
+  const [contextMenu, setContextMenu]         = useState<{ x: number; y: number; source: 'terminal' | 'input' } | null>(null);
+  const [linkMenu, setLinkMenu]               = useState<{ x: number; y: number; url: string } | null>(null); // { x, y, url }
   const [linkToast, setLinkToast]             = useState('');
   const [contextHasSelection, setContextHasSelection] = useState(false);
   const [justConnected, setJustConnected]     = useState(false);
   const [cmdInput, setCmdInput]               = useState('');
   const [showHistory, setShowHistory]         = useState(false);
-  const [historyList, setHistoryList]         = useState([]);
-  const historyListRef                        = useRef([]);
+  const [historyList, setHistoryList]         = useState<Array<{ id: string; command: string }>>([]);
+  const historyListRef                        = useRef<Array<{ id: string; command: string }>>([]);
   useEffect(() => { historyListRef.current = historyList; }, [historyList]);
-  const [historyMode, setHistoryMode]         = useState('server'); // 'server' | 'global'
+  const [historyMode, setHistoryMode]         = useState<'server' | 'global'>('server'); // 'server' | 'global'
   const [searchQuery, setSearchQuery]         = useState('');
   const [historySelectedIndex, setHistorySelectedIndex] = useState(0);
   const [showTermSearch, setShowTermSearch]   = useState(false);
   const [termSearchQuery, setTermSearchQuery] = useState('');
   const [termSearchCaseSensitive, setTermSearchCaseSensitive] = useState(false);
   const [termSearchResult, setTermSearchResult] = useState({ resultIndex: -1, resultCount: 0 });
-  const cmdInputRef                           = useRef(null);
-  const historyBtnRef                         = useRef(null);
-  const historySearchInputRef                 = useRef(null);
-  const historyScrollRef                      = useRef(null);
-  const [historyPopupPos, setHistoryPopupPos] = useState(null);
-  const commandsBtnRef                        = useRef(null);
-  const historyPopupRef                       = useRef(null);
+  const cmdInputRef                           = useRef<HTMLTextAreaElement | null>(null);
+  const historyBtnRef                         = useRef<HTMLButtonElement | null>(null);
+  const historySearchInputRef                 = useRef<HTMLInputElement | null>(null);
+  const historyScrollRef                      = useRef<HTMLDivElement | null>(null);
+  const [historyPopupPos, setHistoryPopupPos] = useState<{ left: number; bottom: number } | null>(null);
+  const commandsBtnRef                        = useRef<HTMLButtonElement | null>(null);
+  const historyPopupRef                       = useRef<HTMLDivElement | null>(null);
   const pendingCmdRef                         = useRef('');
   const awaitingPasswordRef                   = useRef(false); // 检测到密码提示后，下一行输入不记入命令历史
   const awaitingCommandFinishRef              = useRef(false); // 按回车提交命令后，等待命令完成（提示符回归）
@@ -496,9 +546,14 @@ export default function Terminal({
   const commandAutocompleteRequestRef         = useRef(0);
   const commandAutocompleteFocusedRef         = useRef(false);
   const commandAutocompleteKeyboardNavigationRef = useRef(false);
-  const commandAutocompleteDebounceRef        = useRef(null);
-  const commandAutocompleteBlurTimerRef       = useRef(null);
-  const commandAutocompleteDataRef            = useRef({
+  const commandAutocompleteDebounceRef        = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const commandAutocompleteBlurTimerRef       = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const commandAutocompleteDataRef            = useRef<AutocompleteSources & {
+    historyServerId: string;
+    serverLoaded: boolean;
+    globalLoaded: boolean;
+    quickLoaded: boolean;
+  }>({
     historyServerId: '',
     serverHistory: [],
     globalHistory: [],
@@ -507,31 +562,31 @@ export default function Terminal({
     globalLoaded: false,
     quickLoaded: false,
   });
-  const commandAutocompleteListRef            = useRef(null);
-  const [commandAutocompletePopupPos, setCommandAutocompletePopupPos] = useState(null);
+  const commandAutocompleteListRef            = useRef<HTMLDivElement | null>(null);
+  const [commandAutocompletePopupPos, setCommandAutocompletePopupPos] = useState<{ left: number; top: number; width: number; maxHeight: number } | null>(null);
   // ── 快捷命令条：输入框上方一排按钮，点击后弹确认框再发送（对齐安卓端） ──
   const [quickCmdBarVisible, setQuickCmdBarVisible] = useState(
     () => localStorage.getItem('terminalQuickCmdBar') === 'true'
   );
-  const [quickCmdBarItems, setQuickCmdBarItems] = useState([]);
+  const [quickCmdBarItems, setQuickCmdBarItems] = useState<FlattenedQuickCommand[]>([]);
   const [quickCmdSearch, setQuickCmdSearch] = useState('');
   const [quickCmdSearchOpen, setQuickCmdSearchOpen] = useState(false);
-  const quickCmdSearchRef = useRef(null);
+  const quickCmdSearchRef = useRef<HTMLInputElement | null>(null);
   // 待确认命令：{ item, values } 或 null（点命令条按钮后弹确认框，对齐安卓端）
-  const [pendingQuickCmd, setPendingQuickCmd] = useState(null);
+  const [pendingQuickCmd, setPendingQuickCmd] = useState<{ item: FlattenedQuickCommand; values: Record<string, string> } | null>(null);
 
   // ── 点击历史弹窗外关闭（document 捕获阶段 mousedown） ──
   // 必须用 capture：命令按钮 / 底部快捷命令面板会 stopPropagation，
   // 冒泡阶段收不到，历史开着点「命令」或命令面板时就收不起来。
   useEffect(() => {
     if (!showHistory) return;
-    const handler = (e) => {
+    const handler = (e: MouseEvent) => {
       const target = e.target;
       if (!(target instanceof Node)) return;
       if (historyPopupRef.current?.contains(target)) return;
       if (historyBtnRef.current?.contains(target)) return;
       // 全局对话框（luminDialog，如清空确认）打开时，点确认/取消不应收起历史弹窗
-      if (target.closest?.('[data-global-dialog-active="true"]')) return;
+      if ((target as Element).closest?.('[data-global-dialog-active="true"]')) return;
       setShowHistory(false);
       setHistoryPopupPos(null);
     };
@@ -540,14 +595,14 @@ export default function Terminal({
   }, [showHistory]);
 
   // 热路径缓存：避免在按键和消息回调中频繁读取 localStorage
-  const shortcutsRef = useRef(null);
+  const shortcutsRef = useRef<Record<string, string> | null>(null);
   const localEchoRef = useRef(localStorage.getItem('terminalLocalEcho') === 'true');
   const timestampsEnabledRef = useRef(localStorage.getItem('terminalTimestamps') === 'true');
   const terminalRightClickPasteOnEmptyRef = useRef(localStorage.getItem('terminalRightClickPasteOnEmpty') === 'true');
   const terminalRightClickPasteModeRef = useRef(localStorage.getItem('terminalRightClickPasteMode') === 'always' ? 'always' : 'empty');
   const terminalLeftClickCopyOnSelectionRef = useRef(localStorage.getItem('terminalLeftClickCopyOnSelection') === 'true');
   const terminalLeftClickCopyOnSelectionModeRef = useRef(localStorage.getItem('terminalLeftClickCopyOnSelectionMode') === 'mouseup' ? 'mouseup' : 'click');
-  const terminalMouseDownSelectionRef = useRef(null);
+  const terminalMouseDownSelectionRef = useRef<{ mode: 'mouseup' | 'click'; startClientX: number; startClientY: number; text?: string } | null>(null);
   const [timestampsVisible, setTimestampsVisible] = useState(localStorage.getItem('terminalTimestamps') === 'true');
   // 命令块：左侧折叠钮 + 树线，可收起输出
   const commandBlocksEnabledRef = useRef(localStorage.getItem('terminalCommandBlocks') === 'true');
@@ -564,19 +619,21 @@ export default function Terminal({
   const alternateBufferActiveRef = useRef(false);
   // Ring buffer 时间戳：用 xterm marker 跟随 scrollback 裁剪，避免 buffer 行号复用后错位
   const TS_POOL = 6000;
-  const tsRingRef = useRef(null);
+  // null! 惰性初始化惯用法：下方 if 守卫保证首次渲染即完成填充，后续恒非空
+  const tsRingRef = useRef<{ entries: Array<{ marker: IMarker; val: string } | null>; next: number }>(null!);
   if (!tsRingRef.current) {
     tsRingRef.current = { entries: new Array(TS_POOL), next: 0 };
   }
-  const tsSet = (marker, val) => {
+  const tsSet = (marker: IMarker | undefined, val: string) => {
     if (!marker) return;
     const r = tsRingRef.current;
     // 同 line 只保留最新戳（执行命令时要盖掉空提示符上的旧时间）
     const line = marker.line;
     if (typeof line === 'number' && line >= 0) {
       for (let j = 0; j < r.entries.length; j += 1) {
-        if (r.entries[j]?.marker?.line === line) {
-          r.entries[j].marker.dispose?.();
+        const entry = r.entries[j];
+        if (entry?.marker?.line === line) {
+          entry.marker.dispose?.();
           r.entries[j] = null;
         }
       }
@@ -586,7 +643,7 @@ export default function Terminal({
     r.entries[i] = { marker, val };
     r.next = (i + 1) % TS_POOL;
   };
-  const tsEnsureLine = (term, line, timestampsByLine) => {
+  const tsEnsureLine = (term: XTerm, line: number, timestampsByLine: Map<number, string>) => {
     if (term.buffer.active.type !== 'normal') return '';
     const existing = timestampsByLine.get(line);
     if (existing) return existing;
@@ -597,11 +654,12 @@ export default function Terminal({
     if (marker) timestampsByLine.set(line, ts);
     return marker ? ts : '';
   };
-  const tsClearLine = (line) => {
+  const tsClearLine = (line: number) => {
     const entries = tsRingRef.current.entries;
     for (let i = 0; i < entries.length; i += 1) {
-      if (entries[i]?.marker?.line === line) {
-        entries[i].marker.dispose?.();
+      const entry = entries[i];
+      if (entry?.marker?.line === line) {
+        entry.marker.dispose?.();
         entries[i] = null;
       }
     }
@@ -613,7 +671,7 @@ export default function Terminal({
   };
   // 按 buffer 行号快照时间戳（收起/展开改写 buffer 后要还原，不能重新 now()）
   // 与 syncGutter 一致：ring 从旧到新扫，后写覆盖，保留「执行时刻」而非提示符出现时刻
-  const tsSnapshotByLine = (term, lineCount) => {
+  const tsSnapshotByLine = (term: XTerm, lineCount: number) => {
     const total = typeof lineCount === 'number' ? lineCount : (term?.buffer?.active?.length || 0);
     const byLine = new Array(Math.max(0, total)).fill('');
     const ring = tsRingRef.current;
@@ -626,7 +684,7 @@ export default function Terminal({
     }
     return byLine;
   };
-  const tsRemountFromList = (term, tsList) => {
+  const tsRemountFromList = (term: XTerm, tsList: string[]) => {
     tsClear();
     if (!term?.buffer?.active || !Array.isArray(tsList) || !timestampsEnabledRef.current) return;
     const bufLen = term.buffer.active.length;
@@ -644,16 +702,17 @@ export default function Terminal({
   // 命令块：扫描 buffer 里「提示符行 → 下一提示符行」；收起时改写 buffer 只留一行摘要
   // 同名命令用「第几次出现」区分，避免收起第二个把第一个状态冲掉
   const CB_POOL = 400;
-  const cbBlocksRef = useRef(null);
+  // null! 惰性初始化惯用法：下方 if 守卫保证首次渲染即完成填充，后续恒非空
+  const cbBlocksRef = useRef<Map<string, CommandBlockState>>(null!);
   if (!cbBlocksRef.current) {
     // key = `${commandLineText}#${occurrence}`；value = { id, commandLineText, occurrence, collapsed, savedOutput, savedOutputTs }
     cbBlocksRef.current = new Map();
   }
   const cbIdSeqRef = useRef(1);
   const cbRewriteLockRef = useRef(false);
-  const isCollapseSummaryLine = (text) => /^⋯\s+\d+\s+lines\s*$/.test(String(text || '').trim());
+  const isCollapseSummaryLine = (text: string) => /^⋯\s+\d+\s+lines\s*$/.test(String(text || '').trim());
   // 行首是 shell 提示符（后面可跟命令）。不能要求「整行以 # 结尾」，否则 `root@host:~# ping` 识别不到
-  const isShellPromptLine = (text) => {
+  const isShellPromptLine = (text: string) => {
     const t = String(text || '').replace(/\s+$/g, '');
     if (!t || t.length < 2 || isCollapseSummaryLine(t)) return false;
     // user@host:path# cmd  /  user@host:path$ cmd
@@ -667,9 +726,9 @@ export default function Terminal({
     return false;
   };
   // 空提示符可以显示时间；真正执行（回车）时再更新该行时间戳
-  const normalizeCmdLineKey = (text) => String(text || '').replace(/\s+$/g, '');
-  const blockStateKey = (commandLineText, occurrence) => `${normalizeCmdLineKey(commandLineText)}#${occurrence}`;
-  const readTerminalBufferLines = (term) => {
+  const normalizeCmdLineKey = (text: string) => String(text || '').replace(/\s+$/g, '');
+  const blockStateKey = (commandLineText: string, occurrence: number) => `${normalizeCmdLineKey(commandLineText)}#${occurrence}`;
+  const readTerminalBufferLines = (term: XTerm | null) => {
     const buf = term?.buffer?.active;
     if (!buf) return [];
     const lines = [];
@@ -684,15 +743,15 @@ export default function Terminal({
     return lines;
   };
   // 扫描所有提示符行下标：块 i = prompt[i] .. prompt[i+1]-1
-  const scanPromptIndexes = (lines) => {
-    const idxs = [];
+  const scanPromptIndexes = (lines: string[]) => {
+    const idxs: number[] = [];
     for (let i = 0; i < lines.length; i += 1) {
       if (isShellPromptLine(lines[i])) idxs.push(i);
     }
     return idxs;
   };
   // 在 buffer 里找「第 occurrence 次」出现的命令行（0-based）
-  const findCommandLineOccurrence = (lines, commandLineText, occurrence) => {
+  const findCommandLineOccurrence = (lines: string[], commandLineText: string, occurrence: number) => {
     const key = normalizeCmdLineKey(commandLineText);
     let seen = 0;
     for (let i = 0; i < lines.length; i += 1) {
@@ -702,7 +761,7 @@ export default function Terminal({
     }
     return -1;
   };
-  const getOrCreateBlockState = (commandLineText, occurrence) => {
+  const getOrCreateBlockState = (commandLineText: string, occurrence: number) => {
     const textKey = normalizeCmdLineKey(commandLineText);
     if (!textKey) return null;
     const occ = Math.max(0, Number(occurrence) || 0);
@@ -726,7 +785,7 @@ export default function Terminal({
     }
     return block;
   };
-  const rewriteTerminalBufferLines = (term, lines, nextTimestamps = null, options = {}) => {
+  const rewriteTerminalBufferLines = (term: XTerm | null, lines: string[], nextTimestamps: string[] | null = null, options: { anchorLine?: number } = {}) => {
     if (!term) return;
     const anchorLine = typeof options.anchorLine === 'number' ? options.anchorLine : -1;
     const bufBefore = term.buffer?.active;
@@ -776,7 +835,7 @@ export default function Terminal({
       finish();
     }
   };
-  const cbToggleBlock = (blockId) => {
+  const cbToggleBlock = (blockId: number) => {
     const term = termRef.current;
     if (!term || term.buffer.active.type !== 'normal' || cbRewriteLockRef.current) return;
     let block = null;
@@ -857,9 +916,9 @@ export default function Terminal({
       }
       summaryIdx = nearby;
     }
-    const restoredTs = Array.isArray(block.savedOutputTs) && block.savedOutputTs.length === block.savedOutput.length
+    const restoredTs = Array.isArray(block.savedOutputTs) && block.savedOutputTs.length === (block.savedOutput || []).length
       ? block.savedOutputTs
-      : block.savedOutput.map(() => oldTs[start] || '');
+      : (block.savedOutput || []).map(() => oldTs[start] || '');
     const nextLines = [
       ...lines.slice(0, start + 1),
       ...block.savedOutput,
@@ -874,7 +933,7 @@ export default function Terminal({
     rewriteTerminalBufferLines(term, nextLines, nextTs, { anchorLine: start });
   };
   // 关闭功能前：把所有已收起的块展开回 buffer，否则 savedOutput 清掉后无法再展开
-  const cbExpandAllCollapsed = (term) => {
+  const cbExpandAllCollapsed = (term: XTerm | null) => {
     if (!term || term.buffer.active.type !== 'normal' || cbRewriteLockRef.current) return false;
     const collapsed = [...cbBlocksRef.current.values()].filter(
       (b) => b && b.collapsed && Array.isArray(b.savedOutput) && b.savedOutput.length > 0,
@@ -905,12 +964,12 @@ export default function Terminal({
         }
         summaryIdx = nearby;
       }
-      const restoredTs = Array.isArray(block.savedOutputTs) && block.savedOutputTs.length === block.savedOutput.length
+      const restoredTs = Array.isArray(block.savedOutputTs) && block.savedOutputTs.length === (block.savedOutput || []).length
         ? block.savedOutputTs
-        : block.savedOutput.map(() => oldTs[start] || '');
+        : (block.savedOutput || []).map(() => oldTs[start] || '');
       lines = [
         ...lines.slice(0, start + 1),
-        ...block.savedOutput,
+        ...(block.savedOutput || []),
         ...lines.slice(summaryIdx + 1),
       ];
       oldTs = [
@@ -928,11 +987,11 @@ export default function Terminal({
   const cbClear = () => {
     cbBlocksRef.current = new Map();
   };
-  const gutterRef = useRef(null);
-  const gutterSyncRAFRef = useRef(null);
-  const linkUnderlineLayerRef = useRef(null);
-  const linkUnderlineSyncRAFRef = useRef(null);
-  const smartWriteRef = useRef(null);
+  const gutterRef = useRef<HTMLDivElement | null>(null);
+  const gutterSyncRAFRef = useRef<number | null>(null);
+  const linkUnderlineLayerRef = useRef<HTMLDivElement | null>(null);
+  const linkUnderlineSyncRAFRef = useRef<number | null>(null);
+  const smartWriteRef = useRef<((data: string | Uint8Array) => void) | null>(null);
 
   // ponytail: getTerminalTheme() 每次渲染调用 30+ 次，缓存为 1 次
   const T = useMemo(() => getTerminalTheme(), [themeToggle]);
@@ -948,9 +1007,9 @@ export default function Terminal({
   }
 
   // ── 链接：可见区扫描缓存（下划线与 provider 共用，避免双扫） ────
-  const viewportLinkCacheRef = useRef({ key: '', byLine: new Map() });
+  const viewportLinkCacheRef = useRef({ key: '', byLine: new Map<number, Array<{ text: string; range: IBufferRange }>>() });
 
-  function getViewportLinkCache(term) {
+  function getViewportLinkCache(term: XTerm) {
     const buf = term.buffer.active;
     const rows = term.rows || 0;
     const viewportY = buf.viewportY;
@@ -959,7 +1018,7 @@ export default function Terminal({
     const key = `${viewportY}|${rows}|${inputStart}|${buf.baseY}|${buf.cursorY}`;
     const cache = viewportLinkCacheRef.current;
     if (cache.key === key) return cache.byLine;
-    const byLine = new Map();
+    const byLine: Map<number, Array<{ text: string; range: IBufferRange }>> = new Map();
     for (let row = 0; row < rows; row += 1) {
       const bufferLineNumber = viewportY + row + 1;
       const links = findTerminalHttpLinksOnLine(term, bufferLineNumber);
@@ -1006,7 +1065,7 @@ export default function Terminal({
     const offsetX = rowsRect.left - screenRect.left;
     const offsetY = rowsRect.top - screenRect.top;
     const byLine = getViewportLinkCache(term);
-    const parts = [];
+    const parts: string[] = [];
     const seen = new Set();
     const viewportY = term.buffer.active.viewportY;
     byLine.forEach((links) => {
@@ -1033,7 +1092,7 @@ export default function Terminal({
     layer.innerHTML = parts.join('');
   }
 
-  function collectLiveCommandBlocks(term) {
+  function collectLiveCommandBlocks(term: XTerm) {
     // 完全按 buffer 扫描提示符：prompt[i] .. prompt[i+1]-1
     // 同名命令按出现次序分块，避免两次 ping 共用状态
     const lines = readTerminalBufferLines(term);
@@ -1085,12 +1144,12 @@ export default function Terminal({
       for (let offset = 0; offset < ring.entries.length; offset += 1) {
         const index = (ring.next + offset) % ring.entries.length;
         const entry = ring.entries[index];
-        const line = entry?.marker?.line;
-        if (!entry || entry.marker.isDisposed || line < 0) {
-          ring.entries[index] = null;
-        } else {
-          timestampsByLine.set(line, entry.val);
-        }
+      const line = entry?.marker?.line;
+      if (!entry || entry.marker.isDisposed || typeof line !== 'number' || line < 0) {
+        ring.entries[index] = null;
+      } else {
+        timestampsByLine.set(line, entry.val);
+      }
       }
     }
 
@@ -1110,7 +1169,7 @@ export default function Terminal({
     // 通过 xterm screen/rows 的实际渲染尺寸计算行高，确保像素级对齐
     const screen = containerRef.current.querySelector('.xterm-screen');
     const rowsEl = containerRef.current.querySelector('.xterm-rows');
-    let lineH;
+    let lineH = 0;
     if (screen && rowsEl) {
       const screenRect = screen.getBoundingClientRect();
       const rowsRect = rowsEl.getBoundingClientRect();
@@ -1118,7 +1177,8 @@ export default function Terminal({
       const paddingTop = `${Math.max(rowsRect.top - screenRect.top, 0)}px`;
       if (gutter.style.paddingTop !== paddingTop) gutter.style.paddingTop = paddingTop;
     } else {
-      lineH = term.options.fontSize * term.options.lineHeight;
+      // xterm options 类型为可选，运行期恒有默认值（13 / 1.22）
+      lineH = (term.options.fontSize ?? 13) * (term.options.lineHeight ?? 1.2);
     }
 
     // 时间戳用状态色；命令块树线/折叠钮用 accent，深色终端上更醒目
@@ -1152,10 +1212,10 @@ export default function Terminal({
         const barBg = `color-mix(in srgb, ${blockColor} 92%, transparent)`;
         const barW = 2;
         const armW = 7;
-        const cell = (inner) =>
+        const cell = (inner: string) =>
           `<span style="position:relative;display:inline-block;width:14px;min-width:14px;height:${lineH}px;flex-shrink:0;box-sizing:border-box;vertical-align:top">${inner || ''}</span>`;
         // 竖条水平居中于 14px 列
-        const vBar = (top, bottom) =>
+        const vBar = (top: string, bottom: string) =>
           `<span style="position:absolute;left:50%;top:${top};bottom:${bottom};width:${barW}px;margin-left:-${barW / 2}px;background:${barBg};pointer-events:none"></span>`;
         // 末行 L：同宽 border-left + border-bottom；横臂贴文字垂直中心略偏下（约 0.55em 基线感）
         // 用 lineH 比例 + 字号无关的下限，大字号时不显得折角悬在行上半
@@ -1196,8 +1256,8 @@ export default function Terminal({
   useEffect(() => {
     const gutter = gutterRef.current;
     if (!gutter || !commandBlocksVisible) return undefined;
-    const onClick = (event) => {
-      const btn = event.target?.closest?.('button[data-cb-id]');
+    const onClick = (event: MouseEvent) => {
+      const btn = (event.target as Element | null)?.closest?.('button[data-cb-id]');
       if (!btn) return;
       event.preventDefault();
       event.stopPropagation();
@@ -1255,7 +1315,8 @@ export default function Terminal({
       windowOptions: {
         setWinSizeChars: true
       }
-    });
+      // xterm 5 类型未声明 padding 选项（运行期仍生效），按构造参数类型断言
+    } as ITerminalOptions & ITerminalInitOnlyOptions & { padding?: number });
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
@@ -1295,7 +1356,7 @@ export default function Terminal({
     });
     term.open(containerRef.current);
     try { fitAddon.fit(); } catch (_) {}
-    const terminalInput = containerRef.current.querySelector('.xterm-helper-textarea');
+    const terminalInput = containerRef.current.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement | null;
     if (terminalInput) {
       terminalInput.name = 'terminalInput';
       terminalInput.autocomplete = 'off';
@@ -1384,7 +1445,7 @@ export default function Terminal({
         scheduleLinkUnderlineSync();
       }
     });
-    const wheelHandler = (e) => {
+    const wheelHandler = (e: WheelEvent) => {
       // 无论向上还是向下滚动，都检查当前位置并更新锁定状态
       requestAnimationFrame(() => {
         const buf = term.buffer.active;
@@ -1393,7 +1454,7 @@ export default function Terminal({
     };
     containerRef.current?.addEventListener('wheel', wheelHandler, { passive: true });
 
-    const isClearScreenData = (d) => {
+    const isClearScreenData = (d: string | Uint8Array) => {
       if (!d) return false;
       if (typeof d === 'string') return d.includes('\x1b[2J') || d.includes('\x1b[3J');
       // Binary: scan for \x1b[2J (clear) or \x1b[3J (clear scrollback)
@@ -1405,7 +1466,7 @@ export default function Terminal({
       }
       return false;
     };
-    const smartWrite = (data) => {
+    const smartWrite = (data: string | Uint8Array) => {
       if (isClearScreenData(data)) handleClearScreen();
       // 关键字高亮：高亮开启时 onmessage 已统一解码为字符串（incomingText），这里只需处理字符串；
       // 关闭时数据为原始 string/Uint8Array，直接透传不高亮。
@@ -1449,21 +1510,23 @@ export default function Terminal({
 
     // 初始化快捷键缓存（移出按键热路径，仅在首次或变更时读取）
     if (shortcutsRef.current === null) {
+      let defaults: Record<string, string>;
       try {
         const saved = localStorage.getItem('appShortcuts');
-        shortcutsRef.current = saved
+        defaults = saved
           ? { ...DEFAULT_TERMINAL_SHORTCUTS, ...JSON.parse(saved) }
           : { ...DEFAULT_TERMINAL_SHORTCUTS };
       } catch (_) {
-        shortcutsRef.current = { ...DEFAULT_TERMINAL_SHORTCUTS };
+        defaults = { ...DEFAULT_TERMINAL_SHORTCUTS };
       }
+      shortcutsRef.current = defaults;
     }
 
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown') return true;
 
       // 1. 获取用户自定义的快捷键配置（从 ref 缓存读取，避免热路径访问 localStorage）
-      const customShortcuts = shortcutsRef.current;
+      const customShortcuts: Record<string, string> = shortcutsRef.current || DEFAULT_TERMINAL_SHORTCUTS;
 
       // 2. 解析当前按下的组合键字符串（如 "Ctrl+C", "Ctrl+Shift+V"）
       const keys = [];
@@ -1573,9 +1636,9 @@ export default function Terminal({
     });
 
     // ── WebSocket 连接 & Predictive Local Echo ─────────────────────
-    let ws = null;
+    let ws: WebSocket | null = null;
     let cancelled = false;
-    const pendingEchoes = [];
+    const pendingEchoes: string[] = [];
     let predictiveDecoder = new TextDecoder();
     let predictiveTextCarry = '';
     // 重置高亮流式解码器，避免上一次连接的残留字节污染本次输出
@@ -1623,13 +1686,13 @@ export default function Terminal({
           }
         }
 
-        // 检测密码提示，标记下一行输入为密码（不记入命令历史）
+          // 检测密码提示，标记下一行输入为密码（不记入命令历史）
         if (!awaitingPasswordRef.current) {
           const probeText = incomingText ?? (typeof ev.data === 'string' ? ev.data : textDecoder.decode(ev.data));
           // ponytail: 只在最后一行像密码/验证码提示时触发（关键词 + 行尾冒号），
           // 避免 "admin password: xxx" 之类信息性输出误判，导致下一条普通命令被跳过。
           // 行尾冒号是强约束，关键词可适度放宽：覆盖 OTP/MFA/Token 等验证码提示
-          const lastLine = probeText.split(/\r?\n/).pop().trim();
+          const lastLine = (probeText.split(/\r?\n/).pop() || '').trim();
           if (/(password|passwd|passphrase|密码|verification|otp|token|2fa|mfa|auth.*code)/i.test(lastLine) && /[:：]\s*$/.test(lastLine)) {
             awaitingPasswordRef.current = true;
           }
@@ -1895,9 +1958,9 @@ export default function Terminal({
 
   // ── 监听字体大小修改事件 ──────────────────────────────────────
   useEffect(() => {
-    const handleFontSizeChange = (e) => {
+    const handleFontSizeChange = (e: Event) => {
       if (termRef.current) {
-        termRef.current.options.fontSize = e.detail;
+        termRef.current.options.fontSize = (e as CustomEvent<number>).detail;
         if (fitAddonRef.current) {
           try { fitAddonRef.current.fit(); } catch (_) {}
         }
@@ -1923,7 +1986,7 @@ export default function Terminal({
   useEffect(() => {
     if (!isActive || !containerRef.current || !fitAddonRef.current || !termRef.current) return;
 
-    let resizeTimer = null;
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
     const observer = new ResizeObserver((entries) => {
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
@@ -1951,12 +2014,14 @@ export default function Terminal({
   // ── 终端切换回来时，重新 fit ────────────────────────────────────
   useEffect(() => {
     if (!isActive || !termRef.current || !fitAddonRef.current) return;
+    const term = termRef.current;
+    const fitAddon = fitAddonRef.current;
     const raf = requestAnimationFrame(() => {
       try {
         const rect = containerRef.current?.getBoundingClientRect();
         if (rect && rect.width > 0 && rect.height > 0) {
-          fitAddonRef.current.fit();
-          const { cols, rows } = termRef.current;
+          fitAddon.fit();
+          const { cols, rows } = term;
           AppGo.ResizeTerminal(sessionId, cols, rows);
         }
       } catch (e) {
@@ -2026,45 +2091,48 @@ export default function Terminal({
     const el = wrapperRef.current;
     if (el) {
       const c = T.container;
-      el.style.setProperty('--term-container-bg', c.containerBg);
+      // 主题包容器字段为可选，缺失时以空串兜底（原 .jsx 传 undefined 会被 setProperty 强转为 "undefined"）
+      const cssVar = (value: string | undefined) => value || '';
+      el.style.setProperty('--term-container-bg', cssVar(c.containerBg));
       el.style.setProperty('--term-tint', c.tint || 'transparent');
-      el.style.setProperty('--term-status-bg', c.statusBarBg);
-      el.style.setProperty('--term-status-border', c.statusBarBorder);
-      el.style.setProperty('--term-status-color', c.statusBarColor);
-      el.style.setProperty('--term-server-color', c.serverNameColor);
-      el.style.setProperty('--term-input-bar-bg', c.inputBarBg);
-      el.style.setProperty('--term-input-bar-border', c.inputBarBorder);
-      el.style.setProperty('--term-input-bg', c.inputBg);
-      el.style.setProperty('--term-input-color', c.inputColor);
+      el.style.setProperty('--term-status-bg', cssVar(c.statusBarBg));
+      el.style.setProperty('--term-status-border', cssVar(c.statusBarBorder));
+      el.style.setProperty('--term-status-color', cssVar(c.statusBarColor));
+      el.style.setProperty('--term-server-color', cssVar(c.serverNameColor));
+      el.style.setProperty('--term-input-bar-bg', cssVar(c.inputBarBg));
+      el.style.setProperty('--term-input-bar-border', cssVar(c.inputBarBorder));
+      el.style.setProperty('--term-input-bg', cssVar(c.inputBg));
+      el.style.setProperty('--term-input-color', cssVar(c.inputColor));
       el.style.setProperty('--term-input-placeholder', c.inputPlaceholder || c.mutedColor || '');
-      el.style.setProperty('--term-btn-border', c.btnBorder);
-      el.style.setProperty('--term-separator', c.separator);
-      el.style.setProperty('--term-muted', c.mutedColor);
-      el.style.setProperty('--term-context-bg', c.contextBg);
-      el.style.setProperty('--term-context-border', c.contextBorder);
-      el.style.setProperty('--term-context-shadow', c.contextShadow);
+      el.style.setProperty('--term-btn-border', cssVar(c.btnBorder));
+      el.style.setProperty('--term-separator', cssVar(c.separator));
+      el.style.setProperty('--term-muted', cssVar(c.mutedColor));
+      el.style.setProperty('--term-context-bg', cssVar(c.contextBg));
+      el.style.setProperty('--term-context-border', cssVar(c.contextBorder));
+      el.style.setProperty('--term-context-shadow', cssVar(c.contextShadow));
     }
   }, [T]);
 
   // 监听快捷键 / 本地回显 / 字体变更，同步更新 ref 缓存（保持设置即时生效）
   useEffect(() => {
-    const handleShortcutsChange = (e) => {
-      shortcutsRef.current = e.detail;
+    const handleShortcutsChange = (e: Event) => {
+      shortcutsRef.current = (e as CustomEvent<Record<string, string>>).detail;
     };
-    const handleLocalEchoChange = (e) => {
-      localEchoRef.current = e.detail !== false;
+    const handleLocalEchoChange = (e: Event) => {
+      localEchoRef.current = (e as CustomEvent<unknown>).detail !== false;
     };
-    const handleTimestampsChange = (e) => {
-      timestampsEnabledRef.current = e.detail !== false;
-      setTimestampsVisible(e.detail !== false);
+    const handleTimestampsChange = (e: Event) => {
+      const detail = (e as CustomEvent<unknown>).detail;
+      timestampsEnabledRef.current = detail !== false;
+      setTimestampsVisible(detail !== false);
       if (!timestampsEnabledRef.current && !commandBlocksEnabledRef.current) {
         if (gutterRef.current) gutterRef.current.innerHTML = '';
       } else {
         scheduleGutterSync();
       }
     };
-    const handleCommandBlocksChange = (e) => {
-      const enabled = e.detail !== false;
+    const handleCommandBlocksChange = (e: Event) => {
+      const enabled = (e as CustomEvent<unknown>).detail !== false;
       commandBlocksEnabledRef.current = enabled;
       setCommandBlocksVisible(enabled);
       if (!enabled) {
@@ -2082,9 +2150,10 @@ export default function Terminal({
         requestAnimationFrame(() => scheduleGutterSync());
       }
     };
-    const handleProgramFontSettingsChange = (e) => {
-      const nextFontFamily = typeof e?.detail?.terminalFontFamily === 'string' && e.detail.terminalFontFamily.trim()
-        ? e.detail.terminalFontFamily
+    const handleProgramFontSettingsChange = (e: Event) => {
+      const detail = (e as CustomEvent<{ terminalFontFamily?: string }>).detail;
+      const nextFontFamily = typeof detail?.terminalFontFamily === 'string' && detail.terminalFontFamily.trim()
+        ? detail.terminalFontFamily
         : getResolvedProgramFontPreferences().terminalFontFamily;
       if (termRef.current) {
         termRef.current.options.fontFamily = nextFontFamily;
@@ -2094,30 +2163,31 @@ export default function Terminal({
         scheduleGutterSync();
       }
     };
-    const handleTerminalOutputDefaultMouseCursorChange = (e) => {
-      setTerminalDefaultMouseCursorEnabled(e.detail === true);
+    const handleTerminalOutputDefaultMouseCursorChange = (e: Event) => {
+      setTerminalDefaultMouseCursorEnabled((e as CustomEvent<unknown>).detail === true);
     };
-    const handleTerminalRightClickPasteOnEmptyChange = (e) => {
-      terminalRightClickPasteOnEmptyRef.current = e.detail === true;
+    const handleTerminalRightClickPasteOnEmptyChange = (e: Event) => {
+      terminalRightClickPasteOnEmptyRef.current = (e as CustomEvent<unknown>).detail === true;
     };
-    const handleTerminalRightClickPasteModeChange = (e) => {
-      terminalRightClickPasteModeRef.current = e.detail === 'always' ? 'always' : 'empty';
+    const handleTerminalRightClickPasteModeChange = (e: Event) => {
+      terminalRightClickPasteModeRef.current = (e as CustomEvent<string>).detail === 'always' ? 'always' : 'empty';
     };
-    const handleTerminalLeftClickCopyOnSelectionChange = (e) => {
-      terminalLeftClickCopyOnSelectionRef.current = e.detail === true;
+    const handleTerminalLeftClickCopyOnSelectionChange = (e: Event) => {
+      terminalLeftClickCopyOnSelectionRef.current = (e as CustomEvent<unknown>).detail === true;
     };
-    const handleTerminalLeftClickCopyOnSelectionModeChange = (e) => {
-      terminalLeftClickCopyOnSelectionModeRef.current = e.detail === 'mouseup' ? 'mouseup' : 'click';
+    const handleTerminalLeftClickCopyOnSelectionModeChange = (e: Event) => {
+      terminalLeftClickCopyOnSelectionModeRef.current = (e as CustomEvent<string>).detail === 'mouseup' ? 'mouseup' : 'click';
     };
-    const handleKeywordHighlightChange = (e) => {
-      keywordHighlightEnabledRef.current = e.detail === true;
+    const handleKeywordHighlightChange = (e: Event) => {
+      keywordHighlightEnabledRef.current = (e as CustomEvent<unknown>).detail === true;
       // 开关切换时重置流式解码器，清除挂起的不完整字节，避免重新开启后污染输出
       hlDecoderRef.current = new TextDecoder();
       // 一并重置前景色状态：关闭前可能停在 fgActive=true，重开时避免误判
       hlStateRef.current = createHighlightState();
     };
-    const handleKeywordRulesChange = (e) => {
-      if (Array.isArray(e.detail)) setKeywordRules(e.detail);
+    const handleKeywordRulesChange = (e: Event) => {
+      const detail = (e as CustomEvent<KeywordRule[]>).detail;
+      if (Array.isArray(detail)) setKeywordRules(detail);
     };
     window.addEventListener('app-shortcuts-changed', handleShortcutsChange);
     window.addEventListener('terminal-local-echo-changed', handleLocalEchoChange);
@@ -2147,7 +2217,7 @@ export default function Terminal({
     };
   }, []);
 
-  const getTerminalBufferCellPositionFromMouseEvent = useCallback((event, isSelection = false) => {
+  const getTerminalBufferCellPositionFromMouseEvent = useCallback((event: React.MouseEvent, isSelection = false) => {
     const term = termRef.current;
     const container = containerRef.current;
     if (!term?.buffer?.active || !container || typeof window === 'undefined') {
@@ -2181,7 +2251,7 @@ export default function Terminal({
     };
   }, []);
 
-  const isTerminalBufferCellWithinRange = useCallback((position, range) => {
+  const isTerminalBufferCellWithinRange = useCallback((position: { x: number; y: number } | null, range: IBufferRange | null | undefined) => {
     if (!position || !range?.start || !range?.end) {
       return false;
     }
@@ -2191,7 +2261,7 @@ export default function Terminal({
       || (range.start.y < range.end.y && position.y === range.start.y && position.x >= range.start.x);
   }, []);
 
-  const copyTerminalSelectionText = useCallback((text) => {
+  const copyTerminalSelectionText = useCallback((text: string) => {
     if (!text) {
       return;
     }
@@ -2220,7 +2290,7 @@ export default function Terminal({
   const pasteTerminalSelectionToTerminal = useCallback(async () => {
     const term = termRef.current;
     const selectedText = term?.getSelection?.() || '';
-    if (!selectedText) {
+    if (!selectedText || !term) {
       term?.focus();
       return;
     }
@@ -2251,7 +2321,7 @@ export default function Terminal({
     term.focus();
   }, [t]);
 
-  const handleTerminalMouseDownCapture = useCallback((event) => {
+  const handleTerminalMouseDownCapture = useCallback((event: React.MouseEvent) => {
     if (event.button !== 0 || !terminalLeftClickCopyOnSelectionRef.current) {
       terminalMouseDownSelectionRef.current = null;
       return;
@@ -2281,7 +2351,7 @@ export default function Terminal({
     };
   }, [getTerminalBufferCellPositionFromMouseEvent, isTerminalBufferCellWithinRange]);
 
-  const handleTerminalMouseUpCapture = useCallback((event) => {
+  const handleTerminalMouseUpCapture = useCallback((event: React.MouseEvent) => {
     const snapshot = terminalMouseDownSelectionRef.current;
     terminalMouseDownSelectionRef.current = null;
     if (event.button !== 0 || !terminalLeftClickCopyOnSelectionRef.current || !snapshot) {
@@ -2307,11 +2377,11 @@ export default function Terminal({
     }
     event.preventDefault();
     event.stopPropagation();
-    copyTerminalSelectionText(snapshot.text);
+    copyTerminalSelectionText(snapshot.text ?? '');
   }, [copyTerminalSelectionText]);
 
   useEffect(() => {
-    const handleWindowMouseUp = (event) => {
+    const handleWindowMouseUp = (event: MouseEvent) => {
       const snapshot = terminalMouseDownSelectionRef.current;
       if (event.button !== 0 || !terminalLeftClickCopyOnSelectionRef.current || !snapshot || snapshot.mode !== 'mouseup') {
         return;
@@ -2343,7 +2413,7 @@ export default function Terminal({
     };
   }, [copyTerminalSelectionText]);
 
-  const handleContextMenu = (e) => {
+  const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     setLinkMenu(null);
     const hasSelection = !!(termRef.current && termRef.current.getSelection());
@@ -2356,7 +2426,7 @@ export default function Terminal({
     setContextMenu({ ...clampMenuPosition(e.clientX, e.clientY, 190, 196), source: 'terminal' });
   };
 
-  const handleInputContextMenu = (e) => {
+  const handleInputContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setLinkMenu(null);
@@ -2381,7 +2451,7 @@ export default function Terminal({
     decorations: getTermSearchDecorations(T),
   }), [termSearchCaseSensitive, themeToggle, T]);
 
-  const openTermSearch = useCallback((seedText) => {
+  const openTermSearch = useCallback((seedText?: string) => {
     setShowTermSearch(true);
     if (typeof seedText === 'string' && seedText && !seedText.includes('\n') && seedText.length <= 200) {
       setTermSearchQuery(seedText);
@@ -2439,7 +2509,7 @@ export default function Terminal({
   // 终端聚焦时 Ctrl+F；输入栏等区域同样可用
   useEffect(() => {
     if (!isActive) return undefined;
-    const onKeyDown = (e) => {
+    const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
       const keys = [];
       if (getModKey(e)) keys.push('Ctrl');
@@ -2455,11 +2525,11 @@ export default function Terminal({
       const activeEl = document.activeElement;
       const inWrapper = !!(wrapperRef.current && (
         wrapperRef.current.contains(activeEl)
-        || wrapperRef.current.contains(e.target)
+        || wrapperRef.current.contains(e.target as Node | null)
       ));
       // xterm 辅助 textarea 有时不在 wrapper 内层级判断里，再兜一层
       const inXterm = !!(activeEl?.classList?.contains('xterm-helper-textarea')
-        || e.target?.classList?.contains('xterm-helper-textarea'));
+        || (e.target as Element | null)?.classList?.contains('xterm-helper-textarea'));
       if (!inWrapper && !inXterm) return;
       e.preventDefault();
       e.stopPropagation();
@@ -2469,7 +2539,7 @@ export default function Terminal({
     return () => window.removeEventListener('keydown', onKeyDown, true);
   }, [isActive, openTermSearch]);
 
-  const openExternalUrl = (url) => {
+  const openExternalUrl = (url: string) => {
     if (!url) return;
     if (typeof window.runtime?.BrowserOpenURL === 'function') {
       window.runtime.BrowserOpenURL(url);
@@ -2478,7 +2548,7 @@ export default function Terminal({
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  const handleLinkMenuAction = (action) => {
+  const handleLinkMenuAction = (action: string) => {
     const url = linkMenu?.url || '';
     closeLinkMenu();
     if (!url) return;
@@ -2499,8 +2569,8 @@ export default function Terminal({
   // 点击外部关闭右键菜单 / 链接菜单
   useEffect(() => {
     if (!contextMenu && !linkMenu) return;
-    const handler = (e) => {
-      if (e.target?.closest?.('.context-menu')) return;
+    const handler = (e: MouseEvent) => {
+      if ((e.target as Element | null)?.closest?.('.context-menu')) return;
       setContextMenu(null);
       setLinkMenu(null);
     };
@@ -2508,7 +2578,7 @@ export default function Terminal({
     return () => document.removeEventListener('mousedown', handler);
   }, [contextMenu, linkMenu]);
 
-  const handleMenuAction = (action) => {
+  const handleMenuAction = (action: string) => {
     const contextSource = contextMenu?.source || 'terminal';
     closeContextMenu();
 
@@ -2739,8 +2809,8 @@ export default function Terminal({
   // - 服务器清空/变更：仅当前为服务器模式且目标服务器匹配时刷新
   useEffect(() => {
     if (!showHistory) return;
-    const handler = (e) => {
-      const d = e.detail;
+    const handler = (e: Event) => {
+      const d = (e as CustomEvent<{ scope?: string; historyServerId?: string }>).detail;
       const scope = d?.scope || 'server';
       if (scope !== historyMode) return;
       if (scope === 'server' && d?.historyServerId && d.historyServerId !== historyServerId) return;
@@ -2783,7 +2853,7 @@ export default function Terminal({
     selectedRow?.scrollIntoView({ block: 'nearest' });
   }, [historySelectedIndex, showHistory, displayHistory]);
 
-  const handleHistorySearchKeyDown = (event) => {
+  const handleHistorySearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
@@ -2846,21 +2916,21 @@ export default function Terminal({
       return;
     }
     // 关闭面板时检查是否有未保存的修改
-    if (quickCmdsRef.current?.isDirty?.()) {
+    if (quickCmdsRef?.current?.isDirty?.()) {
       quickCmdsRef.current.showCloseConfirm();
       return; // 让 onClose 回调来关闭
     }
     onQuickCommandsOpenChange?.(false);
   };
 
-  const selectHistoryCmd = (cmd) => {
+  const selectHistoryCmd = (cmd: string) => {
     setCmdInput(cmd);
     setShowHistory(false);
     setHistoryPopupPos(null);
     cmdInputRef.current?.focus();
   };
 
-  const executeCommand = (directCmd) => {
+  const executeCommand = (directCmd?: string) => {
     const rawCommand = directCmd ?? cmdInput;
     if (!isConnected) {
       if (isClosed || isError) {
@@ -2900,9 +2970,9 @@ export default function Terminal({
   };
 
   // ── 快捷命令条：点按钮先弹确认框（对齐安卓端 QuickCommandConfirmDialog） ──
-  const openQuickCmdConfirm = (item) => {
+  const openQuickCmdConfirm = (item: FlattenedQuickCommand) => {
     if (!item?.command) return;
-    const values = {};
+    const values: Record<string, string> = {};
     extractQuickCommandParams(item.command).forEach((p) => { values[p.num] = ''; });
     setPendingQuickCmd({ item, values });
   };
@@ -2934,7 +3004,7 @@ export default function Terminal({
     awaitingCommandFinishRef.current = pending.item.addCR !== false;
   };
 
-  const deleteHistoryItem = async (id) => {
+  const deleteHistoryItem = async (id: string) => {
     const scope = historyMode;
     try {
       const next = historyListRef.current.filter(item => item.id !== id);
@@ -3049,7 +3119,7 @@ export default function Terminal({
     return cache;
   }, [historyServerId]);
 
-  const loadCommandAutocompleteSuggestions = useCallback(async (nextValue) => {
+  const loadCommandAutocompleteSuggestions = useCallback(async (nextValue: string) => {
     if (!commandAutocompleteFocusedRef.current || showHistory || showCommands) {
       closeCommandAutocomplete();
       return [];
@@ -3115,14 +3185,14 @@ export default function Terminal({
     return resolvedItems;
   }, [closeCommandAutocomplete, ensureCommandAutocompleteData, sessionId, showCommands, showHistory, terminalCwd, updateCommandAutocompletePopupPosition]);
 
-  const scheduleCommandAutocompleteSuggestions = useCallback((nextValue) => {
+  const scheduleCommandAutocompleteSuggestions = useCallback((nextValue: string) => {
     clearCommandAutocompleteDebounce();
     commandAutocompleteDebounceRef.current = setTimeout(() => {
       void loadCommandAutocompleteSuggestions(nextValue);
     }, 140);
   }, [clearCommandAutocompleteDebounce, loadCommandAutocompleteSuggestions]);
 
-  const applyCommandAutocompleteItem = useCallback((item) => {
+  const applyCommandAutocompleteItem = useCallback((item: AutocompleteItem) => {
     if (!item || !item.value) {
       return;
     }
@@ -3211,7 +3281,7 @@ export default function Terminal({
 
   // ── 快捷命令条：可见时加载列表，命令增删改后刷新 ──
   useEffect(() => {
-    const handleBarToggle = (e) => setQuickCmdBarVisible(e.detail !== false);
+    const handleBarToggle = (e: Event) => setQuickCmdBarVisible((e as CustomEvent<unknown>).detail !== false);
     window.addEventListener('quick-cmd-bar-changed', handleBarToggle);
     return () => window.removeEventListener('quick-cmd-bar-changed', handleBarToggle);
   }, []);
@@ -3219,7 +3289,7 @@ export default function Terminal({
   // 确认框：Esc 关闭（挂 document，焦点丢失时也能关）
   useEffect(() => {
     if (!pendingQuickCmd) return undefined;
-    const onKeyDown = (e) => {
+    const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
         setPendingQuickCmd(null);
@@ -3409,7 +3479,8 @@ export default function Terminal({
           <input
             name="terminal-search"
             autoComplete="off"
-            aria-label={t('终端输出搜索')}
+            // 「终端输出搜索」缺失 i18n 键（t() 原样兜底），逃生留待收尾补键
+            aria-label={t('终端输出搜索' as I18nKey)}
             ref={termSearchInputRef}
             value={termSearchQuery}
             onChange={(e) => setTermSearchQuery(e.target.value)}
@@ -4106,7 +4177,8 @@ export default function Terminal({
                 ref={historySearchInputRef}
                 name="terminal-history-search"
                 autoComplete="off"
-                aria-label={t('搜索命令历史')}
+                // 「搜索命令历史」缺失 i18n 键（t() 原样兜底），逃生留待收尾补键
+                aria-label={t('搜索命令历史' as I18nKey)}
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 onKeyDown={handleHistorySearchKeyDown}
@@ -4240,23 +4312,23 @@ export default function Terminal({
           }}
         >
           {(contextMenu?.source === 'input'
-            ? [
-                { icon: <Trash2 size={13} />, label: t('剪切'), action: 'cut', shortcut: formatShortcut('Ctrl+X'), disabled: !contextHasSelection },
-                { icon: <Copy size={13} />, label: t('复制'), action: 'copy', shortcut: formatShortcut('Ctrl+C'), disabled: !contextHasSelection },
-                { icon: <Clipboard size={13} />, label: t('粘贴'), action: 'paste', shortcut: formatShortcut('Ctrl+V') },
+            ? ([
+                { type: 'action', icon: <Trash2 size={13} />, label: t('剪切'), action: 'cut', shortcut: formatShortcut('Ctrl+X'), disabled: !contextHasSelection },
+                { type: 'action', icon: <Copy size={13} />, label: t('复制'), action: 'copy', shortcut: formatShortcut('Ctrl+C'), disabled: !contextHasSelection },
+                { type: 'action', icon: <Clipboard size={13} />, label: t('粘贴'), action: 'paste', shortcut: formatShortcut('Ctrl+V') },
                 { type: 'separator' },
-                { icon: <CheckSquare size={13} />, label: t('全选'), action: 'selectAll', shortcut: formatShortcut('Ctrl+A') },
-              ]
-            : [
-                { icon: <Copy size={13} />, label: t('复制'), action: 'copy', shortcut: formatShortcut('Ctrl+C'), disabled: !contextHasSelection },
-                { icon: <Clipboard size={13} />, label: t('粘贴'), action: 'paste', shortcut: formatShortcut('Ctrl+V') },
-                { icon: <Clipboard size={13} />, label: t('粘贴所选项'), action: 'pasteSelection', shortcut: formatShortcut(shortcutsRef.current?.pasteSelection || DEFAULT_TERMINAL_SHORTCUTS.pasteSelection), disabled: !contextHasSelection },
+                { type: 'action', icon: <CheckSquare size={13} />, label: t('全选'), action: 'selectAll', shortcut: formatShortcut('Ctrl+A') },
+              ] as TerminalContextMenuItem[])
+            : ([
+                { type: 'action', icon: <Copy size={13} />, label: t('复制'), action: 'copy', shortcut: formatShortcut('Ctrl+C'), disabled: !contextHasSelection },
+                { type: 'action', icon: <Clipboard size={13} />, label: t('粘贴'), action: 'paste', shortcut: formatShortcut('Ctrl+V') },
+                { type: 'action', icon: <Clipboard size={13} />, label: t('粘贴所选项'), action: 'pasteSelection', shortcut: formatShortcut(shortcutsRef.current?.pasteSelection || DEFAULT_TERMINAL_SHORTCUTS.pasteSelection), disabled: !contextHasSelection },
                 { type: 'separator' },
-                { icon: <CheckSquare size={13} />, label: t('全选'), action: 'selectAll' },
-                { icon: <Search size={13} />, label: t('查找'), action: 'find', shortcut: formatShortcut(shortcutsRef.current?.find || 'Ctrl+F') },
-                { icon: <MessageSquarePlus size={13} />, label: t('添加到 AI助手'), action: 'sendToAssistant', disabled: !contextHasSelection },
-                { icon: <Trash2 size={13} />, label: t('清空屏幕'), action: 'clear', shortcut: formatShortcut('Ctrl+L') },
-              ]).map((item, idx) =>
+                { type: 'action', icon: <CheckSquare size={13} />, label: t('全选'), action: 'selectAll' },
+                { type: 'action', icon: <Search size={13} />, label: t('查找'), action: 'find', shortcut: formatShortcut(shortcutsRef.current?.find || 'Ctrl+F') },
+                { type: 'action', icon: <MessageSquarePlus size={13} />, label: t('添加到 AI助手'), action: 'sendToAssistant', disabled: !contextHasSelection },
+                { type: 'action', icon: <Trash2 size={13} />, label: t('清空屏幕'), action: 'clear', shortcut: formatShortcut('Ctrl+L') },
+              ] as TerminalContextMenuItem[])).map((item, idx) =>
             item.type === 'separator' ? (
               <div key={idx} className="context-menu-separator" />
             ) : (

@@ -22,7 +22,8 @@ export function isRecoveryPasswordError(error: unknown): boolean {
 }
 
 export interface SyncWithRecoveryPasswordOptions<TResult> {
-  sync: () => Promise<TResult>;
+  /** 初始同步（无 initialError 时调用；提供了 initialError 则不需要） */
+  sync?: () => Promise<TResult>;
   initialError?: unknown;
   retry: (password: string) => Promise<TResult>;
   /** 弹窗输入密码，取消时返回 null */
@@ -51,6 +52,7 @@ export async function syncWithRecoveryPassword<TResult>({
 }: SyncWithRecoveryPasswordOptions<TResult>): Promise<SyncWithRecoveryPasswordResult<TResult>> {
   let error: unknown = initialError;
   if (!error) {
+    if (!sync) throw new Error('sync is required when initialError is not provided');
     try {
       return { result: await sync(), cancelled: false };
     } catch (caught) {

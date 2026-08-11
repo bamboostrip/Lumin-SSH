@@ -50,11 +50,38 @@
 |---|---|---|
 | 0 | TS 骨架：tsconfig、vite TS、全局声明、i18n 类型模板 | ✅ 完成 |
 | 1 | 纯逻辑转 TS：`utils/`(17) + `constants/`(2) + `config.js` | ✅ 完成 |
-| 2 | hooks 转 TS：`hooks/`(17) | 🔄 进行中 |
-| 3 | i18n 类型化：28 个语言文件对齐 `zh-CN` 键 | ⏳ |
+| 2 | hooks 转 TS：`hooks/`(17) | ✅ 完成 |
+| 3 | i18n 类型化：28 个语言文件对齐 `zh-CN` 键 | 🔄 进行中 |
 | 4 | 小组件 JSX→TSX（批量） | ⏳ |
 | 5 | 巨兽组件：FileManager / AIPanel / Terminal / SettingsModal / AI 系列 | ⏳ |
 | 6 | 收尾：移除 allowJs、严格模式全量通过、回归验证 | ⏳ |
+
+---
+
+## 阶段 2：hooks 转 TS（17 个，全部完成 ✅）
+
+- [x] `useToasts.ts` — Toast 管理（ToastItem/ToastAction）
+- [x] `useWindowState.ts` — 窗口尺寸记忆（SavedWindowSize）
+- [x] `usePanelLayout.ts` — 面板布局（ProbePanelPosition）
+- [x] `usePortForwardDialog.ts` — 端口转发对话框（PortForwardInitialMapping）
+- [x] `useServerPing.ts` — 服务器 ping（ServerPingResult/PingCounts）
+- [x] `useDashboardPreferences.ts` — 仪表盘偏好（ServerListViewMode/DashboardHostPageMode）
+- [x] `useWorkspaceSettings.ts` — 工作区设置（WorkspacePersistenceLevel）
+- [x] `useSessionWorkspaceModel.ts` — 会话工作区模型
+- [x] `useImportExport.ts` — 导入导出（ExportOptions）
+- [x] `useServerCatalog.ts` — 服务器目录（ServerFormData）
+- [x] `useUpdateChecker.ts` — 更新检查（UpdateCheckResult/compareVersions）
+- [x] `useWorkspacePersistence.ts` — 工作区持久化（WorkspaceSessionSnapshot/SnapshotOverrides）
+- [x] `useWorkspacePanelDocking.ts` — 面板停靠拖拽（DockRect/FileManagerDockPosition）
+- [x] `useAIReview.ts` — AI 变更审查（AIChangeReview/ConversationDiffPanel）
+- [x] `useTerminalSubTabs.ts` — 终端子标签滚动/停靠（TerminalDockDragPreview）
+- [x] `useTerminalDocking.ts` — 终端分屏停靠
+- [x] `useSessionConnections.ts` — 会话连接中枢（1408 行，ConnectingServer/SessionAuthPrompt/SshChannelUsage）
+
+### 全局类型资产（阶段 2 新增）
+- `src/types/luminDialog.d.ts` — window.luminDialog 全局 API
+- `wails.d.ts` 补充 window.runtime 声明
+- `recoveryPasswordSync.ts` 的 sync 参数改为可选（initialError 场景）
 
 ---
 

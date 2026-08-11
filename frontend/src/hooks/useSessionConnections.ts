@@ -1,10 +1,219 @@
 import { useCallback, useEffect } from 'react';
 import { EventsOn, WindowHide } from '../../wailsjs/runtime/runtime.js';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
+import type { config } from '../../wailsjs/go/models.js';
+import type { SessionLike, WorkspaceContentTab } from '../utils/sessionWorkspace.js';
+import type { TerminalPaneLayout } from '../utils/terminalPaneLayout.js';
+import type { FileManagerWorkspaceState } from '../utils/fileWorkbench.js';
+import type { SnapshotOverrides, WorkspaceSessionSnapshot } from './useWorkspacePersistence.js';
 
-export default function useSessionConnections(deps) {
-  const { activeSessionIdRef, activeTerminalIdRef, addToast, authPromptTokenRef, awaitDisconnectTerminals, buildTerminalCloneCwdCommand, cancelledConnectionsRef, clearSessionAuthPrompt, cloneSessionFileManagerWorkspaceState, connectingServersRef, contentTabRef, creatingTerminalRef, credentials, disconnectSessionTerminals, enqueueChangeReview, fileManagerPosition, getAllSessionFileManagerWorkspaces, getSessionFileManagerWorkspace, isRecoveryPasswordError, isUnsupportedMonitorSession, lastContentTabRef, lastTerminalRef, loadServerWorkspaceSessionSnapshot, markWorkspaceRestoreNavigationOverride, mountedRef, normalizeWorkspaceContentTab, persistServerWorkspaceSessionSnapshot, persistWorkspaceSnapshotRef, recordRecentConnection, registerServerDisconnect, remapSessionFileManagerWorkspaceMap, remapSessionFileManagerWorkspaces, remapSessionWorkspaceLayouts, remapTerminalPaneLayouts, rememberSessionActiveTerminal, rememberWorkspace, rememberWorkspaceLoaded, removeChangeReviewsByRequestId, replaceAllSessionFileManagerWorkspaces, resolveSessionRootTerminalId, restoringWorkspaceRef, serversLoaded, serversRef, sessionsRef, setActiveSessionId, setActiveTerminalId, setConnectingServers, setContentTab, setCreatingTerminalSessionId, setCredentials, setMonitoringEnabled, setMountedSessions, setRestoringWorkspaceSessionIds, setServers, setServersLoaded, setSessionAuthPrompts, setSessionFileManagerWorkspace, setSessions, setSettingsInitialTab, setShowSettings, setSshChannelUsage, setSyncFailed, setTabContextMenu, setTerminalPaneLayouts, setTerminalSubTabOverflow, setTerminalTabContextMenu, setWorkspaceRestoreReady, sortTerminalPaneCells, syncFailed, syncWithRecoveryPassword, t, terminalPaneLayoutsRef, terminalSubTabScrollBySessionRef, terminalSubTabScrollRef, terminalSubTabScrollTargetRef, updateSessionStatus, waitForServerDisconnect, workspacePersistenceLevel, workspaceRestoreNavigationOverrideRef, workspaceRestoreStartedRef } = deps;
-  const handleConnectError = useCallback((sessionId, err) => {
+/** 连接中的服务器卡片 */
+export interface ConnectingServer {
+  server: { id: string; name?: string; host: string };
+  sessionId: string;
+  startTime: number;
+  status?: string;
+  message?: string;
+}
+
+/** 会话认证提示（主机密钥 / 密码重输） */
+export interface SessionAuthPrompt {
+  kind: 'hostkey' | 'password';
+  token: number;
+  title: string;
+  message: string;
+  danger?: boolean;
+  connId?: string;
+  checkboxLabel?: string;
+}
+
+/** SSH 通道占用统计 */
+export interface SshChannelUsage {
+  terminals: number;
+  sharedSftp: number;
+  uploadPool: number;
+  total: number;
+  maxSessions: number;
+}
+
+export interface UseSessionConnectionsDeps {
+  activeSessionIdRef: React.MutableRefObject<string | null>;
+  activeTerminalIdRef: React.MutableRefObject<string | null>;
+  addToast: (message: string | Error, type?: string, duration?: number, actions?: unknown[]) => number;
+  authPromptTokenRef: React.MutableRefObject<number>;
+  awaitDisconnectTerminals: (ids: string[]) => Promise<unknown>;
+  buildTerminalCloneCwdCommand: (cwd: string) => string;
+  cancelledConnectionsRef: React.MutableRefObject<Set<string>>;
+  clearSessionAuthPrompt: (sessionId: string) => void;
+  cloneSessionFileManagerWorkspaceState: (workspace: unknown) => FileManagerWorkspaceState | null;
+  connectingServersRef: React.MutableRefObject<ConnectingServer[]>;
+  contentTabRef: React.MutableRefObject<string>;
+  creatingTerminalRef: React.MutableRefObject<string | null>;
+  credentials: config.Credential[];
+  disconnectSessionTerminals: (ids: string[]) => Promise<unknown>;
+  enqueueChangeReview: (review: Record<string, unknown>) => void;
+  fileManagerPosition: string;
+  getAllSessionFileManagerWorkspaces: () => Record<string, FileManagerWorkspaceState>;
+  getSessionFileManagerWorkspace: (terminalId: string) => FileManagerWorkspaceState;
+  isRecoveryPasswordError: (error: unknown) => boolean;
+  isUnsupportedMonitorSession: (session: SessionLike | null | undefined) => boolean;
+  lastContentTabRef: React.MutableRefObject<Record<string, string>>;
+  lastTerminalRef: React.MutableRefObject<Record<string, string>>;
+  loadServerWorkspaceSessionSnapshot: (serverId: string) => Promise<WorkspaceSessionSnapshot | null>;
+  markWorkspaceRestoreNavigationOverride: () => void;
+  mountedRef: React.MutableRefObject<boolean>;
+  normalizeWorkspaceContentTab: (value: unknown) => WorkspaceContentTab;
+  persistServerWorkspaceSessionSnapshot: (session: SessionLike, overrides?: SnapshotOverrides) => void;
+  persistWorkspaceSnapshotRef: React.MutableRefObject<((overrides?: Record<string, unknown>) => void) | null>;
+  recordRecentConnection: (serverId: string) => void;
+  registerServerDisconnect: (serverId: string, promise: Promise<unknown>) => void;
+  remapSessionFileManagerWorkspaceMap: (workspaces: Record<string, unknown> | null | undefined, idMap: Record<string, string> | null | undefined) => Record<string, unknown>;
+  remapSessionFileManagerWorkspaces: (idMap: Record<string, string> | null | undefined) => Record<string, FileManagerWorkspaceState>;
+  remapSessionWorkspaceLayouts: (
+    layouts: Record<string, TerminalPaneLayout> | null | undefined,
+    idMap: Record<string, string> | null | undefined,
+    targetSessionId: string,
+  ) => Record<string, TerminalPaneLayout>;
+  remapTerminalPaneLayouts: (
+    layouts: Record<string, TerminalPaneLayout> | null | undefined,
+    idMap: Record<string, string>,
+    sessionId: string,
+  ) => Record<string, TerminalPaneLayout>;
+  rememberSessionActiveTerminal: (sessionId: string, terminalId: string, label: string) => void;
+  rememberWorkspace: boolean;
+  rememberWorkspaceLoaded: boolean;
+  removeChangeReviewsByRequestId: (requestId: string) => void;
+  replaceAllSessionFileManagerWorkspaces: (nextState: unknown) => Record<string, FileManagerWorkspaceState>;
+  resolveSessionRootTerminalId: (
+    session: SessionLike,
+    fallbackTerminalId: string | null | undefined,
+    layouts?: Record<string, TerminalPaneLayout>,
+    label?: string,
+  ) => string | null;
+  restoringWorkspaceRef: React.MutableRefObject<boolean>;
+  serversLoaded: boolean;
+  serversRef: React.MutableRefObject<config.Connection[]>;
+  sessionsRef: React.MutableRefObject<SessionLike[]>;
+  setActiveSessionId: (id: string | null) => void;
+  setActiveTerminalId: (id: string | null) => void;
+  setConnectingServers: React.Dispatch<React.SetStateAction<ConnectingServer[]>>;
+  setContentTab: (tab: string) => void;
+  setCreatingTerminalSessionId: (id: string | null) => void;
+  setCredentials: React.Dispatch<React.SetStateAction<config.Credential[]>>;
+  setMonitoringEnabled: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  setMountedSessions: React.Dispatch<React.SetStateAction<Set<string>>>;
+  setRestoringWorkspaceSessionIds: React.Dispatch<React.SetStateAction<Set<string>>>;
+  setServers: React.Dispatch<React.SetStateAction<config.Connection[]>>;
+  setServersLoaded: (loaded: boolean) => void;
+  setSessionAuthPrompts: React.Dispatch<React.SetStateAction<Record<string, SessionAuthPrompt>>>;
+  setSessionFileManagerWorkspace: (terminalId: string, state: FileManagerWorkspaceState) => FileManagerWorkspaceState;
+  setSessions: React.Dispatch<React.SetStateAction<SessionLike[]>>;
+  setSettingsInitialTab: (tab: string) => void;
+  setShowSettings: (show: boolean) => void;
+  setSshChannelUsage: React.Dispatch<React.SetStateAction<Record<string, SshChannelUsage>>>;
+  setSyncFailed: React.Dispatch<React.SetStateAction<unknown>>;
+  setTabContextMenu: (menu: unknown) => void;
+  setTerminalPaneLayouts: React.Dispatch<React.SetStateAction<Record<string, TerminalPaneLayout>>>;
+  setTerminalSubTabOverflow: (overflow: boolean) => void;
+  setTerminalTabContextMenu: (menu: unknown) => void;
+  setWorkspaceRestoreReady: (ready: boolean) => void;
+  sortTerminalPaneCells: (cells: unknown) => TerminalPaneLayout['panes'][number]['cells'];
+  syncFailed: unknown;
+  syncWithRecoveryPassword: <TResult>(options: {
+    sync?: () => Promise<TResult>;
+    initialError?: unknown;
+    retry: (password: string) => Promise<TResult>;
+    prompt: (title: string, placeholder: string, message: string, okLabel?: string, options?: Record<string, unknown>) => Promise<string | null>;
+    t: (key: string, vars?: Record<string, unknown>) => string;
+  }) => Promise<{ result: TResult | null; cancelled: boolean }>;
+  t: (key: string, vars?: Record<string, unknown>) => string;
+  terminalPaneLayoutsRef: React.MutableRefObject<Record<string, TerminalPaneLayout>>;
+  terminalSubTabScrollBySessionRef: React.MutableRefObject<Record<string, number>>;
+  terminalSubTabScrollRef: React.MutableRefObject<HTMLElement | null>;
+  terminalSubTabScrollTargetRef: React.MutableRefObject<number>;
+  updateSessionStatus: (sessionId: string, status: string) => void;
+  waitForServerDisconnect: (serverId: string) => Promise<unknown>;
+  workspacePersistenceLevel: 'program' | 'session';
+  workspaceRestoreNavigationOverrideRef: React.MutableRefObject<boolean>;
+  workspaceRestoreStartedRef: React.MutableRefObject<boolean>;
+}
+
+export interface ReconnectSessionResult {
+  oldToNew: Record<string, string>;
+  newTerminals: Array<{ id: string; label: string }>;
+}
+
+export interface UseSessionConnectionsResult {
+  handleConnectError: (sessionId: string, err: unknown) => void;
+  postConnectSetup: (sessionId: string, serverId: string) => Promise<void>;
+  loadServers: () => Promise<void>;
+  handleCancelConnection: (sessionId: string) => void;
+  resolveSessionContentTab: (sessionId: string) => string;
+  switchToNextSession: (currentSessionId: string) => void;
+  handleTabClick: (sessionId: string) => void;
+  canCopySessionPassword: (sessionId: string) => boolean;
+  handleCopySessionPassword: (sessionId: string) => Promise<void>;
+  reconnectSession: (
+    session: SessionLike,
+    requestingTerminalId?: string,
+    options?: { deferState?: boolean },
+  ) => Promise<ReconnectSessionResult | null>;
+  resolveHostKeyChoice: (sessionId: string, chosen: number) => Promise<void>;
+  resolvePasswordPrompt: (sessionId: string, connId: string, result: { value: string; persist: boolean } | null) => Promise<void>;
+  handleCloseWindow: () => Promise<void>;
+  connectServer: (server: config.Connection) => Promise<void>;
+  connectLocal: (name: string, shellPath: string) => void;
+  connectSerial: (config: { port: string; baudRate: number; dataBits: number; stopBits: number; parity: string }) => void;
+  forceCloseSession: (sessionId: string) => void;
+  closeSession: (sessionId: string, e?: React.MouseEvent) => Promise<void>;
+  closeAllSessions: () => Promise<void>;
+  openNewTerminal: (sessionId: string, options?: {
+    sourceTerminalId?: string;
+    cloneFileManagerWorkspace?: boolean;
+    cloneCwd?: boolean;
+  }) => Promise<void>;
+  handleRenameTerminalTab: (sessionId: string, terminalId: string) => Promise<void>;
+  closeTerminal: (sessionId: string, terminalId: string, e?: React.MouseEvent) => void;
+}
+
+/** 恢复的工作区快照（JSON.parse 后的宽松形状） */
+interface RestoredSnapshotSession {
+  id?: unknown;
+  serverId?: unknown;
+  serverName?: unknown;
+  host?: unknown;
+  activeTerminalId?: unknown;
+  activeTerminalLabel?: unknown;
+  terminals?: Array<{ id?: unknown; label?: unknown }>;
+  workspaceTabs?: Array<{ terminalIds?: unknown }>;
+}
+
+export default function useSessionConnections(deps: UseSessionConnectionsDeps): UseSessionConnectionsResult {
+  const {
+    activeSessionIdRef, activeTerminalIdRef, addToast, authPromptTokenRef, awaitDisconnectTerminals,
+    buildTerminalCloneCwdCommand, cancelledConnectionsRef, clearSessionAuthPrompt,
+    cloneSessionFileManagerWorkspaceState, connectingServersRef, contentTabRef, creatingTerminalRef,
+    credentials, disconnectSessionTerminals, enqueueChangeReview, fileManagerPosition,
+    getAllSessionFileManagerWorkspaces, getSessionFileManagerWorkspace, isRecoveryPasswordError,
+    isUnsupportedMonitorSession, lastContentTabRef, lastTerminalRef, loadServerWorkspaceSessionSnapshot,
+    markWorkspaceRestoreNavigationOverride, mountedRef, normalizeWorkspaceContentTab,
+    persistServerWorkspaceSessionSnapshot, persistWorkspaceSnapshotRef, recordRecentConnection,
+    registerServerDisconnect, remapSessionFileManagerWorkspaceMap, remapSessionFileManagerWorkspaces,
+    remapSessionWorkspaceLayouts, remapTerminalPaneLayouts, rememberSessionActiveTerminal,
+    rememberWorkspace, rememberWorkspaceLoaded, removeChangeReviewsByRequestId,
+    replaceAllSessionFileManagerWorkspaces, resolveSessionRootTerminalId, restoringWorkspaceRef,
+    serversLoaded, serversRef, sessionsRef, setActiveSessionId, setActiveTerminalId,
+    setConnectingServers, setContentTab, setCreatingTerminalSessionId, setCredentials,
+    setMonitoringEnabled, setMountedSessions, setRestoringWorkspaceSessionIds, setServers,
+    setServersLoaded, setSessionAuthPrompts, setSessionFileManagerWorkspace, setSessions,
+    setSettingsInitialTab, setShowSettings, setSshChannelUsage, setSyncFailed, setTabContextMenu,
+    setTerminalPaneLayouts, setTerminalSubTabOverflow, setTerminalTabContextMenu,
+    setWorkspaceRestoreReady, sortTerminalPaneCells, syncFailed, syncWithRecoveryPassword, t,
+    terminalPaneLayoutsRef, terminalSubTabScrollBySessionRef, terminalSubTabScrollRef,
+    terminalSubTabScrollTargetRef, updateSessionStatus, waitForServerDisconnect,
+    workspacePersistenceLevel, workspaceRestoreNavigationOverrideRef, workspaceRestoreStartedRef,
+  } = deps;
+  const handleConnectError = useCallback((sessionId: string, err: unknown) => {
     // 如果用户已取消该连接，不再弹错误提示
     if (cancelledConnectionsRef.current.has(sessionId)) {
       cancelledConnectionsRef.current.delete(sessionId);
@@ -23,10 +232,10 @@ export default function useSessionConnections(deps) {
   }, [addToast, t]);
 
   // ── 连接成功后通用设置：查询 OS 信息、启用监控、持久化 OS ──
-  const postConnectSetup = useCallback(async (sessionId, serverId) => {
+  const postConnectSetup = useCallback(async (sessionId: string, serverId: string) => {
     try {
       // 获取静态信息（OS/主机名/时区）
-      const staticInfo = await AppGo.GetServerStaticInfo(sessionId);
+      const staticInfo = await AppGo.GetServerStaticInfo(sessionId) as Record<string, unknown> | null;
       if (staticInfo) {
         setSessions((prev) => prev.map((s) => s.id === sessionId ? { ...s, osInfo: staticInfo } : s));
       }
@@ -38,9 +247,9 @@ export default function useSessionConnections(deps) {
             const detectedOs = staticInfo?.os || '';
             // 总是调用：OS 变了会更新 OS，OS 没变也会触发同步（确保 noSync 保存的密码等数据被同步）
             // OS 检测失败时用已有 OS，避免清空
-            AppGo.SetConnectionOS(serverId, detectedOs || currentServer.os || '').catch(console.error);
+            AppGo.SetConnectionOS(serverId, String(detectedOs || currentServer.os || '')).catch(console.error);
             if (detectedOs && currentServer.os !== detectedOs) {
-              setServers(prev => prev.map(s => s.id === serverId ? { ...s, os: detectedOs } : s));
+              setServers(prev => prev.map(s => s.id === serverId ? { ...s, os: String(detectedOs) } : s));
             }
           }
           return prevServers;
@@ -72,13 +281,13 @@ export default function useSessionConnections(deps) {
   useEffect(() => { loadServers(); }, [loadServers]);
 
   // ── 取消连接 ──────────────────────────────────────────────
-  const handleCancelConnection = useCallback((sessionId) => {
+  const handleCancelConnection = useCallback((sessionId: string) => {
     if (!sessionId) return;
     const session = sessionsRef.current.find((item) => item.id === sessionId);
-    const termIds = session?.terminals?.length ? session.terminals.map((term) => term.id) : [sessionId];
+    const termIds = session?.terminals?.length ? session.terminals.map((term) => term.id as string) : [sessionId];
     const disconnectPromise = disconnectSessionTerminals(termIds);
     if (session?.serverId) {
-      registerServerDisconnect(session.serverId, disconnectPromise);
+      registerServerDisconnect(String(session.serverId), disconnectPromise);
     }
     setSessions(prev => prev.filter(s => s.id !== sessionId));
     setActiveSessionId(null);
@@ -88,7 +297,7 @@ export default function useSessionConnections(deps) {
   }, [clearSessionAuthPrompt, disconnectSessionTerminals, registerServerDisconnect]);
 
   // ── 切换到下一个可用 session ──────────────────────────────
-  const resolveSessionContentTab = useCallback((sessionId) => {
+  const resolveSessionContentTab = useCallback((sessionId: string) => {
     const tab = normalizeWorkspaceContentTab(lastContentTabRef.current[sessionId] || 'terminal');
     // 文件管理器已停靠时，files 页签不可用，回落终端
     if (tab === 'files' && fileManagerPosition !== 'tab') return 'terminal';
@@ -100,22 +309,22 @@ export default function useSessionConnections(deps) {
     return tab;
   }, [fileManagerPosition]);
 
-  const switchToNextSession = useCallback((currentSessionId) => {
+  const switchToNextSession = useCallback((currentSessionId: string) => {
     const remaining = sessionsRef.current.filter(s => s.id !== currentSessionId);
     if (remaining.length > 0) {
       const nextSession = remaining[remaining.length - 1];
-      setActiveSessionId(nextSession.id);
+      setActiveSessionId(nextSession.id!);
       const nextTermId = resolveSessionRootTerminalId(
         nextSession,
-        lastTerminalRef.current[nextSession.id] || nextSession.activeTerminalId,
+        lastTerminalRef.current[nextSession.id!] || String(nextSession.activeTerminalId || ''),
         terminalPaneLayoutsRef.current,
-        nextSession.activeTerminalLabel || '',
+        String(nextSession.activeTerminalLabel || ''),
       );
       setActiveTerminalId(nextTermId);
       if (nextTermId) {
-        rememberSessionActiveTerminal(nextSession.id, nextTermId, nextSession.activeTerminalLabel || '');
+        rememberSessionActiveTerminal(nextSession.id!, nextTermId, String(nextSession.activeTerminalLabel || ''));
       }
-      setContentTab(resolveSessionContentTab(nextSession.id));
+      setContentTab(resolveSessionContentTab(nextSession.id!));
     } else {
       setActiveSessionId(null);
       setActiveTerminalId(null);
@@ -123,27 +332,27 @@ export default function useSessionConnections(deps) {
   }, [rememberSessionActiveTerminal, resolveSessionContentTab, resolveSessionRootTerminalId]);
 
   // ponytail: 提取 tab 点击处理，避免每次渲染创建 N 个闭包
-  const handleTabClick = useCallback((sessionId) => {
+  const handleTabClick = useCallback((sessionId: string) => {
     markWorkspaceRestoreNavigationOverride();
     setTabContextMenu(null);
     setTerminalTabContextMenu(null);
     setActiveSessionId(sessionId);
     const sess = sessionsRef.current.find(x => x.id === sessionId);
-    const preferredId = lastTerminalRef.current[sessionId] || sess?.activeTerminalId || null;
-    const preferredLabel = sess?.activeTerminalLabel || '';
+    const preferredId = lastTerminalRef.current[sessionId] || String(sess?.activeTerminalId || '') || null;
+    const preferredLabel = String(sess?.activeTerminalLabel || '');
     const nextTerminalId = sess ? resolveSessionRootTerminalId(sess, preferredId, terminalPaneLayoutsRef.current, preferredLabel) : null;
     setActiveTerminalId(nextTerminalId);
     if (nextTerminalId) {
       rememberSessionActiveTerminal(sessionId, nextTerminalId, preferredLabel);
     }
     setContentTab(resolveSessionContentTab(sessionId));
-    persistWorkspaceSnapshotRef.current({
+    persistWorkspaceSnapshotRef.current?.({
       activeSessionId: sessionId,
       activeTerminalId: nextTerminalId,
     });
   }, [markWorkspaceRestoreNavigationOverride, rememberSessionActiveTerminal, resolveSessionContentTab, resolveSessionRootTerminalId]);
 
-  const canCopySessionPassword = useCallback((sessionId) => {
+  const canCopySessionPassword = useCallback((sessionId: string) => {
     const session = sessionsRef.current.find((item) => item.id === sessionId);
     if (!session?.serverId) {
       return false;
@@ -159,14 +368,14 @@ export default function useSessionConnections(deps) {
     return server.authMethod === 'password';
   }, [credentials]);
 
-  const handleCopySessionPassword = useCallback(async (sessionId) => {
+  const handleCopySessionPassword = useCallback(async (sessionId: string) => {
     const session = sessionsRef.current.find((item) => item.id === sessionId);
     if (!session?.serverId) {
       addToast(t('复制失败'), 'error', 3000);
       return;
     }
     try {
-      const password = await AppGo.GetConnectionPassword(session.serverId);
+      const password = await AppGo.GetConnectionPassword(String(session.serverId));
       if (!password) {
         throw new Error('empty password');
       }
@@ -178,43 +387,51 @@ export default function useSessionConnections(deps) {
   }, [addToast, t]);
 
   // ── 重连会话核心逻辑 ────────────────────────────────────────
-  const reconnectSession = useCallback(async (session, requestingTerminalId, options = {}) => {
+  const reconnectSession = useCallback(async (
+    session: SessionLike,
+    requestingTerminalId?: string,
+    options: { deferState?: boolean } = {},
+  ): Promise<ReconnectSessionResult | null> => {
     const deferState = options?.deferState === true;
-    updateSessionStatus(session.id, 'connecting');
+    updateSessionStatus(session.id!, 'connecting');
 
     if (session.isLocal) {
-      const serverObj = { id: session.serverId, name: session.serverName, host: 'localhost' };
-      setConnectingServers((prev) => [...prev, { server: serverObj, sessionId: session.id, startTime: Date.now() }]);
+      const serverObj = { id: String(session.serverId), name: String(session.serverName), host: 'localhost' };
+      setConnectingServers((prev) => [...prev, { server: serverObj, sessionId: session.id!, startTime: Date.now() }]);
       try {
-        await window.go.wailsapp.App.ConnectLocal(session.id, session.serverName, session.shellPath, '');
+        await window.go.wailsapp.App.ConnectLocal(session.id!, String(session.serverName), String(session.shellPath || ''), '');
         // 本地/串口复用同一 sessionId 重连：自增 wsRebuildKey 让 Terminal 重建 WebSocket
         if (!deferState) {
           setSessions((prev) =>
-            prev.map((s) => (s.id === session.id ? { ...s, status: 'connected', wsRebuildKey: (s.wsRebuildKey || 0) + 1 } : s))
+            prev.map((s) => (s.id === session.id ? { ...s, status: 'connected', wsRebuildKey: ((s.wsRebuildKey as number) || 0) + 1 } : s))
           );
         }
         setConnectingServers((prev) => prev.filter((s) => s.sessionId !== session.id));
-        return { oldToNew: { [session.id]: session.id }, newTerminals: session.terminals };
+        return { oldToNew: { [session.id!]: session.id! }, newTerminals: session.terminals as Array<{ id: string; label: string }> };
       } catch (err) {
         setSessions((prev) =>
           prev.map((s) => (s.id === session.id ? { ...s, status: 'error' } : s))
         );
         setConnectingServers((prev) => prev.filter((s) => s.sessionId !== session.id));
         if (!deferState) {
-          addToast(`${t('重新连接失败')}: ${err}`, 'error', 5000);
+          addToast(`${t('重新连接失败')}: ${String(err)}`, 'error', 5000);
         }
         return null;
       }
     }
 
     if (session.isSerial) {
-      const serverObj = { id: session.serverId, name: session.serverName, host: session.serialConfig?.port || '' };
-      setConnectingServers((prev) => [...prev, { server: serverObj, sessionId: session.id, startTime: Date.now() }]);
+      const serverObj = {
+        id: String(session.serverId),
+        name: String(session.serverName),
+        host: String((session.serialConfig as { port?: unknown } | null)?.port || ''),
+      };
+      setConnectingServers((prev) => [...prev, { server: serverObj, sessionId: session.id!, startTime: Date.now() }]);
       try {
-        const config = session.serialConfig;
+        const config = session.serialConfig as { port: string; baudRate: number; dataBits: number; stopBits: number; parity: string };
         await window.go.wailsapp.App.ConnectSerial(
-          session.id,
-          session.serverName,
+          session.id!,
+          String(session.serverName),
           config.port,
           config.baudRate,
           config.dataBits,
@@ -224,18 +441,18 @@ export default function useSessionConnections(deps) {
         // 本地/串口复用同一 sessionId 重连：自增 wsRebuildKey 让 Terminal 重建 WebSocket
         if (!deferState) {
           setSessions((prev) =>
-            prev.map((s) => (s.id === session.id ? { ...s, status: 'connected', wsRebuildKey: (s.wsRebuildKey || 0) + 1 } : s))
+            prev.map((s) => (s.id === session.id ? { ...s, status: 'connected', wsRebuildKey: ((s.wsRebuildKey as number) || 0) + 1 } : s))
           );
         }
         setConnectingServers((prev) => prev.filter((s) => s.sessionId !== session.id));
-        return { oldToNew: { [session.id]: session.id }, newTerminals: session.terminals };
+        return { oldToNew: { [session.id!]: session.id! }, newTerminals: session.terminals as Array<{ id: string; label: string }> };
       } catch (err) {
         setSessions((prev) =>
           prev.map((s) => (s.id === session.id ? { ...s, status: 'error' } : s))
         );
         setConnectingServers((prev) => prev.filter((s) => s.sessionId !== session.id));
         if (!deferState) {
-          addToast(`${t('重新连接失败')}: ${err}`, 'error', 5000);
+          addToast(`${t('重新连接失败')}: ${String(err)}`, 'error', 5000);
         }
         return null;
       }
@@ -243,42 +460,43 @@ export default function useSessionConnections(deps) {
 
     const serverObj = serversRef.current.find((sv) => sv.id === session.serverId);
     if (serverObj) {
-      setConnectingServers((prev) => [...prev, { server: serverObj, sessionId: session.id, startTime: Date.now() }]);
+      setConnectingServers((prev) => [...prev, { server: serverObj, sessionId: session.id!, startTime: Date.now() }]);
     }
     try {
       // 先拆旧 SSH（保留前端 terminals 列表用于恢复），避免脏 connTerminals / 重复登记
       const priorTerminals = session.terminals?.length
         ? session.terminals
-        : [{ id: session.id }];
-      const disconnectIds = new Set([session.id, ...priorTerminals.map((term) => term.id).filter(Boolean)]);
+        : [{ id: session.id! }];
+      const disconnectIds = new Set([session.id!, ...priorTerminals.map((term) => term.id as string).filter(Boolean)]);
       await awaitDisconnectTerminals([...disconnectIds]);
 
-      await AppGo.ConnectSSH(session.id, session.serverId);
+      await AppGo.ConnectSSH(session.id!, String(session.serverId));
 
-      const savedTerminals = session.terminals?.length > 0 ? session.terminals : [{ id: session.id, label: `${t('终端')}1` }];
-      const rootTerminal = savedTerminals.find(term => term.id === session.id) || savedTerminals[0] || { id: session.id, label: `${t('终端')}1` };
+      const hasSavedTerminals = Array.isArray(session.terminals) && session.terminals.length > 0;
+      const savedTerminals = hasSavedTerminals ? session.terminals! : [{ id: session.id!, label: `${t('终端')}1` }];
+      const rootTerminal = savedTerminals.find(term => term.id === session.id) || savedTerminals[0] || { id: session.id!, label: `${t('终端')}1` };
       const subTerminals = savedTerminals.filter(term => term.id !== session.id);
-      const oldToNew = { [rootTerminal.id]: session.id, [session.id]: session.id };
+      const oldToNew: Record<string, string> = { [rootTerminal.id!]: session.id!, [session.id!]: session.id! };
       for (const sub of subTerminals) {
         try {
-          const newTermId = await AppGo.OpenTerminal(session.id);
-          oldToNew[sub.id] = newTermId;
+          const newTermId = await AppGo.OpenTerminal(session.id!);
+          oldToNew[sub.id!] = newTermId;
         } catch { }
       }
       const newTerminals = savedTerminals
         .map(term => ({
-          id: oldToNew[term.id],
-          label: term.label || `${t('终端')}1`,
+          id: oldToNew[term.id!],
+          label: String(term.label || `${t('终端')}1`),
         }))
         .filter(term => !!term.id);
 
       if (!deferState && Object.keys(oldToNew).length > 0) {
         remapSessionFileManagerWorkspaces(oldToNew);
-        const remappedLayouts = remapTerminalPaneLayouts(terminalPaneLayoutsRef.current, oldToNew, session.id);
+        const remappedLayouts = remapTerminalPaneLayouts(terminalPaneLayoutsRef.current, oldToNew, session.id!);
         terminalPaneLayoutsRef.current = remappedLayouts;
         setTerminalPaneLayouts(remappedLayouts);
-        if (lastTerminalRef.current[session.id] && oldToNew[lastTerminalRef.current[session.id]]) {
-          lastTerminalRef.current[session.id] = oldToNew[lastTerminalRef.current[session.id]];
+        if (lastTerminalRef.current[session.id!] && oldToNew[lastTerminalRef.current[session.id!]]) {
+          lastTerminalRef.current[session.id!] = oldToNew[lastTerminalRef.current[session.id!]];
         }
       }
 
@@ -293,7 +511,7 @@ export default function useSessionConnections(deps) {
         setActiveTerminalId(oldToNew[requestingTerminalId]);
       }
 
-      await postConnectSetup(session.id, session.serverId);
+      await postConnectSetup(session.id!, String(session.serverId));
       return { oldToNew, newTerminals };
     } catch (err) {
       const errMsg = String(err);
@@ -304,7 +522,7 @@ export default function useSessionConnections(deps) {
       if (!isHostKeyChange) {
         setConnectingServers((prev) => prev.filter((s) => s.sessionId !== session.id));
         if (!deferState) {
-          addToast(`${t('重新连接失败')}: ${err}`, 'error', 5000);
+          addToast(`${t('重新连接失败')}: ${String(err)}`, 'error', 5000);
         }
       }
       return null;
@@ -326,9 +544,15 @@ export default function useSessionConnections(deps) {
       if (typeof raw !== 'string' || !raw.trim()) {
         return;
       }
-      let snapshot;
+      let snapshot: {
+        activeSessionId?: unknown;
+        activeTerminalId?: unknown;
+        sessions?: RestoredSnapshotSession[];
+        terminalPaneLayouts?: Record<string, TerminalPaneLayout>;
+        fileManagerWorkspaces?: Record<string, unknown>;
+      };
       try {
-        snapshot = JSON.parse(raw);
+        snapshot = JSON.parse(raw) as typeof snapshot;
       } catch {
         return;
       }
@@ -336,14 +560,14 @@ export default function useSessionConnections(deps) {
         .filter((session) => session?.id && session?.serverId && serversRef.current.some((server) => server.id === session.serverId))
         .map((session) => {
           const terminalById = new Map((session.terminals || []).map((term) => [term.id, term]));
-          const workspaceTerminalIds = (session.workspaceTabs || []).flatMap((tab) => tab.terminalIds || []);
+          const workspaceTerminalIds = (session.workspaceTabs || []).flatMap((tab) => Array.isArray(tab.terminalIds) ? tab.terminalIds : []);
           const baseTerminalIds = [...workspaceTerminalIds, ...terminalById.keys()];
           const orderedTerminalIds = Array.from(new Set(baseTerminalIds.length > 0 ? baseTerminalIds : [session.id]));
           const terminals = orderedTerminalIds.map((terminalId, index) => {
             const terminal = terminalById.get(terminalId);
             return {
-              id: terminalId,
-              label: terminal?.label || `${t('终端')}${index + 1}`,
+              id: String(terminalId),
+              label: String(terminal?.label || `${t('终端')}${index + 1}`),
             };
           });
           const savedActiveTermId = typeof session.activeTerminalId === 'string' ? session.activeTerminalId.trim() : '';
@@ -353,15 +577,15 @@ export default function useSessionConnections(deps) {
             ? (typeof snapshot.activeTerminalId === 'string' ? snapshot.activeTerminalId.trim() : '')
             : '';
           return {
-            id: session.id,
-            serverId: session.serverId,
-            serverName: session.serverName || session.host,
-            host: session.host || '',
+            id: String(session.id),
+            serverId: String(session.serverId),
+            serverName: String(session.serverName || session.host),
+            host: String(session.host || ''),
             status: 'connecting',
             activeTerminalId: savedActiveTermId || fallbackActiveTermId || null,
             activeTerminalLabel: savedActiveTermLabel || null,
             terminals,
-          };
+          } as SessionLike;
         });
       if (savedSessions.length === 0) {
         return;
@@ -381,28 +605,28 @@ export default function useSessionConnections(deps) {
               })),
             },
           ])
-      );
-      const savedTerminalIds = new Set(savedSessions.flatMap((session) => (session.terminals || []).map((terminal) => terminal.id)));
+      ) as Record<string, TerminalPaneLayout>;
+      const savedTerminalIds = new Set(savedSessions.flatMap((session) => (session.terminals || []).map((terminal) => String(terminal.id))));
       const savedFileManagerWorkspaces = Object.fromEntries(
         Object.entries(snapshot.fileManagerWorkspaces || {})
           .filter(([terminalId]) => savedTerminalIds.has(terminalId))
       );
       const initialActiveSessionId = savedSessions.some((session) => session.id === snapshot.activeSessionId)
-        ? snapshot.activeSessionId
-        : savedSessions[0].id;
+        ? snapshot.activeSessionId as string
+        : savedSessions[0].id!;
       replaceAllSessionFileManagerWorkspaces(savedFileManagerWorkspaces);
       restoringWorkspaceRef.current = true;
-      setRestoringWorkspaceSessionIds(new Set(savedSessions.map((session) => session.id)));
+      setRestoringWorkspaceSessionIds(new Set(savedSessions.map((session) => session.id!)));
       setSessions(savedSessions);
       sessionsRef.current = savedSessions;
       setTerminalPaneLayouts(savedLayouts);
       terminalPaneLayoutsRef.current = savedLayouts;
       setMountedSessions(new Set(initialActiveSessionId ? [initialActiveSessionId] : []));
       setActiveSessionId(initialActiveSessionId);
-      setActiveTerminalId(snapshot.activeTerminalId || initialActiveSessionId);
+      setActiveTerminalId(String(snapshot.activeTerminalId || initialActiveSessionId));
       setContentTab('terminal');
 
-      const idMap = {};
+      const idMap: Record<string, string> = {};
       let restoredLayouts = savedLayouts;
       for (const savedSession of savedSessions) {
         const result = await reconnectSession(
@@ -411,17 +635,17 @@ export default function useSessionConnections(deps) {
           { deferState: true },
         );
         setRestoringWorkspaceSessionIds((prev) => {
-          if (!prev.has(savedSession.id)) {
+          if (!prev.has(savedSession.id!)) {
             return prev;
           }
           const next = new Set(prev);
-          next.delete(savedSession.id);
+          next.delete(savedSession.id!);
           return next;
         });
         if (result?.oldToNew) {
           Object.assign(idMap, result.oldToNew);
           remapSessionFileManagerWorkspaces(result.oldToNew);
-          restoredLayouts = remapTerminalPaneLayouts(restoredLayouts, result.oldToNew, savedSession.id);
+          restoredLayouts = remapTerminalPaneLayouts(restoredLayouts, result.oldToNew, savedSession.id!);
           const restoredSession = { ...savedSession, status: 'connected', terminals: result.newTerminals };
           const restoredSessionLayouts = Object.fromEntries(
             Object.entries(restoredLayouts).filter(([, layout]) => layout?.sessionId === savedSession.id)
@@ -430,22 +654,22 @@ export default function useSessionConnections(deps) {
           // 优先按旧 id 映射；失败再用标签名（终端3）兜底
           const rawPreferredId = savedSession.activeTerminalId
             || (savedSession.id === initialActiveSessionId ? snapshot.activeTerminalId : null);
-          const preferredTermId = (rawPreferredId && idMap[rawPreferredId]) || rawPreferredId || null;
+          const preferredTermId = (rawPreferredId && idMap[String(rawPreferredId)]) || rawPreferredId || null;
           const preferredLabel = savedSession.activeTerminalLabel || '';
           const resolvedTermId = resolveSessionRootTerminalId(
             restoredSession,
-            preferredTermId,
+            preferredTermId as string | null,
             { ...terminalPaneLayoutsRef.current, ...restoredSessionLayouts },
-            preferredLabel,
+            String(preferredLabel),
           );
           const resolvedLabel = restoredSession.terminals?.find((term) => term.id === resolvedTermId)?.label
             || preferredLabel
             || '';
           const sessionWithActive = resolvedTermId
-            ? { ...restoredSession, activeTerminalId: resolvedTermId, activeTerminalLabel: resolvedLabel }
+            ? { ...restoredSession, activeTerminalId: resolvedTermId, activeTerminalLabel: String(resolvedLabel) }
             : restoredSession;
           if (resolvedTermId) {
-            lastTerminalRef.current[sessionWithActive.id] = resolvedTermId;
+            lastTerminalRef.current[sessionWithActive.id!] = resolvedTermId;
           }
           // ponytail: 用函数式更新而非整体覆盖，避免恢复期间用户新建/关闭的 session 被丢失或复活
           sessionsRef.current = sessionsRef.current.map((session) => (
@@ -469,31 +693,31 @@ export default function useSessionConnections(deps) {
         setActiveTerminalId(null);
         return;
       }
-      const preferredTerminalId = finalSession.activeTerminalId
-        || lastTerminalRef.current[finalSession.id]
-        || idMap[snapshot.activeTerminalId]
+      const preferredTerminalId = String(finalSession.activeTerminalId || '')
+        || lastTerminalRef.current[finalSession.id!]
+        || idMap[String(snapshot.activeTerminalId)]
         || snapshot.activeTerminalId;
       const resolvedTerminalId = resolveSessionRootTerminalId(
         finalSession,
-        preferredTerminalId,
+        preferredTerminalId as string | null,
         terminalPaneLayoutsRef.current,
-        finalSession.activeTerminalLabel || '',
+        String(finalSession.activeTerminalLabel || ''),
       );
       if (resolvedTerminalId) {
-        lastTerminalRef.current[finalSession.id] = resolvedTerminalId;
+        lastTerminalRef.current[finalSession.id!] = resolvedTerminalId;
         const resolvedLabel = finalSession.terminals?.find((term) => term.id === resolvedTerminalId)?.label || '';
         sessionsRef.current = sessionsRef.current.map((session) => (
           session.id === finalSession.id
-            ? { ...session, activeTerminalId: resolvedTerminalId, activeTerminalLabel: resolvedLabel }
+            ? { ...session, activeTerminalId: resolvedTerminalId, activeTerminalLabel: String(resolvedLabel) }
             : session
         ));
         setSessions((prev) => prev.map((session) => (
           session.id === finalSession.id
-            ? { ...session, activeTerminalId: resolvedTerminalId, activeTerminalLabel: resolvedLabel }
+            ? { ...session, activeTerminalId: resolvedTerminalId, activeTerminalLabel: String(resolvedLabel) }
             : session
         )));
       }
-      setActiveSessionId(finalSession.id);
+      setActiveSessionId(finalSession.id!);
       setActiveTerminalId(resolvedTerminalId);
       setContentTab('terminal');
     })().finally(() => {
@@ -505,27 +729,29 @@ export default function useSessionConnections(deps) {
 
   // ── 监听 SSH 断开事件（整机意外断 vs 单终端结束）────────────────
   useEffect(() => {
-    const unbind = EventsOn('ssh-disconnected', (payload) => {
+    const unbind = EventsOn('ssh-disconnected', (payload: unknown) => {
       // 兼容旧版纯 string sessionId
+      const raw = payload as Record<string, unknown> | null;
       const data = (payload && typeof payload === 'object')
-        ? payload
+        ? raw!
         : { sessionId: payload, parentSessionId: payload, connectionClosed: true, reason: 'transport' };
-      const sessionId = data.sessionId;
-      const parentSessionId = data.parentSessionId || sessionId;
+      const sessionId = typeof data.sessionId === 'string' ? data.sessionId : '';
+      const parentSessionId = typeof data.parentSessionId === 'string' && data.parentSessionId ? data.parentSessionId : sessionId;
       const connectionClosed = data.connectionClosed !== false && data.connectionClosed !== 'false';
-      const reason = data.reason || '';
-      const endedTerminalIds = Array.isArray(data.terminalIds) && data.terminalIds.length
-        ? data.terminalIds
+      const reason = typeof data.reason === 'string' ? data.reason : '';
+      const rawTerminalIds = Array.isArray(data.terminalIds) ? data.terminalIds : [];
+      const endedTerminalIds = rawTerminalIds.length
+        ? rawTerminalIds.map(String)
         : (sessionId ? [sessionId] : []);
 
       const sessionList = sessionsRef.current;
       const matchedSession = sessionList.find((item) => item.id === parentSessionId || item.id === sessionId)
-        || sessionList.find((item) => item.terminals?.some((terminal) => terminal.id === sessionId || terminal.id === parentSessionId || endedTerminalIds.includes(terminal.id)))
+        || sessionList.find((item) => item.terminals?.some((terminal) => terminal.id === sessionId || terminal.id === parentSessionId || endedTerminalIds.includes(terminal.id!)))
         || null;
       if (!matchedSession) {
         return;
       }
-      const parentId = matchedSession.id;
+      const parentId = matchedSession.id!;
 
       const transportDead = reason === 'transport' || reason === 'keepalive';
       if (connectionClosed || transportDead) {
@@ -540,15 +766,15 @@ export default function useSessionConnections(deps) {
       // 单终端 channel 结束：只移除该终端；若已无终端再标 closed
       setSessions((prev) => prev.map((s) => {
         if (s.id !== parentId) return s;
-        const nextTerminals = (s.terminals || []).filter((term) => !endedTerminalIds.includes(term.id));
+        const nextTerminals = (s.terminals || []).filter((term) => !endedTerminalIds.includes(term.id!));
         if (nextTerminals.length === 0) {
-          return { ...s, status: 'closed', terminals: [{ id: s.id, label: `${t('终端')}1` }] };
+          return { ...s, status: 'closed', terminals: [{ id: s.id!, label: `${t('终端')}1` }] };
         }
         // 根终端 id 常等于 session.id；若根 shell 结束但子终端还在，保留子终端
         const stillHasRoot = nextTerminals.some((term) => term.id === s.id);
         const terminals = stillHasRoot
           ? nextTerminals
-          : [{ id: s.id, label: nextTerminals[0]?.label || `${t('终端')}1` }, ...nextTerminals.filter((term) => term.id !== s.id)];
+          : [{ id: s.id!, label: String(nextTerminals[0]?.label || `${t('终端')}1`) }, ...nextTerminals.filter((term) => term.id !== s.id)];
         return { ...s, status: 'connected', terminals };
       }));
     });
@@ -559,7 +785,7 @@ export default function useSessionConnections(deps) {
 
   // ── 主机密钥确认：用户在会话卡片上做出选择后 ──────────────────
   // chosen: 0=取消, 1=仅本次接受, 2=接受并保存
-  const resolveHostKeyChoice = useCallback(async (sessionId, chosen) => {
+  const resolveHostKeyChoice = useCallback(async (sessionId: string, chosen: number) => {
     clearSessionAuthPrompt(sessionId);
     try {
       await AppGo.AcceptHostKeyChange(sessionId, chosen);
@@ -576,7 +802,7 @@ export default function useSessionConnections(deps) {
         );
 
         const matched = sessionsRef.current.find((s) => s.id === sessionId);
-        await postConnectSetup(sessionId, matched?.serverId);
+        await postConnectSetup(sessionId, String(matched?.serverId || ''));
       } else {
         updateSessionStatus(sessionId, 'error');
         setConnectingServers((prev) => prev.filter((s) => s.sessionId !== sessionId));
@@ -585,7 +811,7 @@ export default function useSessionConnections(deps) {
     } catch (err) {
       // 取消分支后端固定返回「用户取消了主机密钥验证」，属预期结果，不作失败提示
       if (chosen >= 1) {
-        addToast(`${t('连接失败')}: ${err}`, 'error', 5000);
+        addToast(`${t('连接失败')}: ${String(err)}`, 'error', 5000);
       } else {
         addToast(t('用户取消连接'), 'warning', 3000);
       }
@@ -598,12 +824,12 @@ export default function useSessionConnections(deps) {
   // 只写入该会话的待确认状态，由会话面板内的 SessionAuthCard 呈现，
   // 批量连接时 N 台主机就有 N 张卡片，各自独立。
   useEffect(() => {
-    const unbind = EventsOn('ssh-host-key-changed', (data) => {
+    const unbind = EventsOn('ssh-host-key-changed', (data: Record<string, unknown>) => {
       const {
         sessionId, host, port, newFingerprint, oldFingerprints, isNew
       } = data;
 
-      const oldFpList = (oldFingerprints || []).join('\n');
+      const oldFpList = (Array.isArray(oldFingerprints) ? oldFingerprints : []).map(String).join('\n');
       const message = isNew
         ? [
           t('首次连接到此主机，请确认密钥指纹：'),
@@ -631,7 +857,7 @@ export default function useSessionConnections(deps) {
 
       setSessionAuthPrompts((prev) => ({
         ...prev,
-        [sessionId]: {
+        [String(sessionId)]: {
           kind: 'hostkey',
           token: ++authPromptTokenRef.current,
           title: isNew ? t('主机密钥确认') : t('主机密钥已变更'),
@@ -647,7 +873,11 @@ export default function useSessionConnections(deps) {
 
   // ── 认证失败：用户在会话卡片上重输密码后 ──────────────────
   // result: null=取消 | { value, persist }
-  const resolvePasswordPrompt = useCallback(async (sessionId, connId, result) => {
+  const resolvePasswordPrompt = useCallback(async (
+    sessionId: string,
+    connId: string,
+    result: { value: string; persist: boolean } | null,
+  ) => {
     clearSessionAuthPrompt(sessionId);
     if (result === null) {
       // 用户取消
@@ -683,7 +913,7 @@ export default function useSessionConnections(deps) {
   // ── 监听认证失败事件（密码错误等） ──────────────────────────
   // 只写入该会话的待确认状态，由会话面板内的 SessionAuthCard 呈现
   useEffect(() => {
-    const unbind = EventsOn('ssh-auth-failed', (data) => {
+    const unbind = EventsOn('ssh-auth-failed', (data: Record<string, unknown>) => {
       const { sessionId, connId, host, port, username, error } = data;
       const usesCredential = serversRef.current.some(s => s.id === connId && s.credentialId);
 
@@ -698,12 +928,12 @@ export default function useSessionConnections(deps) {
 
       setSessionAuthPrompts((prev) => ({
         ...prev,
-        [sessionId]: {
+        [String(sessionId)]: {
           kind: 'password',
           token: ++authPromptTokenRef.current,
           title: t('认证失败'),
           message,
-          connId,
+          connId: String(connId),
           checkboxLabel: usesCredential ? t('更新凭据密码') : t('记住密码'),
         },
       }));
@@ -753,7 +983,7 @@ export default function useSessionConnections(deps) {
       { priority: 'system' },
     );
     if (!result) return;
-    const { value, checked } = result;
+    const { value, checked } = result as { value?: string; checked?: boolean };
     if (checked && (value === 'quit' || value === 'tray')) {
       localStorage.setItem('windowCloseAction', value);
     }
@@ -774,16 +1004,17 @@ export default function useSessionConnections(deps) {
   }, [handleCloseWindow]);
 
   useEffect(() => {
-    const handleOpenRuntimeEnvironmentSettings = (event) => {
-      const nextTab = typeof event?.detail?.tab === 'string' && event.detail.tab.trim()
-        ? event.detail.tab.trim()
+    const handleOpenRuntimeEnvironmentSettings = (event: Event) => {
+      const detail = (event as CustomEvent<{ tab?: unknown; toast?: unknown; duration?: unknown; type?: unknown }>).detail || {};
+      const nextTab = typeof detail.tab === 'string' && detail.tab.trim()
+        ? detail.tab.trim()
         : 'runtimeEnvironment';
       setSettingsInitialTab(nextTab);
       setShowSettings(true);
-      const toastMessage = typeof event?.detail?.toast === 'string' ? event.detail.toast.trim() : '';
+      const toastMessage = typeof detail.toast === 'string' ? detail.toast.trim() : '';
       if (toastMessage) {
-        const toastDuration = Number.isFinite(Number(event?.detail?.duration)) ? Number(event.detail.duration) : 6000;
-        const toastType = typeof event?.detail?.type === 'string' && event.detail.type.trim() ? event.detail.type.trim() : 'warning';
+        const toastDuration = Number.isFinite(Number(detail.duration)) ? Number(detail.duration) : 6000;
+        const toastType = typeof detail.type === 'string' && detail.type.trim() ? detail.type.trim() : 'warning';
         addToast(toastMessage, toastType, toastDuration);
       }
     };
@@ -795,7 +1026,7 @@ export default function useSessionConnections(deps) {
   // ── 监听云端同步失败事件 ──────────────────────────────────
   useEffect(() => {
     let active = true;
-    const unbind = EventsOn('sync-failed', async (data) => {
+    const unbind = EventsOn('sync-failed', async (data: unknown) => {
       if (!isRecoveryPasswordError(data)) {
         if (active) setSyncFailed(data);
         return;
@@ -805,7 +1036,9 @@ export default function useSessionConnections(deps) {
         const { cancelled } = await syncWithRecoveryPassword({
           initialError: data,
           retry: (password) => AppGo.SyncWithRecoveryPassword(password),
-          prompt: (...args) => window.luminDialog.prompt(...args),
+          prompt: ((...args: unknown[]) => window.luminDialog!.prompt!(...args as [string, string?, string?, string?, Record<string, unknown>?])) as unknown as (
+            title: string, placeholder: string, message: string, okLabel?: string, options?: Record<string, unknown>,
+          ) => Promise<string | null>,
           t,
         });
         if (active && !cancelled) addToast(t('同步成功'), 'success', 3000);
@@ -814,7 +1047,7 @@ export default function useSessionConnections(deps) {
         if (isRecoveryPasswordError(err)) {
           addToast(t('恢复密码连续三次错误，同步已取消'), 'error', 4000);
         } else {
-          setSyncFailed({ ...data, category: 'sync', error: String(err?.message ?? err) });
+          setSyncFailed({ ...(data as object), category: 'sync', error: String((err as { message?: unknown })?.message ?? err) });
         }
       }
     });
@@ -826,12 +1059,12 @@ export default function useSessionConnections(deps) {
 
   // ── 监听 SSH 通道占用事件 ─────────────────────────────────
   useEffect(() => {
-    const unbind = EventsOn('ssh-channel-usage', (payload) => {
-      const data = payload && typeof payload === 'object' ? payload : null;
+    const unbind = EventsOn('ssh-channel-usage', (payload: unknown) => {
+      const data = payload && typeof payload === 'object' ? payload as Record<string, unknown> : null;
       if (!data) return;
-      const sessionIds = Array.isArray(data.sessionIds) ? data.sessionIds.filter(Boolean) : [];
+      const sessionIds = Array.isArray(data.sessionIds) ? data.sessionIds.map(String).filter(Boolean) : [];
       if (sessionIds.length === 0) return;
-      const usage = {
+      const usage: SshChannelUsage = {
         terminals: Number(data.terminals) || 0,
         sharedSftp: Number(data.sharedSftp) || 0,
         uploadPool: Number(data.uploadPool) || 0,
@@ -849,7 +1082,7 @@ export default function useSessionConnections(deps) {
 
   // ── 监听 SSH 连接状态事件 ─────────────────────────────────
   useEffect(() => {
-    const unbind = EventsOn('ssh-status', (data) => {
+    const unbind = EventsOn('ssh-status', (data: Record<string, unknown>) => {
       const sessionId = typeof data?.sessionId === 'string' ? data.sessionId : '';
       if (!sessionId) return;
       const status = typeof data?.status === 'string' ? data.status : '';
@@ -865,7 +1098,7 @@ export default function useSessionConnections(deps) {
 
   // ── 监听同步状态事件 ──────────────────────────────────────
   useEffect(() => {
-    const unbind = EventsOn('sync-status', (data) => {
+    const unbind = EventsOn('sync-status', (data: Record<string, unknown>) => {
       if (data.action === 'merge' || data.action === 'download') {
         const msg = data.localChanged
           ? t('同步完成') + `：${t('云端')} ${data.remoteCount} → ${t('合并')} ${data.mergedCount}` + (data.uploaded ? `，${t('已上传')}` : '')
@@ -883,12 +1116,12 @@ export default function useSessionConnections(deps) {
   }, [addToast, t, loadServers]);
 
   useEffect(() => {
-    const unbind = EventsOn('ai-chat-stream', (payload) => {
+    const unbind = EventsOn('ai-chat-stream', (payload: Record<string, unknown>) => {
       if (!payload || typeof payload !== 'object') {
         return;
       }
       if (payload.kind === 'change_review_required' && payload.review) {
-        enqueueChangeReview(payload.review);
+        enqueueChangeReview(payload.review as Record<string, unknown>);
         return;
       }
       if (
@@ -897,7 +1130,7 @@ export default function useSessionConnections(deps) {
         || payload.kind === 'error'
         || payload.kind === 'cancelled'
       ) {
-        removeChangeReviewsByRequestId(payload.requestId);
+        removeChangeReviewsByRequestId(String(payload.requestId));
       }
     });
     return () => {
@@ -907,8 +1140,8 @@ export default function useSessionConnections(deps) {
 
   // ── 监听终端触发的重连请求 ──────────────────────────────────
   useEffect(() => {
-    const handleReconnectTrigger = (e) => {
-      const sessId = e.detail;
+    const handleReconnectTrigger = (e: Event) => {
+      const sessId = (e as CustomEvent<string>).detail;
       // 通过 sessionsRef 读取最新 sessions，避免每次 sessions 变化都重注册监听器
       const sessions = sessionsRef.current;
       // 先按 sessionId 查找
@@ -927,24 +1160,24 @@ export default function useSessionConnections(deps) {
   }, [reconnectSession]);
 
   // ── Connect to server ──────────────────────────────────────
-  const connectServer = useCallback(async (server) => {
+  const connectServer = useCallback(async (server: config.Connection) => {
     markWorkspaceRestoreNavigationOverride();
     // 用户主动点连即记入最近，已连接仅切换焦点时也置顶
     recordRecentConnection(server?.id);
     await waitForServerDisconnect(server?.id);
     const existing = sessionsRef.current.find((s) => s.serverId === server.id && s.status !== 'closed' && s.status !== 'error');
     if (existing) {
-      setActiveSessionId(existing.id);
-      setActiveTerminalId(resolveSessionRootTerminalId(existing, lastTerminalRef.current[existing.id]));
-      setContentTab(resolveSessionContentTab(existing.id));
+      setActiveSessionId(existing.id!);
+      setActiveTerminalId(resolveSessionRootTerminalId(existing, lastTerminalRef.current[existing.id!]));
+      setContentTab(resolveSessionContentTab(existing.id!));
       return;
     }
 
     const closedSession = sessionsRef.current.find((s) => s.serverId === server.id && (s.status === 'closed' || s.status === 'error'));
     if (closedSession) {
-      setActiveSessionId(closedSession.id);
-      setActiveTerminalId(resolveSessionRootTerminalId(closedSession, lastTerminalRef.current[closedSession.id]));
-      setContentTab(resolveSessionContentTab(closedSession.id));
+      setActiveSessionId(closedSession.id!);
+      setActiveTerminalId(resolveSessionRootTerminalId(closedSession, lastTerminalRef.current[closedSession.id!]));
+      setContentTab(resolveSessionContentTab(closedSession.id!));
       await reconnectSession(closedSession);
       return;
     }
@@ -953,7 +1186,7 @@ export default function useSessionConnections(deps) {
       ? await loadServerWorkspaceSessionSnapshot(server.id)
       : null;
     const sessionId = `session_${Date.now()}`;
-    const newSession = {
+    const newSession: SessionLike = {
       id: sessionId,
       serverId: server.id,
       serverName: server.name || server.host,
@@ -998,16 +1231,17 @@ export default function useSessionConnections(deps) {
         )));
         terminalPaneLayoutsRef.current = mergedLayouts;
         setTerminalPaneLayouts((prev) => ({ ...prev, ...restoredLayouts }));
-        const preferredTerminalId = result.oldToNew[sessionSnapshot.activeTerminalId] || result.newTerminals[0]?.id || sessionId;
+        const preferredTerminalId = result.oldToNew[String(sessionSnapshot.activeTerminalId)] || result.newTerminals[0]?.id || sessionId;
         const nextActiveTerminalId = resolveSessionRootTerminalId(restoredSession, preferredTerminalId, mergedLayouts) || result.newTerminals[0]?.id || sessionId;
+        const snapshotContentTab = normalizeWorkspaceContentTab(sessionSnapshot.contentTab || 'terminal');
         const nextContentTab = fileManagerPosition === 'tab'
-          ? normalizeWorkspaceContentTab(sessionSnapshot.contentTab)
-          : (normalizeWorkspaceContentTab(sessionSnapshot.contentTab) === 'files' ? 'terminal' : normalizeWorkspaceContentTab(sessionSnapshot.contentTab));
+          ? snapshotContentTab
+          : (snapshotContentTab === 'files' ? 'terminal' : snapshotContentTab);
         lastTerminalRef.current[sessionId] = nextActiveTerminalId;
         setActiveTerminalId(nextActiveTerminalId);
         setContentTab(nextContentTab);
         lastContentTabRef.current[sessionId] = nextContentTab;
-        persistWorkspaceSnapshotRef.current({
+        persistWorkspaceSnapshotRef.current?.({
           sessions: sessionsRef.current,
           activeSessionId: sessionId,
           activeTerminalId: nextActiveTerminalId,
@@ -1027,10 +1261,10 @@ export default function useSessionConnections(deps) {
     }
   }, [fileManagerPosition, handleConnectError, loadServerWorkspaceSessionSnapshot, markWorkspaceRestoreNavigationOverride, postConnectSetup, reconnectSession, recordRecentConnection, rememberWorkspace, resolveSessionContentTab, resolveSessionRootTerminalId, t, waitForServerDisconnect, workspacePersistenceLevel]);
 
-  const connectLocal = useCallback((name, shellPath) => {
+  const connectLocal = useCallback((name: string, shellPath: string) => {
     markWorkspaceRestoreNavigationOverride();
     const sessionId = `session_${Date.now()}`;
-    const newSession = {
+    const newSession: SessionLike = {
       id: sessionId,
       serverId: `local_${shellPath}`,
       serverName: name,
@@ -1047,7 +1281,7 @@ export default function useSessionConnections(deps) {
     setActiveSessionId(sessionId);
     setActiveTerminalId(sessionId);
     setContentTab('terminal');
-    setConnectingServers((prev) => [...prev, { server: { id: newSession.serverId, name: name, host: 'localhost' }, sessionId, startTime: Date.now() }]);
+    setConnectingServers((prev) => [...prev, { server: { id: String(newSession.serverId), name, host: 'localhost' }, sessionId, startTime: Date.now() }]);
 
     window.go.wailsapp.App.ConnectLocal(sessionId, name, shellPath, '')
       .then(() => {
@@ -1057,18 +1291,18 @@ export default function useSessionConnections(deps) {
         setConnectingServers((prev) => prev.filter((s) => s.sessionId !== sessionId));
         // 与 SSH 连接保持一致：连接成功后查询静态信息并自动启用系统监控。
         // postConnectSetup 内部对 serverId 相关调用有兜底，本地 serverId 无副作用。
-        void postConnectSetup(sessionId, newSession.serverId);
+        void postConnectSetup(sessionId, String(newSession.serverId));
       })
       .catch((err) => {
         handleConnectError(sessionId, err);
       });
   }, [handleConnectError, markWorkspaceRestoreNavigationOverride, postConnectSetup]);
 
-  const connectSerial = useCallback((config) => {
+  const connectSerial = useCallback((config: { port: string; baudRate: number; dataBits: number; stopBits: number; parity: string }) => {
     markWorkspaceRestoreNavigationOverride();
     const sessionId = `session_${Date.now()}`;
     const displayName = `${config.port}@${config.baudRate}`;
-    const newSession = {
+    const newSession: SessionLike = {
       id: sessionId,
       serverId: `serial_${config.port}`,
       serverName: displayName,
@@ -1085,7 +1319,7 @@ export default function useSessionConnections(deps) {
     setActiveSessionId(sessionId);
     setActiveTerminalId(sessionId);
     setContentTab('terminal');
-    setConnectingServers((prev) => [...prev, { server: { id: newSession.serverId, name: displayName, host: config.port }, sessionId, startTime: Date.now() }]);
+    setConnectingServers((prev) => [...prev, { server: { id: String(newSession.serverId), name: displayName, host: config.port }, sessionId, startTime: Date.now() }]);
 
     window.go.wailsapp.App.ConnectSerial(
       sessionId,
@@ -1107,23 +1341,22 @@ export default function useSessionConnections(deps) {
       });
   }, [handleConnectError, markWorkspaceRestoreNavigationOverride]);
 
-
   // ── Close session ──────────────────────────────────────────
   // ponytail: 内部关闭逻辑，不带确认弹窗，供 closeSession 和右键菜单共用
-  const forceCloseSession = useCallback((sessionId) => {
+  const forceCloseSession = useCallback((sessionId: string) => {
     const session = sessionsRef.current.find(s => s.id === sessionId);
     if (session) {
       persistServerWorkspaceSessionSnapshot(session, {
         session,
         terminalPaneLayouts: terminalPaneLayoutsRef.current,
         activeTerminalId: activeSessionIdRef.current === sessionId ? activeTerminalIdRef.current : lastTerminalRef.current[sessionId],
-        contentTab: activeSessionIdRef.current === sessionId ? contentTabRef.current : (lastContentTabRef.current[sessionId] || 'terminal'),
+        contentTab: normalizeWorkspaceContentTab(activeSessionIdRef.current === sessionId ? contentTabRef.current : (lastContentTabRef.current[sessionId] || 'terminal')),
       });
     }
-    const termIds = session?.terminals ? session.terminals.map(t => t.id) : [sessionId];
+    const termIds = session?.terminals ? session.terminals.map(t => t.id as string) : [sessionId];
     const disconnectPromise = disconnectSessionTerminals(termIds);
     if (session?.serverId) {
-      registerServerDisconnect(session.serverId, disconnectPromise);
+      registerServerDisconnect(String(session.serverId), disconnectPromise);
     }
     setSessions((prev) => {
       const next = prev.filter((s) => s.id !== sessionId);
@@ -1151,7 +1384,7 @@ export default function useSessionConnections(deps) {
     clearSessionAuthPrompt(sessionId);
   }, [clearSessionAuthPrompt, disconnectSessionTerminals, persistServerWorkspaceSessionSnapshot, registerServerDisconnect, switchToNextSession]);
 
-  const closeSession = useCallback(async (sessionId, e) => {
+  const closeSession = useCallback(async (sessionId: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (localStorage.getItem('skipCloseSessionConfirm') === 'true') {
       forceCloseSession(sessionId);
@@ -1160,7 +1393,8 @@ export default function useSessionConnections(deps) {
     const session = sessionsRef.current.find(s => s.id === sessionId);
     const name = session?.serverName || session?.name || session?.host || sessionId;
     const result = await window.luminDialog?.confirm(`${t('确定关闭连接')}「${name}」？`, t('操作确认'), t('不再询问'));
-    if (!result?.confirmed) return;
+    if (!result || typeof result !== 'object') return;
+    if (!result.confirmed) return;
     if (result.checked) localStorage.setItem('skipCloseSessionConfirm', 'true');
     forceCloseSession(sessionId);
   }, [forceCloseSession, t]);
@@ -1172,23 +1406,24 @@ export default function useSessionConnections(deps) {
     const skip = localStorage.getItem('skipCloseAllConfirm') === 'true';
     if (!skip) {
       const result = await window.luminDialog?.confirm(`${t('确定关闭全部')} ${all.length} ${t('个连接')}？`, t('操作确认'), t('不再询问'));
-      if (!result?.confirmed) return;
+      if (!result || typeof result !== 'object') return;
+      if (!result.confirmed) return;
       if (result.checked) localStorage.setItem('skipCloseAllConfirm', 'true');
     }
     all.forEach((session) => {
       persistServerWorkspaceSessionSnapshot(session, {
         session,
         terminalPaneLayouts: terminalPaneLayoutsRef.current,
-        activeTerminalId: activeSessionIdRef.current === session.id ? activeTerminalIdRef.current : lastTerminalRef.current[session.id],
-        contentTab: activeSessionIdRef.current === session.id ? contentTabRef.current : (lastContentTabRef.current[session.id] || 'terminal'),
+        activeTerminalId: activeSessionIdRef.current === session.id ? activeTerminalIdRef.current : lastTerminalRef.current[session.id!],
+        contentTab: normalizeWorkspaceContentTab(activeSessionIdRef.current === session.id ? contentTabRef.current : (lastContentTabRef.current[session.id!] || 'terminal')),
       });
     });
-    const allTermIds = all.flatMap(s => s.terminals?.length > 0 ? s.terminals.map(t => t.id) : [s.id]);
+    const allTermIds = all.flatMap(s => (Array.isArray(s.terminals) && s.terminals.length > 0 ? s.terminals.map(t => t.id as string) : [s.id!]));
     const disconnectPromise = disconnectSessionTerminals(allTermIds);
     all
       .map((session) => session?.serverId)
       .filter(Boolean)
-      .forEach((serverId) => registerServerDisconnect(serverId, disconnectPromise));
+      .forEach((serverId) => registerServerDisconnect(String(serverId), disconnectPromise));
     window?.go?.wailsapp?.App?.ClearWorkspaceState?.().catch(() => { });
     setSessions([]);
     setTerminalPaneLayouts({});
@@ -1200,7 +1435,11 @@ export default function useSessionConnections(deps) {
   }, [disconnectSessionTerminals, persistServerWorkspaceSessionSnapshot, registerServerDisconnect, t]);
 
   // ── 在当前服务器上新建终端标签 ──────────────────────────────
-  const openNewTerminal = useCallback(async (sessionId, options = {}) => {
+  const openNewTerminal = useCallback(async (sessionId: string, options: {
+    sourceTerminalId?: string;
+    cloneFileManagerWorkspace?: boolean;
+    cloneCwd?: boolean;
+  } = {}) => {
     markWorkspaceRestoreNavigationOverride();
     if (creatingTerminalRef.current) return;
 
@@ -1210,7 +1449,7 @@ export default function useSessionConnections(deps) {
     creatingTerminalRef.current = sessionId;
     setCreatingTerminalSessionId(sessionId);
 
-    const baseTermId = session.terminals?.[0]?.id || sessionId;
+    const baseTermId = session.terminals?.[0]?.id as string || sessionId;
     const sourceTerminalId = typeof options?.sourceTerminalId === 'string' && options.sourceTerminalId.trim()
       ? options.sourceTerminalId.trim()
       : baseTermId;
@@ -1234,12 +1473,12 @@ export default function useSessionConnections(deps) {
     // （避免把 serverName 自带的数字，如 "PowerShell 7" 的 7，误当成编号）；
     // 与 serverName 完全无关的标签（历史 "终端N" 或用户改的 "test2"）则直接取其尾部数字，
     // 取全局最大值，保证新 tab 不与任何已有标签重名。
-    const baseName = session.serverName || t('终端');
+    const baseName = String(session.serverName || t('终端'));
     let maxNum = 0; // 无任何带编号 tab 时，首个新 tab 落在 2
     (session.terminals || []).forEach(term => {
       const label = String(term?.label || '').trim();
       if (!label) return;
-      let n = null;
+      let n: number | null = null;
       if (label === baseName) {
         n = null; // 根标签，无编号后缀
       } else if (label.startsWith(baseName)) {
@@ -1288,7 +1527,7 @@ export default function useSessionConnections(deps) {
           } catch { }
         }, 80);
       });
-      persistWorkspaceSnapshotRef.current({
+      persistWorkspaceSnapshotRef.current?.({
         sessions: nextSessions,
         activeSessionId: sessionId,
         activeTerminalId: newTermId,
@@ -1306,18 +1545,18 @@ export default function useSessionConnections(deps) {
         });
       });
     } catch (err) {
-      addToast(`${t('新建终端失败')}: ${err}`, 'error', 5000);
+      addToast(`${t('新建终端失败')}: ${String(err)}`, 'error', 5000);
     } finally {
       creatingTerminalRef.current = null;
       if (mountedRef.current) setCreatingTerminalSessionId(null);
     }
   }, [addToast, markWorkspaceRestoreNavigationOverride, t]);
 
-  const handleRenameTerminalTab = useCallback(async (sessionId, terminalId) => {
+  const handleRenameTerminalTab = useCallback(async (sessionId: string, terminalId: string) => {
     const session = sessionsRef.current.find((item) => item.id === sessionId);
     const currentTerminals = Array.isArray(session?.terminals) && session.terminals.length > 0
       ? session.terminals
-      : (session ? [{ id: session.id, label: `${t('终端')}1` }] : []);
+      : (session ? [{ id: session.id!, label: `${t('终端')}1` }] : []);
     const targetTerminal = currentTerminals.find((item) => item.id === terminalId);
     if (!session || !targetTerminal) {
       return;
@@ -1327,7 +1566,7 @@ export default function useSessionConnections(deps) {
     if (nextLabel === null || nextLabel === undefined) {
       return;
     }
-    const trimmedLabel = String(nextLabel).trim();
+    const trimmedLabel = typeof nextLabel === 'object' ? String(nextLabel.value || '').trim() : String(nextLabel).trim();
     if (!trimmedLabel || trimmedLabel === currentLabel) {
       return;
     }
@@ -1345,7 +1584,7 @@ export default function useSessionConnections(deps) {
     ));
     sessionsRef.current = nextSessions;
     setSessions(nextSessions);
-    persistWorkspaceSnapshotRef.current({
+    persistWorkspaceSnapshotRef.current?.({
       sessions: nextSessions,
       activeSessionId: activeSessionIdRef.current,
       activeTerminalId: activeTerminalIdRef.current,
@@ -1354,7 +1593,7 @@ export default function useSessionConnections(deps) {
   }, [t]);
 
   // ── 关闭单个终端标签 ──────────────────────────────────────
-  const closeTerminal = useCallback((sessionId, terminalId, e) => {
+  const closeTerminal = useCallback((sessionId: string, terminalId: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
     const session = sessionsRef.current.find(s => s.id === sessionId);
     if (!session?.terminals) return;
@@ -1365,12 +1604,12 @@ export default function useSessionConnections(deps) {
         session,
         terminalPaneLayouts: terminalPaneLayoutsRef.current,
         activeTerminalId: activeSessionIdRef.current === sessionId ? activeTerminalIdRef.current : lastTerminalRef.current[sessionId],
-        contentTab: activeSessionIdRef.current === sessionId ? contentTabRef.current : (lastContentTabRef.current[sessionId] || 'terminal'),
+        contentTab: normalizeWorkspaceContentTab(activeSessionIdRef.current === sessionId ? contentTabRef.current : (lastContentTabRef.current[sessionId] || 'terminal')),
       });
     }
     const disconnectPromise = disconnectSessionTerminals([terminalId]);
     if (remaining.length === 0 && session?.serverId) {
-      registerServerDisconnect(session.serverId, disconnectPromise);
+      registerServerDisconnect(String(session.serverId), disconnectPromise);
     }
 
     setSessions((prev) => {
@@ -1378,7 +1617,7 @@ export default function useSessionConnections(deps) {
         if (s.id !== sessionId) return s;
         if (remaining.length === 0) return null;
         return { ...s, terminals: remaining };
-      }).filter(Boolean);
+      }).filter((s): s is SessionLike => s !== null);
       if (next.length === 0) {
         window?.go?.wailsapp?.App?.ClearWorkspaceState?.().catch(() => { });
       }
@@ -1403,6 +1642,12 @@ export default function useSessionConnections(deps) {
     }
   }, [disconnectSessionTerminals, persistServerWorkspaceSessionSnapshot, registerServerDisconnect, resolveSessionRootTerminalId, switchToNextSession]);
 
-
-  return { handleConnectError, postConnectSetup, loadServers, handleCancelConnection, resolveSessionContentTab, switchToNextSession, handleTabClick, canCopySessionPassword, handleCopySessionPassword, reconnectSession, resolveHostKeyChoice, resolvePasswordPrompt, handleCloseWindow, connectServer, connectLocal, connectSerial, forceCloseSession, closeSession, closeAllSessions, openNewTerminal, handleRenameTerminalTab, closeTerminal };
+  return {
+    handleConnectError, postConnectSetup, loadServers, handleCancelConnection,
+    resolveSessionContentTab, switchToNextSession, handleTabClick,
+    canCopySessionPassword, handleCopySessionPassword, reconnectSession,
+    resolveHostKeyChoice, resolvePasswordPrompt, handleCloseWindow,
+    connectServer, connectLocal, connectSerial, forceCloseSession,
+    closeSession, closeAllSessions, openNewTerminal, handleRenameTerminalTab, closeTerminal,
+  };
 }

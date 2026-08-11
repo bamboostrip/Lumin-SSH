@@ -4,8 +4,47 @@ import AIChatFollowUpCard from './AIChatFollowUpCard.jsx'
 import AIChatMCPCard from './AIChatMCPCard.jsx'
 import AIChatToolCard from './AIChatToolCard.jsx'
 
-function renderToolItem(item, options) {
-  const { isLastAssistantTurn = false, hasSubsequentAssistantMessage = false, onSendUserMessage, onPreviewRestore, onPreviewDiffFetch, onApplyRestore, followupInteractionLocked = false } = options || {}
+/** 会话工具条目（来自 .jsx 父级；kind 区分卡片类型，各卡片按需取用字段） */
+interface AIChatToolSessionItem {
+  kind: string;
+  id: string;
+  extra?: Record<string, unknown>;
+  actionLabel?: string;
+  title?: string;
+  summary?: string;
+  code?: string;
+  result?: string;
+  status?: string;
+  remainingFileEdits?: number;
+  purpose?: string;
+  command?: string;
+  output?: string;
+  serverName?: string;
+  toolName?: string;
+  args?: string;
+  response?: string;
+  question?: string;
+  questions?: string[];
+  suggestions?: string[];
+  requestId?: string;
+}
+
+interface AIChatToolSessionOptions {
+  isLastAssistantTurn?: boolean;
+  hasSubsequentAssistantMessage?: boolean;
+  onSendUserMessage?: (text: string) => void;
+  onPreviewRestore?: (artifactPath: string, targetTerminalId: string) => void;
+  onPreviewDiffFetch?: (artifactPath: string, targetTerminalId: string) => void;
+  onApplyRestore?: (artifactPath: string, targetTerminalId: string) => void;
+  followupInteractionLocked?: boolean;
+}
+
+interface AIChatToolSessionPaneProps extends AIChatToolSessionOptions {
+  items?: AIChatToolSessionItem[];
+}
+
+function renderToolItem(item: AIChatToolSessionItem, options: AIChatToolSessionOptions) {
+  const { isLastAssistantTurn = false, hasSubsequentAssistantMessage = false, onSendUserMessage, onPreviewRestore, onPreviewDiffFetch, onApplyRestore, followupInteractionLocked = false } = options
   switch (item.kind) {
     case 'tool':
       return <AIChatToolCard key={item.id} restoreArtifactPath={typeof item?.extra?.restoreArtifactPath === 'string' ? item.extra.restoreArtifactPath : ''} copyContent={typeof item?.extra?.copyContent === 'string' ? item.extra.copyContent : ''} actionLabel={item.actionLabel} title={item.title} summary={item.summary} code={item.code} result={item.result} status={item.status} remainingFileEdits={item.remainingFileEdits} extra={item.extra} isLast={isLastAssistantTurn} hasSubsequentAssistantMessage={hasSubsequentAssistantMessage} onPreviewRestore={onPreviewRestore} onPreviewDiffFetch={onPreviewDiffFetch} onApplyRestore={onApplyRestore} />
@@ -26,7 +65,7 @@ function renderToolItem(item, options) {
   }
 }
 
-export default function AIChatToolSessionPane({ items = [], isLastAssistantTurn = false, hasSubsequentAssistantMessage = false, onSendUserMessage, onPreviewRestore, onPreviewDiffFetch, onApplyRestore, followupInteractionLocked = false }) {
+export default function AIChatToolSessionPane({ items = [], isLastAssistantTurn = false, hasSubsequentAssistantMessage = false, onSendUserMessage, onPreviewRestore, onPreviewDiffFetch, onApplyRestore, followupInteractionLocked = false }: AIChatToolSessionPaneProps) {
   if (!Array.isArray(items) || items.length === 0) {
     return null
   }

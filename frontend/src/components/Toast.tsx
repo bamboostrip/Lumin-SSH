@@ -1,13 +1,22 @@
 import { CheckCircle, Info, X, XCircle } from 'lucide-react';
+import type { ReactNode } from 'react';
 import Tiptop from './Tiptop.jsx';
+import type { ToastAction, ToastItem } from '../hooks/useToasts.js';
 
-const ICON_MAP = {
+const ICON_MAP: Record<string, ReactNode> = {
   success: <CheckCircle size={16} />,
   error: <XCircle size={16} />,
   info: <Info size={16} />,
 };
 
-export default function Toast({ toasts, onClose, onAction, closeLabel = '关闭' }) {
+interface ToastProps {
+  toasts: ToastItem[];
+  onClose?: (id: number) => void;
+  onAction?: (id: number, action: ToastAction) => void;
+  closeLabel?: string;
+}
+
+export default function Toast({ toasts, onClose, onAction, closeLabel = '关闭' }: ToastProps) {
   if (toasts.length === 0) return null;
   return (
     <div className="toast-container">
@@ -27,7 +36,7 @@ export default function Toast({ toasts, onClose, onAction, closeLabel = '关闭'
                     className={`btn btn-sm ${index === t.actions.length - 1 ? 'btn-primary' : 'btn-secondary'}`}
                     onClick={() => onAction?.(t.id, action)}
                   >
-                    {action.label}
+                    {action.label as ReactNode}
                   </button>
                 ))}
               </div>

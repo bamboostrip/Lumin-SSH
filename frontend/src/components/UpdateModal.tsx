@@ -1,7 +1,20 @@
 import { Z } from '../constants/zIndex';
 import { Rocket } from 'lucide-react';
 
-export default function UpdateModal({ visible, updateInfo, downloadProgress, t, onClose, onUpdate }) {
+interface UpdateInfo {
+  version: string;
+}
+
+interface UpdateModalProps {
+  visible: boolean;
+  updateInfo: UpdateInfo | null;
+  downloadProgress: number;
+  t: (key: string, vars?: Record<string, unknown>) => string;
+  onClose: () => void;
+  onUpdate: () => void;
+}
+
+export default function UpdateModal({ visible, updateInfo, downloadProgress, t, onClose, onUpdate }: UpdateModalProps) {
   if (!visible || !updateInfo) return null;
 
   return (

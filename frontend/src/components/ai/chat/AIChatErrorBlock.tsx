@@ -1,7 +1,11 @@
 import { AlertTriangle } from 'lucide-react'
 import { useTranslation } from '../../../i18n.js'
 
-export default function AIChatErrorBlock({ text = '' }) {
+interface AIChatErrorBlockProps {
+  text?: string
+}
+
+export default function AIChatErrorBlock({ text = '' }: AIChatErrorBlockProps) {
   const { t } = useTranslation()
   const content = typeof text === 'string' ? text.trim() : ''
 

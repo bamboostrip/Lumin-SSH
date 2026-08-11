@@ -1,5 +1,21 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+
+interface TiptopPosition {
+  left: number
+  top: number
+}
+
+interface TiptopProps {
+  text?: ReactNode
+  children?: ReactNode
+  placement?: 'top' | 'bottom'
+  className?: string
+  style?: React.CSSProperties
+  triggerClassName?: string
+  forceVisible?: boolean
+  minTop?: number | (() => number)
+}
 
 export default function Tiptop({
   text,
@@ -10,11 +26,11 @@ export default function Tiptop({
   triggerClassName = '',
   forceVisible = false,
   minTop,
-}) {
-  const triggerRef = useRef(null)
-  const bubbleRef = useRef(null)
+}: TiptopProps) {
+  const triggerRef = useRef<HTMLDivElement | null>(null)
+  const bubbleRef = useRef<HTMLDivElement | null>(null)
   const [visible, setVisible] = useState(false)
-  const [position, setPosition] = useState(null)
+  const [position, setPosition] = useState<TiptopPosition | null>(null)
   const hasText = text !== null && text !== undefined && text !== ''
   const bubbleVisible = hasText && (visible || forceVisible)
 
@@ -26,9 +42,11 @@ export default function Tiptop({
     }
     const resolvedMinTop = typeof minTop === 'function' ? minTop() : minTop;
     const triggerBottom = rect.bottom + 6;
+    // Number.isFinite 不做类型收窄，用类型守卫同时过滤 undefined/非数字
+    const finiteMinTop = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
     setPosition({
       left: rect.left + rect.width / 2,
-      top: placement === 'bottom' && Number.isFinite(resolvedMinTop)
+      top: placement === 'bottom' && finiteMinTop(resolvedMinTop)
         ? Math.max(triggerBottom, resolvedMinTop)
         : placement === 'bottom' ? triggerBottom : rect.top - 6,
     })
@@ -64,7 +82,7 @@ export default function Tiptop({
     if (!visible || forceVisible) {
       return undefined
     }
-    const isPointerInsideTrigger = (clientX, clientY) => {
+    const isPointerInsideTrigger = (clientX: number, clientY: number) => {
       const rect = triggerRef.current?.getBoundingClientRect()
       if (!rect) {
         return false
@@ -76,13 +94,13 @@ export default function Tiptop({
         && clientY <= rect.bottom
       )
     }
-    const onPointerDown = (e) => {
+    const onPointerDown = (e: PointerEvent) => {
       // 点任意处（含自身）先收起，避免 click 后 text 变化导致残留
       if (e.pointerType === 'touch' || e.pointerType === 'pen' || e.pointerType === 'mouse') {
         hide()
       }
     }
-    const onPointerMove = (e) => {
+    const onPointerMove = (e: PointerEvent) => {
       if (!isPointerInsideTrigger(e.clientX, e.clientY)) {
         hide()
       }

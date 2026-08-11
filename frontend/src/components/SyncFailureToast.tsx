@@ -1,7 +1,23 @@
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
+import type { Dispatch, SetStateAction } from 'react';
 import { Z } from '../constants/zIndex.js';
 
-export default function SyncFailureToast({ syncFailed, setSyncFailed, setSettingsInitialTab, setShowSettings, addToast, t }) {
+/** 同步失败状态（源头在 useSessionConnections 中为 unknown，此处先本地定义，待后续收窄） */
+interface SyncFailureState {
+  category?: string;
+  error?: unknown;
+}
+
+interface SyncFailureToastProps {
+  syncFailed: SyncFailureState | null;
+  setSyncFailed: Dispatch<SetStateAction<SyncFailureState | null>>;
+  setSettingsInitialTab: (tab: string) => void;
+  setShowSettings: (show: boolean) => void;
+  addToast: (message: string | Error, type?: string, duration?: number, actions?: unknown[]) => number;
+  t: (key: string, vars?: Record<string, unknown>) => string;
+}
+
+export default function SyncFailureToast({ syncFailed, setSyncFailed, setSettingsInitialTab, setShowSettings, addToast, t }: SyncFailureToastProps) {
   if (!syncFailed) return null;
   const errText = String(syncFailed.error || '');
   const networkOrDnsError = /no such host|lookup |dial tcp|i\/o timeout|timeout|connection refused|network is unreachable|temporary failure|Name or service not known|getaddrinfo|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|certificate|x509|tls|unauthorized|401|403|forbidden|authentication|invalid credentials/i.test(errText);
@@ -9,7 +25,7 @@ export default function SyncFailureToast({ syncFailed, setSyncFailed, setSetting
     || /No such file|no such file|not found|目录不存在|does not exist|is not a directory/i.test(errText)
     || (/读取远程目录失败|PROPFIND/i.test(errText) && /\b404\b|No such file|not found|目录不存在|does not exist/i.test(errText));
   const canRecreateRemoteDir = syncFailed.category !== 'trust' && !networkOrDnsError && looksLikeMissingRemoteDir;
-  const runRetry = async (recreateDir) => {
+  const runRetry = async (recreateDir: boolean) => {
     if (syncFailed.category === 'trust') {
       setSyncFailed(null);
       setSettingsInitialTab('sync');
@@ -23,7 +39,7 @@ export default function SyncFailureToast({ syncFailed, setSyncFailed, setSetting
       if (error) setSyncFailed({ ...failedSync, error });
       else addToast(recreateDir ? t('远程目录已重建并同步成功') : t('同步成功'), 'success', 3000);
     } catch (error) {
-      setSyncFailed({ ...failedSync, error: String(error?.message || error) });
+      setSyncFailed({ ...failedSync, error: String((error as { message?: unknown })?.message || error) });
     }
   };
   return (
@@ -33,7 +49,7 @@ export default function SyncFailureToast({ syncFailed, setSyncFailed, setSetting
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>{t('云端同步失败')}</div>
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 6 }}>{syncFailed.category === 'trust' ? t('服务器身份信息已变化，请前往“设置 → 同步与云”核对后恢复同步。') : t('数据未能上传到云端，本地数据不受影响。')}</div>
-          <div style={{ fontSize: 12, color: 'var(--danger)', background: 'rgba(var(--danger-rgb), 0.10)', border: '1px solid rgba(var(--danger-rgb), 0.22)', padding: '6px 10px', borderRadius: 8, marginBottom: 14, wordBreak: 'break-all', lineHeight: 1.5 }}>{syncFailed.error}</div>
+          <div style={{ fontSize: 12, color: 'var(--danger)', background: 'rgba(var(--danger-rgb), 0.10)', border: '1px solid rgba(var(--danger-rgb), 0.22)', padding: '6px 10px', borderRadius: 8, marginBottom: 14, wordBreak: 'break-all', lineHeight: 1.5 }}>{String(syncFailed.error ?? '')}</div>
           <div className="sync-failed-toast-actions" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
             <button type="button" className="btn btn-secondary sync-failed-btn-ignore" onClick={() => setSyncFailed(null)}>{t('忽略')}</button>
             {canRecreateRemoteDir && <button type="button" className="btn btn-secondary sync-failed-btn-ignore" title={t('在云端重建同步目录后再次同步')} onClick={() => runRetry(true)}>{t('重新创建并重试')}</button>}

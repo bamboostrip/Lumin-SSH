@@ -1,6 +1,14 @@
+import type { ReactNode } from 'react';
 import Tiptop from '../Tiptop.jsx';
 
-export default function IconActionButton({ title, active = false, onClick, children }) {
+interface IconActionButtonProps {
+  title: string;
+  active?: boolean;
+  onClick?: () => void;
+  children?: ReactNode;
+}
+
+export default function IconActionButton({ title, active = false, onClick, children }: IconActionButtonProps) {
   return (
     <Tiptop text={title} placement="bottom">
       <button

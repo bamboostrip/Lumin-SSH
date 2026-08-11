@@ -2,7 +2,17 @@ import { ChevronDown, Server } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from '../../../i18n.js'
 
-export default function AIChatMCPCard({ serverName, toolName, args, response, extra = {}, isLast = false, hasSubsequentAssistantMessage = false }) {
+interface AIChatMCPCardProps {
+  serverName?: string
+  toolName?: string
+  args?: string
+  response?: string
+  extra?: Record<string, unknown>
+  isLast?: boolean
+  hasSubsequentAssistantMessage?: boolean
+}
+
+export default function AIChatMCPCard({ serverName, toolName, args, response, extra = {}, isLast = false, hasSubsequentAssistantMessage = false }: AIChatMCPCardProps) {
   const { t } = useTranslation()
   const [isRequestExpanded, setIsRequestExpanded] = useState(isLast)
   const [isResponseExpanded, setIsResponseExpanded] = useState(false)

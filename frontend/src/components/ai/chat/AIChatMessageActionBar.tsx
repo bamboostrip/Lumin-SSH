@@ -1,10 +1,16 @@
-import { MessageSquare, User } from 'lucide-react'
-import { useTranslation } from '../../../i18n.js'
-import AIChatMessageActions from './AIChatMessageActions.jsx'
+import { MessageSquare, User, type LucideIcon } from 'lucide-react'
+import { useTranslation, type I18nKey } from '../../../i18n.js'
+import AIChatMessageActions, { type MessageAction } from './AIChatMessageActions.jsx'
 
 const assistantTitleKey = 'AI'
 
-function TitleIcon({ Icon, onClick, clickTitle }) {
+interface TitleIconProps {
+  Icon: LucideIcon
+  onClick?: () => void
+  clickTitle?: string
+}
+
+function TitleIcon({ Icon, onClick, clickTitle }: TitleIconProps) {
   if (typeof onClick !== 'function') {
     return <Icon size={13} />
   }
@@ -24,25 +30,40 @@ function TitleIcon({ Icon, onClick, clickTitle }) {
   )
 }
 
-function UserMessageActionBar({ t, title, time, actions, onTitleIconClick, titleIconClickTitle, leadingContent = null }) {
+interface MessageActionBarProps {
+  t: (key: I18nKey, vars?: Record<string, unknown>) => string
+  title: string
+  time: string
+  actions: Array<string | MessageAction>
+  onTitleIconClick?: () => void
+  titleIconClickTitle?: string
+  leadingContent?: React.ReactNode
+}
+
+function UserMessageActionBar({ t, title, time, actions, onTitleIconClick, titleIconClickTitle, leadingContent = null }: MessageActionBarProps) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, fontSize: 11, color: 'var(--text-tertiary)', flexWrap: 'wrap' }}>
       {leadingContent}
       <AIChatMessageActions actions={actions} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
         <span>{time}</span>
-        <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{t(title)}</span>
+        {/* title 为动态文案（可能不在翻译表），t() 内部有兜底 */}
+        <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{t(title as I18nKey)}</span>
         <TitleIcon Icon={User} onClick={onTitleIconClick} clickTitle={titleIconClickTitle} />
       </div>
     </div>
   )
 }
 
-function AssistantMessageActionBar({ t, title, time, actions, status, onTitleIconClick, titleIconClickTitle }) {
+interface AssistantMessageActionBarProps extends MessageActionBarProps {
+  status?: React.ReactNode
+}
+
+function AssistantMessageActionBar({ t, title, time, actions, status, onTitleIconClick, titleIconClickTitle }: AssistantMessageActionBarProps) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 10, fontSize: 11, color: 'var(--text-tertiary)', flexWrap: 'wrap' }}>
       <TitleIcon Icon={MessageSquare} onClick={onTitleIconClick} clickTitle={titleIconClickTitle} />
-      <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>{t(title)}</span>
+      <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>{t(title as I18nKey)}</span>
       <span>{time}</span>
       <AIChatMessageActions actions={actions} />
       {status}
@@ -50,7 +71,18 @@ function AssistantMessageActionBar({ t, title, time, actions, status, onTitleIco
   )
 }
 
-export default function AIChatMessageActionBar({ variant = 'assistant', title = assistantTitleKey, time = '', actions = [], status = null, onTitleIconClick, titleIconClickTitle = '', leadingContent = null }) {
+interface AIChatMessageActionBarProps {
+  variant?: 'user' | 'assistant'
+  title?: string
+  time?: string
+  actions?: Array<string | MessageAction>
+  status?: React.ReactNode
+  onTitleIconClick?: () => void
+  titleIconClickTitle?: string
+  leadingContent?: React.ReactNode
+}
+
+export default function AIChatMessageActionBar({ variant = 'assistant', title = assistantTitleKey, time = '', actions = [], status = null, onTitleIconClick, titleIconClickTitle = '', leadingContent = null }: AIChatMessageActionBarProps) {
   const { t } = useTranslation()
   if (variant === 'user') {
     return <UserMessageActionBar t={t} title={title} time={time} actions={actions} onTitleIconClick={onTitleIconClick} titleIconClickTitle={titleIconClickTitle} leadingContent={leadingContent} />

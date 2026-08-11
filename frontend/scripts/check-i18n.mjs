@@ -6,7 +6,7 @@ import { parse } from '@babel/parser';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const localeRoot = path.join(root, 'src', 'i18n');
 const files = fs.readdirSync(localeRoot)
-  .map((name) => path.join(localeRoot, name, 'basic.js'))
+  .map((name) => path.join(localeRoot, name, 'basic.ts'))
   .filter((file) => fs.existsSync(file))
   .sort();
 

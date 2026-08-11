@@ -6,15 +6,15 @@ export type { I18nDict, I18nKey, LanguageCode } from './i18n/types.js';
 const DEFAULT_LANG: LanguageCode = 'zh-CN';
 
 /** 语言模块加载器：{ lang: () => Promise<{ default: 翻译表 }> } */
-const languageModuleLoaders = import.meta.glob<{ default?: I18nDict }>('./i18n/*/basic.js');
+const languageModuleLoaders = import.meta.glob<{ default?: I18nDict }>('./i18n/*/basic.ts');
 /** 语言标签（LANGUAGE_LABEL 具名导出，eager 加载）：{ lang: string } */
-const languageLabelModules = import.meta.glob('./i18n/*/basic.js', { import: 'LANGUAGE_LABEL', eager: true });
+const languageLabelModules = import.meta.glob('./i18n/*/basic.ts', { import: 'LANGUAGE_LABEL', eager: true });
 
 function buildLanguageMap<T>(modules: Record<string, T>): Record<string, T> {
   return Object.fromEntries(
     Object.entries(modules)
       .map(([filePath, value]): [string, T] | null => {
-        const match = filePath.match(/^\.\/i18n\/([^/]+)\/basic\.js$/);
+        const match = filePath.match(/^\.\/i18n\/([^/]+)\/basic\.ts$/);
         return match ? [match[1], value] : null;
       })
       .filter((entry): entry is [string, T] => entry !== null)

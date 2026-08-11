@@ -6,7 +6,7 @@
  *
  * 已接入 src/i18n.ts：t() 的 key 参数为 I18nKey，setLanguage/loadLanguage 为 LanguageCode。
  */
-import type zhCN from './zh-CN/basic.js';
+import type zhCN from './zh-CN/basic.ts';
 
 /** 完整翻译表（键为中文文案，值为对应语言译文） */
 export type I18nDict = typeof zhCN;

@@ -4,22 +4,57 @@ import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 const DEFAULT_PING_INTERVAL = 2;
 const OFFLINE_FAIL_THRESHOLD = 2;
 
-function readPingInterval() {
+/** 单个服务器的 ping 结果 */
+export interface ServerPingResult {
+  online: boolean;
+  latency: number | null;
+}
+
+/** 服务器列表项（宽松形状） */
+export interface PingServerLike {
+  id: string;
+  [key: string]: unknown;
+}
+
+export interface UseServerPingOptions {
+  serversRef: React.MutableRefObject<PingServerLike[] | null>;
+  activeSessionId: string | null;
+  dashboardHostPageMode: string;
+}
+
+export interface PingCounts {
+  online: number;
+  offline: number;
+  total: number;
+}
+
+export interface UseServerPingResult {
+  pings: Record<string, ServerPingResult>;
+  pingEnabled: boolean;
+  pingInterval: number;
+  pingMode: string;
+  isRefreshingPing: boolean;
+  pingCounts: PingCounts;
+  pingAll: () => Promise<void>;
+  handleRefreshPing: () => Promise<void>;
+}
+
+function readPingInterval(): number {
   const value = Number.parseInt(localStorage.getItem('pingInterval') || String(DEFAULT_PING_INTERVAL), 10);
   return Number.isFinite(value) && value > 0 ? value : DEFAULT_PING_INTERVAL;
 }
 
-export default function useServerPing({ serversRef, activeSessionId, dashboardHostPageMode }) {
-  const [pings, setPings] = useState({});
+export default function useServerPing({ serversRef, activeSessionId, dashboardHostPageMode }: UseServerPingOptions): UseServerPingResult {
+  const [pings, setPings] = useState<Record<string, ServerPingResult>>({});
   const [isRefreshingPing, setIsRefreshingPing] = useState(false);
   const [pingInterval, setPingInterval] = useState(readPingInterval);
   const [pingEnabled, setPingEnabled] = useState(() => localStorage.getItem('pingEnabled') !== 'false');
   const [pingMode, setPingMode] = useState(() => localStorage.getItem('pingMode') || 'auto');
-  const pingTimerRef = useRef(null);
+  const pingTimerRef = useRef<number | null>(null);
   const pingInFlightRef = useRef(false);
   const pingModeRef = useRef(pingMode);
-  const pingFailCountRef = useRef({});
-  const refreshTimerRef = useRef(null);
+  const pingFailCountRef = useRef<Record<string, number>>({});
+  const refreshTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     pingModeRef.current = pingMode;
@@ -61,7 +96,7 @@ export default function useServerPing({ serversRef, activeSessionId, dashboardHo
       );
       const failCounts = pingFailCountRef.current;
       setPings((prev) => {
-        const next = {};
+        const next: Record<string, ServerPingResult> = {};
         results.forEach((result) => {
           if (result.online) {
             delete failCounts[result.id];
@@ -90,7 +125,7 @@ export default function useServerPing({ serversRef, activeSessionId, dashboardHo
     void pingAll();
     pingTimerRef.current = window.setInterval(pingAll, pingInterval * 1000);
     return () => {
-      window.clearInterval(pingTimerRef.current);
+      window.clearInterval(pingTimerRef.current!);
       pingTimerRef.current = null;
     };
   }, [activeSessionId, dashboardHostPageMode, pingAll, pingEnabled, pingInterval]);
@@ -103,11 +138,11 @@ export default function useServerPing({ serversRef, activeSessionId, dashboardHo
   }, [isRefreshingPing, pingAll, pingEnabled]);
 
   useEffect(() => () => {
-    window.clearInterval(pingTimerRef.current);
-    window.clearTimeout(refreshTimerRef.current);
+    window.clearInterval(pingTimerRef.current!);
+    window.clearTimeout(refreshTimerRef.current!);
   }, []);
 
-  const pingCounts = useMemo(() => {
+  const pingCounts = useMemo<PingCounts>(() => {
     const values = Object.values(pings);
     return {
       online: values.filter((value) => value.online).length,

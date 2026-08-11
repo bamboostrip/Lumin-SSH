@@ -1,8 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
 
-export default function useWorkspaceSettings() {
+export type WorkspacePersistenceLevel = 'program' | 'session';
+
+export interface UseWorkspaceSettingsResult {
+  rememberWorkspace: boolean;
+  setRememberWorkspace: React.Dispatch<React.SetStateAction<boolean>>;
+  workspacePersistenceLevel: WorkspacePersistenceLevel;
+  setWorkspacePersistenceLevel: React.Dispatch<React.SetStateAction<WorkspacePersistenceLevel>>;
+  rememberWorkspaceLoaded: boolean;
+  setRememberWorkspaceLoaded: React.Dispatch<React.SetStateAction<boolean>>;
+}
+
+export default function useWorkspaceSettings(): UseWorkspaceSettingsResult {
   const [rememberWorkspace, setRememberWorkspace] = useState(false);
-  const [workspacePersistenceLevel, setWorkspacePersistenceLevel] = useState('program');
+  const [workspacePersistenceLevel, setWorkspacePersistenceLevel] = useState<WorkspacePersistenceLevel>('program');
   const [rememberWorkspaceLoaded, setRememberWorkspaceLoaded] = useState(false);
 
   useEffect(() => {
@@ -27,14 +38,15 @@ export default function useWorkspaceSettings() {
       .catch(() => {
         if (!cancelled) setWorkspacePersistenceLevel('program');
       });
-    const rememberHandler = (event) => {
-      if (typeof event?.detail === 'boolean') {
-        setRememberWorkspace(event.detail);
+    const rememberHandler = (event: Event) => {
+      const detail = (event as CustomEvent<boolean>).detail;
+      if (typeof detail === 'boolean') {
+        setRememberWorkspace(detail);
         setRememberWorkspaceLoaded(true);
       }
     };
-    const levelHandler = (event) => {
-      setWorkspacePersistenceLevel(event?.detail === 'session' ? 'session' : 'program');
+    const levelHandler = (event: Event) => {
+      setWorkspacePersistenceLevel((event as CustomEvent<string>).detail === 'session' ? 'session' : 'program');
     };
     window.addEventListener('workspace-remember-changed', rememberHandler);
     window.addEventListener('workspace-persistence-level-changed', levelHandler);

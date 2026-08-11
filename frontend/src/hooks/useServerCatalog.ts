@@ -1,5 +1,50 @@
 import { useCallback, useMemo } from 'react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
+import type { config } from '../../wailsjs/go/models.js';
+
+/** 服务器表单数据（编辑器中输入，可能缺失部分字段） */
+export interface ServerFormData {
+  id?: string;
+  name?: string;
+  host: string;
+  port?: string | number;
+  username: string;
+  group?: string;
+  [key: string]: unknown;
+}
+
+export interface UseServerCatalogOptions {
+  servers: config.Connection[];
+  serversRef: React.MutableRefObject<config.Connection[]>;
+  searchQuery: string;
+  selectedServerIds: string[];
+  loadServers: () => Promise<void> | void;
+  addToast: (message: string | Error, type?: string, duration?: number, actions?: unknown[]) => number;
+  removeRecentConnection: (serverId: string) => void;
+  removeRecentConnections: (serverIds: unknown) => void;
+  setServers: React.Dispatch<React.SetStateAction<config.Connection[]>>;
+  setServerEditor: React.Dispatch<React.SetStateAction<{ id?: string } | null>>;
+  setSelectedServerIds: React.Dispatch<React.SetStateAction<string[]>>;
+  setBatchSelectionMode: (value: boolean) => void;
+  startSaveFlowAnimation: (saved: config.Connection, data: ServerFormData) => void;
+  connectServer: (server: config.Connection) => void;
+  t: (key: string, vars?: Record<string, unknown>) => string;
+}
+
+export interface UseServerCatalogResult {
+  saveServerConfig: (data: ServerFormData) => Promise<config.Connection | null>;
+  handleSaveServer: (data: ServerFormData, shouldClearAfterAdd?: boolean) => Promise<config.Connection | null>;
+  handleDeleteServer: (id: string) => Promise<void>;
+  handleBatchDelete: (ids: string[]) => Promise<void>;
+  handleGroupDelete: (groupName: string, ids: string[]) => Promise<void>;
+  handleRenameGroup: (groupName: string) => Promise<string | boolean>;
+  handleBatchConnect: (ids: string[]) => Promise<void>;
+  handleBatchMoveGroup: (ids: string[], group: string) => Promise<void>;
+  toggleBatchSelection: (idOrArray: string | Array<string | { id: string; selected: boolean }>) => void;
+  filteredServers: config.Connection[];
+  allGroups: string[];
+  handleMoveGroup: (serverId: string, group: string) => Promise<void>;
+}
 
 export default function useServerCatalog({
   servers,
@@ -17,24 +62,24 @@ export default function useServerCatalog({
   startSaveFlowAnimation,
   connectServer,
   t,
-}) {
-  const saveServerConfig = useCallback(async (data) => {
+}: UseServerCatalogOptions): UseServerCatalogResult {
+  const saveServerConfig = useCallback(async (data: ServerFormData) => {
     const duplicate = serversRef.current.some((server) => (
       server.id !== data.id
       && server.host === data.host
-      && (server.port || 22) === (Number.parseInt(data.port, 10) || 22)
+      && (server.port || 22) === (Number.parseInt(String(data.port), 10) || 22)
       && server.username === data.username
     ));
     if (duplicate) {
       addToast(t('已存在相同主机、端口和用户名的服务器'), 'error');
       return null;
     }
-    const savedServer = await AppGo.SaveConnection(data, false);
+    const savedServer = await AppGo.SaveConnection(data as unknown as config.Connection, false);
     await loadServers();
     return savedServer;
   }, [addToast, loadServers, serversRef, t]);
 
-  const handleSaveServer = useCallback(async (data, shouldClearAfterAdd = true) => {
+  const handleSaveServer = useCallback(async (data: ServerFormData, shouldClearAfterAdd = true) => {
     try {
       const savedServer = await saveServerConfig(data);
       if (!savedServer) return null;
@@ -46,12 +91,12 @@ export default function useServerCatalog({
       }
       return savedServer;
     } catch (error) {
-      addToast(error, 'error');
+      addToast(String(error), 'error');
       return null;
     }
   }, [addToast, saveServerConfig, setServerEditor, startSaveFlowAnimation, t]);
 
-  const handleDeleteServer = useCallback(async (id) => {
+  const handleDeleteServer = useCallback(async (id: string) => {
     try {
       await AppGo.DeleteConnection(id);
       setServers((prev) => prev.filter((server) => server.id !== id));
@@ -63,7 +108,7 @@ export default function useServerCatalog({
     }
   }, [addToast, removeRecentConnection, setServerEditor, setServers, t]);
 
-  const handleBatchDelete = useCallback(async (ids) => {
+  const handleBatchDelete = useCallback(async (ids: string[]) => {
     try {
       await AppGo.BatchDeleteConnections(ids);
       setServers((prev) => prev.filter((server) => !ids.includes(server.id)));
@@ -76,15 +121,15 @@ export default function useServerCatalog({
     }
   }, [addToast, removeRecentConnections, setSelectedServerIds, setServerEditor, setServers, t]);
 
-  const handleGroupDelete = useCallback(async (groupName, ids) => {
+  const handleGroupDelete = useCallback(async (groupName: string, ids: string[]) => {
     if (await window.luminDialog?.confirm(`${t('确定删除')}「${groupName}」分组的 ${ids.length} ${t('个服务器')}？`)) {
       await handleBatchDelete(ids);
     }
   }, [handleBatchDelete, t]);
 
-  const handleRenameGroup = useCallback(async (groupName) => {
+  const handleRenameGroup = useCallback(async (groupName: string) => {
     const next = await window.luminDialog?.prompt(t('请输入新的分组名称'), groupName, t('重命名分组'), '', {
-      validate: async (value) => {
+      validate: async (value: string) => {
         const trimmed = String(value ?? '').trim();
         if (!trimmed) return t('分组名称不能为空');
         if (trimmed === groupName) return null;
@@ -92,7 +137,7 @@ export default function useServerCatalog({
           await AppGo.RenameConnectionGroup(groupName, trimmed);
           return null;
         } catch (error) {
-          return String(error?.message || error || t('重命名失败'));
+          return String((error as { message?: unknown })?.message || error || t('重命名失败'));
         }
       },
     });
@@ -104,7 +149,7 @@ export default function useServerCatalog({
     return trimmed;
   }, [addToast, loadServers, t]);
 
-  const handleBatchConnect = useCallback(async (ids) => {
+  const handleBatchConnect = useCallback(async (ids: string[]) => {
     const targets = servers.filter((server) => ids.includes(server.id));
     for (const server of targets) {
       connectServer(server);
@@ -114,19 +159,19 @@ export default function useServerCatalog({
     setBatchSelectionMode(false);
   }, [connectServer, servers, setBatchSelectionMode, setSelectedServerIds]);
 
-  const handleBatchMoveGroup = useCallback(async (ids, group) => {
+  const handleBatchMoveGroup = useCallback(async (ids: string[], group: string) => {
     try {
       await AppGo.BatchSetConnectionGroup(ids, group);
       addToast(t('已移动到分组') + (group ? `「${group}」` : ''), 'success');
     } catch (error) {
-      addToast(error?.message || error || t('移动分组'), 'error');
+      addToast(String((error as { message?: unknown })?.message || error || t('移动分组')), 'error');
     } finally {
       await loadServers();
       setSelectedServerIds([]);
     }
   }, [addToast, loadServers, setSelectedServerIds, t]);
 
-  const toggleBatchSelection = useCallback((idOrArray) => {
+  const toggleBatchSelection = useCallback((idOrArray: string | Array<string | { id: string; selected: boolean }>) => {
     if (Array.isArray(idOrArray)) {
       if (idOrArray.length === 0) {
         setSelectedServerIds([]);
@@ -134,11 +179,11 @@ export default function useServerCatalog({
       }
       if (idOrArray[0] && typeof idOrArray[0] === 'object' && 'selected' in idOrArray[0]) {
         const next = new Set(selectedServerIds);
-        idOrArray.forEach(({ id, selected }) => (selected ? next.add(id) : next.delete(id)));
+        (idOrArray as Array<{ id: string; selected: boolean }>).forEach(({ id, selected }) => (selected ? next.add(id) : next.delete(id)));
         setSelectedServerIds([...next]);
         return;
       }
-      setSelectedServerIds(idOrArray);
+      setSelectedServerIds(idOrArray as string[]);
       return;
     }
     setSelectedServerIds((prev) => (
@@ -154,17 +199,17 @@ export default function useServerCatalog({
   }, [searchQuery, servers]);
 
   const allGroups = useMemo(() => {
-    const groups = new Set(servers.map((server) => server.group).filter(Boolean));
+    const groups = new Set(servers.map((server) => server.group).filter((group): group is string => !!group));
     return [...groups].sort((left, right) => left.localeCompare(right));
   }, [servers]);
 
-  const handleMoveGroup = useCallback(async (serverId, group) => {
+  const handleMoveGroup = useCallback(async (serverId: string, group: string) => {
     try {
       await AppGo.SetConnectionGroup(serverId, group);
       await loadServers();
       addToast(t('已移动到分组') + (group ? `「${group}」` : ''), 'success');
     } catch (error) {
-      addToast(error, 'error');
+      addToast(String(error), 'error');
     }
   }, [addToast, loadServers, t]);
 

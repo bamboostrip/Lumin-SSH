@@ -7,15 +7,15 @@ import { t } from '../i18n.js';
 const RELEASE_API = APP_GITHUB_RELEASE_API;
 
 let sharedDownloadProgress = -1;
-const downloadProgressListeners = new Set();
+const downloadProgressListeners = new Set<(progress: number) => void>();
 
-function setSharedDownloadProgress(progress) {
+function setSharedDownloadProgress(progress: number): void {
   sharedDownloadProgress = progress;
   downloadProgressListeners.forEach((listener) => listener(progress));
 }
 
 // 语义化版本比较：latest > current 返回 true
-export function compareVersions(latestVer, currentVer) {
+export function compareVersions(latestVer: string, currentVer: string): boolean {
   if (latestVer === currentVer) return false;
   const lParts = latestVer.split('.').map(Number);
   const cParts = currentVer.split('.').map(Number);
@@ -29,17 +29,17 @@ export function compareVersions(latestVer, currentVer) {
 }
 
 // 判断当前是否 Linux 平台
-function isLinux() {
+function isLinux(): boolean {
   return navigator.userAgent.includes('Linux') || navigator.platform.includes('Linux');
 }
 
 // 判断当前是否 macOS 平台
-function isMacOS() {
+function isMacOS(): boolean {
   return /Mac|iPhone|iPad|iPod/.test(navigator.platform) || navigator.userAgent.includes('Mac OS');
 }
 
 // 判断当前 macOS 的 CPU 架构，用于选择对应的 dmg 下载
-async function getMacArch() {
+async function getMacArch(): Promise<string> {
   try {
     if (window?.go?.wailsapp?.App?.GetArch) {
       const arch = await window.go.wailsapp.App.GetArch();
@@ -52,7 +52,7 @@ async function getMacArch() {
   return 'amd64';
 }
 
-function isGithubAssetDownloadUrl(url) {
+function isGithubAssetDownloadUrl(url: unknown): boolean {
   if (typeof url !== 'string' || !url.startsWith('https://')) return false;
   try {
     const parsed = new URL(url);
@@ -67,9 +67,14 @@ function isGithubAssetDownloadUrl(url) {
   }
 }
 
-function pickAsset(assets, predicate) {
+interface GithubAsset {
+  name?: unknown;
+  browser_download_url?: unknown;
+}
+
+function pickAsset(assets: unknown, predicate: (name: string) => boolean): GithubAsset | null {
   if (!Array.isArray(assets) || assets.length === 0) return null;
-  return assets.find((a) => {
+  return (assets as GithubAsset[]).find((a) => {
     const name = typeof a?.name === 'string' ? a.name : '';
     const url = typeof a?.browser_download_url === 'string' ? a.browser_download_url : '';
     if (!name || !url || !isGithubAssetDownloadUrl(url)) return false;
@@ -79,13 +84,19 @@ function pickAsset(assets, predicate) {
   }) || null;
 }
 
+/** 解析出的下载资产 */
+interface ResolvedDownloadAsset {
+  url: string;
+  filename: string;
+}
+
 /**
  * 严格匹配当前平台可安装资产。
  * 匹配失败返回 null（绝不回退到 Release 页面 html_url + 假文件名），
  * 避免 Windows 包尚未上传时用错误 URL 触发热替换。
  */
-async function resolveDownloadAsset(data) {
-  const assets = data?.assets;
+async function resolveDownloadAsset(data: unknown): Promise<ResolvedDownloadAsset | null> {
+  const assets = (data as { assets?: unknown } | null)?.assets;
   if (!Array.isArray(assets) || assets.length === 0) {
     return null;
   }
@@ -97,7 +108,7 @@ async function resolveDownloadAsset(data) {
       pickAsset(assets, (name) => name.toLowerCase().includes(`-${arch}.dmg`)) ||
       pickAsset(assets, (name) => name.toLowerCase().endsWith('.dmg'));
     if (!targetAsset) return null;
-    return { url: targetAsset.browser_download_url, filename: targetAsset.name };
+    return { url: targetAsset.browser_download_url as string, filename: targetAsset.name as string };
   }
 
   // Linux: 优先选取 .deb 包，其次 .rpm（不拿无扩展名二进制当热更包）
@@ -106,7 +117,7 @@ async function resolveDownloadAsset(data) {
       pickAsset(assets, (name) => name.toLowerCase().endsWith('.deb')) ||
       pickAsset(assets, (name) => name.toLowerCase().endsWith('.rpm'));
     if (!targetAsset) return null;
-    return { url: targetAsset.browser_download_url, filename: targetAsset.name };
+    return { url: targetAsset.browser_download_url as string, filename: targetAsset.name as string };
   }
 
   // Windows: 便携版 / 安装版
@@ -119,7 +130,7 @@ async function resolveDownloadAsset(data) {
     }
   }
 
-  let targetAsset = null;
+  let targetAsset: GithubAsset | null = null;
   if (isPortable) {
     // 优先明确 portable 命名，再退到非 installer 的 .exe
     targetAsset =
@@ -132,16 +143,38 @@ async function resolveDownloadAsset(data) {
   }
   // 不再用「任意 .exe」兜底：避免误选到错误产物
   if (!targetAsset) return null;
-  return { url: targetAsset.browser_download_url, filename: targetAsset.name };
+  return { url: targetAsset.browser_download_url as string, filename: targetAsset.name as string };
+}
+
+/** 更新检查结果 */
+export interface UpdateCheckResult {
+  hasUpdate: boolean;
+  latestVersion: string;
+  url: string;
+  filename: string;
+  assetReady: boolean;
+  reason: 'up_to_date' | 'asset_pending' | 'ready';
+}
+
+export interface UseUpdateCheckerOptions {
+  onResult?: (result: UpdateCheckResult) => void;
+  onError?: (error: unknown) => void;
+}
+
+export interface UseUpdateCheckerResult {
+  checking: boolean;
+  downloadProgress: number;
+  checkUpdate: () => Promise<UpdateCheckResult | null>;
+  applyUpdate: (updateInfo: UpdateCheckResult | null | undefined) => Promise<void>;
 }
 
 /**
  * 自动更新检查 Hook，封装 GitHub Releases 检查、资源匹配、下载进度、应用更新逻辑
- * @param {Object} options
- * @param {Function} [options.onResult] - (result) => void
- * @param {Function} [options.onError] - (err) => void
+ * @param options
+ * @param options.onResult - (result) => void
+ * @param options.onError - (err) => void
  */
-export function useUpdateChecker({ onResult, onError } = {}) {
+export function useUpdateChecker({ onResult, onError }: UseUpdateCheckerOptions = {}): UseUpdateCheckerResult {
   const [checking, setChecking] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(sharedDownloadProgress);
 
@@ -150,7 +183,7 @@ export function useUpdateChecker({ onResult, onError } = {}) {
 
   useEffect(() => {
     downloadProgressListeners.add(setDownloadProgress);
-    const off = EventsOn('app-update-progress', (progress) => {
+    const off = EventsOn('app-update-progress', (progress: unknown) => {
       if (typeof progress === 'number') setSharedDownloadProgress(progress);
     });
     return () => {
@@ -159,20 +192,20 @@ export function useUpdateChecker({ onResult, onError } = {}) {
     };
   }, []);
 
-  const checkUpdate = useCallback(async () => {
+  const checkUpdate = useCallback(async (): Promise<UpdateCheckResult | null> => {
     setChecking(true);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
     try {
       const res = await fetch(RELEASE_API, { signal: controller.signal });
       if (!res.ok) throw new Error('API request failed');
-      const data = await res.json();
+      const data = await res.json() as { tag_name?: unknown };
       if (!data || !data.tag_name) return null;
 
-      const latest = data.tag_name.replace(/^v+/i, '');
+      const latest = String(data.tag_name).replace(/^v+/i, '');
       const versionNewer = compareVersions(latest, APP_VERSION);
       if (!versionNewer) {
-        const result = {
+        const result: UpdateCheckResult = {
           hasUpdate: false,
           latestVersion: latest,
           url: '',
@@ -187,7 +220,7 @@ export function useUpdateChecker({ onResult, onError } = {}) {
       const asset = await resolveDownloadAsset(data);
       if (!asset?.url || !asset?.filename) {
         // 版本更新了，但当前平台安装包尚未上传（例如 Windows 构建较慢）
-        const result = {
+        const result: UpdateCheckResult = {
           hasUpdate: false,
           latestVersion: latest,
           url: '',
@@ -199,7 +232,7 @@ export function useUpdateChecker({ onResult, onError } = {}) {
         return result;
       }
 
-      const result = {
+      const result: UpdateCheckResult = {
         hasUpdate: true,
         latestVersion: latest,
         url: asset.url,
@@ -218,7 +251,7 @@ export function useUpdateChecker({ onResult, onError } = {}) {
     }
   }, []);
 
-  const applyUpdate = useCallback(async (updateInfo) => {
+  const applyUpdate = useCallback(async (updateInfo: UpdateCheckResult | null | undefined) => {
     if (!updateInfo || !updateInfo.url) {
       throw new Error('当前平台安装包尚未就绪，请稍后再试');
     }
@@ -229,7 +262,7 @@ export function useUpdateChecker({ onResult, onError } = {}) {
     if (!isGithubAssetDownloadUrl(updateInfo.url) || !/\.(exe|deb|rpm|dmg)$/.test(packageName)) {
       // 非可安装资产：最多打开浏览器，绝不进入热替换
       if (updateInfo.url) {
-        window.runtime?.BrowserOpenURL(updateInfo.url);
+        window.runtime?.BrowserOpenURL?.(updateInfo.url);
       }
       throw new Error('未找到可安装的更新包，已取消自动替换');
     }
@@ -248,8 +281,8 @@ export function useUpdateChecker({ onResult, onError } = {}) {
 }
 
 /** 将后端/前端更新错误翻成当前语言（中文 key 稳定匹配）。 */
-export function formatUpdateError(err) {
-  const raw = String(err?.message || err || '').trim();
+export function formatUpdateError(err: unknown): string {
+  const raw = String((err as { message?: unknown } | null)?.message || err || '').trim();
   if (!raw) return t('更新下载失败');
 
   // 所有下载源均失败（a → b）: detail
@@ -287,7 +320,7 @@ export function formatUpdateError(err) {
   return full !== raw ? full : raw;
 }
 
-function formatUpdateErrorDetail(detail) {
+function formatUpdateErrorDetail(detail: string): string {
   const raw = String(detail || '').trim();
   if (!raw) return raw;
   const m = raw.match(/^(.+?) 多线程与单线程均失败(?::\s*(.*))?$/s);

@@ -7,21 +7,28 @@ import {
   WindowToggleMaximise,
 } from '../../wailsjs/runtime/runtime.js';
 
-function shouldRememberWindowSize() {
+interface SavedWindowSize {
+  w: number;
+  h: number;
+  maximized: boolean;
+}
+
+function shouldRememberWindowSize(): boolean {
   return typeof localStorage !== 'undefined'
     && localStorage.getItem('rememberWindowSize') !== 'false';
 }
 
-function readSavedWindowSize() {
+function readSavedWindowSize(): SavedWindowSize | null {
   try {
-    const saved = JSON.parse(localStorage.getItem('windowSize') || 'null');
-    return saved?.w > 100 && saved?.h > 100 ? saved : null;
+    const parsed = JSON.parse(localStorage.getItem('windowSize') || 'null') as unknown;
+    const saved = parsed as SavedWindowSize | null;
+    return saved && saved.w > 100 && saved.h > 100 ? saved : null;
   } catch {
     return null;
   }
 }
 
-export default function useWindowState() {
+export default function useWindowState(): () => Promise<void> {
   useEffect(() => {
     if (!shouldRememberWindowSize()) return undefined;
     const saved = readSavedWindowSize();
@@ -38,9 +45,9 @@ export default function useWindowState() {
   useEffect(() => {
     if (!shouldRememberWindowSize()) return undefined;
     const saved = readSavedWindowSize();
-    let lastW = saved?.w > 100 ? saved.w : 0;
-    let lastH = saved?.h > 100 ? saved.h : 0;
-    let lastMaximized = null;
+    let lastW = saved && saved.w > 100 ? saved.w : 0;
+    let lastH = saved && saved.h > 100 ? saved.h : 0;
+    let lastMaximized: boolean | null = null;
     let debounceTimer = 0;
 
     const persist = async () => {

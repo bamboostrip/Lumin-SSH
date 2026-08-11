@@ -23,6 +23,11 @@ declare global {
         AIProviderBindings: typeof AIProviderBindings;
       };
     };
+    /** wails runtime 全局（部分场景直接挂在 window 上） */
+    runtime?: {
+      BrowserOpenURL?: (url: string) => void;
+      [key: string]: unknown;
+    };
   }
 }
 

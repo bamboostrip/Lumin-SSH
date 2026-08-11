@@ -2,27 +2,49 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 const TOAST_EXIT_DURATION = 1080;
 
-export default function useToasts() {
-  const [toasts, setToasts] = useState([]);
+/** Toast 操作按钮 */
+export interface ToastAction {
+  onClick?: () => void;
+  [key: string]: unknown;
+}
+
+/** Toast 条目 */
+export interface ToastItem {
+  id: number;
+  message: string;
+  type: string;
+  actions: ToastAction[];
+  closing: boolean;
+}
+
+export interface UseToastsResult {
+  toasts: ToastItem[];
+  addToast: (message: string | Error, type?: string, duration?: number, actions?: ToastAction[]) => number;
+  removeToast: (id: number) => void;
+  handleToastAction: (id: number, action: ToastAction | undefined) => void;
+}
+
+export default function useToasts(): UseToastsResult {
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
   const mountedRef = useRef(true);
   const toastIdRef = useRef(0);
-  const autoDismissTimersRef = useRef(new Map());
-  const exitTimersRef = useRef(new Map());
+  const autoDismissTimersRef = useRef(new Map<number, number>());
+  const exitTimersRef = useRef(new Map<number, number>());
 
-  const clearTimer = useCallback((timersRef, id) => {
+  const clearTimer = useCallback((timersRef: React.MutableRefObject<Map<number, number>>, id: number) => {
     const timer = timersRef.current.get(id);
     if (!timer) return;
     window.clearTimeout(timer);
     timersRef.current.delete(id);
   }, []);
 
-  const removeToastImmediately = useCallback((id) => {
+  const removeToastImmediately = useCallback((id: number) => {
     clearTimer(autoDismissTimersRef, id);
     clearTimer(exitTimersRef, id);
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, [clearTimer]);
 
-  const removeToast = useCallback((id) => {
+  const removeToast = useCallback((id: number) => {
     clearTimer(autoDismissTimersRef, id);
     clearTimer(exitTimersRef, id);
     let shouldAnimate = false;
@@ -38,7 +60,7 @@ export default function useToasts() {
     exitTimersRef.current.set(id, timer);
   }, [clearTimer, removeToastImmediately]);
 
-  const addToast = useCallback((message, type = 'info', duration = 3000, actions = []) => {
+  const addToast = useCallback((message: string | Error, type = 'info', duration = 3000, actions: ToastAction[] = []) => {
     const id = ++toastIdRef.current;
     const text = message instanceof Error ? message.message : String(message ?? '');
     setToasts((prev) => [...prev, { id, message: text, type, actions, closing: false }]);
@@ -51,7 +73,7 @@ export default function useToasts() {
     return id;
   }, [removeToast]);
 
-  const handleToastAction = useCallback((id, action) => {
+  const handleToastAction = useCallback((id: number, action: ToastAction | undefined) => {
     removeToastImmediately(id);
     action?.onClick?.();
   }, [removeToastImmediately]);

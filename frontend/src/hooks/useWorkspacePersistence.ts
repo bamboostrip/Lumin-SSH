@@ -1,7 +1,54 @@
 import { useCallback, useEffect } from 'react';
 import { getAllSessionFileManagerWorkspaces } from '../utils/fileWorkbench.js';
-import { normalizeWorkspaceContentTab } from '../utils/sessionWorkspace.js';
-import { sortTerminalPaneCells } from '../utils/terminalPaneLayout.js';
+import { normalizeWorkspaceContentTab, type SessionLike, type WorkspaceContentTab } from '../utils/sessionWorkspace.js';
+import { sortTerminalPaneCells, type TerminalPaneLayout } from '../utils/terminalPaneLayout.js';
+
+/** 工作区会话快照（持久化到后端的结构） */
+export interface WorkspaceSessionSnapshot {
+  version: number;
+  sessionId: string;
+  serverId: string;
+  serverName: string;
+  host: string;
+  activeTerminalId: string | null;
+  contentTab: WorkspaceContentTab;
+  terminals: Array<{ id: string; label: string }>;
+  terminalPaneLayouts: Record<string, TerminalPaneLayout>;
+  fileManagerWorkspaces: Record<string, unknown>;
+  savedAt?: number;
+}
+
+/** 快照构建覆盖项 */
+export interface SnapshotOverrides {
+  session?: SessionLike;
+  terminalPaneLayouts?: Record<string, TerminalPaneLayout>;
+  activeTerminalId?: string | null;
+  contentTab?: WorkspaceContentTab;
+}
+
+export interface UseWorkspaceSessionPersistenceOptions {
+  activeSessionIdRef: React.MutableRefObject<string | null>;
+  activeTerminalIdRef: React.MutableRefObject<string | null>;
+  contentTabRef: React.MutableRefObject<WorkspaceContentTab>;
+  lastContentTabRef: React.MutableRefObject<Record<string, WorkspaceContentTab>>;
+  lastTerminalRef: React.MutableRefObject<Record<string, string>>;
+  rememberWorkspace: boolean;
+  resolveSessionRootTerminalId: (
+    session: SessionLike,
+    fallbackTerminalId: string | null | undefined,
+    layouts?: Record<string, TerminalPaneLayout>,
+    label?: string,
+  ) => string | null;
+  t: (key: string, vars?: Record<string, unknown>) => string;
+  terminalPaneLayoutsRef: React.MutableRefObject<Record<string, TerminalPaneLayout>>;
+  workspacePersistenceLevel: 'program' | 'session';
+}
+
+export interface UseWorkspaceSessionPersistenceResult {
+  buildSessionWorkspaceSnapshot: (session: SessionLike, overrides?: SnapshotOverrides) => WorkspaceSessionSnapshot | null;
+  loadServerWorkspaceSessionSnapshot: (serverId: string) => Promise<WorkspaceSessionSnapshot | null>;
+  persistServerWorkspaceSessionSnapshot: (session: SessionLike, overrides?: SnapshotOverrides) => void;
+}
 
 export function useWorkspaceSessionPersistence({
   activeSessionIdRef,
@@ -14,8 +61,8 @@ export function useWorkspaceSessionPersistence({
   t,
   terminalPaneLayoutsRef,
   workspacePersistenceLevel,
-}) {
-  const buildSessionWorkspaceSnapshot = useCallback((session, overrides = {}) => {
+}: UseWorkspaceSessionPersistenceOptions): UseWorkspaceSessionPersistenceResult {
+  const buildSessionWorkspaceSnapshot = useCallback((session: SessionLike, overrides: SnapshotOverrides = {}): WorkspaceSessionSnapshot | null => {
     const nextSession = overrides.session || session;
     if (!nextSession?.id || !nextSession?.serverId) {
       return null;
@@ -42,20 +89,20 @@ export function useWorkspaceSessionPersistence({
             })),
           },
         ]),
-    );
+    ) as Record<string, TerminalPaneLayout>;
     const terminalIds = new Set(nextTerminals.map((term) => term.id));
     const fileManagerWorkspaces = Object.fromEntries(
       Object.entries(getAllSessionFileManagerWorkspaces()).filter(([terminalId]) => terminalIds.has(terminalId)),
     );
     const preferredTerminalId = overrides.activeTerminalId
       || (activeSessionIdRef.current === nextSession.id ? activeTerminalIdRef.current : lastTerminalRef.current[nextSession.id]);
-    const resolvedActiveTerminalId = resolveSessionRootTerminalId(nextSession, preferredTerminalId, nextLayouts) || nextTerminals[0]?.id || nextSession.id;
+    const resolvedActiveTerminalId = resolveSessionRootTerminalId(nextSession, preferredTerminalId, nextLayouts) || nextTerminals[0]?.id || nextSession.id || '';
     return {
       version: 1,
       sessionId: nextSession.id,
-      serverId: nextSession.serverId,
-      serverName: nextSession.serverName || '',
-      host: nextSession.host || '',
+      serverId: String(nextSession.serverId || ''),
+      serverName: String(nextSession.serverName || ''),
+      host: String(nextSession.host || ''),
       activeTerminalId: resolvedActiveTerminalId,
       contentTab: normalizeWorkspaceContentTab(
         overrides.contentTab
@@ -69,31 +116,37 @@ export function useWorkspaceSessionPersistence({
     };
   }, [activeSessionIdRef, activeTerminalIdRef, contentTabRef, lastContentTabRef, lastTerminalRef, resolveSessionRootTerminalId, t, terminalPaneLayoutsRef]);
 
-  const persistServerWorkspaceSessionSnapshot = useCallback((session, overrides = {}) => {
+  const persistServerWorkspaceSessionSnapshot = useCallback((session: SessionLike, overrides: SnapshotOverrides = {}) => {
     if (!rememberWorkspace || workspacePersistenceLevel !== 'session' || !session?.serverId) {
       return;
     }
     const snapshot = buildSessionWorkspaceSnapshot(session, overrides);
     if (snapshot) {
-      window?.go?.wailsapp?.App?.SaveWorkspaceSessionState?.(session.serverId, JSON.stringify(snapshot)).catch(() => { });
+      window?.go?.wailsapp?.App?.SaveWorkspaceSessionState?.(String(session.serverId), JSON.stringify(snapshot)).catch(() => { });
     }
   }, [buildSessionWorkspaceSnapshot, rememberWorkspace, workspacePersistenceLevel]);
 
-  const loadServerWorkspaceSessionSnapshot = useCallback(async (serverId) => {
+  const loadServerWorkspaceSessionSnapshot = useCallback(async (serverId: string): Promise<WorkspaceSessionSnapshot | null> => {
     const raw = await window?.go?.wailsapp?.App?.GetWorkspaceSessionState?.(serverId);
     if (typeof raw !== 'string' || !raw.trim()) {
       return null;
     }
     try {
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
       if (!parsed || typeof parsed !== 'object') {
         return null;
       }
       const terminals = Array.isArray(parsed.terminals)
-        ? parsed.terminals.map((term, index) => ({
-          id: typeof term?.id === 'string' && term.id.trim() ? term.id.trim() : `snapshot-terminal-${index + 1}`,
-          label: typeof term?.label === 'string' && term.label.trim() ? term.label.trim() : `${t('终端')}${index + 1}`,
-        })).filter((term) => term.id)
+        ? parsed.terminals
+            .map((term, index) => ({
+              id: typeof (term as { id?: unknown } | null)?.id === 'string' && (term as { id: string }).id.trim()
+                ? (term as { id: string }).id.trim()
+                : `snapshot-terminal-${index + 1}`,
+              label: typeof (term as { label?: unknown } | null)?.label === 'string' && (term as { label: string }).label.trim()
+                ? (term as { label: string }).label.trim()
+                : `${t('终端')}${index + 1}`,
+            }))
+            .filter((term) => term.id)
         : [];
       return {
         version: Number(parsed.version) || 1,
@@ -104,8 +157,12 @@ export function useWorkspaceSessionPersistence({
         activeTerminalId: typeof parsed.activeTerminalId === 'string' ? parsed.activeTerminalId.trim() : '',
         contentTab: normalizeWorkspaceContentTab(typeof parsed.contentTab === 'string' ? parsed.contentTab.trim() : 'terminal'),
         terminals: terminals.length > 0 ? terminals : [{ id: 'snapshot-root', label: `${t('终端')}1` }],
-        terminalPaneLayouts: parsed.terminalPaneLayouts && typeof parsed.terminalPaneLayouts === 'object' ? parsed.terminalPaneLayouts : {},
-        fileManagerWorkspaces: parsed.fileManagerWorkspaces && typeof parsed.fileManagerWorkspaces === 'object' ? parsed.fileManagerWorkspaces : {},
+        terminalPaneLayouts: parsed.terminalPaneLayouts && typeof parsed.terminalPaneLayouts === 'object'
+          ? parsed.terminalPaneLayouts as Record<string, TerminalPaneLayout>
+          : {},
+        fileManagerWorkspaces: parsed.fileManagerWorkspaces && typeof parsed.fileManagerWorkspaces === 'object'
+          ? parsed.fileManagerWorkspaces as Record<string, unknown>
+          : {},
       };
     } catch {
       return null;
@@ -113,6 +170,42 @@ export function useWorkspaceSessionPersistence({
   }, [t]);
 
   return { buildSessionWorkspaceSnapshot, loadServerWorkspaceSessionSnapshot, persistServerWorkspaceSessionSnapshot };
+}
+
+/** 工作区标签（getSessionWorkspaceTabs 返回项） */
+export interface WorkspaceTab {
+  id: string;
+  type?: string;
+  label?: string;
+  terminalIds?: string[];
+}
+
+export interface UseWorkspacePersistenceOptions {
+  activeSessionId: string | null;
+  activeTerminalId: string | null;
+  activeSessionIdRef: React.MutableRefObject<string | null>;
+  activeTerminalIdRef: React.MutableRefObject<string | null>;
+  contentTab: WorkspaceContentTab;
+  getSessionWorkspaceTabs: (session: SessionLike, layouts?: Record<string, TerminalPaneLayout>) => WorkspaceTab[];
+  lastTerminalRef: React.MutableRefObject<Record<string, string>>;
+  lastContentTabRef: React.MutableRefObject<Record<string, WorkspaceContentTab>>;
+  persistServerWorkspaceSessionSnapshot: (session: SessionLike, overrides?: SnapshotOverrides) => void;
+  rememberWorkspace: boolean;
+  rememberWorkspaceLoaded: boolean;
+  resolveSessionRootTerminalId: (
+    session: SessionLike,
+    fallbackTerminalId: string | null | undefined,
+    layouts?: Record<string, TerminalPaneLayout>,
+    label?: string,
+  ) => string | null;
+  sessions: SessionLike[];
+  sessionsRef: React.MutableRefObject<SessionLike[]>;
+  terminalPaneLayouts: Record<string, TerminalPaneLayout>;
+  terminalPaneLayoutsRef: React.MutableRefObject<Record<string, TerminalPaneLayout>>;
+  workspacePersistenceLevel: 'program' | 'session';
+  workspaceRestoreReady: boolean;
+  restoringWorkspaceRef: React.MutableRefObject<boolean>;
+  persistWorkspaceSnapshotRef: React.MutableRefObject<((overrides?: Record<string, unknown>) => void) | null>;
 }
 
 export default function useWorkspacePersistence({
@@ -136,15 +229,15 @@ export default function useWorkspacePersistence({
   workspaceRestoreReady,
   restoringWorkspaceRef,
   persistWorkspaceSnapshotRef,
-}) {
-  const persistWorkspaceSnapshot = useCallback((overrides = {}) => {
+}: UseWorkspacePersistenceOptions): void {
+  const persistWorkspaceSnapshot = useCallback((overrides: Record<string, unknown> = {}) => {
     if (!rememberWorkspaceLoaded || !workspaceRestoreReady || restoringWorkspaceRef.current) return;
     const clearSnapshot = () => window?.go?.wailsapp?.App?.ClearWorkspaceState?.().catch(() => { });
-    const setLiveSnapshot = (payload) => window?.go?.wailsapp?.App?.SetLiveWorkspaceState?.(payload).catch(() => { });
-    const nextSessions = overrides.sessions || sessionsRef.current;
-    const nextActiveSessionId = overrides.activeSessionId ?? activeSessionIdRef.current;
-    const nextActiveTerminalId = overrides.activeTerminalId ?? activeTerminalIdRef.current;
-    const nextLayouts = overrides.terminalPaneLayouts || terminalPaneLayoutsRef.current;
+    const setLiveSnapshot = (payload: string) => window?.go?.wailsapp?.App?.SetLiveWorkspaceState?.(payload).catch(() => { });
+    const nextSessions = (overrides.sessions as SessionLike[] | undefined) || sessionsRef.current;
+    const nextActiveSessionId = (overrides.activeSessionId as string | null | undefined) ?? activeSessionIdRef.current;
+    const nextActiveTerminalId = (overrides.activeTerminalId as string | null | undefined) ?? activeTerminalIdRef.current;
+    const nextLayouts = (overrides.terminalPaneLayouts as Record<string, TerminalPaneLayout> | undefined) || terminalPaneLayoutsRef.current;
     const openSessions = nextSessions.filter((session) => session.status !== 'closed' && session.status !== 'error');
     if (openSessions.length === 0) {
       setLiveSnapshot('');
@@ -154,7 +247,7 @@ export default function useWorkspacePersistence({
     const sessionIds = new Set(openSessions.map((session) => session.id));
     const openTerminalIds = new Set(openSessions.flatMap((session) => (session.terminals || []).map((terminal) => terminal.id)));
     const savedLayouts = Object.fromEntries(
-      Object.entries(nextLayouts).filter(([, layout]) => sessionIds.has(layout?.sessionId)).map(([layoutId, layout]) => [
+      Object.entries(nextLayouts).filter(([, layout]) => sessionIds.has(layout?.sessionId as string)).map(([layoutId, layout]) => [
         layoutId,
         {
           ...layout,
@@ -163,17 +256,18 @@ export default function useWorkspacePersistence({
           panes: (layout.panes || []).map((pane) => ({ ...pane, cells: sortTerminalPaneCells(pane.cells) })),
         },
       ]),
-    );
+    ) as Record<string, TerminalPaneLayout>;
     const savedFileManagerWorkspaces = Object.fromEntries(
       Object.entries(getAllSessionFileManagerWorkspaces()).filter(([terminalId]) => openTerminalIds.has(terminalId)),
     );
     const savedActiveSessionId = openSessions.some((session) => session.id === nextActiveSessionId)
       ? nextActiveSessionId : (openSessions[openSessions.length - 1]?.id || null);
     const savedActiveSession = openSessions.find((session) => session.id === savedActiveSessionId) || openSessions[0] || null;
+    const savedActiveSessionIdKey = savedActiveSession?.id as string;
     const savedActiveTerminalId = savedActiveSession
       ? resolveSessionRootTerminalId(
         savedActiveSession,
-        savedActiveSession.id === nextActiveSessionId ? nextActiveTerminalId : lastTerminalRef.current[savedActiveSession.id],
+        savedActiveSession.id === nextActiveSessionId ? nextActiveTerminalId : lastTerminalRef.current[savedActiveSessionIdKey],
         savedLayouts,
       ) : null;
     const workspaceStatePayload = JSON.stringify({
@@ -193,18 +287,18 @@ export default function useWorkspacePersistence({
         ]));
         const terminalById = new Map((session.terminals || []).map((term) => [term.id, term]));
         const preferredId = session.id === savedActiveSessionId
-          ? savedActiveTerminalId : (session.activeTerminalId || lastTerminalRef.current[session.id]);
-        const sessionActiveTerminalId = resolveSessionRootTerminalId(session, preferredId, savedLayouts, session.activeTerminalLabel || '');
-        const sessionActiveTerminalLabel = terminalById.get(sessionActiveTerminalId)?.label || session.activeTerminalLabel || '';
+          ? savedActiveTerminalId : (String(session.activeTerminalId || '') || lastTerminalRef.current[session.id as string]);
+        const sessionActiveTerminalId = resolveSessionRootTerminalId(session, preferredId, savedLayouts, String(session.activeTerminalLabel || ''));
+        const sessionActiveTerminalLabel = terminalById.get(sessionActiveTerminalId ?? '')?.label || session.activeTerminalLabel || '';
         return {
           id: session.id,
           serverId: session.serverId,
           serverName: session.serverName,
           host: session.host,
           activeTerminalId: sessionActiveTerminalId || null,
-          activeTerminalLabel: sessionActiveTerminalLabel || null,
+          activeTerminalLabel: String(sessionActiveTerminalLabel || null),
           workspaceTabs,
-          terminals: terminalOrder.map((terminalId) => terminalById.get(terminalId)).filter(Boolean)
+          terminals: terminalOrder.map((terminalId) => terminalById.get(terminalId)).filter((term): term is NonNullable<typeof term> => !!term)
             .map((term) => ({ id: term.id, label: term.label })),
         };
       }),
@@ -221,8 +315,8 @@ export default function useWorkspacePersistence({
       openSessions.forEach((session) => persistServerWorkspaceSessionSnapshot(session, {
         session,
         terminalPaneLayouts: savedLayouts,
-        activeTerminalId: session.id === savedActiveSessionId ? savedActiveTerminalId : lastTerminalRef.current[session.id],
-        contentTab: session.id === savedActiveSessionId ? contentTab : (lastContentTabRef.current[session.id] || 'terminal'),
+        activeTerminalId: session.id === savedActiveSessionId ? savedActiveTerminalId : lastTerminalRef.current[session.id as string],
+        contentTab: session.id === savedActiveSessionId ? contentTab : (lastContentTabRef.current[session.id as string] || 'terminal'),
       }));
     }
   }, [activeSessionId, activeSessionIdRef, activeTerminalId, activeTerminalIdRef, contentTab, getSessionWorkspaceTabs, lastContentTabRef, lastTerminalRef, persistServerWorkspaceSessionSnapshot, rememberWorkspace, rememberWorkspaceLoaded, resolveSessionRootTerminalId, restoringWorkspaceRef, sessions, sessionsRef, terminalPaneLayouts, terminalPaneLayoutsRef, workspacePersistenceLevel, workspaceRestoreReady]);

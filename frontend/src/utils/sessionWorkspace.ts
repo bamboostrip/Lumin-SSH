@@ -6,7 +6,7 @@ export interface SessionLike {
   id?: string;
   isLocal?: boolean;
   shellPath?: string;
-  terminals?: Array<{ id?: string }>;
+  terminals?: Array<{ id?: string; label?: string }>;
   [key: string]: unknown;
 }
 

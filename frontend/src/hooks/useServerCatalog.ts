@@ -91,7 +91,7 @@ export default function useServerCatalog({
       }
       return savedServer;
     } catch (error) {
-      addToast(String(error), 'error');
+      addToast(error instanceof Error ? error : String(error), 'error');
       return null;
     }
   }, [addToast, saveServerConfig, setServerEditor, startSaveFlowAnimation, t]);
@@ -137,7 +137,7 @@ export default function useServerCatalog({
           await AppGo.RenameConnectionGroup(groupName, trimmed);
           return null;
         } catch (error) {
-          return String((error as { message?: unknown })?.message || error || t('重命名失败'));
+          return String((error as { message?: unknown })?.message || (error instanceof Error ? error.message : error) || t('重命名失败'));
         }
       },
     });
@@ -164,7 +164,7 @@ export default function useServerCatalog({
       await AppGo.BatchSetConnectionGroup(ids, group);
       addToast(t('已移动到分组') + (group ? `「${group}」` : ''), 'success');
     } catch (error) {
-      addToast(String((error as { message?: unknown })?.message || error || t('移动分组')), 'error');
+      addToast(String((error as { message?: unknown })?.message || (error instanceof Error ? error.message : error) || t('移动分组')), 'error');
     } finally {
       await loadServers();
       setSelectedServerIds([]);
@@ -209,7 +209,7 @@ export default function useServerCatalog({
       await loadServers();
       addToast(t('已移动到分组') + (group ? `「${group}」` : ''), 'success');
     } catch (error) {
-      addToast(String(error), 'error');
+      addToast(error instanceof Error ? error : String(error), 'error');
     }
   }, [addToast, loadServers, t]);
 

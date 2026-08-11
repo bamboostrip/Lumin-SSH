@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback, useRef, useMemo, type MutableRefObjec
 import { EventsOn, WindowMinimise, WindowShow } from '../wailsjs/runtime/runtime.js';
 import * as AppGo from '../wailsjs/go/wailsapp/App.js';
 import type { config } from '../wailsjs/go/models.ts';
-import ProbePanel, { type ProbeSnapshot } from './components/ProbePanel.jsx';
-import FileManager from './components/FileManager.jsx';
-import AIPanel from './components/AIPanel.jsx';
+import ProbePanel, { type ProbeSnapshot } from './components/ProbePanel.tsx';
+import FileManager from './components/FileManager.tsx';
+import AIPanel from './components/AIPanel.tsx';
 import { isRecoveryPasswordError, syncWithRecoveryPassword } from './utils/recoveryPasswordSync.ts';
 import {
   getAllSessionFileManagerWorkspaces,
@@ -14,14 +14,14 @@ import {
   setSessionFileManagerWorkspace,
   type FileManagerWorkspaceState,
 } from './utils/fileWorkbench.ts';
-import AppTopbar, { type TopbarSession } from './components/AppTopbar.jsx';
-import SessionWorkspace from './components/SessionWorkspace.jsx';
-import type { QuickCommandsHandle } from './components/QuickCommands.jsx';
+import AppTopbar, { type TopbarSession } from './components/AppTopbar.tsx';
+import SessionWorkspace from './components/SessionWorkspace.tsx';
+import type { QuickCommandsHandle } from './components/QuickCommands.tsx';
 import AppOverlays, {
   type AppOverlaysProps,
   type TabContextMenuState,
   type TerminalTabContextMenuState,
-} from './components/AppOverlays.jsx';
+} from './components/AppOverlays.tsx';
 import {
   sortTerminalPaneCells,
   getTerminalPaneRect,
@@ -71,7 +71,7 @@ import useSessionConnections, {
 import useTerminalDocking from './hooks/useTerminalDocking.ts';
 import useTerminalSubTabs, { type SubTabSessionLike, type TerminalDockDragPreview } from './hooks/useTerminalSubTabs.ts';
 import { restoreAIChatTool } from './components/ai/aiChatBridge.ts';
-import type { SyncFailureState } from './components/SyncFailureToast.jsx';
+import type { SyncFailureState } from './components/SyncFailureToast.tsx';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import logoImg from './assets/logo.webp';
@@ -1409,7 +1409,7 @@ export default function App() {
       })();
       return savedServer;
     } catch (err) {
-      addToast(String(err), 'error');
+      addToast(err instanceof Error ? err : String(err), 'error');
       return null;
     }
   }, [saveServerConfig, addToast, handleConnectError, markWorkspaceRestoreNavigationOverride, postConnectSetup, t]);

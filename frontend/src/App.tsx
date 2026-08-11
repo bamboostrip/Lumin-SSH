@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, type MutableRefObject } from 'react';
 import { EventsOn, WindowMinimise, WindowShow } from '../wailsjs/runtime/runtime.js';
 import * as AppGo from '../wailsjs/go/wailsapp/App.js';
+import type { config } from '../wailsjs/go/models.js';
 import ProbePanel from './components/ProbePanel.jsx';
 import FileManager from './components/FileManager.jsx';
 import AIPanel from './components/AIPanel.jsx';
@@ -11,10 +12,15 @@ import {
   remapSessionFileManagerWorkspaces,
   replaceAllSessionFileManagerWorkspaces,
   setSessionFileManagerWorkspace,
+  type FileManagerWorkspaceState,
 } from './utils/fileWorkbench.js';
-import AppTopbar from './components/AppTopbar.jsx';
+import AppTopbar, { type TopbarSession } from './components/AppTopbar.jsx';
 import SessionWorkspace from './components/SessionWorkspace.jsx';
-import AppOverlays from './components/AppOverlays.jsx';
+import AppOverlays, {
+  type AppOverlaysProps,
+  type TabContextMenuState,
+  type TerminalTabContextMenuState,
+} from './components/AppOverlays.jsx';
 import {
   sortTerminalPaneCells,
   getTerminalPaneRect,
@@ -24,6 +30,7 @@ import {
   remapTerminalPaneLayouts,
   isTerminalPaneRectangular,
   normalizeTwoTerminalPaneLayout,
+  type TerminalPaneLayout,
 } from './utils/terminalPaneLayout.js';
 import {
   buildAIWorkspaceTerminalPanelKey,
@@ -35,17 +42,19 @@ import {
   normalizeWorkspaceContentTab,
   isUnsupportedMonitorSession,
   remapSessionWorkspaceLayouts,
+  type SessionLike,
+  type WorkspaceContentTab,
 } from './utils/sessionWorkspace.js';
 
 import { useTranslation } from './i18n.js';
 import { getTerminalTheme } from './utils/theme.js';
-import { formatUpdateError, useUpdateChecker } from './hooks/useUpdateChecker.js';
-import useServerPing from './hooks/useServerPing.js';
+import { formatUpdateError, useUpdateChecker, type UpdateCheckResult } from './hooks/useUpdateChecker.js';
+import useServerPing, { type PingServerLike } from './hooks/useServerPing.js';
 import useToasts from './hooks/useToasts.js';
 import useDashboardPreferences from './hooks/useDashboardPreferences.js';
 import useWindowState from './hooks/useWindowState.js';
 import useImportExport from './hooks/useImportExport.js';
-import useServerCatalog from './hooks/useServerCatalog.js';
+import useServerCatalog, { type ServerFormData } from './hooks/useServerCatalog.js';
 import useWorkspacePersistence, { useWorkspaceSessionPersistence } from './hooks/useWorkspacePersistence.js';
 import usePanelLayout from './hooks/usePanelLayout.js';
 import useWorkspaceSettings from './hooks/useWorkspaceSettings.js';
@@ -53,10 +62,15 @@ import useSessionWorkspaceModel from './hooks/useSessionWorkspaceModel.js';
 import useWorkspacePanelDocking from './hooks/useWorkspacePanelDocking.js';
 import usePortForwardDialog from './hooks/usePortForwardDialog.js';
 import useAIReview from './hooks/useAIReview.js';
-import useSessionConnections from './hooks/useSessionConnections.js';
+import useSessionConnections, {
+  type ConnectingServer,
+  type SessionAuthPrompt,
+  type SshChannelUsage,
+} from './hooks/useSessionConnections.js';
 import useTerminalDocking from './hooks/useTerminalDocking.js';
-import useTerminalSubTabs from './hooks/useTerminalSubTabs.js';
+import useTerminalSubTabs, { type SubTabSessionLike, type TerminalDockDragPreview } from './hooks/useTerminalSubTabs.js';
 import { restoreAIChatTool } from './components/ai/aiChatBridge.js';
+import type { SyncFailureState } from './components/SyncFailureToast.jsx';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import logoImg from './assets/logo.webp';
@@ -64,30 +78,61 @@ import logoLightImg from './assets/logo_q.webp';
 import logoDarkImg from './assets/logo_s.webp';
 
 const TERMINAL_DOCK_LONG_PRESS_MS = 280;
+
+/** 编辑飞行动画条目（与 AppOverlays 的渲染分支契约一致的宽松形状；AppOverlays 收敛导出类型后可收紧） */
+interface EditFlyItemLike {
+  id: string;
+  type?: string;
+  field?: string;
+  from?: { x: number; y: number };
+  mid?: { x: number; y: number };
+  to?: { x: number; y: number };
+  at?: { x: number; y: number };
+  delay: number;
+  path?: string;
+  size?: number;
+  label?: string;
+  value?: string;
+}
+
+/** 快捷命令面板的 imperative 句柄（QuickCommands 转 TSX 后接正式类型） */
+interface QuickCommandsHandle {
+  isDirty?: () => boolean;
+  showCloseConfirm?: () => void;
+}
+
+/** 终端停靠预览分区 */
+interface DockPreviewZone {
+  target: string;
+  label: string;
+  bounds: { left: number; top: number; right: number; bottom: number };
+  style: Record<string, string>;
+}
+
 export default function App() {
   const { t, lang } = useTranslation();
-  const [servers, setServers] = useState([]);
-  const [credentials, setCredentials] = useState([]);
-  const serversRef = useRef([]);
+  const [servers, setServers] = useState<config.Connection[]>([]);
+  const [credentials, setCredentials] = useState<config.Credential[]>([]);
+  const serversRef = useRef<config.Connection[]>([]);
   useEffect(() => { serversRef.current = servers; }, [servers]);
-  const [sessions, setSessions] = useState([]);      // { id, serverId, serverName, host, status, osInfo }
-  const sessionsRef = useRef([]);
+  const [sessions, setSessions] = useState<SessionLike[]>([]);      // { id, serverId, serverName, host, status, osInfo }
+  const sessionsRef = useRef<SessionLike[]>([]);
   useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
-  const cancelledConnectionsRef = useRef(new Set());
+  const cancelledConnectionsRef = useRef<Set<string>>(new Set());
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
-  const disconnectingServerIdsRef = useRef(new Map());
-  const [activeSessionId, setActiveSessionId] = useState(null);
+  const disconnectingServerIdsRef = useRef<Map<string, Promise<unknown>>>(new Map());
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   // 批量选择
   const [batchSelectionMode, setBatchSelectionMode] = useState(false);
-  const [selectedServerIds, setSelectedServerIds] = useState([]);
-  const activeSessionIdRef = useRef(null);
+  const [selectedServerIds, setSelectedServerIds] = useState<string[]>([]);
+  const activeSessionIdRef = useRef<string | null>(null);
   useEffect(() => { activeSessionIdRef.current = activeSessionId; }, [activeSessionId]);
-  const [activeTerminalId, setActiveTerminalId] = useState(null);
-  const activeTerminalIdRef = useRef(null);
+  const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
+  const activeTerminalIdRef = useRef<string | null>(null);
   useEffect(() => { activeTerminalIdRef.current = activeTerminalId; }, [activeTerminalId]);
   const {
     rememberWorkspace,
@@ -95,21 +140,23 @@ export default function App() {
     rememberWorkspaceLoaded,
   } = useWorkspaceSettings();
   const [workspaceRestoreReady, setWorkspaceRestoreReady] = useState(false);
-  const [terminalPaneLayouts, setTerminalPaneLayouts] = useState({});
-  const terminalPaneLayoutsRef = useRef({});
+  const [terminalPaneLayouts, setTerminalPaneLayouts] = useState<Record<string, TerminalPaneLayout>>({});
+  const terminalPaneLayoutsRef = useRef<Record<string, TerminalPaneLayout>>({});
   useEffect(() => { terminalPaneLayoutsRef.current = terminalPaneLayouts; }, [terminalPaneLayouts]);
-  const persistWorkspaceSnapshotRef = useRef(() => { });
+  const persistWorkspaceSnapshotRef = useRef<((overrides?: Record<string, unknown>) => void) | null>(() => { });
   const terminalPaneIdRef = useRef(0);
   const [serversLoaded, setServersLoaded] = useState(false);
   const workspaceRestoreStartedRef = useRef(false);
   const restoringWorkspaceRef = useRef(false);
   const workspaceRestoreNavigationOverrideRef = useRef(false);
-  const [restoringWorkspaceSessionIds, setRestoringWorkspaceSessionIds] = useState(new Set());
-  const lastTerminalRef = useRef({}); // 记录每个 session 最后选中的终端
-  const lastContentTabRef = useRef({}); // 记录每个 session 最后打开的内容页（终端/进程/网络等）
-  const [mountedSessions, setMountedSessions] = useState(new Set());
-  const [contentTab, setContentTab] = useState('terminal'); // 'terminal' | 'files' | 'process' | 'network' | 'history'
-  const contentTabRef = useRef(contentTab);
+  const [restoringWorkspaceSessionIds, setRestoringWorkspaceSessionIds] = useState<Set<string>>(new Set());
+  const lastTerminalRef = useRef<Record<string, string>>({}); // 记录每个 session 最后选中的终端
+  const lastContentTabRef = useRef<Record<string, WorkspaceContentTab>>({}); // 记录每个 session 最后打开的内容页（终端/进程/网络等）
+  const [mountedSessions, setMountedSessions] = useState<Set<string>>(new Set());
+  const [contentTab, setContentTab] = useState<WorkspaceContentTab>('terminal'); // 'terminal' | 'files' | 'process' | 'network' | 'history'
+  // 注入式宽松签名：hooks 侧仅按 string 使用（内容页与持久化层用严格 WorkspaceContentTab）
+  const setContentTabLoose = setContentTab as (tab: string) => void;
+  const contentTabRef = useRef<WorkspaceContentTab>(contentTab);
   const {
     showPortForwardDialog,
     portForwardDialogSessionId,
@@ -119,21 +166,21 @@ export default function App() {
     closePortForwardDialog,
   } = usePortForwardDialog();
   useEffect(() => { contentTabRef.current = contentTab; }, [contentTab]);
-  const [serverEditor, setServerEditor] = useState(null);
-  const [editFlyAnimation, setEditFlyAnimation] = useState(null);
-  const [editFlyShiningFields, setEditFlyShiningFields] = useState({});
-  const [saveFlowHighlights, setSaveFlowHighlights] = useState({ serverId: null, rowPulse: null, fields: {} });
-  const [editorModeBanner, setEditorModeBanner] = useState(null);
-  const editFlyTimerRef = useRef(null);
-  const editFlyFieldTimerRefs = useRef([]);
-  const editFlyShineTimerRefs = useRef([]);
-  const editorModeBannerTimerRef = useRef(null);
+  const [serverEditor, setServerEditor] = useState<config.Connection | Record<string, unknown> | null>(null);
+  const [editFlyAnimation, setEditFlyAnimation] = useState<{ id: number; items: EditFlyItemLike[] } | null>(null);
+  const [editFlyShiningFields, setEditFlyShiningFields] = useState<Record<string, boolean>>({});
+  const [saveFlowHighlights, setSaveFlowHighlights] = useState<{ serverId: string | null; rowPulse: string | null; fields: Record<string, string> }>({ serverId: null, rowPulse: null, fields: {} });
+  const [editorModeBanner, setEditorModeBanner] = useState<{ id: string; text: string } | null>(null);
+  const editFlyTimerRef = useRef<number | null>(null);
+  const editFlyFieldTimerRefs = useRef<number[]>([]);
+  const editFlyShineTimerRefs = useRef<number[]>([]);
+  const editorModeBannerTimerRef = useRef<number | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState('general');
   const [showCredentials, setShowCredentials] = useState(false);
   const [showSerialModal, setShowSerialModal] = useState(false);
-  const [tabContextMenu, setTabContextMenu] = useState(null);
-  const [terminalTabContextMenu, setTerminalTabContextMenu] = useState(null);
+  const [tabContextMenu, setTabContextMenu] = useState<TabContextMenuState | null>(null);
+  const [terminalTabContextMenu, setTerminalTabContextMenu] = useState<TerminalTabContextMenuState | null>(null);
   useEffect(() => {
     if (!tabContextMenu && !terminalTabContextMenu) return;
     const close = () => {
@@ -146,17 +193,17 @@ export default function App() {
     }, 0);
     return () => { clearTimeout(timer); document.removeEventListener('click', close); };
   }, [tabContextMenu, terminalTabContextMenu]);
-  const [connectingServers, setConnectingServers] = useState([]); // [{ server, sessionId, startTime }]
-  const [sshChannelUsage, setSshChannelUsage] = useState({}); // sessionId -> { terminals, sharedSftp, uploadPool, total, maxSessions }
-  const connectingServersRef = useRef([]);
+  const [connectingServers, setConnectingServers] = useState<ConnectingServer[]>([]); // [{ server, sessionId, startTime }]
+  const [sshChannelUsage, setSshChannelUsage] = useState<Record<string, SshChannelUsage>>({}); // sessionId -> { terminals, sharedSftp, uploadPool, total, maxSessions }
+  const connectingServersRef = useRef<ConnectingServer[]>([]);
   useEffect(() => { connectingServersRef.current = connectingServers; }, [connectingServers]);
   // 会话内待处理的交互：主机密钥确认 / 认证失败重输密码。
   // 按 sessionId 分键，批量连接时每个会话各自渲染一张卡片，不再走全局单例弹窗。
-  const [sessionAuthPrompts, setSessionAuthPrompts] = useState({}); // sessionId -> { kind, title, message, ... }
+  const [sessionAuthPrompts, setSessionAuthPrompts] = useState<Record<string, SessionAuthPrompt>>({}); // sessionId -> { kind, title, message, ... }
   // 同一会话可能连续多次要求输入（密码输错重试），token 递增作为 React key，
   // 强制重建卡片，避免复用旧实例导致输入框残留旧值 / 提交守卫失效。
   const authPromptTokenRef = useRef(0);
-  const clearSessionAuthPrompt = useCallback((sessionId) => {
+  const clearSessionAuthPrompt = useCallback((sessionId: string) => {
     setSessionAuthPrompts((prev) => {
       if (!prev[sessionId]) return prev;
       const next = { ...prev };
@@ -170,6 +217,9 @@ export default function App() {
     removeToast,
     handleToastAction,
   } = useToasts();
+  // 注入式宽松签名：hooks/组件侧参数为宽松联合（addToast 的 actions / t 的 key）
+  const looseAddToast = addToast as (message: string | Error, type?: string, duration?: number, actions?: unknown[]) => number;
+  const looseT = t as (key: string, vars?: Record<string, unknown>) => string;
   const {
     changeReviewQueues,
     restorePreviewReviews,
@@ -182,9 +232,9 @@ export default function App() {
     handleReapplyConversationDiffItem,
     handleApplyConversationDiffRestore,
     handleSelectConversationDiffItem,
-  } = useAIReview({ sessionsRef, addToast, t });
-  const [monitoringEnabled, setMonitoringEnabled] = useState({});
-  const [probeSnapshots, setProbeSnapshots] = useState({});
+  } = useAIReview({ sessionsRef, addToast: looseAddToast, t: looseT });
+  const [monitoringEnabled, setMonitoringEnabled] = useState<Record<string, boolean>>({});
+  const [probeSnapshots, setProbeSnapshots] = useState<Record<string, unknown>>({});
   const {
     searchQuery,
     setSearchQuery,
@@ -206,20 +256,25 @@ export default function App() {
     isRefreshingPing,
     pingCounts,
     handleRefreshPing,
-  } = useServerPing({ serversRef, activeSessionId, dashboardHostPageMode });
+  } = useServerPing({
+    // config.Connection 类无索引签名，需经 unknown 桥接（PingServerLike 带 [key: string]: unknown）
+    serversRef: serversRef as unknown as MutableRefObject<PingServerLike[] | null>,
+    activeSessionId,
+    dashboardHostPageMode,
+  });
   const [showQuickCommands, setShowQuickCommands] = useState(false);
-  const quickCmdsRef = useRef(null);
+  const quickCmdsRef = useRef<QuickCommandsHandle | null>(null);
   const showQuickCommandsRef = useRef(false);
   useEffect(() => { showQuickCommandsRef.current = showQuickCommands; }, [showQuickCommands]);
 
-  const [creatingTerminalSessionId, setCreatingTerminalSessionId] = useState(null);
-  const creatingTerminalRef = useRef(null);
+  const [creatingTerminalSessionId, setCreatingTerminalSessionId] = useState<string | null>(null);
+  const creatingTerminalRef = useRef<string | null>(null);
 
   // ponytail: 9 处 setSessions(prev => prev.map(s => s.id === id ? { ...s, status } : s)) 提取为帮助函数
-  const updateSessionStatus = useCallback((id, status) => {
+  const updateSessionStatus = useCallback((id: string, status: string) => {
     setSessions(prev => prev.map(s => s.id === id ? { ...s, status } : s));
   }, []);
-  const markConnectionCancelled = useCallback((terminalIds) => {
+  const markConnectionCancelled = useCallback((terminalIds: string | string[]) => {
     const ids = Array.from(new Set(
       (Array.isArray(terminalIds) ? terminalIds : [terminalIds])
         .map((id) => (typeof id === 'string' ? id.trim() : ''))
@@ -231,7 +286,7 @@ export default function App() {
     });
     return ids;
   }, []);
-  const awaitDisconnectTerminals = useCallback((terminalIds) => {
+  const awaitDisconnectTerminals = useCallback((terminalIds: string | string[]) => {
     const ids = Array.from(new Set(
       (Array.isArray(terminalIds) ? terminalIds : [terminalIds])
         .map((id) => (typeof id === 'string' ? id.trim() : ''))
@@ -242,16 +297,16 @@ export default function App() {
     }
     return Promise.allSettled(ids.map((id) => AppGo.DisconnectSSH(id)));
   }, []);
-  const disconnectSessionTerminals = useCallback((terminalIds) => {
+  const disconnectSessionTerminals = useCallback((terminalIds: string | string[]) => {
     const ids = markConnectionCancelled(terminalIds);
     return awaitDisconnectTerminals(ids);
   }, [awaitDisconnectTerminals, markConnectionCancelled]);
-  const registerServerDisconnect = useCallback((serverId, disconnectPromise) => {
+  const registerServerDisconnect = useCallback((serverId: string, disconnectPromise: Promise<unknown>) => {
     const normalizedServerId = typeof serverId === 'string' ? serverId.trim() : '';
     if (!normalizedServerId || !disconnectPromise) {
       return;
     }
-    let trackedPromise = null;
+    let trackedPromise: Promise<unknown> | null = null;
     trackedPromise = Promise.resolve(disconnectPromise).catch(() => { }).finally(() => {
       if (disconnectingServerIdsRef.current.get(normalizedServerId) === trackedPromise) {
         disconnectingServerIdsRef.current.delete(normalizedServerId);
@@ -259,7 +314,7 @@ export default function App() {
     });
     disconnectingServerIdsRef.current.set(normalizedServerId, trackedPromise);
   }, []);
-  const waitForServerDisconnect = useCallback(async (serverId) => {
+  const waitForServerDisconnect = useCallback(async (serverId: string) => {
     const normalizedServerId = typeof serverId === 'string' ? serverId.trim() : '';
     if (!normalizedServerId) {
       return;
@@ -272,12 +327,15 @@ export default function App() {
   }, []);
 
   // ponytail: 3 处 s.terminals?.length > 0 ? s.terminals : [{ id: s.id }] 提取为帮助函数
-  const getEffectiveTerminals = useCallback((s) => s.terminals?.length > 0 ? s.terminals : [{ id: s.id }], []);
-  const getSessionPanes = useCallback((layoutId, layoutSource = terminalPaneLayouts) => layoutSource[layoutId]?.panes || [], [terminalPaneLayouts]);
-  const getSessionRootPaneCells = useCallback((layoutId, layoutSource = terminalPaneLayouts) => (
+  const getEffectiveTerminals = useCallback((s: SessionLike): Array<{ id: string; label?: string }> => (
+    (s.terminals && s.terminals.length > 0 ? s.terminals : [{ id: s.id || '' }])
+      .map((term) => ({ id: term.id || '', label: term.label }))
+  ), []);
+  const getSessionPanes = useCallback((layoutId: string, layoutSource: Record<string, TerminalPaneLayout> = terminalPaneLayouts) => layoutSource[layoutId]?.panes || [], [terminalPaneLayouts]);
+  const getSessionRootPaneCells = useCallback((layoutId: string, layoutSource: Record<string, TerminalPaneLayout> = terminalPaneLayouts) => (
     getTerminalPaneRemainingCells(getSessionPanes(layoutId, layoutSource))
   ), [getSessionPanes, terminalPaneLayouts]);
-  const getSessionPaneLayouts = useCallback((sessionId, layoutSource = terminalPaneLayouts) => (
+  const getSessionPaneLayouts = useCallback((sessionId: string, layoutSource: Record<string, TerminalPaneLayout> = terminalPaneLayouts) => (
     Object.entries(layoutSource)
       .filter(([, layout]) => layout?.sessionId === sessionId)
       .map(([layoutId, layout]) => ({
@@ -287,23 +345,23 @@ export default function App() {
         panes: layout.panes || [],
       }))
   ), [terminalPaneLayouts]);
-  const getSessionGroupedTerminalIds = useCallback((sessionId, layoutSource = terminalPaneLayouts) => {
-    const ids = new Set();
+  const getSessionGroupedTerminalIds = useCallback((sessionId: string, layoutSource: Record<string, TerminalPaneLayout> = terminalPaneLayouts) => {
+    const ids = new Set<string>();
     getSessionPaneLayouts(sessionId, layoutSource).forEach((layout) => {
       ids.add(layout.rootTerminalId);
       (layout.panes || []).forEach((pane) => ids.add(pane.terminalId));
     });
     return ids;
   }, [getSessionPaneLayouts, terminalPaneLayouts]);
-  const getSessionRootTerminals = useCallback((session, layoutSource = terminalPaneLayouts) => {
-    const groupedTerminalIds = getSessionGroupedTerminalIds(session.id, layoutSource);
+  const getSessionRootTerminals = useCallback((session: SessionLike, layoutSource: Record<string, TerminalPaneLayout> = terminalPaneLayouts) => {
+    const groupedTerminalIds = getSessionGroupedTerminalIds(session.id || '', layoutSource);
     return getEffectiveTerminals(session).filter((term) => !groupedTerminalIds.has(term.id));
   }, [getEffectiveTerminals, getSessionGroupedTerminalIds, terminalPaneLayouts]);
-  const getSessionWorkspaceTabs = useCallback((session, layoutSource = terminalPaneLayouts) => {
+  const getSessionWorkspaceTabs = useCallback((session: SessionLike, layoutSource: Record<string, TerminalPaneLayout> = terminalPaneLayouts) => {
     const terminals = getEffectiveTerminals(session);
     const terminalById = new Map(terminals.map((term) => [term.id, term]));
-    const layoutsByRoot = new Map(getSessionPaneLayouts(session.id, layoutSource).map((layout) => [layout.rootTerminalId, layout]));
-    const groupedTerminalIds = getSessionGroupedTerminalIds(session.id, layoutSource);
+    const layoutsByRoot = new Map(getSessionPaneLayouts(session.id || '', layoutSource).map((layout) => [layout.rootTerminalId, layout]));
+    const groupedTerminalIds = getSessionGroupedTerminalIds(session.id || '', layoutSource);
     return terminals.flatMap((term) => {
       const layout = layoutsByRoot.get(term.id);
       if (layout) {
@@ -323,7 +381,7 @@ export default function App() {
       return [{ ...term, type: 'terminal', terminalIds: [term.id] }];
     });
   }, [getEffectiveTerminals, getSessionGroupedTerminalIds, getSessionPaneLayouts, terminalPaneLayouts, t]);
-  const resolveSessionRootTerminalId = useCallback((session, preferredId, layoutSource = terminalPaneLayouts, preferredLabel = '') => {
+  const resolveSessionRootTerminalId = useCallback((session: SessionLike, preferredId: string | null | undefined, layoutSource: Record<string, TerminalPaneLayout> = terminalPaneLayouts, preferredLabel = '') => {
     const tabs = getSessionWorkspaceTabs(session, layoutSource);
     if (!tabs.length) {
       return null;
@@ -342,7 +400,7 @@ export default function App() {
     // session 上缓存的上次选中（含 label）
     const cachedId = session?.activeTerminalId;
     if (cachedId && tabs.some((tab) => tab.id === cachedId)) {
-      return cachedId;
+      return cachedId as string;
     }
     const cachedLabel = typeof session?.activeTerminalLabel === 'string' ? session.activeTerminalLabel.trim() : '';
     if (cachedLabel) {
@@ -354,7 +412,7 @@ export default function App() {
     return tabs[0]?.id || null;
   }, [getSessionWorkspaceTabs, terminalPaneLayouts]);
   // 写入每个会话「上次选中终端」——同时更新 ref 与 session 字段，保证持久化不丢
-  const rememberSessionActiveTerminal = useCallback((sessionId, terminalId, terminalLabel = '') => {
+  const rememberSessionActiveTerminal = useCallback((sessionId: string, terminalId: string, terminalLabel = '') => {
     if (!sessionId || !terminalId) {
       return;
     }
@@ -367,8 +425,7 @@ export default function App() {
         }
         const label = terminalLabel
           || session.terminals?.find((term) => term.id === terminalId)?.label
-          || session.activeTerminalLabel
-          || '';
+          || String(session.activeTerminalLabel || '');
         if (session.activeTerminalId === terminalId && session.activeTerminalLabel === label) {
           return session;
         }
@@ -388,7 +445,7 @@ export default function App() {
     }
   }, []);
 
-  const renderSessionFileManagers = (s) => getEffectiveTerminals(s).map(t => {
+  const renderSessionFileManagers = (s: SessionLike) => getEffectiveTerminals(s).map(t => {
     const isActive = activeSessionId === s.id && activeTerminalId === t.id;
     const serverConfig = serversRef.current.find((server) => server.id === s.serverId);
     return (
@@ -405,13 +462,13 @@ export default function App() {
   });
 
   // ── 新增自动检测更新状态 ──────────────────────────────
-  const [startupUpdateInfo, setStartupUpdateInfo] = useState(null);
+  const [startupUpdateInfo, setStartupUpdateInfo] = useState<{ version: string; url: string; filename: string } | null>(null);
   const [isUpdateModalVisible, setIsUpdateModalVisible] = useState(false);
   const [showUpdateBubble, setShowUpdateBubble] = useState(false);
-  const updateBubbleTimeoutRef = useRef(null);
+  const updateBubbleTimeoutRef = useRef<number | null>(null);
   const updateBubbleRemainingRef = useRef(4000);
   const updateBubbleStartedAtRef = useRef(0);
-  const [syncFailed, setSyncFailed] = useState(null); // { provider, error }
+  const [syncFailed, setSyncFailed] = useState<SyncFailureState | null>(null); // { provider, error }
 
   // ── 新增分屏拖拽大小控制状态与逻辑 ──────────────────────
   const {
@@ -449,13 +506,15 @@ export default function App() {
     bottomSplitHeight,
     bottomSplitHeightRef,
     contentTab,
+    // hook 内部自己维护 fileManagerPosition（localStorage），此处仅作初始值；原 .jsx 未传
+    fileManagerPosition: 'tab',
     leftSplitWidth,
     leftSplitWidthRef,
     aiPanelWidthRef,
     probePanelPosition,
     probePanelWidthRef,
     setAIPanelVisibility,
-    setContentTab,
+    setContentTab: setContentTabLoose,
     setProbePanelCollapsedPersistent,
     showQuickCommandsRef,
     updateAiPanelWidth,
@@ -467,25 +526,25 @@ export default function App() {
   const [terminalThemeToggle, setTerminalThemeToggle] = useState(0);
   const [sessionListPos, setSessionListPos] = useState({ x: 0, y: 0 });
   const [sessionListQuery, setSessionListQuery] = useState('');
-  const sessionListBtnRef = useRef(null);
-  const sessionListRef = useRef(null);
+  const sessionListBtnRef = useRef<HTMLButtonElement>(null);
+  const sessionListRef = useRef<HTMLDivElement>(null);
   const [tabsOverflow, setTabsOverflow] = useState(false);
-  const tabScrollRef = useRef(null);
-  const tabListRef = useRef(null);
-  const tabActionsRef = useRef(null);
-  const terminalSubTabScrollRef = useRef(null);
-  const terminalSubTabActionsRef = useRef(null);
+  const tabScrollRef = useRef<HTMLDivElement>(null);
+  const tabListRef = useRef<HTMLDivElement>(null);
+  const tabActionsRef = useRef<HTMLDivElement>(null);
+  const terminalSubTabScrollRef = useRef<HTMLElement>(null);
+  const terminalSubTabActionsRef = useRef<HTMLDivElement>(null);
   const [terminalSubTabOverflow, setTerminalSubTabOverflow] = useState(false);
   const terminalSubTabDragSuppressUntilRef = useRef(0);
   const terminalSubTabScrollTargetRef = useRef(0);
   const terminalSubTabScrollFrameRef = useRef(0);
   const terminalSubTabDraggingRef = useRef(false);
   // 按会话记忆终端子标签横向滚动位置（回首页再进 / 切会话不丢）
-  const terminalSubTabScrollBySessionRef = useRef({});
-  const terminalDockLongPressTimerRef = useRef(null);
-  const terminalDockPointerCleanupRef = useRef(null);
+  const terminalSubTabScrollBySessionRef = useRef<Record<string, number>>({});
+  const terminalDockLongPressTimerRef = useRef<number | null>(null);
+  const terminalDockPointerCleanupRef = useRef<(() => void) | null>(null);
   const terminalDockClickSuppressUntilRef = useRef(0);
-  const [terminalDockDragPreview, setTerminalDockDragPreview] = useState(null);
+  const [terminalDockDragPreview, setTerminalDockDragPreview] = useState<TerminalDockDragPreview | null>(null);
   const clearTerminalDockLongPressTimer = useCallback(() => {
     if (!terminalDockLongPressTimerRef.current) {
       return;
@@ -494,7 +553,7 @@ export default function App() {
     terminalDockLongPressTimerRef.current = null;
   }, []);
   const shouldIgnoreTerminalDockClick = useCallback(() => Date.now() < terminalDockClickSuppressUntilRef.current, []);
-  const getTerminalDockPreviewZones = useCallback(() => {
+  const getTerminalDockPreviewZones = useCallback((): DockPreviewZone[] => {
     const container = document.getElementById('terminal-dock-preview-host');
     if (!container) {
       return [];
@@ -542,8 +601,10 @@ export default function App() {
       };
     });
   }, [t]);
-  const getTerminalDockPreviewTarget = useCallback((clientX, clientY, zones) => {
-    return zones.find((zone) =>
+  const getTerminalDockPreviewTarget = useCallback((clientX: number, clientY: number, zones: unknown[]): string | null => {
+    // zones 由 getTerminalDockPreviewZones 提供，此处按结构断言
+    const typedZones = zones as DockPreviewZone[];
+    return typedZones.find((zone) =>
       clientX >= zone.bounds.left
       && clientX <= zone.bounds.right
       && clientY >= zone.bounds.top
@@ -552,16 +613,20 @@ export default function App() {
   }, []);
 
   const handleToggleMaximise = useWindowState();
-  const handleTopbarDoubleClick = useCallback((event) => {
+  const handleTopbarDoubleClick = useCallback((event?: React.MouseEvent<HTMLDivElement>) => {
+    if (!event) {
+      return;
+    }
     try {
       window.getSelection?.()?.removeAllRanges?.();
     } catch { }
+    const target = event.target as HTMLElement;
     if (
-      event.target.closest('button')
-      || event.target.closest('input')
-      || event.target.closest('.no-drag')
-      || event.target.closest('.topbar-logo')
-      || event.target.closest('.tab-item')
+      target.closest('button')
+      || target.closest('input')
+      || target.closest('.no-drag')
+      || target.closest('.topbar-logo')
+      || target.closest('.tab-item')
     ) {
       return;
     }
@@ -571,9 +636,9 @@ export default function App() {
 
   useEffect(() => {
     if (!showSessionList) return;
-    const handler = (e) => {
-      if (sessionListRef.current && !sessionListRef.current.contains(e.target) &&
-        sessionListBtnRef.current && !sessionListBtnRef.current.contains(e.target)) {
+    const handler = (e: MouseEvent) => {
+      if (sessionListRef.current && !sessionListRef.current.contains(e.target as Node) &&
+        sessionListBtnRef.current && !sessionListBtnRef.current.contains(e.target as Node)) {
         setShowSessionList(false);
       }
     };
@@ -582,7 +647,8 @@ export default function App() {
   }, [showSessionList]);
   const toggleSessionList = useCallback(() => {
     if (showSessionList) { setShowSessionList(false); return; }
-    const rect = sessionListBtnRef.current.getBoundingClientRect();
+    const rect = sessionListBtnRef.current?.getBoundingClientRect();
+    if (!rect) { setShowSessionList(false); return; }
     setSessionListPos({ x: rect.right, y: rect.bottom + 4 });
     setSessionListQuery('');
     setShowSessionList(true);
@@ -629,26 +695,26 @@ export default function App() {
     return () => window.removeEventListener('terminal-toolbar-icon-only-changed', handler);
   }, []);
   const terminalSubTabTheme = useMemo(() => getTerminalTheme(), [terminalThemeToggle]);
-  const [quickThemeMode, setQuickThemeMode] = useState(localStorage.getItem('themeMode') || 'dark');
+  const [quickThemeMode, setQuickThemeMode] = useState<string>(localStorage.getItem('themeMode') || 'dark');
   const [showThemeQuickEntry, setShowThemeQuickEntry] = useState(localStorage.getItem('showThemeQuickEntry') !== 'false');
   const [terminalToolbarIconOnly, setTerminalToolbarIconOnly] = useState(localStorage.getItem('terminalToolbarIconOnly') === 'true');
   const [showTopbarRefreshedLogo, setShowTopbarRefreshedLogo] = useState(false);
-  const [aiPanelDevilModes, setAIPanelDevilModes] = useState({});
-  const activeAIPanelKey = useMemo(() => buildAIWorkspaceTerminalPanelKey(activeSessionId, activeTerminalId), [activeSessionId, activeTerminalId]);
+  const [aiPanelDevilModes, setAIPanelDevilModes] = useState<Record<string, boolean>>({});
+  const activeAIPanelKey = useMemo(() => buildAIWorkspaceTerminalPanelKey(activeSessionId || '', activeTerminalId || ''), [activeSessionId, activeTerminalId]);
   const activeAIDevilMode = activeAIPanelKey ? aiPanelDevilModes[activeAIPanelKey] === true : false;
 
-  const handleQuickCommandsOpenChange = useCallback((open) => {
+  const handleQuickCommandsOpenChange = useCallback((open: boolean) => {
     if (open) {
       setShowQuickCommands(true);
       return;
     }
     if (quickCmdsRef.current?.isDirty?.()) {
-      quickCmdsRef.current.showCloseConfirm();
+      quickCmdsRef.current.showCloseConfirm?.();
       return;
     }
     setShowQuickCommands(false);
   }, []);
-  const resolveQuickThemeMode = useCallback((mode) => {
+  const resolveQuickThemeMode = useCallback((mode: string): 'light' | 'dark' => {
     if (mode === 'system') {
       return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
     }
@@ -678,10 +744,11 @@ export default function App() {
   // ────────────────────────────────────────────────────────
 
   useEffect(() => {
-    const handleSendTerminalSelectionToAI = (event) => {
-      const selectedText = typeof event?.detail?.text === 'string' ? event.detail.text.trim() : '';
-      const targetSessionId = typeof event?.detail?.sessionId === 'string' ? event.detail.sessionId.trim() : '';
-      const sourceTerminalId = typeof event?.detail?.terminalId === 'string' ? event.detail.terminalId.trim() : '';
+    const handleSendTerminalSelectionToAI = (event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail || {};
+      const selectedText = typeof detail.text === 'string' ? detail.text.trim() : '';
+      const targetSessionId = typeof detail.sessionId === 'string' ? detail.sessionId.trim() : '';
+      const sourceTerminalId = typeof detail.terminalId === 'string' ? detail.terminalId.trim() : '';
       if (!selectedText || !targetSessionId) {
         return;
       }
@@ -709,8 +776,9 @@ export default function App() {
       }));
     };
 
-    const handleQuoteSelectionToAI = (event) => {
-      const selectedText = typeof event?.detail?.text === 'string' ? event.detail.text : '';
+    const handleQuoteSelectionToAI = (event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail || {};
+      const selectedText = typeof detail.text === 'string' ? detail.text : '';
       const quotedText = formatAIQuotedSelection(selectedText);
       const currentSessionId = activeSessionIdRef.current;
       if (!currentSessionId || !quotedText) {
@@ -747,8 +815,9 @@ export default function App() {
   }, [markWorkspaceRestoreNavigationOverride, resolveSessionRootTerminalId, setAIPanelVisibility]);
 
   useEffect(() => {
-    const handleAIThemeTuningRequest = (event) => {
-      const slot = typeof event?.detail?.slot === 'string' ? event.detail.slot.trim() : '';
+    const handleAIThemeTuningRequest = (event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail || {};
+      const slot = typeof detail.slot === 'string' ? detail.slot.trim() : '';
       if (slot !== 'light' && slot !== 'dark') {
         return;
       }
@@ -763,13 +832,13 @@ export default function App() {
       }
       const targetTerminalId = resolveSessionRootTerminalId(
         targetSession,
-        targetSession.id === activeSessionIdRef.current ? activeTerminalIdRef.current : (lastTerminalRef.current[targetSession.id] || targetSession.activeTerminalId),
+        targetSession.id === activeSessionIdRef.current ? activeTerminalIdRef.current : String(lastTerminalRef.current[targetSession.id || ''] || targetSession.activeTerminalId || ''),
         terminalPaneLayoutsRef.current,
-        targetSession.activeTerminalLabel || '',
-      ) || targetSession.id;
+        String(targetSession.activeTerminalLabel || ''),
+      ) || targetSession.id || '';
       markWorkspaceRestoreNavigationOverride();
       setAIPanelVisibility(true);
-      setActiveSessionId(targetSession.id);
+      setActiveSessionId(targetSession.id || null);
       setActiveTerminalId(targetTerminalId);
       setContentTab('terminal');
       window.setTimeout(() => {
@@ -907,13 +976,14 @@ export default function App() {
 
   const handleApplyStartupUpdate = async () => {
     try {
-      await applyUpdate(startupUpdateInfo);
+      // startupUpdateInfo 为 UI 展示形状，applyUpdate 需要 UpdateCheckResult 完整形状
+      await applyUpdate(startupUpdateInfo as unknown as UpdateCheckResult | null);
     } catch (err) {
       addToast(`${t('自动更新失败')}: ${formatUpdateError(err)}`, 'error', 5000);
     }
   };
 
-  const activeWorkspaceTerminalKey = useMemo(() => buildAIWorkspaceTerminalPanelKey(activeSessionId, activeTerminalId), [activeSessionId, activeTerminalId]);
+  const activeWorkspaceTerminalKey = useMemo(() => buildAIWorkspaceTerminalPanelKey(activeSessionId || '', activeTerminalId || ''), [activeSessionId, activeTerminalId]);
   const activeChangeReviewQueue = useMemo(() => (
     activeWorkspaceTerminalKey && Array.isArray(changeReviewQueues[activeWorkspaceTerminalKey])
       ? changeReviewQueues[activeWorkspaceTerminalKey]
@@ -936,14 +1006,126 @@ export default function App() {
     lastTerminalRef,
     rememberWorkspace,
     resolveSessionRootTerminalId,
-    t,
+    t: looseT,
     terminalPaneLayoutsRef,
     workspacePersistenceLevel,
   });
 
-  const { handleConnectError, postConnectSetup, loadServers, handleCancelConnection, resolveSessionContentTab, switchToNextSession, handleTabClick, canCopySessionPassword, handleCopySessionPassword, reconnectSession, resolveHostKeyChoice, resolvePasswordPrompt, handleCloseWindow, connectServer, connectLocal, connectSerial, forceCloseSession, closeSession, closeAllSessions, openNewTerminal, handleRenameTerminalTab, closeTerminal } = useSessionConnections({ activeSessionIdRef, activeTerminalIdRef, addToast, authPromptTokenRef, awaitDisconnectTerminals, buildTerminalCloneCwdCommand, cancelledConnectionsRef, clearSessionAuthPrompt, cloneSessionFileManagerWorkspaceState, connectingServersRef, contentTabRef, creatingTerminalRef, credentials, disconnectSessionTerminals, enqueueChangeReview, fileManagerPosition, getAllSessionFileManagerWorkspaces, getSessionFileManagerWorkspace, isRecoveryPasswordError, isUnsupportedMonitorSession, lastContentTabRef, lastTerminalRef, loadServerWorkspaceSessionSnapshot, markWorkspaceRestoreNavigationOverride, mountedRef, normalizeWorkspaceContentTab, persistServerWorkspaceSessionSnapshot, persistWorkspaceSnapshotRef, recordRecentConnection, registerServerDisconnect, remapSessionFileManagerWorkspaceMap, remapSessionFileManagerWorkspaces, remapSessionWorkspaceLayouts, remapTerminalPaneLayouts, rememberSessionActiveTerminal, rememberWorkspace, rememberWorkspaceLoaded, removeChangeReviewsByRequestId, replaceAllSessionFileManagerWorkspaces, resolveSessionRootTerminalId, restoringWorkspaceRef, serversLoaded, serversRef, sessionsRef, setActiveSessionId, setActiveTerminalId, setConnectingServers, setContentTab, setCreatingTerminalSessionId, setCredentials, setMonitoringEnabled, setMountedSessions, setRestoringWorkspaceSessionIds, setServers, setServersLoaded, setSessionAuthPrompts, setSessionFileManagerWorkspace, setSessions, setSettingsInitialTab, setShowSettings, setSshChannelUsage, setSyncFailed, setTabContextMenu, setTerminalPaneLayouts, setTerminalSubTabOverflow, setTerminalTabContextMenu, setWorkspaceRestoreReady, sortTerminalPaneCells, syncFailed, syncWithRecoveryPassword, t, terminalPaneLayoutsRef, terminalSubTabScrollBySessionRef, terminalSubTabScrollRef, terminalSubTabScrollTargetRef, updateSessionStatus, waitForServerDisconnect, workspacePersistenceLevel, workspaceRestoreNavigationOverrideRef, workspaceRestoreStartedRef });
+  const { handleConnectError, postConnectSetup, loadServers, handleCancelConnection, resolveSessionContentTab, switchToNextSession, handleTabClick, canCopySessionPassword, handleCopySessionPassword, reconnectSession, resolveHostKeyChoice, resolvePasswordPrompt, handleCloseWindow, connectServer, connectLocal, connectSerial, forceCloseSession, closeSession, closeAllSessions, openNewTerminal, handleRenameTerminalTab, closeTerminal } = useSessionConnections({
+    activeSessionIdRef,
+    activeTerminalIdRef,
+    addToast: looseAddToast,
+    authPromptTokenRef,
+    awaitDisconnectTerminals,
+    buildTerminalCloneCwdCommand,
+    cancelledConnectionsRef,
+    clearSessionAuthPrompt,
+    // sessionWorkspace 的宽松 FileManagerWorkspaceState 与 fileWorkbench 严格形状不一致，桥接
+    cloneSessionFileManagerWorkspaceState: cloneSessionFileManagerWorkspaceState as unknown as (workspace: unknown) => FileManagerWorkspaceState | null,
+    connectingServersRef,
+    contentTabRef,
+    creatingTerminalRef,
+    credentials,
+    disconnectSessionTerminals,
+    // useAIReview 返回严格 AIChangeReview，注入侧为宽松 Record
+    enqueueChangeReview: enqueueChangeReview as (review: Record<string, unknown>) => void,
+    fileManagerPosition,
+    getAllSessionFileManagerWorkspaces,
+    getSessionFileManagerWorkspace,
+    isRecoveryPasswordError,
+    isUnsupportedMonitorSession,
+    lastContentTabRef,
+    lastTerminalRef,
+    loadServerWorkspaceSessionSnapshot,
+    markWorkspaceRestoreNavigationOverride,
+    mountedRef,
+    normalizeWorkspaceContentTab,
+    persistServerWorkspaceSessionSnapshot,
+    persistWorkspaceSnapshotRef,
+    recordRecentConnection,
+    registerServerDisconnect,
+    remapSessionFileManagerWorkspaceMap,
+    remapSessionFileManagerWorkspaces,
+    remapSessionWorkspaceLayouts,
+    remapTerminalPaneLayouts,
+    rememberSessionActiveTerminal,
+    rememberWorkspace,
+    rememberWorkspaceLoaded,
+    removeChangeReviewsByRequestId,
+    replaceAllSessionFileManagerWorkspaces,
+    resolveSessionRootTerminalId,
+    restoringWorkspaceRef,
+    serversLoaded,
+    serversRef,
+    sessionsRef,
+    setActiveSessionId,
+    setActiveTerminalId,
+    setConnectingServers,
+    setContentTab: setContentTabLoose,
+    setCreatingTerminalSessionId,
+    setCredentials,
+    setMonitoringEnabled,
+    setMountedSessions,
+    setRestoringWorkspaceSessionIds,
+    setServers,
+    setServersLoaded,
+    setSessionAuthPrompts,
+    setSessionFileManagerWorkspace,
+    setSessions,
+    setSettingsInitialTab,
+    setShowSettings,
+    setSshChannelUsage,
+    // 严格 Dispatch 无法协变到 Dispatch<SetStateAction<unknown>>，桥接
+    setSyncFailed: setSyncFailed as React.Dispatch<React.SetStateAction<unknown>>,
+    setTabContextMenu: setTabContextMenu as (menu: unknown) => void,
+    setTerminalPaneLayouts,
+    setTerminalSubTabOverflow,
+    setTerminalTabContextMenu: setTerminalTabContextMenu as (menu: unknown) => void,
+    setWorkspaceRestoreReady,
+    sortTerminalPaneCells,
+    syncFailed,
+    syncWithRecoveryPassword,
+    t: looseT,
+    terminalPaneLayoutsRef,
+    terminalSubTabScrollBySessionRef,
+    terminalSubTabScrollRef,
+    terminalSubTabScrollTargetRef,
+    updateSessionStatus,
+    waitForServerDisconnect,
+    workspacePersistenceLevel,
+    workspaceRestoreNavigationOverrideRef,
+    workspaceRestoreStartedRef,
+  });
 
-  const { isTerminalDockTargetOccupied, getTerminalDockTargetStates, canMoveTerminalToDockTarget, handleTerminalPaneDrop, moveTerminalToDockTarget, closeTerminalGroup, closeTerminalPane } = useTerminalDocking({ activeSessionIdRef, activeTerminalIdRef, contentTabRef, disconnectSessionTerminals, getEffectiveTerminals, getSessionGroupedTerminalIds, getSessionPaneLayouts, getSessionPanes, getSessionRootPaneCells, getSessionRootTerminals, lastContentTabRef, lastTerminalRef, persistServerWorkspaceSessionSnapshot, registerServerDisconnect, resolveSessionRootTerminalId, sessionsRef, setActiveTerminalId, setContentTab, setMountedSessions, setSessions, setTabContextMenu, setTerminalPaneLayouts, setTerminalTabContextMenu, switchToNextSession, terminalPaneIdRef, terminalPaneLayouts, terminalPaneLayoutsRef });
+  const { isTerminalDockTargetOccupied, getTerminalDockTargetStates, canMoveTerminalToDockTarget, handleTerminalPaneDrop, moveTerminalToDockTarget, closeTerminalGroup, closeTerminalPane } = useTerminalDocking({
+    activeSessionIdRef,
+    activeTerminalIdRef,
+    contentTabRef,
+    disconnectSessionTerminals,
+    getEffectiveTerminals,
+    getSessionGroupedTerminalIds,
+    getSessionPaneLayouts,
+    getSessionPanes,
+    getSessionRootPaneCells,
+    getSessionRootTerminals,
+    lastContentTabRef,
+    lastTerminalRef,
+    persistServerWorkspaceSessionSnapshot,
+    registerServerDisconnect,
+    resolveSessionRootTerminalId,
+    sessionsRef,
+    setActiveTerminalId,
+    setContentTab: setContentTabLoose,
+    setMountedSessions,
+    setSessions,
+    setTabContextMenu: setTabContextMenu as (menu: unknown) => void,
+    setTerminalPaneLayouts,
+    setTerminalTabContextMenu: setTerminalTabContextMenu as (menu: unknown) => void,
+    switchToNextSession,
+    terminalPaneIdRef,
+    terminalPaneLayouts,
+    terminalPaneLayoutsRef,
+  });
 
   const { activeSession, activeSessionRootTerminals, isActiveSessionConnected, isSessionWorkspaceVisible } = useSessionWorkspaceModel({
     activeSessionId,
@@ -984,11 +1166,39 @@ export default function App() {
     persistWorkspaceSnapshotRef,
   });
 
-  const { terminalSubTabScrollStyle, handleTerminalSubTabScroll, handleTerminalSubTabWheel, handleTerminalSubTabMouseDown, handleTerminalSubTabClickCapture, handleTerminalSubTabDockMouseDown, fileManagerDockDropzones } = useTerminalSubTabs({ TERMINAL_DOCK_LONG_PRESS_MS, activeSessionId, activeSessionRootTerminals, activeTerminalId, canMoveTerminalToDockTarget, clearTerminalDockLongPressTimer, contentTab, fileManagerDockPreview, getFileManagerDockConfirmRect, getSessionRootTerminals, getTerminalDockPreviewTarget, getTerminalDockPreviewZones, getTerminalDockTargetStates, handleTerminalPaneDrop, setTerminalDockDragPreview, setTerminalSubTabOverflow, terminalDockClickSuppressUntilRef, terminalDockLongPressTimerRef, terminalDockPointerCleanupRef, terminalSubTabDragSuppressUntilRef, terminalSubTabDraggingRef, terminalSubTabScrollBySessionRef, terminalSubTabScrollFrameRef, terminalSubTabScrollRef, terminalSubTabScrollTargetRef, terminalSubTabTheme });
+  const { terminalSubTabScrollStyle, handleTerminalSubTabScroll, handleTerminalSubTabWheel, handleTerminalSubTabMouseDown, handleTerminalSubTabClickCapture, handleTerminalSubTabDockMouseDown, fileManagerDockDropzones } = useTerminalSubTabs({
+    TERMINAL_DOCK_LONG_PRESS_MS,
+    activeSessionId,
+    activeSessionRootTerminals,
+    activeTerminalId,
+    canMoveTerminalToDockTarget,
+    clearTerminalDockLongPressTimer,
+    contentTab,
+    fileManagerDockPreview,
+    getFileManagerDockConfirmRect,
+    getSessionRootTerminals,
+    getTerminalDockPreviewTarget,
+    getTerminalDockPreviewZones,
+    // useTerminalDocking 返回 Record 形状，subtab 侧期望 unknown[]（仅透传给停靠目标态判断）
+    getTerminalDockTargetStates: getTerminalDockTargetStates as unknown as (session: SubTabSessionLike, terminalId: string, zones: unknown[]) => unknown[],
+    handleTerminalPaneDrop,
+    setTerminalDockDragPreview,
+    setTerminalSubTabOverflow,
+    terminalDockClickSuppressUntilRef,
+    terminalDockLongPressTimerRef,
+    terminalDockPointerCleanupRef,
+    terminalSubTabDragSuppressUntilRef,
+    terminalSubTabDraggingRef,
+    terminalSubTabScrollBySessionRef,
+    terminalSubTabScrollFrameRef,
+    terminalSubTabScrollRef,
+    terminalSubTabScrollTargetRef,
+    terminalSubTabTheme,
+  });
 
   const isCreatingTerminal = creatingTerminalSessionId !== null;
   const probeSessions = useMemo(() => sessions.filter((s) => !s.isSerial && !isUnsupportedMonitorSession(s) && (
-    s.status === 'connected' || (s.status === 'closed' && monitoringEnabled[s.id])
+    s.status === 'connected' || (s.status === 'closed' && monitoringEnabled[s.id || ''])
   )), [monitoringEnabled, sessions]);
   const shouldShowProbePanel = probeSessions.some((s) => s.id === activeSessionId);
 
@@ -1016,14 +1226,14 @@ export default function App() {
               sessionId={s.id}
               host={s.host}
               addToast={addToast}
-              enabled={!!monitoringEnabled[s.id]}
+              enabled={!!monitoringEnabled[s.id || '']}
               active={isPanelActive && s.status === 'connected'}
-              snapshot={probeSnapshots[s.id]}
-              onSnapshot={(snapshot) => setProbeSnapshots(prev => ({ ...prev, [s.id]: snapshot }))}
-              onEnable={() => setMonitoringEnabled(prev => ({ ...prev, [s.id]: true }))}
+              snapshot={probeSnapshots[s.id || '']}
+              onSnapshot={(snapshot: unknown) => setProbeSnapshots(prev => ({ ...prev, [s.id || '']: snapshot }))}
+              onEnable={() => setMonitoringEnabled(prev => ({ ...prev, [s.id || '']: true }))}
               onShowAllProcesses={() => setContentTab('process')}
               onShowNetworkDetails={() => setContentTab('network')}
-              onOpenPortForward={() => openPortForwardDialog(s.id, null, 'new')}
+              onOpenPortForward={() => openPortForwardDialog(s.id || '', null, 'new')}
             />
           </div>
         );
@@ -1081,10 +1291,11 @@ export default function App() {
                 side={probePanelPosition}
                 sessionId={s.id}
                 terminalId={t.id}
-                sessionTerminals={getEffectiveTerminals(s)}
+                // AIPanel 尚未转 TSX：.jsx 推断 sessionTerminals=[] → never[]，转 TSX 后移除断言
+                sessionTerminals={getEffectiveTerminals(s) as never[]}
                 addToast={addToast}
-                onDevilModeChange={(enabled) => {
-                  const panelKey = buildAIWorkspaceTerminalPanelKey(s.id, t.id);
+                onDevilModeChange={(enabled: boolean) => {
+                  const panelKey = buildAIWorkspaceTerminalPanelKey(s.id || '', t.id);
                   if (!panelKey) {
                     return;
                   }
@@ -1147,19 +1358,20 @@ export default function App() {
     searchQuery,
     selectedServerIds,
     loadServers,
-    addToast,
+    addToast: looseAddToast,
     removeRecentConnection,
     removeRecentConnections,
     setServers,
-    setServerEditor,
+    // 内部仅按 { id?: string } 使用编辑器对象
+    setServerEditor: setServerEditor as React.Dispatch<React.SetStateAction<{ id?: string } | null>>,
     setSelectedServerIds,
     setBatchSelectionMode,
     startSaveFlowAnimation,
     connectServer,
-    t,
+    t: looseT,
   });
 
-  const handleSaveAndConnectServer = useCallback(async (data, shouldClearAfterAdd = true) => {
+  const handleSaveAndConnectServer = useCallback(async (data: ServerFormData, shouldClearAfterAdd = true) => {
     markWorkspaceRestoreNavigationOverride();
     try {
       const savedServer = await saveServerConfig(data);
@@ -1202,7 +1414,7 @@ export default function App() {
       })();
       return savedServer;
     } catch (err) {
-      addToast(err, 'error');
+      addToast(String(err), 'error');
       return null;
     }
   }, [saveServerConfig, addToast, handleConnectError, markWorkspaceRestoreNavigationOverride, postConnectSetup, t]);
@@ -1222,15 +1434,16 @@ export default function App() {
     handleExportSelected,
     handleImport,
     handleDownloadTemplate,
-  } = useImportExport({ addToast, loadServers, t, lang });
+  } = useImportExport({ addToast: looseAddToast, loadServers, t: looseT, lang });
 
   const connectedSessions = useMemo(() => {
-    const seen = new Set();
+    const seen = new Set<string>();
     return sessions
       .filter(s => s.status === 'connected')
       .filter((s) => {
-        if (seen.has(s.serverId)) return false;
-        seen.add(s.serverId);
+        const serverId = String(s.serverId || '');
+        if (seen.has(serverId)) return false;
+        seen.add(serverId);
         return true;
       });
   }, [sessions]);
@@ -1246,17 +1459,17 @@ export default function App() {
     };
   }, []);
 
-  const clampLayerPoint = useCallback((point, viewport, padding = 34) => ({
+  const clampLayerPoint = useCallback((point: { x: number; y: number }, viewport: { left: number; top: number; width: number; height: number }, padding = 34) => ({
     x: Math.max(padding, Math.min(viewport.width - padding, point.x)),
     y: Math.max(padding, Math.min(viewport.height - padding, point.y)),
   }), []);
 
-  const rectToLayerPoint = useCallback((rect, viewport) => clampLayerPoint({
+  const rectToLayerPoint = useCallback((rect: { left: number; top: number; width: number; height: number }, viewport: { left: number; top: number; width: number; height: number }) => clampLayerPoint({
     x: rect.left - viewport.left + rect.width / 2,
     y: rect.top - viewport.top + rect.height / 2,
   }, viewport), [clampLayerPoint]);
 
-  const buildFlightMidPoint = useCallback((from, to, viewport, index) => {
+  const buildFlightMidPoint = useCallback((from: { x: number; y: number }, to: { x: number; y: number }, viewport: { left: number; top: number; width: number; height: number }, index: number) => {
     const distance = Math.hypot(to.x - from.x, to.y - from.y);
     const sway = Math.min(132, Math.max(38, distance * 0.18)) * (index % 2 === 0 ? -1 : 1);
     const lift = Math.min(148, Math.max(60, distance * 0.22)) + index * 8;
@@ -1266,14 +1479,14 @@ export default function App() {
     }, viewport, 42);
   }, [clampLayerPoint]);
 
-  const startEditFlyAnimation = useCallback((server, payload) => {
+  const startEditFlyAnimation = useCallback((server: config.Connection | null, payload?: { sourceRects?: Record<string, DOMRect>; labels?: Record<string, string> }) => {
     // 屏幕中央大号短提示（比右上角 Toast 更醒目）
     if (editorModeBannerTimerRef.current) {
       clearTimeout(editorModeBannerTimerRef.current);
       editorModeBannerTimerRef.current = null;
     }
     setEditorModeBanner({
-      id: Date.now(),
+      id: String(Date.now()),
       text: server?.id ? t('已进入编辑 · 请在左侧修改') : t('已进入克隆 · 请在左侧填写'),
     });
     editorModeBannerTimerRef.current = setTimeout(() => {
@@ -1296,7 +1509,9 @@ export default function App() {
     editFlyShineTimerRefs.current = [];
     setEditFlyShiningFields({});
 
-    setServerEditor({
+    // 编辑器状态下 server 恒为真实行对象（克隆场景为 {...real, id: null}）
+    const sourceServer = server as unknown as Record<string, unknown>;
+    setServerEditor(server ? {
       ...server,
       name: '',
       host: '',
@@ -1304,13 +1519,13 @@ export default function App() {
       username: '',
       terminalInitPath: '',
       fileManagerInitPath: '',
-    });
+    } : null);
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const viewport = getAnimationViewport();
         const fields = ['name', 'host', 'port', 'username', 'terminalInitPath', 'fileManagerInitPath'];
-        const fieldLabels = {
+        const fieldLabels: Record<string, string> = {
           name: t('服务器别名（选填）'),
           host: t('主机地址 *'),
           port: t('端口'),
@@ -1320,7 +1535,7 @@ export default function App() {
         };
 
         const items = fields.flatMap((field, index) => {
-          const sourceRect = payload.sourceRects[field];
+          const sourceRect = payload.sourceRects?.[field];
           const targetEl = document.querySelector(`[data-editor-field="${field}"]`);
           const targetRect = targetEl?.getBoundingClientRect?.();
           if (!sourceRect || !targetRect) {
@@ -1348,12 +1563,12 @@ export default function App() {
         items.forEach((item) => {
           const timer = setTimeout(() => {
             setServerEditor((current) => {
-              if (!current || current.id !== server.id) {
+              if (!current || current.id !== server?.id) {
                 return current;
               }
               const nextValue = item.field === 'port'
-                ? (server.port || 22)
-                : (server[item.field] || '');
+                ? (server?.port || 22)
+                : (sourceServer[item.field] || '');
               return { ...current, [item.field]: nextValue };
             });
             setEditFlyShiningFields((prev) => ({ ...prev, [item.field]: true }));
@@ -1376,7 +1591,7 @@ export default function App() {
     });
   }, [buildFlightMidPoint, getAnimationViewport, rectToLayerPoint, t]);
 
-  const startAddGuideAnimation = useCallback((sourceButton) => {
+  const startAddGuideAnimation = useCallback((sourceButton: HTMLElement | null) => {
     if (!sourceButton?.getBoundingClientRect) {
       setServerEditor(null);
       return;
@@ -1408,8 +1623,8 @@ export default function App() {
         const titleCenter = rectToLayerPoint(titleTargetRect, viewport);
         const addSource = rectToLayerPoint(sourceRect, viewport);
         const now = Date.now();
-        const randomBetween = (min, max) => min + Math.random() * (max - min);
-        const makeControlPoint = (from, to, index, padding = 28) => {
+        const randomBetween = (min: number, max: number) => min + Math.random() * (max - min);
+        const makeControlPoint = (from: { x: number; y: number }, to: { x: number; y: number }, index: number, padding = 28) => {
           const dx = to.x - from.x;
           const dy = to.y - from.y;
           const distance = Math.max(1, Math.hypot(dx, dy));
@@ -1423,7 +1638,7 @@ export default function App() {
             y: from.y + dy * progress + normalY * bow + randomBetween(8, 34),
           }, viewport, padding);
         };
-        const makePath = (from, control, to) =>
+        const makePath = (from: { x: number; y: number }, control: { x: number; y: number }, to: { x: number; y: number }) =>
           `path("M ${from.x.toFixed(1)},${from.y.toFixed(1)} Q ${control.x.toFixed(1)},${control.y.toFixed(1)} ${to.x.toFixed(1)},${to.y.toFixed(1)}")`;
 
         const coreMid = makeControlPoint(addSource, titleCenter, 0, 56);
@@ -1497,7 +1712,7 @@ export default function App() {
     });
   }, [buildFlightMidPoint, getAnimationViewport, rectToLayerPoint, t]);
 
-  function startSaveFlowAnimation(server, data) {
+  function startSaveFlowAnimation(server: config.Connection | null | undefined, data: ServerFormData) {
     const serverId = server?.id || data?.id;
     if (!serverId) {
       setServerEditor(null);
@@ -1515,9 +1730,12 @@ export default function App() {
     setEditFlyShiningFields({});
     setSaveFlowHighlights({ serverId: null, rowPulse: null, fields: {} });
 
-    const getServerTarget = (field) => {
+    // config.Connection 无索引签名，经 Record 桥接做字段读取
+    const serverData = server as unknown as Record<string, unknown> | null | undefined;
+
+    const getServerTarget = (field: string) => {
       const nodes = Array.from(document.querySelectorAll(`[data-server-update-id="${serverId}"]`));
-      const row = nodes.find((node) => node.offsetParent !== null) || nodes[0];
+      const row = nodes.find((node) => (node as HTMLElement).offsetParent !== null) || nodes[0];
       if (!row) {
         return null;
       }
@@ -1530,7 +1748,7 @@ export default function App() {
       requestAnimationFrame(() => {
         const viewport = getAnimationViewport();
         const fields = ['name', 'host', 'port', 'username', 'terminalInitPath', 'fileManagerInitPath'];
-        const fieldLabels = {
+        const fieldLabels: Record<string, string> = {
           name: t('服务器别名（选填）'),
           host: t('主机地址 *'),
           port: t('端口'),
@@ -1553,7 +1771,7 @@ export default function App() {
             type: 'save-flow-capsule',
             field,
             label: fieldLabels[field],
-            value: field === 'port' ? String(data.port || server.port || 22) : String(data[field] || server[field] || ''),
+            value: field === 'port' ? String(data.port || server?.port || 22) : String(data[field] || serverData?.[field] || ''),
             from,
             to,
             mid: buildFlightMidPoint(from, to, viewport, index + 1),
@@ -1643,7 +1861,7 @@ export default function App() {
   return (
     <div className="app-layout">
       <AppTopbar
-        t={t}
+        t={looseT}
         handleTopbarDoubleClick={handleTopbarDoubleClick}
         markWorkspaceRestoreNavigationOverride={markWorkspaceRestoreNavigationOverride}
         setActiveSessionId={setActiveSessionId}
@@ -1652,7 +1870,7 @@ export default function App() {
         logoImg={logoImg}
         showTopbarRefreshedLogo={showTopbarRefreshedLogo}
         topbarLogoTransitionImg={topbarLogoTransitionImg}
-        sessions={sessions}
+        sessions={sessions as TopbarSession[]}
         tabScrollRef={tabScrollRef}
         tabListRef={tabListRef}
         activeSessionId={activeSessionId}
@@ -1692,7 +1910,7 @@ export default function App() {
         terminalTabs={{ closeTerminal, closeTerminalGroup, closeTerminalPane, handleTerminalSubTabClickCapture, handleTerminalSubTabDockMouseDown, handleTerminalSubTabMouseDown, handleTerminalSubTabScroll, handleTerminalSubTabWheel, shouldIgnoreTerminalDockClick, terminalDockDragPreview, terminalSubTabActionsRef, terminalSubTabOverflow, terminalSubTabScrollRef, terminalSubTabScrollStyle, terminalToolbarIconOnly }}
         ai={{ activeChangeReview, activeChangeReviewQueue, activeConversationDiffPanel, activeRestorePreviewReview, activeWorkspaceTerminalKey, aiPanelNode, handleApplyConversationDiffRestore, handleReapplyConversationDiffItem, handleSelectConversationDiffItem, setAIPanelVisibility, setConversationDiffPanels, setRestorePreviewReviews, showAIPanel }}
         quickCommands={{ handleQuickCommandsOpenChange, quickCmdsRef, setShowQuickCommands, showQuickCommands }}
-        shared={{ addToast, t }}
+        shared={{ addToast: looseAddToast, t: looseT }}
       />
 
       {/* ── Modals ────────────────────────────────────────── */}
@@ -1700,9 +1918,10 @@ export default function App() {
         dialogs={{ activeAIDevilMode, closePortForwardDialog, connectSerial, loadServers, portForwardDialogSessionId, portForwardInitialMapping, portForwardInitialTab, probePanelPosition, setProbePanelPosition, setSettingsInitialTab, setShowCredentials, setShowSerialModal, setShowSettings, settingsInitialTab, showCredentials, showPortForwardDialog, showSerialModal, showSettings }}
         importExport={{ exportSelectedIds, handleDownloadTemplate, handleExport, handleExportSelected, handleImport, hasRecoveryPassword, ieBusy, setExportSelectedIds, setShowExportSelectedDialog, setShowImportExportDialog, showExportSelectedDialog, showImportExportDialog }}
         notifications={{ downloadProgress, handleApplyStartupUpdate, handleToastAction, isUpdateModalVisible, removeToast, setIsUpdateModalVisible, setSyncFailed, startupUpdateInfo, syncFailed, toasts }}
-        menus={{ activeSessionId, canCopySessionPassword, canMoveTerminalToDockTarget, closeAllSessions, closeSession, closeTerminal, closeTerminalGroup, forceCloseSession, handleCopySessionPassword, handleRenameTerminalTab, handleTabClick, isTerminalDockTargetOccupied, moveTerminalToDockTarget, sessionAuthPrompts, sessionListPos, sessionListQuery, sessionListRef, sessions, setSessionListQuery, setShowSessionList, setTabContextMenu, setTerminalTabContextMenu, showSessionList, tabContextMenu, terminalTabContextMenu }}
-        animation={{ editFlyAnimation, editorModeBanner }}
-        shared={{ addToast, t }}
+        menus={{ activeSessionId, canCopySessionPassword, canMoveTerminalToDockTarget, closeAllSessions, closeSession, closeTerminal, closeTerminalGroup, forceCloseSession, handleCopySessionPassword, handleRenameTerminalTab, handleTabClick, isTerminalDockTargetOccupied, moveTerminalToDockTarget, sessionAuthPrompts, sessionListPos, sessionListQuery, sessionListRef, sessions: sessions as TopbarSession[], setSessionListQuery, setShowSessionList, setTabContextMenu, setTerminalTabContextMenu, showSessionList, tabContextMenu, terminalTabContextMenu }}
+        // editFlyAnimation 条目为宽松形状（AppOverlays 未导出 EditFlyItem），桥接到其消费类型
+        animation={{ editFlyAnimation: editFlyAnimation as unknown as AppOverlaysProps['animation']['editFlyAnimation'], editorModeBanner }}
+        shared={{ addToast: looseAddToast, t: looseT }}
       />
     </div>
   );

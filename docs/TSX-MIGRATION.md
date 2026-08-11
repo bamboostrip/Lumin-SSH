@@ -224,12 +224,14 @@
 
 ## 阶段 6：收尾（完成 ✅）
 
-**目标达成：`frontend/src` 0 个 .js/.jsx，allowJs 关闭，严格模式全量通过，类型系统全覆盖。**
+**目标达成：`frontend/src` 0 个 .js/.jsx，allowJs 关闭，严格模式全量通过。**
+（注：文件层面 100% TS，但 22 个 `@ts-nocheck` 桥接 + 28 个语言表合计约 44% 的行数无类型标注，详见「遗留事项」与 `TSX-MIGRATION-FOLLOWUP.md`。）
 
 - [x] **i18n 缺失键补齐（7 键 × 28 语言，1810 → 1817）**：`AI 输入框` / `搜索结果` / `终端输出搜索` / `搜索命令历史` / `当前目录路径` / `清空输入` / `增大后可能提高同一会话内的 SFTP/SSH 通道占用`；逐语种译文（zh-Hant/HK/MO/TW 共用繁体文案）；`i18n:check` missing/extra/duplicate/placeholders 全 0；对应 7 处 `as I18nKey` 逃生与「缺失键」注释一并移除
 - [x] **28 个语言表 `basic.js` → `basic.ts`**（git mv 100% 保留历史，内容零改动即过严格检查）：`i18n.ts` 的 `import.meta.glob` 与路径正则、`i18n/types.ts` 类型模板 import、`scripts/check-i18n.mjs` 同步为 `.ts`
 - [x] **22 个桥接模块 `.js` → `.ts`**（git mv + `@ts-nocheck` 头注释收编，见「遗留事项」）：AI 系列 bridge / providers / aiMentions / aiSlashCommands / probeFormatting / settingDefinitions 等；内部 import 后缀同步
 - [x] **全量 import 后缀清扫（205 处 `.js` → `.ts`/`.tsx`）**：目标已转换者统一改写；wailsjs 生成模块（App.js/runtime.js，.d.ts 同置）与 `luminDialog.d.ts` 的 type-only import 保持 `.js` 后缀（前者是真实 .js 文件，后者不参与运行时解析且显式 `.ts` 无法回退 .d.ts）
+- [x] **补扫 `.jsx` 后缀 import（113 处，阶段 6 遗漏，迁移后审计发现）**：静态 112 处 `from '...jsx'` + 动态 1 处 `import('./FileEditor.jsx')` → `.tsx`（此前靠 Vite 隐式扩展名替换解析，属未文档化隐式依赖）
 - [x] **移除 vite 迁移期插件 `lumin-js-to-ts-extension-alias`**（vite.config.ts 还原为纯 react 插件）
 - [x] **关闭 `allowJs`**（tsconfig 移除 allowJs/checkJs；strict 保持开启）
 - [x] **验证**：`tsc --noEmit` 零错误 + `npm run build` 通过 + `npm run i18n:check` 全绿 + `npm run dev` 冒烟（页面 200，main.tsx/App.tsx/桥接 .ts/语言表 .ts 均正常解析，无解析告警）
@@ -264,6 +266,6 @@ npm run i18n:check        # i18n 键完整性检查
 |---|---|
 | 巨兽文件 8k 行迁移出错 | 拆分为多次小提交，每部分独立验证；保持 allowJs 混合运行 |
 | `window.go` 在 dev 模式（纯浏览器 vite）下不存在 | 已有可选链/守卫用法（`window.go?.`），迁移时保留，类型用 optional 声明 |
-| i18n 28 语言键不一致 | 以 zh-CN 为基准类型，`i18n:check` 脚本辅助验证 |
+| i18n 28 语言键不一致 | 以 zh-CN 为基准类型；其他 27 语言表已加 `satisfies I18nDict` 编译期强制（键拼错 tsc 报 TS2353/TS2322）+ `i18n:check` 脚本双保险 |
 | `use-stick-to-bottom` 等无类型依赖 | 在 `src/types/` 下补充 module 声明 |
 | 事件/消息系统无类型 | 从 Go 侧结构体（models.ts）推导，集中定义消息类型 |

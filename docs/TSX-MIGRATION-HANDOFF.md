@@ -54,7 +54,7 @@
 - `src/i18n.js` → `src/i18n.ts`（git mv 保留历史）：`t()` key 参数改为 `I18nKey`，`setLanguage`/`loadLanguage` 等改用 `LanguageCode`
 - `src/i18n/types.ts` 新增 `LanguageCode`（28 语言代码联合类型，新增语言目录时需同步）
 
-**当前统计**：74 个 .tsx（组件）/ 42 个 .ts（39 .ts + 3 .d.ts）/ 4 个 .jsx / 50 个 .js（i18n 28 语言文件 + components 22）
+**当前统计**（阶段 0-6 + 迁移后审计全部完成）：170 个文件 = 78 个 .tsx（组件）/ 92 个 .ts（89 .ts + 3 .d.ts），`frontend/src` 0 个 .js/.jsx。其中 22 个桥接为 `@ts-nocheck` 收编（3,866 行，无类型），28 个语言表为无标注数据（50,989 行），真正类型化的代码约 55.6%。详细口径见 `docs/TSX-MIGRATION-FOLLOWUP.md`。
 
 > 阶段 4 ✅ 完成（66/76 + main.tsx）；阶段 5 进行中：8/12 个巨兽已转（App/ProbePanel/FileEditor/QuickCommands/AIComposer/AIProviderSelector/AIProviderQuickEditOverlay/SessionWorkspace），剩余 SettingsModal/Terminal/AIPanel/FileManager，详细清单与转换模式见 `docs/TSX-MIGRATION.md` 阶段 5 章节
 
@@ -71,7 +71,7 @@
 `vite.config.ts` 中的 `lumin-js-to-ts-extension-alias` 插件：
 - 作用：存量 `import './foo.js'` 自动回退解析 `foo.ts`/`foo.tsx`
 - 原因：vite 5 **没有** `resolve.extensionAlias`（vite 4 的功能已移除），不加此插件改名后构建直接失败
-- **阶段 6 收尾时移除**（全部转完后存量 import 已无 .js）
+- **阶段 6 已移除**（全部转完后存量 import 已无 .js/.jsx；后续审计又补扫了 113 处 `.jsx` 后缀 import）
 
 ### 3.3 tsconfig include 只含 `src`
 - **不包含 `wailsjs` 目录**：wailsjs 生成的 .js 首行带 `// @ts-check`，会覆盖 checkJs:false 强制检查导致几百个报错
@@ -91,7 +91,7 @@
 - JSON.parse 结果：用显式接口断言（如 `RestoredSnapshotSession`），避免 any
 - `t()` 翻译函数签名：`(key: string, vars?: Record<string, unknown>) => string`；`src/i18n.ts` 的 t 已收紧为 `(key: I18nKey, ...)`（字面量 key 拼错直接报错），动态 key 用 `t(raw as I18nKey)` 逃生；被注入的 t 参数（如 useAIReview 的 options.t）仍保持宽松 string 签名
 - `addToast` 签名：`(message: string | Error, type?: string, duration?: number, actions?: unknown[]) => number`
-- 任何 `any` 使用需注释说明（目前代码中基本没有显式 any，用 unknown + 收窄代替）
+- 任何 `any` 使用需注释说明（显式 `: any` 共 3 处、`Record<string, any>` 6 处、`type BridgeData = any` 别名 1 处（AIPanel.tsx，使用 55 次）——均位于/服务于 `@ts-nocheck` 桥接边界；0 处 `as any`/`@ts-ignore`；`as unknown` 31 处均带注释）
 
 ### 3.6 git 约定
 - 提交信息格式：`refactor(tsx): 阶段X ...`
@@ -108,7 +108,7 @@
 - `i18n.js` → `i18n.ts`（git mv），`t()` 的 key 参数改为 `I18nKey`（1810 个中文键字面量联合，拼写错误直接被 tsc 捕获）
 - 新增 `LanguageCode` 联合类型（28 语言代码），`setLanguage`/`loadLanguage`/`initializeI18n`/`getLanguage`/`useTranslation` 全部类型化
 - 语言文件本身保持 .js 不动（28 个 × 1800+ 行），用 `npm run i18n:check` 验证键一致性（全部通过）
-- 动态 key 逃生：`t(raw as I18nKey)` 共 4 处（useUpdateChecker ×2、terminalCommandAutocompleteProviders ×2），t() 内部对未知 key 有原样兜底
+- 动态 key 逃生：`t(raw as I18nKey)` 共 **52 处（21 个文件）**（阶段 3 的 4 处仍在；阶段 6 只移除 7 处）；t() 内部对未知 key 有原样兜底。多数为动态拼接键（合理逃生），逐个审计是否可去见 `docs/TSX-MIGRATION-FOLLOWUP.md`
 - 验证：`tsc --noEmit` 零错误 + `npm run i18n:check` 通过 + `npm run build` 通过
 
 ### 阶段 4：小组件 JSX→TSX（批量）✅ 已完成（66/76 + main.tsx）

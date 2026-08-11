@@ -1,10 +1,21 @@
 import { useState, useEffect } from 'react';
 import { Plus, Pencil, Trash2, Key, Lock, Eye, EyeOff, X } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
+import type { config } from '../../wailsjs/go/models.js';
 import { useTranslation } from '../i18n.js';
 import Tiptop from './Tiptop.jsx';
 
-const defaultCredForm = {
+/** 凭据表单（保存时补齐 id 即为 config.Credential） */
+interface CredentialForm {
+  name: string;
+  authMethod: string;
+  username: string;
+  password: string;
+  privateKey: string;
+  passphrase: string;
+}
+
+const defaultCredForm: CredentialForm = {
   name: '',
   authMethod: 'password',
   username: 'root',
@@ -13,17 +24,23 @@ const defaultCredForm = {
   passphrase: '',
 };
 
-export default function CredentialsModal({ onClose, onChange, addToast }) {
+interface CredentialsModalProps {
+  onClose: () => void;
+  onChange?: () => void;
+  addToast: (message: string | Error, type?: string, duration?: number, actions?: unknown[]) => number;
+}
+
+export default function CredentialsModal({ onClose, onChange, addToast }: CredentialsModalProps) {
   const { t } = useTranslation();
-  const [credentials, setCredentials] = useState([]);
-  const [editing, setEditing] = useState(null);
+  const [credentials, setCredentials] = useState<config.Credential[]>([]);
+  const [editing, setEditing] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState(defaultCredForm);
+  const [form, setForm] = useState<CredentialForm>(defaultCredForm);
   const [showPassword, setShowPassword] = useState(false);
   const [showPassphrase, setShowPassphrase] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const loadCredentials = async (signal) => {
+  const loadCredentials = async (signal?: { cancelled: boolean }) => {
     try {
       const list = await AppGo.GetCredentials();
       if (signal?.cancelled) return;
@@ -41,7 +58,7 @@ export default function CredentialsModal({ onClose, onChange, addToast }) {
   }, []);
 
   useEffect(() => {
-    const handleKeyDown = (e) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.preventDefault();
       if (showForm) {
@@ -54,7 +71,7 @@ export default function CredentialsModal({ onClose, onChange, addToast }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose, showForm]);
 
-  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+  const set = (key: keyof CredentialForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
   const closeForm = () => {
     setEditing(null);
@@ -72,7 +89,7 @@ export default function CredentialsModal({ onClose, onChange, addToast }) {
     setShowPassphrase(false);
   };
 
-  const startEdit = (cred) => {
+  const startEdit = (cred: config.Credential) => {
     setEditing(cred.id);
     setShowForm(true);
     setForm({
@@ -87,14 +104,14 @@ export default function CredentialsModal({ onClose, onChange, addToast }) {
     setShowPassphrase(false);
   };
 
-  const handleSave = async (e) => {
+  const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!form.name.trim()) return window.luminDialog?.alert(t('凭据名称'));
     if (!form.username.trim()) return window.luminDialog?.alert(t('请填写用户名'));
     setSaving(true);
     try {
-      const data = { ...form };
-      if (editing) data.id = editing;
+      // 新增时无 id，保存参数允许缺省；断言为 Credential 便于调 Go 侧类型
+      const data = { ...form, ...(editing ? { id: editing } : {}) } as config.Credential;
       await AppGo.SaveCredential(data);
       await loadCredentials();
       addToast(t('凭据已保存'), 'success');
@@ -107,7 +124,7 @@ export default function CredentialsModal({ onClose, onChange, addToast }) {
     }
   };
 
-  const handleDelete = async (cred) => {
+  const handleDelete = async (cred: config.Credential) => {
     const ok = await window.luminDialog?.confirm(t('确定删除此凭据？'));
     if (!ok) return;
     try {

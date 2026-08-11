@@ -4,15 +4,23 @@ import { useTranslation, t as translate } from '../../i18n.js'
 import { normalizeAISlashCommands, normalizeSlashCommandName } from './aiSlashCommands.js'
 import { handleInputDragSelectAll } from './inputDragSelect.js'
 
-function buildDraftCommands(commands) {
-  return normalizeAISlashCommands(commands).map((command, index) => ({
+/** 斜杠命令草稿（id 仅为本地编辑用，保存时由 normalizeAISlashCommands 重建） */
+interface SlashCommandDraft {
+  id: string
+  name: string
+  prompt: string
+}
+
+function buildDraftCommands(commands: unknown): SlashCommandDraft[] {
+  return normalizeAISlashCommands(commands).map((command: { name?: unknown; prompt?: unknown }, index: number): SlashCommandDraft => ({
+    // normalizeAISlashCommands 已保证 name/prompt 为字符串，.js 推断为 unknown 此处断言
     id: `slash-${index}-${command.name}`,
-    name: command.name,
-    prompt: command.prompt,
+    name: command.name as string,
+    prompt: command.prompt as string,
   }))
 }
 
-function createUniqueSlashCommandName(commands) {
+function createUniqueSlashCommandName(commands: SlashCommandDraft[]) {
   const existingNames = new Set(
     commands
       .map((command) => normalizeSlashCommandName(command?.name).toLowerCase())
@@ -27,16 +35,16 @@ function createUniqueSlashCommandName(commands) {
   return candidate
 }
 
-function normalizeDraftCommands(commands) {
+function normalizeDraftCommands(commands: unknown) {
   return normalizeAISlashCommands(
-    (Array.isArray(commands) ? commands : []).map((command) => ({
+    (Array.isArray(commands) ? commands : []).map((command: { name?: unknown; prompt?: unknown }) => ({
       name: command?.name,
       prompt: command?.prompt,
     })),
   )
 }
 
-function summarizePrompt(prompt) {
+function summarizePrompt(prompt: unknown) {
   const normalized = String(prompt || '').trim().replace(/\s+/g, ' ')
   if (!normalized) {
     return translate('未填写提示词内容')
@@ -44,7 +52,13 @@ function summarizePrompt(prompt) {
   return normalized.length > 90 ? `${normalized.slice(0, 90)}...` : normalized
 }
 
-function SlashCommandListItem({ command, onEdit, onDelete }) {
+interface SlashCommandListItemProps {
+  command: SlashCommandDraft
+  onEdit: () => void
+  onDelete: () => void
+}
+
+function SlashCommandListItem({ command, onEdit, onDelete }: SlashCommandListItemProps) {
   return (
     <div
       style={{
@@ -98,11 +112,16 @@ function SlashCommandListItem({ command, onEdit, onDelete }) {
   )
 }
 
-export default function AISlashCommandsSettings({ slashCommands, onSaveGlobalAISettings }) {
+interface AISlashCommandsSettingsProps {
+  slashCommands: unknown
+  onSaveGlobalAISettings: (settings: { slashCommands: unknown }) => Promise<void> | void
+}
+
+export default function AISlashCommandsSettings({ slashCommands, onSaveGlobalAISettings }: AISlashCommandsSettingsProps) {
   const { t, lang } = useTranslation()
   const normalizedIncomingCommands = useMemo(() => normalizeAISlashCommands(slashCommands), [slashCommands])
   const sentenceEnd = lang === 'zh-CN' ? '。' : '.'
-  const [draftCommands, setDraftCommands] = useState(() => buildDraftCommands(normalizedIncomingCommands))
+  const [draftCommands, setDraftCommands] = useState<SlashCommandDraft[]>(() => buildDraftCommands(normalizedIncomingCommands))
   const [editingCommandId, setEditingCommandId] = useState('')
 
   useEffect(() => {
@@ -124,7 +143,7 @@ export default function AISlashCommandsSettings({ slashCommands, onSaveGlobalAIS
   const editingCommand = draftCommands.find((command) => command.id === editingCommandId) || null
 
   const handleAddCommand = () => {
-    const nextCommand = {
+    const nextCommand: SlashCommandDraft = {
       id: `slash-new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       name: createUniqueSlashCommandName(draftCommands),
       prompt: '',
@@ -133,8 +152,8 @@ export default function AISlashCommandsSettings({ slashCommands, onSaveGlobalAIS
     setEditingCommandId(nextCommand.id)
   }
 
-  const handleRemoveCommand = async (commandId) => {
-    let nextDraftCommands = []
+  const handleRemoveCommand = async (commandId: string) => {
+    let nextDraftCommands: SlashCommandDraft[] = []
     setDraftCommands((previous) => {
       nextDraftCommands = previous.filter((command) => command.id !== commandId)
       return nextDraftCommands
@@ -148,7 +167,7 @@ export default function AISlashCommandsSettings({ slashCommands, onSaveGlobalAIS
     })
   }
 
-  const handlePatchEditingCommand = (patch) => {
+  const handlePatchEditingCommand = (patch: Partial<SlashCommandDraft>) => {
     if (!editingCommandId) {
       return
     }

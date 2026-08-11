@@ -2,7 +2,7 @@ import { Check, ChevronUp, ChevronsUpDown, ImagePlus, ListEnd, Monitor, Play, Se
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as AppGo from '../../../wailsjs/go/wailsapp/App.js'
 import { ClipboardGetText } from '../../../wailsjs/runtime/runtime.js'
-import { useTranslation, t as translate } from '../../i18n.js'
+import { useTranslation, t as translate, type I18nKey } from '../../i18n.js'
 import AIAutoApproveDropdown from './AIAutoApproveDropdown.jsx'
 import AICollaborationPromptDropdown from './AICollaborationPromptDropdown.jsx'
 import AIProviderSelector from './AIProviderSelector.jsx'
@@ -30,9 +30,50 @@ import { compressImage } from './aiImageCompression.js'
 import AIChatReasoningBlock from './chat/AIChatReasoningBlock.jsx'
 import AIChatRequestStatusRow from './chat/AIChatRequestStatusRow.jsx'
 
+declare global {
+  interface Window {
+    /** 文件管理器当前路径注册表（sessionId -> cwd，FileManager 写入） */
+    __luminFileManagerPaths?: Record<string, string>
+  }
+}
+
 const maxComposerImages = 20
 
-const defaultMentionMenuState = {
+interface MentionMenuItem {
+  kind: 'terminal' | 'type' | 'empty' | 'result' | 'slash_command'
+  title: string
+  description?: string
+  mentionType?: 'file' | 'folder'
+  path?: string
+  name?: string
+}
+
+interface MentionMenuState {
+  open: boolean
+  query: string
+  selectedType: 'file' | 'folder' | null
+  items: MentionMenuItem[]
+  loading: boolean
+  selectedIndex: number
+}
+
+interface SlashCommandMenuState {
+  open: boolean
+  query: string
+  items: MentionMenuItem[]
+  selectedIndex: number
+}
+
+interface TerminalAssignmentCandidate {
+  sessionId: string
+  label: string
+  busy: boolean
+  cwd: string
+  current: boolean
+  recommended: boolean
+}
+
+const defaultMentionMenuState: MentionMenuState = {
   open: false,
   query: '',
   selectedType: null,
@@ -41,21 +82,21 @@ const defaultMentionMenuState = {
   selectedIndex: -1,
 }
 
-const defaultSlashCommandMenuState = {
+const defaultSlashCommandMenuState: SlashCommandMenuState = {
   open: false,
   query: '',
   items: [],
   selectedIndex: -1,
 }
 
-function createMentionMenuState(patch = {}) {
+function createMentionMenuState(patch: Partial<MentionMenuState> = {}) {
   return {
     ...defaultMentionMenuState,
     ...patch,
   }
 }
 
-function escapeComposerHighlightHTML(value) {
+function escapeComposerHighlightHTML(value: string) {
   return String(value || '').replace(/[<>&]/g, (character) => {
     switch (character) {
       case '<':
@@ -70,7 +111,7 @@ function escapeComposerHighlightHTML(value) {
   })
 }
 
-function buildComposerContextHighlightHTML(value, slashCommands) {
+function buildComposerContextHighlightHTML(value: string, slashCommands: unknown) {
   const sourceText = typeof value === 'string' ? value : ''
   let escapedText = escapeComposerHighlightHTML(sourceText.replace(/\n$/u, '\n\n'))
   mentionRegexGlobal.lastIndex = 0
@@ -80,7 +121,7 @@ function buildComposerContextHighlightHTML(value, slashCommands) {
   const slashCommandMatch = sourceText.match(commandRegex)
   if (slashCommandMatch) {
     const visibleCommandToken = slashCommandMatch[2]
-    const matchedCommand = normalizedSlashCommands.find((command) => command.name.toLowerCase() === slashCommandMatch[3].toLowerCase())
+    const matchedCommand = normalizedSlashCommands.find((command: { name: string }) => command.name.toLowerCase() === slashCommandMatch[3].toLowerCase())
     if (matchedCommand) {
       escapedText = escapedText.replace(
         commandRegex,
@@ -92,7 +133,14 @@ function buildComposerContextHighlightHTML(value, slashCommands) {
   return escapedText
 }
 
-function ActionButton({ title, children, primary = false, disabled = false, onClick, onContextMenu }) {
+function ActionButton({ title, children, primary = false, disabled = false, onClick, onContextMenu }: {
+  title: string
+  children: React.ReactNode
+  primary?: boolean
+  disabled?: boolean
+  onClick?: () => void
+  onContextMenu?: (event: React.MouseEvent) => void
+}) {
   return (
     <Tiptop text={title}>
       <button
@@ -122,7 +170,13 @@ function ActionButton({ title, children, primary = false, disabled = false, onCl
   )
 }
 
-function ApprovalButton({ icon, label, onClick, primary = false, fullWidth = false }) {
+function ApprovalButton({ icon, label, onClick, primary = false, fullWidth = false }: {
+  icon: React.ComponentType<{ size?: string | number }>
+  label: string
+  onClick?: () => void
+  primary?: boolean
+  fullWidth?: boolean
+}) {
   const Icon = icon
   return (
     <button
@@ -153,8 +207,8 @@ function ApprovalButton({ icon, label, onClick, primary = false, fullWidth = fal
   )
 }
 
-function readFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '')
     reader.onerror = () => reject(reader.error || new Error(translate('读取图片失败')))
@@ -162,7 +216,7 @@ function readFileAsDataUrl(file) {
   })
 }
 
-async function readAndCompressImageFile(file) {
+async function readAndCompressImageFile(file: File) {
   const originalData = await readFileAsDataUrl(file)
   try {
     const result = await compressImage(originalData)
@@ -175,7 +229,7 @@ async function readAndCompressImageFile(file) {
   }
 }
 
-function createTopLevelMentionItems(currentCwd) {
+function createTopLevelMentionItems(currentCwd: string) {
   const path = currentCwd || '/'
   return [
     {
@@ -195,10 +249,10 @@ function createTopLevelMentionItems(currentCwd) {
       title: translate('文件夹'),
       description: translate('搜索 {path} 下的远端文件夹').replace('{path}', path),
     },
-  ]
+  ] as MentionMenuItem[]
 }
 
-function filterTopLevelMentionItems(items, query) {
+function filterTopLevelMentionItems(items: MentionMenuItem[], query: string) {
   const normalizedQuery = String(query || '').trim().toLowerCase()
   if (!normalizedQuery) {
     return items
@@ -209,7 +263,7 @@ function filterTopLevelMentionItems(items, query) {
   })
 }
 
-function buildEmptyMentionItems(selectedType) {
+function buildEmptyMentionItems(selectedType: 'file' | 'folder' | null): MentionMenuItem[] {
   if (selectedType === 'file') {
     return [{ kind: 'empty', title: translate('未找到文件'), description: translate('尝试其他关键词或输入绝对路径') }]
   }
@@ -219,15 +273,16 @@ function buildEmptyMentionItems(selectedType) {
   return [{ kind: 'empty', title: translate('未找到结果'), description: translate('尝试其他关键词') }]
 }
 
-function translateTerminalAssignmentError(message, t) {
+function translateTerminalAssignmentError(message: string, t: (key: I18nKey) => string) {
   const normalizedMessage = typeof message === 'string' ? message.trim() : ''
   if (!normalizedMessage) {
     return t('终端指派失败')
   }
-  return t(normalizedMessage)
+  // 动态错误文案：后端返回的 key 或原文，t 内部对未知 key 原样兜底
+  return t(normalizedMessage as I18nKey)
 }
 
-function buildQuotedComposerText(selectedText, currentValue, selectionStart, selectionEnd) {
+function buildQuotedComposerText(selectedText: string, currentValue: string, selectionStart: number, selectionEnd: number) {
   const normalizedSelectedText = typeof selectedText === 'string' ? selectedText.trim() : ''
   if (!normalizedSelectedText) {
     return null
@@ -249,6 +304,59 @@ function buildQuotedComposerText(selectedText, currentValue, selectionStart, sel
     nextValue: `${prefix}${insertion}${suffix}`,
     nextCursorPosition: prefix.length + insertion.length - suffixSpacer.length,
   }
+}
+
+export interface AIComposerProps {
+  onSend?: (text: string, options: { images: string[] }) => Promise<boolean | void> | boolean | void
+  onCancel?: () => void
+  onStopAndResume?: () => void
+  isSending?: boolean
+  currentProviderId?: string
+  onCurrentProviderChange?: (providerId: string) => void
+  providerBalanceRefreshSignal?: number
+  persistProviderSelection?: boolean
+  autoApprovalSettings?: Record<string, unknown> | null
+  onPatchAutoApprovalSettings?: (patch: Record<string, unknown>) => void
+  onInterruptCollaboration?: () => void
+  approvalRequired?: boolean
+  toolRunning?: boolean
+  commandActionRequired?: boolean
+  terminalAssignmentRequired?: boolean
+  toolResumeAvailable?: boolean
+  onResumeTask?: () => void
+  onApproveTools?: () => void
+  onRejectTools?: () => void
+  onContinueTool?: () => void
+  onTerminateTool?: () => void
+  onListCommandTerminalCandidates?: () => Promise<unknown> | unknown
+  onAssignToolTerminal?: (sessionId: string) => Promise<void> | void
+  approvalButtonOrder?: 'reject-approve' | 'approve-reject'
+  commandActionButtonOrder?: 'terminate-continue' | 'continue-terminate'
+  inputValue?: string
+  onInputValueChange?: (value: string) => void
+  selectedImages?: string[]
+  onSelectedImagesChange?: (images: string[]) => void
+  terminalSessionId?: string
+  queueBlocked?: boolean
+  queuedSubmissionKind?: string
+  onCancelQueuedSubmission?: () => void
+  skipNextAutomaticRequest?: boolean
+  onToggleSkipNextAutomaticRequest?: (next: boolean) => void
+  editModeLabel?: string
+  slashCommands?: unknown[]
+  onCancelEdit?: () => void
+  collaborationLocked?: boolean
+  collaborationActive?: boolean
+  collaborationMode?: string
+  collaborationExtraPrompt?: string
+  onCollaborationExtraPromptChange?: (value: string) => void
+  collaborationPromptPresets?: unknown
+  onCollaborationPromptPresetsChange?: (presets: unknown) => void
+  collaborationPromptScopeIsTask?: boolean
+  conversationInputLocked?: boolean
+  conversationInputLockedLabel?: string
+  collaborationStatus?: Record<string, unknown> | null
+  dismissSignal?: number
 }
 
 export default function AIComposer({
@@ -302,25 +410,25 @@ export default function AIComposer({
   conversationInputLockedLabel = '',
   collaborationStatus = null,
   dismissSignal = 0,
-}) {
+}: AIComposerProps) {
   const { t } = useTranslation()
   const [localInputValue, setLocalInputValue] = useState('')
   const [isDraggingOver, setIsDraggingOver] = useState(false)
-  const [mentionMenu, setMentionMenu] = useState(createMentionMenuState())
-  const [slashCommandMenu, setSlashCommandMenu] = useState(defaultSlashCommandMenuState)
+  const [mentionMenu, setMentionMenu] = useState<MentionMenuState>(createMentionMenuState())
+  const [slashCommandMenu, setSlashCommandMenu] = useState<SlashCommandMenuState>(defaultSlashCommandMenuState)
   const [currentCwd, setCurrentCwd] = useState('/')
-  const textareaRef = useRef(null)
-  const highlightLayerRef = useRef(null)
-  const fileInputRef = useRef(null)
-  const mentionMenuListRef = useRef(null)
-  const mentionDebounceRef = useRef(null)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const highlightLayerRef = useRef<HTMLDivElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const mentionMenuListRef = useRef<HTMLDivElement | null>(null)
+  const mentionDebounceRef = useRef<number | null>(null)
   const mentionRequestRef = useRef(0)
-  const terminalAssignmentRef = useRef(null)
-  const collaborationToggleRef = useRef(null)
+  const terminalAssignmentRef = useRef<HTMLDivElement | null>(null)
+  const collaborationToggleRef = useRef<HTMLButtonElement | null>(null)
   const [collaborationPromptOpen, setCollaborationPromptOpen] = useState(false)
   const [cursorPosition, setCursorPosition] = useState(0)
   const [justDeletedSpaceAfterMention, setJustDeletedSpaceAfterMention] = useState(false)
-  const [intendedCursorPosition, setIntendedCursorPosition] = useState(null)
+  const [intendedCursorPosition, setIntendedCursorPosition] = useState<number | null>(null)
   const isControlled = typeof onInputValueChange === 'function'
   const value = isControlled ? inputValue || '' : localInputValue
   const setValue = isControlled ? onInputValueChange : setLocalInputValue
@@ -328,7 +436,7 @@ export default function AIComposer({
     ? selectedImages.filter((item) => typeof item === 'string' && item.trim())
     : []
 
-  const setImages = useCallback((updater) => {
+  const setImages = useCallback((updater: string[] | ((prev: string[]) => string[])) => {
     if (typeof onSelectedImagesChange !== 'function') {
       return
     }
@@ -340,7 +448,7 @@ export default function AIComposer({
   const [terminalAssignmentOpen, setTerminalAssignmentOpen] = useState(false)
   const [terminalAssignmentLoading, setTerminalAssignmentLoading] = useState(false)
   const [terminalAssignmentSubmitting, setTerminalAssignmentSubmitting] = useState(false)
-  const [terminalAssignmentCandidates, setTerminalAssignmentCandidates] = useState([])
+  const [terminalAssignmentCandidates, setTerminalAssignmentCandidates] = useState<TerminalAssignmentCandidate[]>([])
   const [terminalAssignmentError, setTerminalAssignmentError] = useState('')
   const [terminalAssignmentSelectedIndex, setTerminalAssignmentSelectedIndex] = useState(0)
   const actionLocked = approvalRequired || toolRunning || commandActionRequired || terminalAssignmentRequired
@@ -514,7 +622,7 @@ export default function AIComposer({
     })
   }, [activeInlineMenu])
 
-  const focusTextAreaAt = useCallback((nextPosition) => {
+  const focusTextAreaAt = useCallback((nextPosition: number) => {
     requestAnimationFrame(() => {
       if (!textareaRef.current) {
         return
@@ -525,7 +633,7 @@ export default function AIComposer({
     })
   }, [])
 
-  const insertTextAtSelection = useCallback((insertedText) => {
+  const insertTextAtSelection = useCallback((insertedText: string) => {
     const nextText = typeof insertedText === 'string' ? insertedText : ''
     if (!nextText) {
       return
@@ -609,11 +717,12 @@ export default function AIComposer({
   }, [terminalSessionId])
 
   useEffect(() => {
-    const handleFileManagerPathChange = (event) => {
-      if (event?.detail?.sessionId !== terminalSessionId) {
+    const handleFileManagerPathChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId?: unknown; path?: unknown }>).detail || {}
+      if (detail?.sessionId !== terminalSessionId) {
         return
       }
-      const normalizedPath = isValidRemoteAbsolutePath(event?.detail?.path)
+      const normalizedPath = isValidRemoteAbsolutePath(detail?.path)
       if (normalizedPath) {
         setCurrentCwd(normalizedPath)
       }
@@ -655,12 +764,12 @@ export default function AIComposer({
     if (!terminalAssignmentOpen) {
       return undefined
     }
-    const handlePointerDown = (event) => {
-      if (terminalAssignmentRef.current && !terminalAssignmentRef.current.contains(event.target)) {
+    const handlePointerDown = (event: MouseEvent) => {
+      if (terminalAssignmentRef.current && !terminalAssignmentRef.current.contains(event.target as Node)) {
         setTerminalAssignmentOpen(false)
       }
     }
-    const handleKeyDown = (event) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
         setTerminalAssignmentOpen(false)
@@ -696,11 +805,12 @@ export default function AIComposer({
   useEffect(() => () => clearMentionDebounce(), [clearMentionDebounce])
 
   useEffect(() => {
-    const handleQuoteSelection = (event) => {
+    const handleQuoteSelection = (event: Event) => {
       if (isComposerBlocked) {
         return
       }
-      const selectedText = typeof event?.detail?.text === 'string' ? event.detail.text : ''
+      const detail = (event as CustomEvent<{ text?: unknown }>).detail || {}
+      const selectedText = typeof detail.text === 'string' ? detail.text : ''
       if (!selectedText) {
         return
       }
@@ -719,7 +829,7 @@ export default function AIComposer({
     return () => window.removeEventListener('ai-quote-selection', handleQuoteSelection)
   }, [closeInlineMenus, focusTextAreaAt, isComposerBlocked, setValue, value])
 
-  const loadSlashCommandSuggestions = useCallback((nextText, nextCursorPosition) => {
+  const loadSlashCommandSuggestions = useCallback((nextText: string, nextCursorPosition: number) => {
     if (isComposerBlocked) {
       closeSlashCommandMenu()
       return false
@@ -729,7 +839,7 @@ export default function AIComposer({
       closeSlashCommandMenu()
       return false
     }
-    const items = buildSlashCommandMenuItems(normalizedSlashCommands, slashCommandContext.query)
+    const items = buildSlashCommandMenuItems(normalizedSlashCommands, slashCommandContext.query) as MentionMenuItem[]
     setSlashCommandMenu({
       open: true,
       query: slashCommandContext.query,
@@ -740,7 +850,7 @@ export default function AIComposer({
     return true
   }, [closeMentionMenu, closeSlashCommandMenu, isComposerBlocked, normalizedSlashCommands])
 
-  const loadMentionSuggestions = useCallback(async (nextText, nextCursorPosition, forcedType = undefined) => {
+  const loadMentionSuggestions = useCallback(async (nextText: string, nextCursorPosition: number, forcedType: 'file' | 'folder' | null | undefined = undefined) => {
     if (isComposerBlocked) {
       closeMentionMenu()
       return
@@ -787,16 +897,17 @@ export default function AIComposer({
       const results = await searchRemoteMentionCandidates({
         sessionId: terminalSessionId,
         query: normalizedQuery,
-        selectedType,
+        // aiMentions.js 未转 TS：默认值推断 selectedType 为 null，按实际语义桥接
+        selectedType: selectedType as null,
         getCurrentCwd: async () => currentCwd,
-        listDir: (sessionId, remotePath) => AppGo.ListDir(sessionId, remotePath),
+        listDir: (sessionId: string, remotePath: string) => AppGo.ListDir(sessionId, remotePath),
       })
       if (mentionRequestRef.current !== requestId) {
         return
       }
-      const items = results.map((result) => ({
+      const items: MentionMenuItem[] = results.map((result: { type: string; path: string; description?: string }) => ({
         kind: 'result',
-        mentionType: result.type,
+        mentionType: result.type as 'file' | 'folder',
         path: result.path,
         title: result.path,
         description: result.description,
@@ -825,7 +936,7 @@ export default function AIComposer({
     }
   }, [closeMentionMenu, currentCwd, isComposerBlocked, mentionMenu.selectedType, mentionTopLevelItems, terminalSessionId])
 
-  const scheduleMentionSuggestions = useCallback((nextText, nextCursorPosition, forcedType = undefined) => {
+  const scheduleMentionSuggestions = useCallback((nextText: string, nextCursorPosition: number, forcedType: 'file' | 'folder' | null | undefined = undefined) => {
     clearMentionDebounce()
     mentionDebounceRef.current = setTimeout(() => {
       if (!loadSlashCommandSuggestions(nextText, nextCursorPosition)) {
@@ -834,7 +945,7 @@ export default function AIComposer({
     }, 160)
   }, [clearMentionDebounce, loadMentionSuggestions, loadSlashCommandSuggestions])
 
-  const appendImageFiles = useCallback(async (files) => {
+  const appendImageFiles = useCallback(async (files: FileList | File[] | null) => {
     if (isComposerBlocked) {
       return
     }
@@ -861,7 +972,7 @@ export default function AIComposer({
     fileInputRef.current?.click()
   }, [isComposerBlocked])
 
-  const handleImageInputChange = useCallback(async (event) => {
+  const handleImageInputChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     try {
       await appendImageFiles(event.target.files)
     } finally {
@@ -890,11 +1001,11 @@ export default function AIComposer({
     closeInlineMenus()
   }, [closeInlineMenus, focusTextAreaAt, isComposerBlocked, readClipboardText, setValue, value])
 
-  const handleRemoveImage = useCallback((targetIndex) => {
+  const handleRemoveImage = useCallback((targetIndex: number) => {
     setImages((prev) => prev.filter((_, index) => index !== targetIndex))
   }, [setImages])
 
-  const handleMentionItemSelect = useCallback((item) => {
+  const handleMentionItemSelect = useCallback((item: MentionMenuItem) => {
     if (!item || item.kind === 'empty') {
       return
     }
@@ -931,14 +1042,14 @@ export default function AIComposer({
     closeInlineMenus()
   }, [closeInlineMenus, focusTextAreaAt, loadMentionSuggestions, setValue, value])
 
-  const handlePaste = useCallback(async (event) => {
+  const handlePaste = useCallback(async (event: React.ClipboardEvent) => {
     if (isComposerBlocked) {
       return
     }
     const imageFiles = Array.from(event.clipboardData?.items || [])
       .filter((item) => item.kind === 'file' && typeof item.type === 'string' && item.type.startsWith('image/'))
       .map((item) => item.getAsFile())
-      .filter(Boolean)
+      .filter((file): file is File => !!file)
     if (imageFiles.length === 0) {
       return
     }
@@ -950,14 +1061,14 @@ export default function AIComposer({
     await appendImageFiles(imageFiles)
   }, [appendImageFiles, insertTextAtSelection, isComposerBlocked])
 
-  const handleDragEnter = useCallback((event) => {
+  const handleDragEnter = useCallback((event: React.DragEvent) => {
     event.preventDefault()
     if (!isComposerBlocked) {
       setIsDraggingOver(true)
     }
   }, [isComposerBlocked])
 
-  const handleDragOver = useCallback((event) => {
+  const handleDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault()
     if (!isComposerBlocked) {
       event.dataTransfer.dropEffect = 'copy'
@@ -965,14 +1076,14 @@ export default function AIComposer({
     }
   }, [isComposerBlocked])
 
-  const handleDragLeave = useCallback((event) => {
+  const handleDragLeave = useCallback((event: React.DragEvent) => {
     event.preventDefault()
     if (event.currentTarget === event.target) {
       setIsDraggingOver(false)
     }
   }, [])
 
-  const handleDrop = useCallback(async (event) => {
+  const handleDrop = useCallback(async (event: React.DragEvent) => {
     event.preventDefault()
     setIsDraggingOver(false)
     if (isComposerBlocked) {
@@ -994,12 +1105,13 @@ export default function AIComposer({
       const candidates = await onListCommandTerminalCandidates()
       const normalizedCandidates = Array.isArray(candidates)
         ? candidates
-            .filter((candidate) => candidate && typeof candidate === 'object' && typeof candidate.sessionId === 'string' && candidate.sessionId.trim())
+            .filter((candidate): candidate is Record<string, unknown> => !!candidate && typeof candidate === 'object')
+            .filter((candidate) => typeof candidate.sessionId === 'string' && String(candidate.sessionId).trim())
             .map((candidate) => ({
-              sessionId: candidate.sessionId.trim(),
-              label: typeof candidate.label === 'string' && candidate.label.trim() ? candidate.label.trim() : candidate.sessionId.trim(),
+              sessionId: String(candidate.sessionId).trim(),
+              label: typeof candidate.label === 'string' && String(candidate.label).trim() ? String(candidate.label).trim() : String(candidate.sessionId).trim(),
               busy: candidate.busy === true,
-              cwd: typeof candidate.cwd === 'string' ? candidate.cwd.trim() : '',
+              cwd: typeof candidate.cwd === 'string' ? String(candidate.cwd).trim() : '',
               current: candidate.current === true,
               recommended: candidate.recommended === true,
             }))
@@ -1024,7 +1136,7 @@ export default function AIComposer({
     await loadTerminalAssignmentCandidates()
   }
 
-  async function handleAssignTerminalCandidate(targetSessionId) {
+  async function handleAssignTerminalCandidate(targetSessionId: string) {
     const nextTargetSessionId = typeof targetSessionId === 'string' ? targetSessionId.trim() : ''
     if (!nextTargetSessionId || typeof onAssignToolTerminal !== 'function' || terminalAssignmentSubmitting) {
       return
@@ -1054,7 +1166,7 @@ export default function AIComposer({
     }
   }
 
-  const handleTextareaChange = useCallback((event) => {
+  const handleTextareaChange = useCallback((event: React.ChangeEvent<HTMLTextAreaElement>) => {
     const nextValue = event.target.value
     const nextCursorPosition = event.target.selectionStart ?? nextValue.length
     setValue(nextValue)
@@ -1069,14 +1181,14 @@ export default function AIComposer({
     scheduleMentionSuggestions(value, nextCursorPosition)
   }, [scheduleMentionSuggestions, value])
 
-  const handleTextareaKeyUp = useCallback((event) => {
+  const handleTextareaKeyUp = useCallback((event: React.KeyboardEvent) => {
     if ((slashCommandMenu.open || mentionMenu.open) && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
       return
     }
     syncInlineMenusWithCursor()
   }, [mentionMenu.open, slashCommandMenu.open, syncInlineMenusWithCursor])
 
-  const handleKeyDown = async (event) => {
+  const handleKeyDown = async (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (terminalAssignmentOpen) {
       if (event.key === 'Escape') {
         event.preventDefault()
@@ -1757,7 +1869,8 @@ export default function AIComposer({
               <textarea
                 ref={textareaRef}
                 name="aiComposer"
-                aria-label={t('AI 输入框')}
+                // 缺少「AI 输入框」i18n 键（28 语言待补，收尾阶段统一处理）
+                aria-label={t('AI 输入框' as I18nKey)}
                 value={value}
                 onChange={handleTextareaChange}
                 onKeyDown={handleKeyDown}

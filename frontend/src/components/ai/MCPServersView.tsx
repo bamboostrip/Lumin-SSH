@@ -6,7 +6,13 @@ import { handleInputDragSelectAll } from './inputDragSelect.js'
 
 const defaultConfigText = '{\n  "mcpServers": {}\n}'
 
-function ToggleSwitch({ checked, onChange, disabled = false }) {
+interface ToggleSwitchProps {
+  checked: boolean
+  onChange: () => void
+  disabled?: boolean
+}
+
+function ToggleSwitch({ checked, onChange, disabled = false }: ToggleSwitchProps) {
   return (
     <button
       type="button"
@@ -42,7 +48,7 @@ function ToggleSwitch({ checked, onChange, disabled = false }) {
   )
 }
 
-function normalizeErrorMessage(error) {
+function normalizeErrorMessage(error: unknown) {
   if (error instanceof Error && typeof error.message === 'string' && error.message.trim()) {
     return error.message.trim()
   }
@@ -50,6 +56,33 @@ function normalizeErrorMessage(error) {
     return error.trim()
   }
   return ''
+}
+
+/** MCP 服务器条目（来自 .jsx 父级，字段按需取用） */
+interface MCPManagedServer {
+  source: string
+  name: string
+  status?: string
+  error?: string
+  instructions?: string
+  disabled?: boolean
+  disabledForPrompts?: boolean
+  timeout?: unknown
+  tools: Array<{ name: string; alwaysAllow?: boolean; enabledForPrompt?: boolean; description?: string }>
+  errorHistory?: Array<{ timestamp?: unknown; message: string }>
+}
+
+interface MCPServersViewProps {
+  servers?: MCPManagedServer[]
+  globalConfigPath?: string
+  globalConfigText?: string
+  onSaveServer?: (name: string, configText: string) => Promise<unknown>
+  onReloadServers?: () => Promise<unknown>
+  onDeleteServer?: (name: string) => Promise<unknown>
+  onRestartServer?: (name: string, source: string) => Promise<unknown>
+  onToggleServer?: (name: string, source: string, enabled: boolean) => Promise<unknown>
+  onToggleServerDisabledForPrompts?: (name: string, source: string, disabled: boolean) => Promise<unknown>
+  onUpdateServerTimeout?: (name: string, source: string, timeout: number) => Promise<unknown>
 }
 
 export default function MCPServersView({
@@ -63,7 +96,7 @@ export default function MCPServersView({
   onToggleServer,
   onToggleServerDisabledForPrompts,
   onUpdateServerTimeout,
-}) {
+}: MCPServersViewProps) {
   const { t } = useTranslation()
   const [configText, setConfigText] = useState(globalConfigText || defaultConfigText)
   const [saving, setSaving] = useState(false)

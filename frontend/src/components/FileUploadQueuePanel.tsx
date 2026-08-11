@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Upload, Download, FolderOpen, X, CheckCircle2, AlertCircle, Clock3, ClipboardList, type LucideIcon } from 'lucide-react';
 import { useTranslation, type I18nKey } from '../i18n.ts';
-import Tiptop from './Tiptop.jsx';
+import Tiptop from './Tiptop.tsx';
 
 const MAX_RENDER_UPLOAD_CARDS = 1000;
 

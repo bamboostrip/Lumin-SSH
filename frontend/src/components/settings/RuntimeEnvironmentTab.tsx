@@ -2,13 +2,13 @@ import { useCallback, useEffect, useState } from 'react'
 import { CheckCircle2, CircleOff, Package } from 'lucide-react'
 import { t as $t } from '../../i18n.ts'
 import { DEFAULT_RUNTIME_ENVIRONMENT_STATUS, getRuntimeEnvironmentStatus, installRuntimeEnvironment } from './runtimeEnvironmentBridge.ts'
-import { SettingsPanel, SettingsSectionTitle, SettingsTabRoot, type SettingsDefinitionNode } from './SharedComponents.jsx'
+import { SettingsPanel, SettingsSectionTitle, SettingsTabRoot, type SettingsDefinitionNode } from './SharedComponents.tsx'
 import { settings } from './settingDefinitions'
 
 export default function RuntimeEnvironmentTab() {
   const [runtimeEnvironmentStatus, setRuntimeEnvironmentStatus] = useState(DEFAULT_RUNTIME_ENVIRONMENT_STATUS)
   const [installing, setInstalling] = useState(false)
-  // settingDefinitions.js 未转 TS（推断为 Readonly<{}>），此处按实际结构断言
+  // settingDefinitions.ts 为 @ts-nocheck 桥接（无类型，推断 Readonly<{}>），此处按实际结构断言
   const runtimeSettings = settings as { runtimeEnvironment: { sections: { environment: SettingsDefinitionNode }; fields: { uv: SettingsDefinitionNode; uvBinary: SettingsDefinitionNode } } };
   const sectionNode = runtimeSettings.runtimeEnvironment.sections.environment
   const uvNode = runtimeSettings.runtimeEnvironment.fields.uv

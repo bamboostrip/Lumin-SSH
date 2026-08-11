@@ -1,4 +1,4 @@
-import AIChatMessageActionBar from './AIChatMessageActionBar.jsx'
+import AIChatMessageActionBar from './AIChatMessageActionBar.tsx'
 
 const userTitleKey = '用户'
 

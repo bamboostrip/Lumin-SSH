@@ -3,7 +3,7 @@ import { Eye, EyeOff, Plus, X, Monitor, Key, FolderOpen, SquarePen, KeyRound, Gl
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 import { useTranslation } from '../i18n.ts';
 import { TERMINAL_ENCODING_GROUPS } from '../constants/terminalEncodings.ts';
-import SearchableGroupedSelect from './SearchableGroupedSelect.jsx';
+import SearchableGroupedSelect from './SearchableGroupedSelect.tsx';
 import { getAIGlobalSettings } from './ai/aiGlobalSettingsBridge.ts';
 import type { ServerFormData } from '../hooks/useServerCatalog.ts';
 import type { config } from '../../wailsjs/go/models.ts';

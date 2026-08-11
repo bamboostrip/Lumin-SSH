@@ -1,6 +1,6 @@
 import { MessageSquare, User, type LucideIcon } from 'lucide-react'
 import { useTranslation, type I18nKey } from '../../../i18n.ts'
-import AIChatMessageActions, { type MessageAction } from './AIChatMessageActions.jsx'
+import AIChatMessageActions, { type MessageAction } from './AIChatMessageActions.tsx'
 
 const assistantTitleKey = 'AI'
 

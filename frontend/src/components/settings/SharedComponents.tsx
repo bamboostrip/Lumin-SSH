@@ -17,7 +17,7 @@ export const SETTINGS_PANEL_STYLE = {
   border: '1px solid var(--border)',
 };
 
-/** 设置定义节点（来自 settingDefinitions.js 的数据结构，字段按需取用） */
+/** 设置定义节点（来自 settingDefinitions.ts 的数据结构，字段按需取用） */
 export interface SettingsDefinitionNode {
   id?: string;
   titleKey?: string;

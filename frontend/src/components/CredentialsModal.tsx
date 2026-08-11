@@ -3,7 +3,7 @@ import { Plus, Pencil, Trash2, Key, Lock, Eye, EyeOff, X } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 import type { config } from '../../wailsjs/go/models.ts';
 import { useTranslation } from '../i18n.ts';
-import Tiptop from './Tiptop.jsx';
+import Tiptop from './Tiptop.tsx';
 
 /** 凭据表单（保存时补齐 id 即为 config.Credential） */
 interface CredentialForm {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { t as $t, type I18nKey } from '../../i18n.ts';
-import { SettingsPanel, SettingsSectionTitle, SettingsTabRoot, type SettingsDefinitionNode } from './SharedComponents.jsx';
+import { SettingsPanel, SettingsSectionTitle, SettingsTabRoot, type SettingsDefinitionNode } from './SharedComponents.tsx';
 import { settings } from './settingDefinitions';
 
 interface ShortcutRowProps {
@@ -46,7 +46,7 @@ interface ShortcutsTabProps {
 }
 
 export default function ShortcutsTab({ shortcuts, listeningKey, onSetListeningKey, onResetShortcuts }: ShortcutsTabProps) {
-  // settingDefinitions.js 未转 TS（推断为 Readonly<{}>），此处按实际结构断言
+  // settingDefinitions.ts 为 @ts-nocheck 桥接（无类型，推断 Readonly<{}>），此处按实际结构断言
   const sectionNode = (settings as { shortcuts: { sections: { terminal: SettingsDefinitionNode } } }).shortcuts.sections.terminal;
   const shortcutNodes = (sectionNode.children || []).flatMap((node) => node.children || []).filter((node) => node.type === 'field');
   const resetNode = (sectionNode.children || []).flatMap((node) => node.children || []).find((node) => node.type === 'action');

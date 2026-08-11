@@ -86,7 +86,7 @@ interface ProviderStateEntry<F extends Record<string, unknown>> {
 
 interface SummaryField { label: string; value: string; primary?: boolean; fullWidth?: boolean; }
 
-/** 设置搜索定义（settingDefinitions.js 未转 TS，按实际结构断言） */
+/** 设置搜索定义（settingDefinitions.ts 为 @ts-nocheck 桥接（无类型），按实际结构断言） */
 interface SettingsSearchDefinition {
   id: string;
   type: string;
@@ -610,7 +610,7 @@ export default function SettingsModal({
     }
   }, [initialTab])
 
-  // settingDefinitions.js 未转 TS（推断为 Readonly<{}>），按实际结构断言（同 AppTab 处理方式）
+  // settingDefinitions.ts 为 @ts-nocheck 桥接（无类型，推断 Readonly<{}>），按实际结构断言（同 AppTab 处理方式）
   const settingsSectionTitleMap = useMemo(() => Object.fromEntries(
     (SETTINGS_SECTIONS as unknown as Array<{ id: string; titleKey: string }>).map((item): [string, string] => [item.id, $t(item.titleKey as I18nKey)]),
   ), [language]);

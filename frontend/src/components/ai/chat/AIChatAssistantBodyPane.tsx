@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useRef } from 'react'
-import AIChatMarkdown from './AIChatMarkdown.jsx'
+import AIChatMarkdown from './AIChatMarkdown.tsx'
 
 const streamingCursorKeyframes = `
 @keyframes ai-chat-stream-cursor-beam {

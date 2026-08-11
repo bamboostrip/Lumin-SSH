@@ -1,9 +1,9 @@
-import AIChatMessageActionBar from './AIChatMessageActionBar.jsx'
-import AIChatAssistantBodyPane from './AIChatAssistantBodyPane.jsx'
-import AIChatErrorBlock from './AIChatErrorBlock.jsx'
-import AIChatReasoningBlock from './AIChatReasoningBlock.jsx'
-import AIChatRequestStatusRow from './AIChatRequestStatusRow.jsx'
-import AIChatToolSessionPane, { type AIChatToolSessionItem } from './AIChatToolSessionPane.jsx'
+import AIChatMessageActionBar from './AIChatMessageActionBar.tsx'
+import AIChatAssistantBodyPane from './AIChatAssistantBodyPane.tsx'
+import AIChatErrorBlock from './AIChatErrorBlock.tsx'
+import AIChatReasoningBlock from './AIChatReasoningBlock.tsx'
+import AIChatRequestStatusRow from './AIChatRequestStatusRow.tsx'
+import AIChatToolSessionPane, { type AIChatToolSessionItem } from './AIChatToolSessionPane.tsx'
 
 const assistantTitleKey = 'AI'
 

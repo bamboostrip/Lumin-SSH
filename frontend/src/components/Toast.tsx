@@ -1,6 +1,6 @@
 import { CheckCircle, Info, X, XCircle } from 'lucide-react';
 import type { ReactNode } from 'react';
-import Tiptop from './Tiptop.jsx';
+import Tiptop from './Tiptop.tsx';
 import type { ToastAction, ToastItem } from '../hooks/useToasts.ts';
 
 const ICON_MAP: Record<string, ReactNode> = {

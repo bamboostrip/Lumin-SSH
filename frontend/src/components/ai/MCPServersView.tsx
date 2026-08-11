@@ -1,7 +1,7 @@
 import { RotateCcw, Save, Trash2, Eye, EyeOff } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from '../../i18n.ts'
-import Tiptop from '../Tiptop.jsx'
+import Tiptop from '../Tiptop.tsx'
 import { handleInputDragSelectAll } from './inputDragSelect.ts'
 
 const defaultConfigText = '{\n  "mcpServers": {}\n}'
@@ -58,7 +58,7 @@ function normalizeErrorMessage(error: unknown) {
   return ''
 }
 
-/** MCP 服务器条目（来自 .jsx 父级，字段按需取用） */
+/** MCP 服务器条目（来自 .tsx 父级，字段按需取用） */
 interface MCPManagedServer {
   source: string
   name: string

@@ -1,8 +1,8 @@
 import { Check, ChevronDown, FileCode2, FileText, RotateCcw, SquarePen, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import Tiptop from '../../Tiptop.jsx'
+import Tiptop from '../../Tiptop.tsx'
 import { useTranslation, type I18nKey } from '../../../i18n.ts'
-import AIChatMarkdown from './AIChatMarkdown.jsx'
+import AIChatMarkdown from './AIChatMarkdown.tsx'
 
 function normalizeAIMessageStatus(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''

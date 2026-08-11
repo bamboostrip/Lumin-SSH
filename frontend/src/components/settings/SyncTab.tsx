@@ -186,7 +186,7 @@ export default function SyncTab({
   const tombstoneCredentials = Number(syncTombstoneStats?.credentials || 0);
   const tombstoneTotal = tombstoneConnections + tombstoneCredentials;
   const [tombstoneDays, setTombstoneDays] = React.useState(30);
-  // settingDefinitions.js 未转 TS（推断为 Readonly<{}>），此处按实际结构断言
+  // settingDefinitions.ts 为 @ts-nocheck 桥接（无类型，推断 Readonly<{}>），此处按实际结构断言
   const settingsData = settings as { sync: { node: SettingsDefinitionNode; fields: Record<string, SettingsDefinitionNode>; sections: Record<string, SettingsDefinitionNode> } };
   const syncSettings = settingsData.sync;
   return (

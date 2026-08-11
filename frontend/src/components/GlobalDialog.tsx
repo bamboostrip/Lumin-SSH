@@ -1,7 +1,7 @@
 import { useState, useEffect, useId, useRef, useCallback } from 'react';
 import { Eye, EyeOff, Clipboard } from 'lucide-react';
 import { useTranslation, t } from '../i18n.ts';
-import Tiptop from './Tiptop.jsx';
+import Tiptop from './Tiptop.tsx';
 import { Z } from '../constants/zIndex';
 
 const DIALOG_PRIORITY: Record<string, number> = {

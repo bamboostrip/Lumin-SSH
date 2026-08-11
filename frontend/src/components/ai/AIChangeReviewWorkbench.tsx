@@ -1,5 +1,5 @@
 import { useTranslation, type I18nKey } from '../../i18n.ts'
-import { DiffEditorPair } from './AIDiffViewerPair.jsx'
+import { DiffEditorPair } from './AIDiffViewerPair.tsx'
 
 interface AIChangeReviewWorkbenchProps {
   review: {

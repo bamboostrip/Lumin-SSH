@@ -3,7 +3,7 @@ import { t as $t, type I18nKey } from '../../i18n.ts';
 import { Sun, Monitor, Moon, Trash2, Copy } from 'lucide-react';
 import { SettingRow, SettingsDivider, SettingsPanel, SettingsSectionTitle, SettingsTabRoot, ToggleSwitch, type SettingsDefinitionNode } from './SharedComponents';
 import { settings } from './settingDefinitions';
-import KeywordRulesPanel from './KeywordRulesPanel.jsx';
+import KeywordRulesPanel from './KeywordRulesPanel.tsx';
 import { type KeywordRule } from '../../utils/terminalKeywordHighlight.ts';
 import type { ThemePackage, ThemePackagePreview } from '../../utils/theme.ts';
 
@@ -132,7 +132,7 @@ export default function AppearanceTab({
     return String(font.displayName || '').toLowerCase().includes(query) || String(font.fileName || '').toLowerCase().includes(query);
   });
   const fontAssignments = programFontAssignments || { uiFileName: '', terminalFileName: '', aiFileName: '' };
-  // settingDefinitions.js 未转 TS（推断为 Readonly<{}>），此处按实际结构断言
+  // settingDefinitions.ts 为 @ts-nocheck 桥接（无类型，推断 Readonly<{}>），此处按实际结构断言
   const settingsData = settings as { appearance: { node: SettingsDefinitionNode; fields: Record<string, SettingsDefinitionNode>; sections: Record<string, SettingsDefinitionNode> } };
   const appearanceSettings = settingsData.appearance;
   const fontTargets = [

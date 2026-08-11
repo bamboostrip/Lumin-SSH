@@ -2,15 +2,15 @@ import React, { useState, useEffect, useCallback, useRef, useMemo, Suspense } fr
 import { createPortal } from 'react-dom';
 import { Virtuoso } from 'react-virtuoso';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
-const FileEditor = React.lazy(() => import('./FileEditor.jsx'));
+const FileEditor = React.lazy(() => import('./FileEditor.tsx'));
 import { CanResolveFilePaths, EventsOn, OnFileDrop, OnFileDropOff } from '../../wailsjs/runtime/runtime.js';
 import { useTranslation, t as tKey, getLanguage, type I18nKey } from '../i18n.ts';
 import { Z } from '../constants/zIndex.ts';
 import { clampMenuPosition } from '../utils/menuPosition.ts';
 import { isArchive, isBinaryLike, isViewable } from '../utils/fileTypeClassify.ts';
 import { suppressDragOutClick } from '../utils/dragOutClickGuard.ts';
-import FileUploadQueuePanel from './FileUploadQueuePanel.jsx';
-import Tiptop from './Tiptop.jsx';
+import FileUploadQueuePanel from './FileUploadQueuePanel.tsx';
+import Tiptop from './Tiptop.tsx';
 import {
   getSessionCachedFileManagerPathItems,
   getSessionFileManagerWorkspace,
@@ -45,7 +45,7 @@ import {
 // FileManager 类型契约（props 见 FileManagerProps；内部数据模型见下）
 // ============================================================
 
-// 来自 Go/.js 桥或事件 payload 的外部数据，字段形状以运行时为准。
+// 来自 Go 桥或事件 payload 的外部数据，字段形状以运行时为准。
 type BridgeData = any
 
 interface FileManagerProps {

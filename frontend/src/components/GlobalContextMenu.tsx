@@ -6,7 +6,7 @@ import { clampMenuPosition } from '../utils/menuPosition.ts';
 import { GLOBAL_CONTEXT_MENU_OPEN_EVENT, type GlobalContextMenuDetail } from '../utils/contextMenu.ts';
 import * as runtime from '../../wailsjs/runtime/runtime.js';
 
-/** 菜单项输入（来自 .jsx 调用方，字段宽松） */
+/** 菜单项输入（来自 .tsx 调用方，字段宽松） */
 interface ContextMenuItemInput {
   type?: string;
   key?: string;

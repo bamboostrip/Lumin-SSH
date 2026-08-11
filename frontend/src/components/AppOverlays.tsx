@@ -1,23 +1,23 @@
 import { Copy, PenLine, Search, X } from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
-import CredentialsModal from './CredentialsModal.jsx';
-import ExportSelectedDialog from './ExportSelectedDialog.jsx';
-import GlobalContextMenu from './GlobalContextMenu.jsx';
-import GlobalDialog from './GlobalDialog.jsx';
-import ImportExportDialog from './ImportExportDialog.jsx';
-import PortForwardDialog from './PortForwardDialog.jsx';
-import SerialConfigModal, { type SerialFormConfig } from './SerialConfigModal.jsx';
-import SettingsModal from './SettingsModal.jsx';
-import SyncFailureToast, { type SyncFailureState } from './SyncFailureToast.jsx';
-import Tiptop from './Tiptop.jsx';
-import Toast from './Toast.jsx';
-import UpdateModal from './UpdateModal.jsx';
+import CredentialsModal from './CredentialsModal.tsx';
+import ExportSelectedDialog from './ExportSelectedDialog.tsx';
+import GlobalContextMenu from './GlobalContextMenu.tsx';
+import GlobalDialog from './GlobalDialog.tsx';
+import ImportExportDialog from './ImportExportDialog.tsx';
+import PortForwardDialog from './PortForwardDialog.tsx';
+import SerialConfigModal, { type SerialFormConfig } from './SerialConfigModal.tsx';
+import SettingsModal from './SettingsModal.tsx';
+import SyncFailureToast, { type SyncFailureState } from './SyncFailureToast.tsx';
+import Tiptop from './Tiptop.tsx';
+import Toast from './Toast.tsx';
+import UpdateModal from './UpdateModal.tsx';
 import type { PortForwardInitialMapping } from '../hooks/usePortForwardDialog.ts';
 import type { SessionAuthPrompt } from '../hooks/useSessionConnections.ts';
 import type { ToastAction, ToastItem } from '../hooks/useToasts.ts';
 import type { ExportOptions } from '../hooks/useImportExport.ts';
 import type { SessionLike } from '../utils/sessionWorkspace.ts';
-import type { TopbarSession } from './AppTopbar.jsx';
+import type { TopbarSession } from './AppTopbar.tsx';
 
 /** 标签栏右键菜单 */
 export interface TabContextMenuState {
@@ -36,7 +36,7 @@ export interface TerminalTabContextMenuState {
   terminalIds?: string[];
 }
 
-/** 编辑飞行动画元素（shape 来自 App.jsx 的组装；beam/capsule 为历史遗留分支无生产者，字段统一声明为必填以简化类型） */
+/** 编辑飞行动画元素（shape 来自 App.tsx 的组装；beam/capsule 为历史遗留分支无生产者，字段统一声明为必填以简化类型） */
 interface EditFlyItem {
   id: string;
   type: string;

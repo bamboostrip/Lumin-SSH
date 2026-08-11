@@ -3,10 +3,10 @@ import { Bot, FolderOpen, Loader2, Pencil, Scissors, Search } from 'lucide-react
 import { EventsOn } from '../../wailsjs/runtime/runtime.js'
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js'
 import { useTranslation, t as translate, getLanguage, type I18nKey } from '../i18n.ts'
-import AIPanelHeader from './ai/AIPanelHeader.jsx'
-import AIConversationBackupSettings from './ai/AIConversationBackupSettings.jsx'
-import AIPanelSettingsOverlay from './ai/AIPanelSettingsOverlay.jsx'
-import AIComposer from './ai/AIComposer.jsx'
+import AIPanelHeader from './ai/AIPanelHeader.tsx'
+import AIConversationBackupSettings from './ai/AIConversationBackupSettings.tsx'
+import AIPanelSettingsOverlay from './ai/AIPanelSettingsOverlay.tsx'
+import AIComposer from './ai/AIComposer.tsx'
 import { approveAIChatTools, assignAIChatToolTerminal, cancelAIChat, continueAIChatTool, disableAIChatCollaboration, listAIChatCommandTerminalCandidates, previewAIChatToolDiff, previewAIChatToolRestore, rejectAIChatTools, rejectAIChatToolsForQueuedSubmission, resolveAIChatFollowup, restoreAIChatTool, setAIChatSkipNextAutomaticRequest, startAIChat, startAIChatCollaboration, terminateAIChatTool } from './ai/aiChatBridge.ts'
 import { buildAIConversationTokenLedger, condenseAIConversationContext, countAIConversationAPIMessageRawTokens, createAIConversation, createAIConversationSummarySubtask, deleteAIConversation, getAIAssistantFirstReply, getAIConversation, listAIConversations, normalizeAIConversationMessageSearchResult, normalizeAIConversationSnapshot, normalizeAIConversationTaskSettings, openAIConversationFolder, preprocessAIConversationLongText, readAIConversationWrappedFile, saveAIConversation, searchAIConversationMessages, subscribeAIConversationChanges } from './ai/aiConversationBridge.ts'
 import { buildExecutionContextDetails, getExecutionContextSnapshot } from './ai/aiExecutionContext.ts'
@@ -16,18 +16,18 @@ import { clearThemeToolPreviewPackage, loadThemePackages, setThemeToolPreviewPac
 import { getMCPSettingsState, saveMCPGlobalServer, reloadMCPGlobalServers, deleteMCPGlobalServer, restartMCPClientServer, toggleMCPClientServer, toggleMCPClientServerDisabledForPrompts, updateMCPClientServerTimeout } from './ai/mcpClientBridge.ts'
 import { processRemoteFileMentions } from './ai/aiMentions.ts'
 import { expandFirstSlashCommandForPrompt } from './ai/aiSlashCommands.ts'
-import AIChatConversation from './ai/chat/AIChatConversation.jsx'
+import AIChatConversation from './ai/chat/AIChatConversation.tsx'
 import { getConversationBranchAnchor } from './ai/chat/aiChatMessageTopology.ts'
 import { isCallMyVipProviderHost } from './ai/providerSpecialHosts.ts'
 import { getAIProviderDefinition } from './ai/providers/index.ts'
 import assistantThinkingActiveImg from '../assets/assistant-thinking-active.webm'
-import Tiptop from './Tiptop.jsx'
+import Tiptop from './Tiptop.tsx'
 
 // ============================================================
 // AIPanel 类型契约（props 见 AIPanelProps；内部数据模型见下）
 // ============================================================
 
-// 来自 Go/.js 桥或事件 payload 的外部数据，字段形状以运行时为准，
+// 来自 Go 桥或事件 payload 的外部数据，字段形状以运行时为准，
 // 收尾阶段可对高频路径按需收窄为具体接口。
 type BridgeData = any
 

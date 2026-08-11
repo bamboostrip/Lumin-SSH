@@ -2,7 +2,7 @@ import { ChevronUp, Lightbulb } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useStickToBottom } from 'use-stick-to-bottom'
 import { useTranslation } from '../../../i18n.ts'
-import AIChatMarkdown from './AIChatMarkdown.jsx'
+import AIChatMarkdown from './AIChatMarkdown.tsx'
 
 function parseDurationSeconds(duration: string) {
   const match = duration.trim().match(/(\d+(?:\.\d+)?)s$/)

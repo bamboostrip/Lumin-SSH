@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useReducer, type MouseEvent as ReactMouseEvent } from 'react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 import { useTranslation } from '../i18n.ts';
-import Tiptop from './Tiptop.jsx';
+import Tiptop from './Tiptop.tsx';
 import { clampMenuPosition } from '../utils/menuPosition.ts';
 import { ClipboardList, Search, RefreshCw, XCircle, X, ArrowUpDown, ArrowUp, ArrowDown, Copy } from 'lucide-react';
 

@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { t as $t } from '../../i18n.ts';
 import { Plus, Trash2, RotateCcw, X } from 'lucide-react';
-import ColorPicker from './ColorPicker.jsx';
+import ColorPicker from './ColorPicker.tsx';
 import { DEFAULT_KEYWORD_RULES, type KeywordRule } from '../../utils/terminalKeywordHighlight.ts';
 
 /**

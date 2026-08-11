@@ -87,7 +87,7 @@ export default function GeneralTab({
   webviewGpuDisabled,
   onToggleWebviewGpuDisabled,
 }: GeneralTabProps) {
-  // settingDefinitions.js 未转 TS（推断为 Readonly<{}>），此处按实际结构断言
+  // settingDefinitions.ts 为 @ts-nocheck 桥接（无类型，推断 Readonly<{}>），此处按实际结构断言
   const settingsData = settings as { general: { node: SettingsDefinitionNode; fields: Record<string, SettingsDefinitionNode>; sections: { rendering: SettingsDefinitionNode } } };
   const generalTabNode = settingsData.general.node;
   const fieldValuesById: Record<string, boolean> = {

@@ -1,10 +1,10 @@
-import AIChatCommandCard from './AIChatCommandCard.jsx'
-import AIChatCompletionCard from './AIChatCompletionCard.jsx'
-import AIChatFollowUpCard from './AIChatFollowUpCard.jsx'
-import AIChatMCPCard from './AIChatMCPCard.jsx'
-import AIChatToolCard from './AIChatToolCard.jsx'
+import AIChatCommandCard from './AIChatCommandCard.tsx'
+import AIChatCompletionCard from './AIChatCompletionCard.tsx'
+import AIChatFollowUpCard from './AIChatFollowUpCard.tsx'
+import AIChatMCPCard from './AIChatMCPCard.tsx'
+import AIChatToolCard from './AIChatToolCard.tsx'
 
-/** 会话工具条目（来自 .jsx 父级；kind 区分卡片类型，各卡片按需取用字段） */
+/** 会话工具条目（来自 .tsx 父级；kind 区分卡片类型，各卡片按需取用字段） */
 export interface AIChatToolSessionItem {
   kind: string;
   id: string;

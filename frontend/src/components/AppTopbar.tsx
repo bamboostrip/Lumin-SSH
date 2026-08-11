@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { House, Minus, Square, X, Bot, Settings, RefreshCw, Rocket, Sun, Moon, ChevronDown } from 'lucide-react';
-import Tiptop from './Tiptop.jsx';
+import Tiptop from './Tiptop.tsx';
 import { WindowMinimise } from '../../wailsjs/runtime/runtime.js';
 import { Z } from '../constants/zIndex.ts';
 import type { SessionAuthPrompt, SshChannelUsage } from '../hooks/useSessionConnections.ts';

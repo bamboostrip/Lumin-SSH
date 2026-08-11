@@ -3,10 +3,10 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import * as AppGo from '../../../wailsjs/go/wailsapp/App.js'
 import { ClipboardGetText } from '../../../wailsjs/runtime/runtime.js'
 import { useTranslation, t as translate, type I18nKey } from '../../i18n.ts'
-import AIAutoApproveDropdown from './AIAutoApproveDropdown.jsx'
-import AICollaborationPromptDropdown from './AICollaborationPromptDropdown.jsx'
-import AIProviderSelector from './AIProviderSelector.jsx'
-import Tiptop from '../Tiptop.jsx'
+import AIAutoApproveDropdown from './AIAutoApproveDropdown.tsx'
+import AICollaborationPromptDropdown from './AICollaborationPromptDropdown.tsx'
+import AIProviderSelector from './AIProviderSelector.tsx'
+import Tiptop from '../Tiptop.tsx'
 import {
   buildRemoteFileMention,
   buildRemoteFolderMention,
@@ -27,8 +27,8 @@ import {
   normalizeAISlashCommands,
 } from './aiSlashCommands.ts'
 import { compressImage } from './aiImageCompression.ts'
-import AIChatReasoningBlock from './chat/AIChatReasoningBlock.jsx'
-import AIChatRequestStatusRow from './chat/AIChatRequestStatusRow.jsx'
+import AIChatReasoningBlock from './chat/AIChatReasoningBlock.tsx'
+import AIChatRequestStatusRow from './chat/AIChatRequestStatusRow.tsx'
 
 declare global {
   interface Window {
@@ -897,7 +897,7 @@ export default function AIComposer({
       const results = await searchRemoteMentionCandidates({
         sessionId: terminalSessionId,
         query: normalizedQuery,
-        // aiMentions.js 未转 TS：默认值推断 selectedType 为 null，按实际语义桥接
+        // aiMentions.ts 为 @ts-nocheck 桥接（无类型）：默认值推断 selectedType 为 null，按实际语义桥接
         selectedType: selectedType as null,
         getCurrentCwd: async () => currentCwd,
         listDir: (sessionId: string, remotePath: string) => AppGo.ListDir(sessionId, remotePath),

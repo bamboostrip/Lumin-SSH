@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import Tiptop from '../Tiptop.jsx';
+import Tiptop from '../Tiptop.tsx';
 
 interface IconActionButtonProps {
   title: string;

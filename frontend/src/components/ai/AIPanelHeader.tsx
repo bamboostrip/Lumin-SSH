@@ -1,8 +1,8 @@
 import { Columns2, House, MessagesSquare, Search, Settings } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from '../../i18n.ts'
-import Tiptop from '../Tiptop.jsx'
-import IconActionButton from './IconActionButton.jsx'
+import Tiptop from '../Tiptop.tsx'
+import IconActionButton from './IconActionButton.tsx'
 
 function formatAIContextTokens(value: unknown) {
   const parsed = Number(value)

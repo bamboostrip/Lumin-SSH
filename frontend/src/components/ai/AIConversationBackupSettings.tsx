@@ -2,7 +2,7 @@ import { ChevronLeft, History, MessagesSquare, RotateCcw, Trash2, type LucideIco
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from '../../i18n.ts'
 import { deleteAIConversationBackup, getAIConversationBackupHistory, listAIConversationBackups, restoreAIConversationBackup } from './aiConversationBackupBridge.ts'
-import AIChatMarkdown from './chat/AIChatMarkdown.jsx'
+import AIChatMarkdown from './chat/AIChatMarkdown.tsx'
 
 /** 备份条目（bridge 归一化后的宽松结构） */
 interface ConversationBackup {

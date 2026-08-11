@@ -1,9 +1,9 @@
 import { BarChart3, Monitor, Search, LayoutGrid, List, Eye, EyeOff, RefreshCw, Database, CheckSquare, Folder, FolderOpen, Download, Trash2, X, Plus, History, Clock, Terminal } from 'lucide-react';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useTranslation } from '../i18n.ts';
-import AddServerModal from './AddServerModal.jsx';
-import ServerList from './ServerList.jsx';
-import Tiptop from './Tiptop.jsx';
+import AddServerModal from './AddServerModal.tsx';
+import ServerList from './ServerList.tsx';
+import Tiptop from './Tiptop.tsx';
 import type { config } from '../../wailsjs/go/models.ts';
 import type { PingCounts, ServerPingResult } from '../hooks/useServerPing.ts';
 import type { DashboardHostPageMode, ServerListViewMode } from '../hooks/useDashboardPreferences.ts';

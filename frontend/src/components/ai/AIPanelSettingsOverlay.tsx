@@ -1,11 +1,11 @@
 import { ArrowRightLeft, FolderOpen, Loader2, RotateCcw, X, type LucideIcon } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from '../../i18n.ts'
-import MCPAccessView from './MCPAccessView.jsx'
-import MCPServersView from './MCPServersView.jsx'
-import AISlashCommandsSettings from './AISlashCommandsSettings.jsx'
-import AIConversationBackupSettings from './AIConversationBackupSettings.jsx'
-import Tiptop from '../Tiptop.jsx'
+import MCPAccessView from './MCPAccessView.tsx'
+import MCPServersView from './MCPServersView.tsx'
+import AISlashCommandsSettings from './AISlashCommandsSettings.tsx'
+import AIConversationBackupSettings from './AIConversationBackupSettings.tsx'
+import Tiptop from '../Tiptop.tsx'
 import { handleInputDragSelectAll } from './inputDragSelect.ts'
 
 function formatTokenCountInMillions(value: number) {

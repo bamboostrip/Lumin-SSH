@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from '../i18n.ts';
 import { Monitor, Pencil, Link, Trash2, X, SquarePen, Folder, FolderOpen, ChevronUp, ChevronDown, Copy, Trash, ChevronLeft, ChevronRight, Download, PenLine } from 'lucide-react';
 import { clampMenuPosition } from '../utils/menuPosition.ts';
-import Tiptop from './Tiptop.jsx';
+import Tiptop from './Tiptop.tsx';
 import type { config } from '../../wailsjs/go/models.ts';
 import type { ServerPingResult } from '../hooks/useServerPing.ts';
 import type { ServerListViewMode } from '../hooks/useDashboardPreferences.ts';

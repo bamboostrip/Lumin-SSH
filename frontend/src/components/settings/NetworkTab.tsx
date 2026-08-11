@@ -18,7 +18,7 @@ interface ProxyFormState {
   password: string;
 }
 
-/** 代理节点（来自 proxyNodesBridge.js，字段按需取用） */
+/** 代理节点（来自 proxyNodesBridge.ts（@ts-nocheck 桥接），字段按需取用） */
 interface ProxyNodeLike {
   id?: unknown;
   name?: unknown;
@@ -60,7 +60,7 @@ interface NetworkTabProps {
 }
 
 export default function NetworkTab({ pingEnabled, onTogglePingEnabled, pingMode, onPingModeChange, probeInterval, onProbeIntervalChange, pingInterval, onPingIntervalChange }: NetworkTabProps) {
-  // settingDefinitions.js 未转 TS（推断为 Readonly<{}>），此处按实际结构断言
+  // settingDefinitions.ts 为 @ts-nocheck 桥接（无类型，推断 Readonly<{}>），此处按实际结构断言
   const settingsData = settings as {
     network: {
       sections: { latency: SettingsDefinitionNode; mode: SettingsDefinitionNode; refresh: SettingsDefinitionNode; proxy: SettingsDefinitionNode };

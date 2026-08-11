@@ -11,7 +11,7 @@ import {
   getAIProviderDefinition,
 } from './providers/index.ts'
 import { handleInputDragSelectAll } from './inputDragSelect.ts'
-import type { AIProviderLike } from './AIProviderSelector.jsx'
+import type { AIProviderLike } from './AIProviderSelector.tsx'
 
 const defaultCacheOptions = [
   { value: 'model', labelKey: '基于模型能力' },

@@ -1,7 +1,7 @@
 import { Check, Copy, Pin, SquarePen } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useTranslation } from '../../i18n.ts';
-import Tiptop from '../Tiptop.jsx';
+import Tiptop from '../Tiptop.tsx';
 
 interface IconButtonProps {
   title: string;

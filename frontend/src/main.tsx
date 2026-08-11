@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App.jsx';
+import App from './App.tsx';
 import { initializeI18n, t } from './i18n.ts';
 import { AlertTriangle } from 'lucide-react';
 import './index.css';

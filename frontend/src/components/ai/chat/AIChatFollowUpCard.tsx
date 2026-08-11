@@ -4,7 +4,7 @@ import ReactMarkdown, { type Components } from 'react-markdown'
 import rehypeSanitize from 'rehype-sanitize'
 import remarkGfm from 'remark-gfm'
 import { useTranslation } from '../../../i18n.ts'
-import AIChatMarkdown from './AIChatMarkdown.jsx'
+import AIChatMarkdown from './AIChatMarkdown.tsx'
 
 const FREEZE_AFTER_SUBMIT_MS = 1000
 const FREEZE_AFTER_MULTI_NEXT_MS = 500

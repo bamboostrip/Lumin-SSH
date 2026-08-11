@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Folder, FolderPlus, Zap, Save, Pencil, Trash2, Rocket, SquarePen, X, List } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 import { useTranslation } from '../i18n.ts';
-import Tiptop from './Tiptop.jsx';
+import Tiptop from './Tiptop.tsx';
 import { Z } from '../constants/zIndex.ts';
 import { getThemeComponentTheme, type ThemeComponentStyle } from '../utils/theme.ts';
 import { extractQuickCommandParams, fillQuickCommandParams } from '../utils/quickCommandParams.ts';

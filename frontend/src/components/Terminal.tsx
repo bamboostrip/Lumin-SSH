@@ -21,8 +21,8 @@ import {
   type AutocompleteSources,
   type FlattenedQuickCommand,
 } from '../utils/terminalCommandAutocomplete.ts';
-import Tiptop from './Tiptop.jsx';
-import type { QuickCommandsHandle } from './QuickCommands.jsx';
+import Tiptop from './Tiptop.tsx';
+import type { QuickCommandsHandle } from './QuickCommands.tsx';
 import '@xterm/xterm/css/xterm.css';
 import { useTranslation, type I18nKey } from '../i18n.ts';
 import defaultTermBg from '../assets/term_bg.webp';

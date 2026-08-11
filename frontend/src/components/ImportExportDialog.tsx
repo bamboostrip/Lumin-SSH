@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Database, Upload, Download, FileDown, Eye, EyeOff, X } from 'lucide-react';
 import { useTranslation } from '../i18n.ts';
-import Tiptop from './Tiptop.jsx';
+import Tiptop from './Tiptop.tsx';
 import { Z } from '../constants/zIndex';
 
 interface ExportOptions {

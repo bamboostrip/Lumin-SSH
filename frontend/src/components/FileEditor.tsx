@@ -32,7 +32,7 @@ import { c, cpp, java, csharp } from '@codemirror/legacy-modes/mode/clike';
 import { X, Pencil, Save, SquarePen, Upload, ExternalLink, AppWindow } from 'lucide-react';
 import { Z } from '../constants/zIndex.ts';
 import { getSessionUploadPanelState, getSessionWorkbenchState, setSessionWorkbenchState, subscribeSessionUploadPanelState, subscribeSessionWorkbenchState } from '../utils/fileWorkbench.ts';
-import Tiptop from './Tiptop.jsx';
+import Tiptop from './Tiptop.tsx';
 
 const EXTERNAL_PREFERRED_APP_KEY = 'fileEditorPreferredApp';
 

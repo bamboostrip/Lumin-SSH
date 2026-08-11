@@ -8,7 +8,7 @@ import {
   formatTransferTotal,
 } from './probeFormatting.ts';
 import { BarChart3, Cpu, HardDrive, Globe, ClipboardList, Clipboard, Search, Check, Monitor, EyeOff, Eye, RefreshCw, MemoryStick, ArrowLeftRight, Gauge, GripVertical, Power, Play, Trash2, Plus, ArrowRight } from 'lucide-react';
-import Tiptop from './Tiptop.jsx';
+import Tiptop from './Tiptop.tsx';
 import { Z } from '../constants/zIndex.ts';
 import { useTranslation, type I18nKey } from '../i18n.ts';
 

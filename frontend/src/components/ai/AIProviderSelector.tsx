@@ -1,14 +1,14 @@
 import { Plus, Search } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation, getLanguage, type I18nKey } from '../../i18n.ts'
-import AIProviderListRow from './AIProviderListRow.jsx'
-import AIProviderQuickEditOverlay from './AIProviderQuickEditOverlay.jsx'
-import Tiptop from '../Tiptop.jsx'
+import AIProviderListRow from './AIProviderListRow.tsx'
+import AIProviderQuickEditOverlay from './AIProviderQuickEditOverlay.tsx'
+import Tiptop from '../Tiptop.tsx'
 import { getAIProviderState, isBuiltinAIProvider, normalizeAIProviderState, saveAIProviderState } from './aiProviderBridge.ts'
 import { getAIProviderDefinition } from './providers/index.ts'
 import { isCallMyVipProviderHost } from './providerSpecialHosts.ts'
 
-/** 宽松供应商形状（aiProviderBridge.js 未转 TS，字段以 typeof 守卫读取） */
+/** 宽松供应商形状（aiProviderBridge.ts 为 @ts-nocheck 桥接（无类型），字段以 typeof 守卫读取） */
 export interface AIProviderLike {
   id?: string
   name?: string

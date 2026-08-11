@@ -6,16 +6,14 @@
 
 ---
 
-## 0. 当前健康度（审计基线）
+## 0. 当前健康度（审计基线，2026-08-11 会话后更新）
 
 | 指标 | 数值 |
 |---|---|
 | src 文件 | 170 个（78 .tsx + 89 .ts + 3 .d.ts），0 个 .js/.jsx |
-| 类型化行数 | ~68,758 / 123,613（**55.6%**）|
-| `@ts-nocheck` 桥接 | 22 文件 / 3,866 行（3.1%，零类型检查）|
-| 语言表（无标注）| 28 文件 / 50,989 行（41.2%，已加 `satisfies I18nDict` 编译期校验）|
-| 显式 any | `: any` ×3、`Record<string, any>` ×6、`BridgeData = any` ×1（55 处使用）|
-| 逃生通道 | `as I18nKey` ×52（21 文件）、`as unknown` ×31（带注释）、`@ts-ignore` ×0 |
+| `@ts-nocheck` | **3 个组件**（AIComposer/AIProviderSelector/NetworkTab，组件级遗留）；22 个桥接已全部类型化 |
+| 显式 any | `BridgeData = any`（AIPanel，55 处使用）、`Record<string, any>` ×6、`: any` ×3 已随桥接类型化清零 |
+| 逃生通道 | `as I18nKey` ×52（21 文件）、`@ts-ignore` ×0 |
 
 ---
 
@@ -35,27 +33,29 @@
 
 ---
 
-## 2. 去 `@ts-nocheck`：22 个桥接文件类型化（核心长程任务）🟠
+## 2. 去 `@ts-nocheck`：桥接文件类型化（✅ 22/22 全部完成）
 
-22 个文件全部是纯逻辑（无 JSX/React 组件），边界清晰，可机械推进。
-**方法**：去掉文件头 `@ts-nocheck` → 以 `tsc --noEmit` 报错为检查清单逐个修 → 每批提交。
+**已完成（2026-08-11 会话）**：22 个桥接文件全部类型化，每个都有黑盒语义验证：
 
-**推荐顺序**（依赖关系 + 泄漏面从大到小）：
+| 提交 | 覆盖 |
+|---|---|
+| `b68df2d` | aiProviderBridge（50 用例） |
+| `a0f95ab` | settingDefinitions（5 常量深度相等 + 8 Tab 断言清零） |
+| `adb53f5` | aiMentions（115 用例） |
+| `67280ba` | aiChatBridge + aiChatMessageTopology（62 用例） |
+| `fa01731` | 批 1：providerSpecialHosts/inputDragSelect/proxyNodesBridge/aiConversationBackupBridge/probeFormatting/aiExecutionContext/aiProviderPasteHandlers/runtimeEnvironmentBridge（142 用例 ×3 稳定） |
+| `e9f0fb3` | 批 2：aiImageCompression/aiSlashCommands/messagesProvider/aiGlobalSettingsBridge（76 用例） |
+| `07f906d` | 批 3：compatibleProvider/responsesProvider/providers/index/aiConversationBridge（103 用例 ×2 稳定） |
+| `3e58ce0` | mcpClientBridge 补漏（8 用例） |
 
-| 优先级 | 文件 | 备注 |
-|---|---|---|
-| 1 | `ai/aiProviderBridge.ts` | `normalizeProvider` 返回形状被 AIProviderSelector/AIComposer 消费，`AIProviderLike` 宽松形状依赖它 |
-| 2 | `settings/settingDefinitions.ts` | 被 8+ 个 settings Tab 断言消费（SettingsModal.tsx:613 等处的 `as unknown as ...` 全是它造成的连锁） |
-| 3 | `ai/aiMentions.ts` | AIComposer 的 mention 状态机 |
-| 4 | `ai/aiChatBridge.ts` | `resolveAIChatFollowup` 有 `: any[]` |
-| 5 | `ai/chat/aiChatMessageTopology.ts` | `groupConversationMessages`/`getConversationBranchAnchor` 的 `: any[]` |
-| 6 | 其余 17 个 | `aiConversationBridge`/`aiConversationBackupBridge`/`aiExecutionContext`/`aiImageCompression`/`aiGlobalSettingsBridge`/`aiSlashCommands`/`aiProviderPasteHandlers`/`inputDragSelect`/`providerSpecialHosts`/`probeFormatting`/`responsesProvider`/`compatibleProvider`/`messagesProvider`/`providers/index.ts`/`settings/proxyNodesBridge`/`settings/runtimeEnvironmentBridge` |
+**验证工具**：`frontend/scripts/verify-bridge-semantics.mjs`（c27e275）——bundle 工作区 vs HEAD 版本，黑盒对比导出函数输出，内置 i18n/wails 桥 mock + 时间戳/随机 id 归一化。用法：`node scripts/verify-bridge-semantics.mjs <桥接路径>...`
 
-**类型化要点**（来自阶段 6 确立的模式）：
-- `.js` 时代 `= []` 默认值推断为 `any[]`，转 `.ts` 后是 `never[]` —— 显式标注参数类型
-- `.js` 少传参合法，`.ts` 参数必填 —— 实际可选参数补 `?`
-- `@ts-nocheck` 抑制文件内错误但**推断签名仍作用于调用方**，签名级差异需在桥接侧修
-- 完成一个桥接后，可移除调用方对应的 `as unknown as X` 断言（SettingsModal.tsx:615,621、NetworkTab.tsx:326 等）
+**遗留（组件级，需独立评估）**：3 个组件文件仍有 `@ts-nocheck`（迁移阶段大组件转 TSX 时收编，非桥接）：
+- `components/ai/AIComposer.tsx`（2000+ 行，mention/斜杠菜单状态机）
+- `components/ai/AIProviderSelector.tsx`（1500+ 行，供应商选择）
+- `components/settings/NetworkTab.tsx`（代理节点表单）
+
+这三个的 `@ts-nocheck` 头移除需要组件级类型化（props/state/事件全量），建议独立会话按"先 NetworkTab（最小）→ AIProviderSelector → AIComposer"顺序推进，同样用黑盒验证兜底。
 
 ---
 

@@ -52,16 +52,20 @@ npm run i18n:check    # ✅ 28 语言 × 1817 键，missing=0
 
 > **更新（2026-08-11 收尾会话）**：🟡2 逃生审计与 🟡3 any 收敛均已完成（详见 FOLLOWUP 第 3/4 节）；NetworkTab 注释与 HANDOFF 文档已更正。
 
-### 🔴 1. 运行时冒烟测试（需 wails 环境，最高优先，唯一剩余的功能验证）
-静态验证无法覆盖，需真实桌面环境执行：
+### 🔴 1. 运行时冒烟测试（需 wails 桌面环境，唯一剩余的功能验证）
+
+**2026-08-11 收尾会话已做的验证**：
+- ✅ Go 后端编译 + wails bindings 生成 + 前端编译全部通过（`wails dev` 跑通到 "Development mode exited"，日志无错误）
+- ⚠️ 本会话环境无 GUI 会话，桌面窗口无法常驻 → 窗口内交互验证需在本机桌面执行 `wails dev`
+- 📝 **发现**：纯浏览器 `npm run dev` 会崩溃（`useUpdateChecker.ts:103` 无条件调用 wails `EventsOn`，无 wails 环境时抛 TypeError → React 错误边界显示"界面渲染出错"）——交接文档此前"npm run dev 可测纯 UI"的建议不准确；纯 UI 调试应使用 `wails dev` 的浏览器模式（http://localhost:34115），或后续给 useUpdateChecker 加 `window.go` 存在性守卫（非迁移回归，可选项）
+
+**需在本机桌面验证的清单**：
 - [ ] 服务器连接/保存/移动分组/重命名（验证 toast 修复：不应有 "Error: " 前缀）
 - [ ] 终端：连接、分屏、cwd 标签高亮（`isCwdSystemPinnedTab` 修复激活了此前从未渲染的 UI）、搜索、命令历史
 - [ ] 文件管理：上传/下载、FileEditor、系统固定 Tab
 - [ ] AI 面板：provider 快照轮询（`defaultTokenStoreTitle` 修复点）、对话、mention/斜杠菜单、MCP、设置面板（备份恢复、协作模式、自动批准）
 - [ ] 设置：搜索、各 Tab（含代理节点表单）、运行环境、同步（WebDAV/R2/FTP/SFTP）
 - [ ] 28 语言切换（重点：本次新增的 9 个设置描述键在非中文语言下的显示，当前为中文占位待翻译）
-
-`cd frontend && npm run dev` 可测纯 UI（wails 桥调用会失败，适合布局/交互走查）；完整桌面需 `wails dev`。
 
 ### ✅ 2. `as I18nKey` 逃生审计（已完成）
 52 → 35 处：17 处静态定义字段治本（编译期校验），35 处动态值保留并注释。附带修复：9 个从未入表的设置键补齐 28 语言表 + check-i18n.mjs 对 TS 格式的解析修复（此前"28 语言全绿"从未成立）。

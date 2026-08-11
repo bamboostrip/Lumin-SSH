@@ -1,4 +1,4 @@
-import { t } from '../i18n.js'
+import { t, type I18nKey } from '../i18n.js'
 import {
   buildCommandReplacementValue,
   buildTokenReplacementValue,
@@ -275,7 +275,7 @@ export function buildChildCommandItems(options: {
         source: 'subcommand' as const,
         label,
         value: buildTokenReplacementValue(context, childName, true),
-        description: child.description ? t(child.description) : `${(plan.chainPath || []).join(' ')} ${t('子命令')}`,
+        description: child.description ? t(child.description as I18nKey) : `${(plan.chainPath || []).join(' ')} ${t('子命令')}`,
         badge: getAutocompleteBadge('subcommand'),
         score: 380 + matchScore - index,
       }
@@ -318,7 +318,8 @@ export function buildSyncProviderItems(options: {
         source: 'literal' as const,
         label: prefixLabel ? `${prefixLabel} ${value}` : value,
         value: buildTokenReplacementValue(context, value, true),
-        description: item?.description ? t(String(item.description)) : '',
+        // 动态描述文案可能不在翻译表，t() 内部有原样兜底
+        description: item?.description ? t(String(item.description) as I18nKey) : '',
         badge: getAutocompleteBadge('literal', argRule.badge),
         score: 360 + matchScore - index,
       }

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 import { APP_GITHUB_RELEASE_API, APP_VERSION } from '../config.js';
 import { EventsOn } from '../../wailsjs/runtime/runtime.js';
-import { t } from '../i18n.js';
+import { t, type I18nKey } from '../i18n.js';
 
 const RELEASE_API = APP_GITHUB_RELEASE_API;
 
@@ -312,11 +312,12 @@ export function formatUpdateError(err: unknown): string {
   }
 
   if (raw === '当前平台安装包尚未就绪，请稍后再试' || raw === '未找到可安装的更新包，已取消自动替换') {
-    return t(raw);
+    // 动态 key：raw 为后端固定文案，若命中翻译表则翻，否则 t() 原样返回
+    return t(raw as I18nKey);
   }
 
   // 完整 key 命中则翻，否则原样（保留底层网络错误）
-  const full = t(raw);
+  const full = t(raw as I18nKey);
   return full !== raw ? full : raw;
 }
 

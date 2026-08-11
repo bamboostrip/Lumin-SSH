@@ -146,22 +146,33 @@
 
 ---
 
-## 阶段 4：小组件 JSX→TSX（进行中，42/76 已转）
+## 阶段 4：小组件 JSX→TSX（完成 ✅ 66/76 + main.tsx）
 
-**已转（42 个，均含 tsc + build 验证）**：
-- 基础组件：Tiptop、Toast、SyncFailureToast、ErrorBoundary、UpdateModal、ConnectingCard、SessionAuthCard、SearchableGroupedSelect、GlobalContextMenu、SerialConfigModal、CredentialsModal、CommandHistory、ImportExportDialog、ExportSelectedDialog、MCPServersView
-- AI 面板：IconActionButton、AIPanelHeader、AIProviderListRow、AIChangeReviewWorkbench、MCPAccessView、AISlashCommandsSettings、AIChatMarkdown、AIChatErrorBlock、AIChatToolSessionPane、AIChatMessageActionBar、AIChatMessageActions、AIChatCompletionCard、AIChatContextCondenseCard、AIChatReasoningBlock、AIChatRequestStatusRow、AIChatMCPCard、AIChatCommandCard、AIChatUserMessage、AIChatAssistantTurn、AIChatAssistantBodyPane
-- 设置：SharedComponents、ShortcutsTab、RuntimeEnvironmentTab、GeneralTab、NetworkTab、ColorPicker、KeywordRulesPanel
+**已转（66 个，均含 tsc + build 验证）**：
+- 基础组件（18）：Tiptop、Toast、SyncFailureToast、ErrorBoundary、UpdateModal、ConnectingCard、SessionAuthCard、SearchableGroupedSelect、GlobalContextMenu、SerialConfigModal、CredentialsModal、CommandHistory、ImportExportDialog、ExportSelectedDialog、MCPServersView、AppTopbar、AppOverlays、GlobalDialog
+- 面板/页面（8）：PortForwardDialog、AddServerModal、NetworkPage、ProcessPage、FileUploadQueuePanel、Dashboard、ServerList、main.tsx（入口）
+- 设置（11）：SharedComponents、ShortcutsTab、RuntimeEnvironmentTab、GeneralTab、NetworkTab、ColorPicker、KeywordRulesPanel、SyncTab、AppTab、FileManagerTab、AppearanceTab
+- AI 面板（29）：IconActionButton、AIPanelHeader、AIProviderListRow、AIChangeReviewWorkbench、MCPAccessView、AISlashCommandsSettings、AIChatMarkdown、AIChatErrorBlock、AIChatToolSessionPane、AIChatMessageActionBar、AIChatMessageActions、AIChatCompletionCard、AIChatContextCondenseCard、AIChatReasoningBlock、AIChatRequestStatusRow、AIChatMCPCard、AIChatCommandCard、AIChatUserMessage、AIChatAssistantTurn、AIChatAssistantBodyPane、AIChatFollowUpCard、AIChatToolCard、AIChatConversation、AIConversationBackupSettings、AIConversationDiffOverlay、AICollaborationPromptDropdown、AIAutoApproveDropdown、AIPanelSettingsOverlay、AIDiffViewerPair
 
-**已确立的转换模式**（后续文件照此执行）：
+**已确立的转换模式**（含本阶段新增）：
 1. `git mv X.jsx X.tsx`（保留历史；`.jsx` import 在 tsc 下自动映射到 `.tsx`，vite 侧由回退插件兜底）
 2. 定义 `interface XProps` 并导出（供父级引用）
 3. 被 `.jsx` 子组件推断类型卡住时（`never[]`/`string|undefined`），连同子组件一起转
 4. `settingDefinitions.js` 等未转 .js 数据源：调用处按实际结构断言（`settings as {...}`）
-5. 动态 t() key 用 `as I18nKey` 逃生（附注释）；注入式 t 参数保持宽松 `(key: string)` 签名
-6. 复用已转资产：SessionAuthPrompt/ConnectingServer（useSessionConnections）、KeywordRule（terminalKeywordHighlight）、config.Credential（wailsjs models）、GlobalContextMenuDetail（contextMenu）
+5. 动态 t() key 用 `as I18nKey` 逃生（附注释）；注入式 t 参数保持宽松 `(key: string)` 签名；helper 内 t 参数用严格 `(key: I18nKey)` 签名（与 useTranslation 返回一致，宽松签名反而不兼容）
+6. 复用已转资产：SessionAuthPrompt/ConnectingServer（useSessionConnections）、KeywordRule（terminalKeywordHighlight）、config.Credential（wailsjs models）、GlobalContextMenuDetail（contextMenu）、TopbarSession（AppTopbar）、TabContextMenuState/TerminalTabContextMenuState（AppOverlays）
+7. 未导出子组件类型：用 `Parameters<typeof X>[0]` 取 props 类型做断言（如 AIPanelSettingsOverlay 传参 MCPAccessView/MCPServersView）
+8. `onSelectChange` 等多态回调：用宽联合类型 `(payload: string | string[] | Array<{id, selected}>) => void`
+9. 转换时发现并修复潜在 i18n bug：PortForwardDialog 用不存在的键「本机目标地址」（改复用现有键「本地目标地址」）；FileManagerTab 短键「增大后可能提高同一会话内的 SFTP/SSH 通道占用」缺失（as I18nKey 逃生，留待收尾补 28 语言键）
 
-**剩余（34 个 .jsx）**：AppTopbar、AppOverlays、GlobalDialog、AddServerModal、Dashboard、ServerList、SessionWorkspace、Terminal、FileManager、AIPanel、SettingsModal、QuickCommands、ProbePanel、FileEditor、NetworkPage、PortForwardDialog、SyncTab、AppTab、FileManagerTab、AppearanceTab、ProcessPage、FileUploadQueuePanel、AIDiffViewerPair、AIConversationBackupSettings、AIConversationDiffOverlay、AICollaborationPromptDropdown、AIAutoApproveDropdown、AIPanelSettingsOverlay、AIChatFollowUpCard、AIChatToolCard、AIChatConversation、AIProviderSelector、AIProviderQuickEditOverlay、AIComposer
+**剩余（12 个 .jsx）**：App.jsx（1709 行，已开始转换后回退，状态声明区/帮助函数已类型化约 120 行，见 git stash 不可用——下次直接重做前 350 行）、ProbePanel、FileEditor、SessionWorkspace、QuickCommands、AIComposer、AIProviderSelector、AIProviderQuickEditOverlay、SettingsModal、Terminal、AIPanel、FileManager
+
+**App.jsx 转换要点**（下次接手直接照做）：
+- 前 350 行（imports + 状态声明 + 帮助函数）的类型化方案已完成并验证可编译（本次回退仅因会话余量不足，非技术障碍）
+- 关键：`useToasts` 的 addToast 带 `ToastAction[]` 参数，传给 hooks/组件时需 cast 为 `actions?: unknown[]`；严格 t 传给组件/hooks 时 cast 为 `(key: string, vars?) => string`
+- `useServerPing({ serversRef })` 需要 `serversRef as unknown as MutableRefObject<PingServerLike[] | null>`
+- `SessionLike` 的索引签名使 `s.id`/`s.terminals` 为 optional，比较/长度判断需 `|| ''` / `(x?.length || 0)` 包装
+- index.html 入口已改 `/src/main.tsx`
 
 ---
 

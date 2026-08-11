@@ -3,6 +3,19 @@ import { Database, Download, Eye, EyeOff, X } from 'lucide-react';
 import { useTranslation } from '../i18n.js';
 import { Z } from '../constants/zIndex';
 
+interface ExportOptions {
+  useEncryption: boolean;
+  password: string;
+}
+
+interface ExportSelectedDialogProps {
+  onClose: () => void;
+  onExport: (opts: ExportOptions) => void;
+  hasRecoveryPassword: boolean;
+  busy: boolean;
+  selectedCount: number;
+}
+
 /**
  * 导出已选择节点弹窗。
  *
@@ -13,16 +26,16 @@ import { Z } from '../constants/zIndex';
  *   busy             bool  操作进行中
  *   selectedCount    number 已选择的服务器数量
  */
-export default function ExportSelectedDialog({ onClose, onExport, hasRecoveryPassword, busy, selectedCount }) {
+export default function ExportSelectedDialog({ onClose, onExport, hasRecoveryPassword, busy, selectedCount }: ExportSelectedDialogProps) {
   const { t } = useTranslation();
-  const [format, setFormat] = useState('plain');        // 'plain' | 'encrypted'
-  const [keyMode, setKeyMode] = useState('recovery');   // 'recovery' | 'password'（仅密文时）
+  const [format, setFormat] = useState<'plain' | 'encrypted'>('plain');
+  const [keyMode, setKeyMode] = useState<'recovery' | 'password'>('recovery');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
   // ESC 关闭
   useEffect(() => {
-    const handleKeyDown = (e) => { if (e.key === 'Escape') { e.preventDefault(); onClose(); } };
+    const handleKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); onClose(); } };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
@@ -68,7 +81,7 @@ export default function ExportSelectedDialog({ onClose, onExport, hasRecoveryPas
     borderColor: 'var(--accent)',
     background: 'var(--accent-dim)',
   };
-  const radioDot = (active) => (
+  const radioDot = (active: boolean) => (
     <span style={{
       width: 16, height: 16, borderRadius: '50%',
       border: `2px solid ${active ? 'var(--accent)' : 'var(--text-tertiary)'}`,

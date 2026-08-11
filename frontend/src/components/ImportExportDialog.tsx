@@ -4,6 +4,20 @@ import { useTranslation } from '../i18n.js';
 import Tiptop from './Tiptop.jsx';
 import { Z } from '../constants/zIndex';
 
+interface ExportOptions {
+  useEncryption: boolean;
+  password: string;
+}
+
+interface ImportExportDialogProps {
+  onClose: () => void;
+  onExport: (opts: ExportOptions) => void;
+  onImport: () => void;
+  onDownloadTemplate: () => void;
+  hasRecoveryPassword: boolean;
+  busy: boolean;
+}
+
 /**
  * 数据管理弹窗：导入 / 导出 / 下载模板。
  * 受控组件，由父级条件渲染。
@@ -16,16 +30,16 @@ import { Z } from '../constants/zIndex';
  *   hasRecoveryPassword bool  本机是否设置了恢复密码（决定是否允许复用恢复密码）
  *   busy             bool  操作进行中（禁用按钮）
  */
-export default function ImportExportDialog({ onClose, onExport, onImport, onDownloadTemplate, hasRecoveryPassword, busy }) {
+export default function ImportExportDialog({ onClose, onExport, onImport, onDownloadTemplate, hasRecoveryPassword, busy }: ImportExportDialogProps) {
   const { t } = useTranslation();
-  const [format, setFormat] = useState('plain');        // 'plain' | 'encrypted'
-  const [keyMode, setKeyMode] = useState('recovery');   // 'recovery' | 'password'（仅密文时）
+  const [format, setFormat] = useState<'plain' | 'encrypted'>('plain');
+  const [keyMode, setKeyMode] = useState<'recovery' | 'password'>('recovery');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
   // ESC 关闭
   useEffect(() => {
-    const handleKeyDown = (e) => { if (e.key === 'Escape') { e.preventDefault(); onClose(); } };
+    const handleKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); onClose(); } };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
@@ -71,7 +85,7 @@ export default function ImportExportDialog({ onClose, onExport, onImport, onDown
     borderColor: 'var(--accent)',
     background: 'var(--accent-dim)',
   };
-  const radioDot = (active) => (
+  const radioDot = (active: boolean) => (
     <span style={{
       width: 16, height: 16, borderRadius: '50%',
       border: `2px solid ${active ? 'var(--accent)' : 'var(--text-tertiary)'}`,

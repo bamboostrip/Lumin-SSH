@@ -1,6 +1,12 @@
-import { useTranslation } from '../../i18n.js';
+import { useTranslation, type I18nKey } from '../../i18n.js';
 
-function ToggleSwitch({ checked, onChange, disabled = false }) {
+interface ToggleSwitchProps {
+  checked: boolean;
+  onChange: () => void;
+  disabled?: boolean;
+}
+
+function ToggleSwitch({ checked, onChange, disabled = false }: ToggleSwitchProps) {
   return (
     <button
       type="button"
@@ -36,6 +42,29 @@ function ToggleSwitch({ checked, onChange, disabled = false }) {
   );
 }
 
+interface MCPToolInfo {
+  name: string;
+  description?: string;
+}
+
+interface MCPAccessViewProps {
+  mcpInfo: {
+    transport?: string;
+    url?: string;
+    tools?: MCPToolInfo[];
+  };
+  configText: string;
+  configRows: number;
+  title: string;
+  titleSize?: number;
+  showNotice?: boolean;
+  showTools?: boolean;
+  mcpEnabled?: boolean;
+  mcpAllowBrowserCalls?: boolean;
+  onToggleMcpEnabled: () => void;
+  onToggleMcpAllowBrowserCalls: () => void;
+}
+
 export default function MCPAccessView({
   mcpInfo,
   configText,
@@ -48,19 +77,20 @@ export default function MCPAccessView({
   mcpAllowBrowserCalls = false,
   onToggleMcpEnabled,
   onToggleMcpAllowBrowserCalls,
-}) {
+}: MCPAccessViewProps) {
   const { t } = useTranslation();
 
-  const getToolDescription = (tool) => {
+  const getToolDescription = (tool: MCPToolInfo) => {
+    // 动态 key：mcp.tool.* 为按工具名拼装的键，命中则翻，否则回退工具描述
     const key = `mcp.tool.${tool.name}`;
-    const translated = t(key);
+    const translated = t(key as I18nKey);
     return translated === key ? (tool.description || '-') : translated;
   };
 
   return (
     <>
       <div style={{ display: 'grid', gap: 4 }}>
-        <div style={{ fontSize: titleSize, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3 }}>{t(title)}</div>
+        <div style={{ fontSize: titleSize, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3 }}>{t(title as I18nKey)}</div>
         <div style={{ fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>{t('可直接粘贴到支持 streamable-http 的 MCP 客户端配置中')}</div>
         {showNotice && <div style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>{t('该面板可在设置中关闭, 仅影响前端展示层, 不影响 MCP 服务的启动, 监听绑定或生命周期管理.')}</div>}
       </div>

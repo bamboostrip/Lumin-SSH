@@ -8,7 +8,13 @@ import { t as $t } from '../../i18n.js';
  * - 当前终端背景色预览条（方便判断对比度）
  */
 
-function hexToHsl(hex) {
+interface HslColor {
+  h: number;
+  s: number;
+  l: number;
+}
+
+function hexToHsl(hex: string): HslColor {
   const clean = String(hex || '').replace('#', '');
   if (!/^[\da-fA-F]{6}$/.test(clean)) return { h: 0, s: 100, l: 50 };
   const r = parseInt(clean.slice(0, 2), 16) / 255;
@@ -29,11 +35,11 @@ function hexToHsl(hex) {
   return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
 }
 
-function hslToHex(h, s, l) {
+function hslToHex(h: number, s: number, l: number): string {
   s /= 100;
   l /= 100;
   const a = s * Math.min(l, 1 - l);
-  const f = (n) => {
+  const f = (n: number) => {
     const k = (n + h / 30) % 12;
     const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
     return Math.round(255 * color).toString(16).padStart(2, '0');
@@ -41,10 +47,17 @@ function hslToHex(h, s, l) {
   return `#${f(0)}${f(8)}${f(4)}`;
 }
 
-export default function ColorPicker({ value, onChange, onClose, terminalBg }) {
-  const [hsl, setHsl] = useState(() => hexToHsl(value));
+interface ColorPickerProps {
+  value: string;
+  onChange?: (hex: string) => void;
+  onClose?: () => void;
+  terminalBg?: string;
+}
+
+export default function ColorPicker({ value, onChange, onClose, terminalBg }: ColorPickerProps) {
+  const [hsl, setHsl] = useState<HslColor>(() => hexToHsl(value));
   const [hexInput, setHexInput] = useState(value || '#ff6b6b');
-  const popoverRef = useRef(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
 
   const currentHex = hslToHex(hsl.h, hsl.s, hsl.l);
 
@@ -54,8 +67,8 @@ export default function ColorPicker({ value, onChange, onClose, terminalBg }) {
 
   // 点击外部关闭
   useEffect(() => {
-    const handler = (e) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target)) {
+    const handler = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
         onClose?.();
       }
     };
@@ -63,7 +76,7 @@ export default function ColorPicker({ value, onChange, onClose, terminalBg }) {
     return () => document.removeEventListener('mousedown', handler, true);
   }, [onClose]);
 
-  const handleHexInput = useCallback((e) => {
+  const handleHexInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setHexInput(val);
     if (/^#[\da-fA-F]{6}$/.test(val)) {
@@ -72,7 +85,7 @@ export default function ColorPicker({ value, onChange, onClose, terminalBg }) {
     }
   }, [onChange]);
 
-  const handleHueChange = useCallback((e) => {
+  const handleHueChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const h = Number(e.target.value);
     setHsl((prev) => {
       const next = { ...prev, h };
@@ -81,7 +94,7 @@ export default function ColorPicker({ value, onChange, onClose, terminalBg }) {
     });
   }, [onChange]);
 
-  const handleSatChange = useCallback((e) => {
+  const handleSatChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const s = Number(e.target.value);
     setHsl((prev) => {
       const next = { ...prev, s };
@@ -90,7 +103,7 @@ export default function ColorPicker({ value, onChange, onClose, terminalBg }) {
     });
   }, [onChange]);
 
-  const handleLightChange = useCallback((e) => {
+  const handleLightChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const l = Number(e.target.value);
     setHsl((prev) => {
       const next = { ...prev, l };
@@ -99,7 +112,7 @@ export default function ColorPicker({ value, onChange, onClose, terminalBg }) {
     });
   }, [onChange]);
 
-  const sliderTrack = {
+  const sliderTrack: React.CSSProperties = {
     width: '100%',
     height: 12,
     borderRadius: 6,

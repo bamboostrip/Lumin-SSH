@@ -24,6 +24,9 @@ export interface SettingsDefinitionNode {
   descriptionKey?: string;
   type?: string;
   alias?: string;
+  control?: string;
+  stateKey?: string;
+  when?: { field?: string; equals?: unknown };
   children?: SettingsDefinitionNode[];
   [key: string]: unknown;
 }

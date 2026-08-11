@@ -1,7 +1,53 @@
 import { Fragment } from 'react';
-import { t as $t } from '../../i18n.js';
-import { RadioOption, ToggleSwitch, SettingRow, SettingsField, SettingsDivider, SettingsPanel, SettingsSectionTitle, SettingsTabRoot } from './SharedComponents';
+import { t as $t, type I18nKey } from '../../i18n.js';
+import { RadioOption, ToggleSwitch, SettingRow, SettingsField, SettingsDivider, SettingsPanel, SettingsSectionTitle, SettingsTabRoot, type SettingsDefinitionNode } from './SharedComponents';
 import { settings } from './settingDefinitions';
+
+interface GeneralTabProps {
+  language: string;
+  onLanguageChange: (event: React.ChangeEvent<HTMLSelectElement>) => void;
+  availableLanguages?: Array<{ code: string; label: string }>;
+  confirmCloseSession: boolean;
+  onToggleConfirmCloseSession: () => void;
+  confirmCloseAll: boolean;
+  onToggleConfirmCloseAll: () => void;
+  confirmFileDelete: boolean;
+  onToggleConfirmFileDelete: () => void;
+  confirmProcessKill: boolean;
+  onToggleConfirmProcessKill: () => void;
+  confirmTerminalSelectionPaste: boolean;
+  onToggleConfirmTerminalSelectionPaste: () => void;
+  windowCloseAction: string;
+  onWindowCloseActionChange: (value: string) => void;
+  updateUseProxy: boolean;
+  onToggleUpdateUseProxy: () => void;
+  terminalRightClickPasteOnEmpty: boolean;
+  onTerminalRightClickPasteOnEmptyChange: (value: boolean) => void;
+  terminalRightClickPasteMode: string;
+  onTerminalRightClickPasteModeChange: (value: string) => void;
+  terminalLeftClickCopyOnSelection: boolean;
+  onTerminalLeftClickCopyOnSelectionChange: (value: boolean) => void;
+  terminalLeftClickCopyOnSelectionMode: string;
+  onTerminalLeftClickCopyOnSelectionModeChange: (value: string) => void;
+  terminalTabDoubleClickActionEnabled: boolean;
+  onTerminalTabDoubleClickActionEnabledChange: (value: boolean) => void;
+  terminalTabDoubleClickAction: string;
+  onTerminalTabDoubleClickActionChange: (value: string) => void;
+  rememberWorkspace: boolean;
+  onToggleRememberWorkspace: () => void;
+  workspacePersistenceLevel: string;
+  onWorkspacePersistenceLevelChange: (value: string) => void;
+  supportsWebviewGpuDisable: boolean;
+  webviewGpuDisabled: boolean;
+  onToggleWebviewGpuDisabled: () => void;
+}
+
+interface SelectBinding {
+  value: string;
+  onChange: (event: React.ChangeEvent<HTMLSelectElement>) => void;
+  width: number;
+  options: Array<{ value: string; label: string }>;
+}
 
 export default function GeneralTab({
   language,
@@ -40,15 +86,17 @@ export default function GeneralTab({
   supportsWebviewGpuDisable,
   webviewGpuDisabled,
   onToggleWebviewGpuDisabled,
-}) {
-  const generalTabNode = settings.general.node;
-  const fieldValuesById = {
-    [settings.general.fields.rightClickPaste.id]: terminalRightClickPasteOnEmpty,
-    [settings.general.fields.leftClickCopy.id]: terminalLeftClickCopyOnSelection,
-    [settings.general.fields.terminalDoubleClick.id]: terminalTabDoubleClickActionEnabled,
-    [settings.general.fields.rememberWorkspace.id]: rememberWorkspace,
+}: GeneralTabProps) {
+  // settingDefinitions.js 未转 TS（推断为 Readonly<{}>），此处按实际结构断言
+  const settingsData = settings as { general: { node: SettingsDefinitionNode; fields: Record<string, SettingsDefinitionNode>; sections: { rendering: SettingsDefinitionNode } } };
+  const generalTabNode = settingsData.general.node;
+  const fieldValuesById: Record<string, boolean> = {
+    [(settingsData.general.fields.rightClickPaste.id || '')]: terminalRightClickPasteOnEmpty,
+    [(settingsData.general.fields.leftClickCopy.id || '')]: terminalLeftClickCopyOnSelection,
+    [(settingsData.general.fields.terminalDoubleClick.id || '')]: terminalTabDoubleClickActionEnabled,
+    [(settingsData.general.fields.rememberWorkspace.id || '')]: rememberWorkspace,
   };
-  const toggleBindings = {
+  const toggleBindings: Record<string, { checked: boolean; onChange: () => void }> = {
     confirmCloseSession: { checked: confirmCloseSession, onChange: onToggleConfirmCloseSession },
     confirmCloseAll: { checked: confirmCloseAll, onChange: onToggleConfirmCloseAll },
     confirmFileDelete: { checked: confirmFileDelete, onChange: onToggleConfirmFileDelete },
@@ -61,7 +109,7 @@ export default function GeneralTab({
     updateUseProxy: { checked: updateUseProxy, onChange: onToggleUpdateUseProxy },
     webviewGpuDisabled: { checked: webviewGpuDisabled, onChange: onToggleWebviewGpuDisabled },
   };
-  const selectBindings = {
+  const selectBindings: Record<string, SelectBinding> = {
     language: {
       value: language,
       onChange: onLanguageChange,
@@ -79,35 +127,35 @@ export default function GeneralTab({
       ],
     },
   };
-  const radioBindings = {
+  const radioBindings: Record<string, { value: string; onChange: (value: string) => void }> = {
     terminalRightClickPasteMode: { value: terminalRightClickPasteMode, onChange: onTerminalRightClickPasteModeChange },
     terminalLeftClickCopyOnSelectionMode: { value: terminalLeftClickCopyOnSelectionMode, onChange: onTerminalLeftClickCopyOnSelectionModeChange },
     terminalTabDoubleClickAction: { value: terminalTabDoubleClickAction, onChange: onTerminalTabDoubleClickActionChange },
     workspacePersistenceLevel: { value: workspacePersistenceLevel, onChange: onWorkspacePersistenceLevelChange },
   };
-  const shouldRenderNode = (node) => {
-    if (node.id === settings.general.fields.webviewGpu.id) {
+  const shouldRenderNode = (node: SettingsDefinitionNode) => {
+    if (node.id === settingsData.general.fields.webviewGpu.id) {
       return supportsWebviewGpuDisable;
     }
     if (node.type === 'conditional') {
-      return fieldValuesById[node.when?.field] === node.when?.equals;
+      return fieldValuesById[node.when?.field ?? ''] === node.when?.equals;
     }
     return true;
   };
-  const renderFieldAction = (node) => {
+  const renderFieldAction = (node: SettingsDefinitionNode): React.ReactNode => {
     if (node.control === 'toggle') {
-      const binding = toggleBindings[node.stateKey];
+      const binding = toggleBindings[node.stateKey || ''];
       if (!binding) {
         return null;
       }
       return <ToggleSwitch checked={binding.checked} onChange={binding.onChange} />;
     }
     if (node.control === 'select') {
-      const binding = selectBindings[node.stateKey];
+      const binding = selectBindings[node.stateKey || ''];
       if (!binding) {
         return null;
       }
-      const selectId = `general-${node.stateKey.replace(/[A-Z]/g, (m) => m.toLowerCase())}`;
+      const selectId = `general-${(node.stateKey || '').replace(/[A-Z]/g, (m) => m.toLowerCase())}`;
       return (
         <select id={selectId} name={selectId} className="select" style={{ width: binding.width }} value={binding.value} onChange={binding.onChange}>
           {binding.options.map((option) => (
@@ -118,12 +166,12 @@ export default function GeneralTab({
     }
     return null;
   };
-  const renderNode = (node) => {
+  const renderNode = (node: SettingsDefinitionNode): React.ReactElement[] => {
     if (!shouldRenderNode(node)) {
       return [];
     }
     if (node.type === 'panel' || node.type === 'conditional') {
-      return node.children.flatMap((child) => renderNode(child));
+      return (node.children || []).flatMap((child) => renderNode(child));
     }
     if (node.type === 'field') {
       const action = renderFieldAction(node);
@@ -133,21 +181,21 @@ export default function GeneralTab({
       return [<SettingRow key={node.id} definition={node} action={action} />];
     }
     if (node.type === 'field-group') {
-      const binding = radioBindings[node.stateKey];
+      const binding = radioBindings[node.stateKey || ''];
       if (!binding) {
         return [];
       }
       return [(
         <SettingsField key={node.id} definition={node}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
-            {node.children.map((option) => (
+            {(node.children || []).map((option) => (
               <RadioOption
                 key={option.id}
                 definition={option}
                 selected={binding.value === option.value}
-                label={$t(option.titleKey)}
-                description={option.descriptionKey ? $t(option.descriptionKey) : ''}
-                onClick={() => binding.onChange(option.value)}
+                label={$t((option.titleKey || '') as I18nKey)}
+                description={option.descriptionKey ? $t(option.descriptionKey as I18nKey) : ''}
+                onClick={() => binding.onChange(String(option.value ?? ''))}
               />
             ))}
           </div>
@@ -159,11 +207,11 @@ export default function GeneralTab({
 
   return (
     <SettingsTabRoot>
-      {generalTabNode.children.map((sectionNode) => {
-        if (sectionNode.id === settings.general.sections.rendering.id && !supportsWebviewGpuDisable) {
+      {(generalTabNode.children || []).map((sectionNode) => {
+        if (sectionNode.id === settingsData.general.sections.rendering.id && !supportsWebviewGpuDisable) {
           return null;
         }
-        const renderedItems = sectionNode.children.flatMap((node) => renderNode(node));
+        const renderedItems = (sectionNode.children || []).flatMap((node) => renderNode(node));
         if (renderedItems.length === 0) {
           return null;
         }

@@ -54,9 +54,9 @@
 - `src/i18n.js` → `src/i18n.ts`（git mv 保留历史）：`t()` key 参数改为 `I18nKey`，`setLanguage`/`loadLanguage` 等改用 `LanguageCode`
 - `src/i18n/types.ts` 新增 `LanguageCode`（28 语言代码联合类型，新增语言目录时需同步）
 
-**当前统计**：42 个 .tsx（组件）/ 42 个 .ts（39 .ts + 3 .d.ts）/ 34 个 .jsx / 50 个 .js（i18n 28 语言文件 + components 22）
+**当前统计**：74 个 .tsx（组件）/ 42 个 .ts（39 .ts + 3 .d.ts）/ 4 个 .jsx / 50 个 .js（i18n 28 语言文件 + components 22）
 
-> 阶段 4 进行中：42/76 个组件已转，详细清单与转换模式见 `docs/TSX-MIGRATION.md` 阶段 4 章节
+> 阶段 4 ✅ 完成（66/76 + main.tsx）；阶段 5 进行中：8/12 个巨兽已转（App/ProbePanel/FileEditor/QuickCommands/AIComposer/AIProviderSelector/AIProviderQuickEditOverlay/SessionWorkspace），剩余 SettingsModal/Terminal/AIPanel/FileManager，详细清单与转换模式见 `docs/TSX-MIGRATION.md` 阶段 5 章节
 
 ---
 
@@ -111,7 +111,11 @@
 - 动态 key 逃生：`t(raw as I18nKey)` 共 4 处（useUpdateChecker ×2、terminalCommandAutocompleteProviders ×2），t() 内部对未知 key 有原样兜底
 - 验证：`tsc --noEmit` 零错误 + `npm run i18n:check` 通过 + `npm run build` 通过
 
-### 阶段 4：小组件 JSX→TSX（批量）🔄 进行中（42/76 已转）
+### 阶段 4：小组件 JSX→TSX（批量）✅ 已完成（66/76 + main.tsx）
+
+### 阶段 5：巨兽组件 🔄 进行中（8/12 已转，剩 SettingsModal/Terminal/AIPanel/FileManager）
+
+> 转换要点、新模式与剩余 4 个文件的交接细节见 `docs/TSX-MIGRATION.md` 阶段 5 章节（SettingsModal 已完整读完，要点已记录）
 
 **已转 42 个**（含 Tiptop/Toast/GlobalContextMenu/SessionAuthCard/CommandHistory/MCPServersView 及全部 AI 对话卡片、settings 共享组件与 4 个 Tab），清单见进度文档。
 
@@ -201,7 +205,7 @@ npm run i18n:check        # i18n 键完整性（阶段 3 用）
 
 1. **先跑一遍验证**：`cd frontend && npx tsc --noEmit && npm run build` 确认接手时环境健康
 2. 读一遍 `docs/TSX-MIGRATION.md`（进度清单）确认状态一致
-3. 开始**阶段 4：小组件 JSX→TSX**（先转 <300 行的小文件：SyncFailureToast、SerialConfigModal、CredentialsModal、CommandHistory 等，转换模板见 §4）
+3. 继续**阶段 5：巨兽组件**（按 `docs/TSX-MIGRATION.md` 阶段 5 章节：先 SettingsModal——转换要点已记录，再 Terminal/AIPanel/FileManager，每个单独提交）
 4. 之后按阶段 5 → 6 顺序推进，每阶段一个 commit
 
 接手人加油！💪 剩余组件虽多（98 个），但基础类型体系已经全部就位（纯逻辑 + hooks + i18n），剩下的主要是机械转换 + 逐个补 props 类型。

@@ -52,8 +52,8 @@
 | 1 | 纯逻辑转 TS：`utils/`(17) + `constants/`(2) + `config.js` | ✅ 完成 |
 | 2 | hooks 转 TS：`hooks/`(17) | ✅ 完成 |
 | 3 | i18n 类型化：28 个语言文件对齐 `zh-CN` 键 | ✅ 完成 |
-| 4 | 小组件 JSX→TSX（批量） | 🔄 进行中（42/76 已转） |
-| 5 | 巨兽组件：FileManager / AIPanel / Terminal / SettingsModal / AI 系列 | ⏳ |
+| 4 | 小组件 JSX→TSX（批量） | ✅ 完成（66/76 + main.tsx） |
+| 5 | 巨兽组件：FileManager / AIPanel / Terminal / SettingsModal / AI 系列 | 🔄 进行中（8/12 已转，剩 4 个） |
 | 6 | 收尾：移除 allowJs、严格模式全量通过、回归验证 | ⏳ |
 
 ---
@@ -173,6 +173,51 @@
 - `useServerPing({ serversRef })` 需要 `serversRef as unknown as MutableRefObject<PingServerLike[] | null>`
 - `SessionLike` 的索引签名使 `s.id`/`s.terminals` 为 optional，比较/长度判断需 `|| ''` / `(x?.length || 0)` 包装
 - index.html 入口已改 `/src/main.tsx`
+
+---
+
+## 阶段 5：巨兽组件（进行中 ✅ 8/12，剩余 4 个）
+
+**已转（8 个，均含 tsc + build 验证，8 个独立提交）**：
+- `App.tsx`（1709 行，前置契约）— 17 处边界桥接：looseAddToast/looseT（`actions?: unknown[]` / `(key: string, vars?)`）、setContentTabLoose、serversRef 经 unknown 桥接 PingServerLike、enqueueChangeReview/setSyncFailed/setTabContextMenu 等 Dispatch 协变桥接、`sessionTerminals={... as never[]}`（AIPanel 未转时的临时断言）
+- `ProbePanel.tsx`（1137 行）— 导出 ProbeSnapshot/ProbeInfo/ProbePanelProps；App 的 probeSnapshots 状态随之类型化
+- `FileEditor.tsx`（1178 行）— CodeMirror 语言映射用 `Extension`（StreamLanguage.define 返回 Language 而非 LanguageSupport）；导出 FileEditorFile/FileEditorProps
+- `QuickCommands.tsx`（1811 行）— 导出 QuickCommandsHandle/QuickCommandItem/QuickCommandsProps；App 复用导出的句柄类型（删除本地结构接口）
+- `AIComposer.tsx`（1972 行）— mention/斜杠菜单状态类型化；`window.__luminFileManagerPaths` 全局声明（theme.ts 同款 declare global 模式）；发现缺失 i18n 键「AI 输入框」→ `as I18nKey` 逃生
+- `AIProviderSelector.tsx`（2178 行）— 导出 `AIProviderLike`（宽松接口 + 索引签名）；修复未定义的 `defaultTokenStoreTitle`（原 .jsx 潜在 ReferenceError）；`.js` 默认值推断 selectedType: null 需桥接
+- `AIProviderQuickEditOverlay.tsx`（2079 行）— ProviderDraft/ModelCapabilityLike 类型化；providers JSDoc 未声明 getPromptCacheStrategyOptions 按结构断言；移除 AIProviderSelector 的 never[] 断言
+- `SessionWorkspace.tsx`（1310 行，承上启下）— 7 组分 props 契约化（dashboard/session/fileManager/terminalTabs/ai/quickCommands/shared）；函数类型参数必须**精确匹配 App 侧**（contravariance，宽松 unknown 反而报错）；Terminal 未转期间 `connectedSessions={... as never[]}` 临时断言
+
+**已确立的新转换模式**（阶段 5 新增）：
+1. 函数类型参数方向：接收方 props 的参数类型必须 ≥ 调用方参数类型（contravariance）——宽松 `(x: unknown) => void` 接收 `(x: Specific) => void` 会报错，需精确匹配调用方
+2. `.js` 未转数据源（aiProviderBridge/providers）的**默认值推断**会把参数收窄（如 `selectedType = null` → `null`），调用处按实际语义桥接
+3. `.jsx` 子组件 `connectedSessions = []` 默认 → 推断 `never[]`，调用处 `as never[]` + 注释，待子组件转 TSX 后移除（Terminal/AIPanel 两处）
+4. 严格 t() 动态 key：`t(raw as I18nKey)` 逃生（provider 标签键、reasoningEffort 标签、缺失键）
+5. `declare global { interface Window }` 局部全局声明（__luminFileManagerPaths 等）
+6. git mv 后 Write 需先 Read 新路径（工具要求）
+
+**剩余（4 个 .jsx，约 20.9k 行）**：
+- `SettingsModal.jsx`（2554 行）— 已完整读完，转换要点见下
+- `Terminal.jsx`（4382 行）— 被 SessionWorkspace 以 `connectedSessions as never[]` 临时断言调用，转换后可移除（SessionWorkspace.tsx 两处）
+- `AIPanel.jsx`（5905 行）— 被 App 以 `sessionTerminals as never[]` 临时断言调用，转换后可移除（App.tsx 一处）
+- `FileManager.jsx`（8038 行）— 最大的一个，建议最后转
+
+**SettingsModal.jsx 转换要点**（下次接手直接照做）：
+- props 契约（AppOverlays.tsx 调用方已定义）：`initialTab: string`、`onClose: () => void`、`addToast`（宽松）、`onRestored: () => void`、`probePanelPosition: 'left' | 'right'`、`onProbePanelPositionChange: (pos: 'left' | 'right') => void`、`forceDarkTheme: boolean`
+- `$t` 是严格签名：PROVIDERS 的 titleKey/summaryFields 字段是**动态 key 字符串** → `$t(key as I18nKey)`；`TAB_LABELS` 需 `Record<string, string>` + `as I18nKey`；`$t(themePackage.name)`（unknown）同样逃生
+- 顶层 helper（settingsConfirm/Choice/Prompt）的默认参数 `$t('操作确认')` 等是字面量 ✓ 无碍；`settingsPrompt` 的 options 参数按 LuminDialogPromptOptions
+- 大量字符串状态需标注联合类型：pingMode（'auto'|'banner'|'icmp' 等按 localStorage 用法）、fileManagerLayoutMode（'classic'|'sidebar_dual'）、windowCloseAction、fileManagerDownloadConflictStrategy、fileManagerDefaultOpenMode（'builtin'|'system'|'external'）等
+- PROVIDERS 大对象需定义 `ProviderDefinition` 接口（test/save/sync/backup/list/restore/restoreWithPassword/getConfig/isConfigured/applyConfig/summaryFields），form 类型按各 provider 的 defaultForm 推断
+- providerState（webdav/r2/ftp/sftp 四份同构 state）建议定义统一接口 + makeTestHandler/makeSaveHandler 泛型化；`AppGo.TestFTPConnection` 等已 typed ✓
+- 已转 Tab 组件（GeneralTab/NetworkTab/FileManagerTab/AppearanceTab/ShortcutsTab/AppTab/SyncTab）props 全是严格接口：传参需一一精确匹配；SyncTab 的 providers 期待"宽松形状"（见 SyncTab.tsx 头部注释，PROVIDERS 可直接传）
+- 内部弹窗（confirmRestoreProvider/confirmRestore/restoreWithPassword）的 `backupsList`/`selectedBackup` 需类型化（name/time/size 字段）
+- `handleFileManagerUploadSettingChange(key, setter)` 高阶函数需 `(key: string, setter: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => void`
+
+**Terminal.jsx 转换提示**：被 SessionWorkspace 严格调用（sessionId/serverId/historyServerId/status/isActive/serverName/connectedSessions/showCommands/onQuickCommandsOpenChange/quickCmdsRef/wsRebuildKey），props 契约即 SessionWorkspace.tsx 的调用处；`quickCmdsRef` 类型为 `React.RefObject<QuickCommandsHandle>`。
+
+**AIPanel.jsx 转换提示**：被 App 严格调用（width/side/sessionId/terminalId/sessionTerminals/addToast/onDevilModeChange），props 契约即 App.tsx 的调用处；`sessionTerminals` 是 `Array<{ id: string; label?: string }>`。
+
+**FileManager.jsx 转换提示**：被 App 的 renderSessionFileManagers 严格调用（sessionId/sessionGroupId/addToast/isActive/initialPath）；其内部还用 FileEditor（已转，FileEditorFile 可直接复用）、FileUploadQueuePanel（已转）。
 
 ---
 

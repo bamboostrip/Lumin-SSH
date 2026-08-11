@@ -1,26 +1,53 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle, type Ref } from 'react';
 import { createPortal } from 'react-dom';
 import { Folder, FolderPlus, Zap, Save, Pencil, Trash2, Rocket, SquarePen, X, List } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 import { useTranslation } from '../i18n.js';
 import Tiptop from './Tiptop.jsx';
-import { Z } from '../constants/zIndex';
-import { getThemeComponentTheme } from '../utils/theme.js';
+import { Z } from '../constants/zIndex.js';
+import { getThemeComponentTheme, type ThemeComponentStyle } from '../utils/theme.js';
 import { extractQuickCommandParams, fillQuickCommandParams } from '../utils/quickCommandParams.js';
 import { clampMenuPosition } from '../utils/menuPosition.js';
 
+// ── 命令树节点 ───────────────────────────────────────────
+export interface QuickCommandItem {
+  type?: 'group' | 'command';
+  name?: string;
+  command?: string;
+  addCR?: boolean;
+  last_modified?: number;
+  expanded?: boolean;
+  children?: QuickCommandItem[];
+  // 搜索过滤附加字段（filterTree 注入）
+  _filteredChildren?: QuickCommandItem[];
+  _isFilteredGroup?: boolean;
+}
+
+export interface QuickCommandsHandle {
+  isDirty: () => boolean;
+  showCloseConfirm: () => void;
+}
+
+export interface QuickCommandsProps {
+  sessionId: string;
+  historySessionId?: string;
+  addToast?: (message: string | Error, type?: string, duration?: number, actions?: unknown[]) => number;
+  connectedSessions?: Array<{ id: string }>;
+  onClose?: () => void;
+}
+
 // ── 加载命令数据（从 Go 后端文件）────────────────────
-async function loadCommands() {
+async function loadCommands(): Promise<QuickCommandItem[]> {
   try {
     const raw = await AppGo.GetQuickCommands();
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return parsed;
+    if (Array.isArray(parsed)) return parsed as QuickCommandItem[];
   } catch (_) {}
   return [];
 }
 
 // ── 保存命令数据（到 Go 后端文件）────────────────────
-async function saveCommands(list) {
+async function saveCommands(list: QuickCommandItem[]) {
   try {
     await AppGo.SaveQuickCommands(JSON.stringify(list));
     // 通知终端快捷命令条刷新
@@ -31,17 +58,17 @@ async function saveCommands(list) {
 }
 
 // ── 本地保存（不同步到云端）───────────────────────────
-async function saveCommandsLocal(list) {
+async function saveCommandsLocal(list: QuickCommandItem[]) {
   try {
     await AppGo.SaveQuickCommandsLocal(JSON.stringify(list));
   } catch (_) {}
 }
 
 // ── 搜索过滤树形数据（返回扁平化的匹配节点路径）─────────
-function filterTree(items, keyword, parentPath = '') {
+function filterTree(items: QuickCommandItem[], keyword: string, parentPath = ''): QuickCommandItem[] {
   if (!keyword) return items;
   const kw = keyword.toLowerCase();
-  const result = [];
+  const result: QuickCommandItem[] = [];
   items.forEach((item, i) => {
     const path = parentPath ? `${parentPath}/${i}` : String(i);
     if (item.type === 'group') {
@@ -68,14 +95,32 @@ function filterTree(items, keyword, parentPath = '') {
 }
 
 // ── 树形节点渲染组件 ────────────────────────────────────
-function TreeNode({ item, index, path, selectedPath, onSelect, contextMenu, onContextMenu, closeContextMenu, onExecute, onMove, onDragStart, onDropItem, onDragEnd, dragVersion, theme }) {
+interface TreeNodeProps {
+  item: QuickCommandItem;
+  index: number;
+  path: string;
+  selectedPath: string | null;
+  onSelect: (path: string) => void;
+  contextMenu: ContextMenuState | null;
+  onContextMenu: (e: React.MouseEvent, path: string, type: 'group' | 'command', index: number) => void;
+  closeContextMenu: () => void;
+  onExecute: (item: QuickCommandItem) => void;
+  onMove: (path: string, direction: number) => void;
+  onDragStart: (path: string) => void;
+  onDropItem: (path: string, pos: string) => void;
+  onDragEnd: () => void;
+  dragVersion: number;
+  theme: ThemeComponentStyle;
+}
+
+function TreeNode({ item, index, path, selectedPath, onSelect, contextMenu, onContextMenu, closeContextMenu, onExecute, onMove, onDragStart, onDropItem, onDragEnd, dragVersion, theme }: TreeNodeProps) {
   const { t } = useTranslation();
   const [hover, setHover] = useState(false);
-  const [dropPos, setDropPos] = useState(null); // 'before' | 'inside' | 'after'
+  const [dropPos, setDropPos] = useState<'before' | 'inside' | 'after' | null>(null); // 'before' | 'inside' | 'after'
 
   useEffect(() => { setDropPos(null); }, [dragVersion]);
 
-  const arrowBtn = (dir) => (
+  const arrowBtn = (dir: number) => (
     <Tiptop text={dir === -1 ? t('上移') : t('下移')}>
       <span
         onClick={(e) => { e.stopPropagation(); onMove && onMove(path, dir); }}
@@ -90,16 +135,16 @@ function TreeNode({ item, index, path, selectedPath, onSelect, contextMenu, onCo
 
   const commonDragProps = {
     draggable: true,
-    onDragStart: (e) => {
+    onDragStart: (e: React.DragEvent) => {
       e.stopPropagation();
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', path);
       onDragStart && onDragStart(path);
     },
-    onDragEnd: (e) => { e.stopPropagation(); onDragEnd && onDragEnd(); },
+    onDragEnd: (e: React.DragEvent) => { e.stopPropagation(); onDragEnd && onDragEnd(); },
   };
 
-  const calcDropPos = (e, allowInside) => {
+  const calcDropPos = (e: React.DragEvent, allowInside: boolean): 'before' | 'inside' | 'after' => {
     const rect = e.currentTarget.getBoundingClientRect();
     const y = (e.clientY - rect.top) / rect.height;
     if (y < 0.25) return 'before';
@@ -107,9 +152,8 @@ function TreeNode({ item, index, path, selectedPath, onSelect, contextMenu, onCo
     return 'after';
   };
 
-  const dropIndicator = (pos) => {
+  const dropIndicator = (pos: 'before' | 'after') => {
     if (dropPos !== pos) return null;
-    if (pos === 'inside') return null; // handled by background
 
     return (
       <div style={{
@@ -123,6 +167,7 @@ function TreeNode({ item, index, path, selectedPath, onSelect, contextMenu, onCo
   if (item.type === 'group') {
     const isExpanded = item.expanded !== false;
     const isSelected = selectedPath === path;
+    const childrenList = item._filteredChildren || item.children;
     return (
       <div style={{ position: 'relative' }}>
         {/* before indicator */}
@@ -159,7 +204,7 @@ function TreeNode({ item, index, path, selectedPath, onSelect, contextMenu, onCo
             {arrowBtn(-1)}
             {arrowBtn(1)}
           </div>
-          {isExpanded && (item._filteredChildren || item.children) && (item._filteredChildren || item.children).map((child, ci) => (
+          {isExpanded && childrenList && childrenList.map((child, ci) => (
             <div key={ci} style={{ paddingLeft: 16 }}>
               <TreeNode
                 item={child}
@@ -224,12 +269,33 @@ function TreeNode({ item, index, path, selectedPath, onSelect, contextMenu, onCo
   );
 }
 
-const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySessionId, addToast, connectedSessions = [], onClose }, ref) {
+// ── 右键菜单 / 对话框状态 ─────────────────────────────
+interface ContextMenuState {
+  anchorX: number;
+  anchorY: number;
+  x: number;
+  y: number;
+  path: string;
+  type: 'group' | 'command';
+  index: number;
+}
+
+interface QuickCommandDialogState {
+  type: 'add' | 'edit' | 'addGroup' | 'editGroup';
+  contextPath?: string;
+  parentList?: QuickCommandItem[];
+  targetChildren?: QuickCommandItem[];
+  groupName?: string;
+  parent?: QuickCommandItem[];
+  idx?: number;
+}
+
+const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(function QuickCommands({ sessionId, historySessionId, addToast, connectedSessions = [], onClose }, ref: Ref<QuickCommandsHandle>) {
   const { t } = useTranslation();
-  const [commands, setCommands] = useState([]);
-  const [selectedPath, setSelectedPath] = useState(null);
-  const [contextMenu, setContextMenu] = useState(null);
-  const [sendTarget, setSendTarget] = useState('current'); // 'current' | 'all'
+  const [commands, setCommands] = useState<QuickCommandItem[]>([]);
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [sendTarget, setSendTarget] = useState<'current' | 'all'>('current'); // 'current' | 'all'
   // 固定命令条：命令常驻显示在终端输入框上方（与 Terminal.jsx 共用 localStorage 键）
   const [showCmdBar, setShowCmdBar] = useState(
     () => localStorage.getItem('terminalQuickCmdBar') === 'true'
@@ -240,10 +306,10 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
   const [cmdEditorAddCR, setCmdEditorAddCR] = useState(true);
   const [cmdEditorClearAfterSend, setCmdEditorClearAfterSend] = useState(true);
   const [cmdEditorShowOpts, setCmdEditorShowOpts] = useState(false);
-  const cmdEditorOptsRef = useRef(null);
+  const cmdEditorOptsRef = useRef<HTMLDivElement>(null);
 
   // 编辑/添加对话框
-  const [dialog, setDialog] = useState(null); // { type:'add'|'edit', groupPath?, item? }
+  const [dialog, setDialog] = useState<QuickCommandDialogState | null>(null); // { type:'add'|'edit', groupPath?, item? }
   const [dlgName, setDlgName] = useState('');
   const [dlgCmd, setDlgCmd] = useState('');
   const [dlgAddCR, setDlgAddCR] = useState(true);
@@ -251,11 +317,11 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
   const [groupPickerPos, setGroupPickerPos] = useState({ x: 0, y: 0 });
 
   // 参数历史（按命令缓存，存到文件）
-  const [paramHistory, setParamHistory] = useState({});
+  const [paramHistory, setParamHistory] = useState<Record<string, Record<string, string[]>>>({});
   // 当前选中命令的参数值（底部内联填写）
-  const [paramValues, setParamValues] = useState({});
+  const [paramValues, setParamValues] = useState<Record<number, string>>({});
   // 历史下拉：{ cmdKey, paramNum } — 控制哪个参数的下拉展开
-  const [historyDropdown, setHistoryDropdown] = useState(null);
+  const [historyDropdown, setHistoryDropdown] = useState<{ cmdKey: string; paramNum: number; left: number; top: number } | null>(null);
   // 历史下拉内的搜索关键词
   const [historySearch, setHistorySearch] = useState('');
   // 搜索关键词
@@ -265,16 +331,16 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
   // 是否有未保存的编辑
   const [dirty, setDirty] = useState(false);
   // 切换确认：{ pendingPath } 或 null
-  const [confirmUnsaved, setConfirmUnsaved] = useState(null);
+  const [confirmUnsaved, setConfirmUnsaved] = useState<{ close?: boolean; pendingPath?: string } | null>(null);
   // 分组名称编辑（本地缓存，手动保存）
   const [editGroupName, setEditGroupName] = useState('');
   // 命令编辑（本地缓存，保存时才同步到树，避免每个按键都 cloneAlongPath）
   const [editCmdName, setEditCmdName] = useState('');
   const [editCmdText, setEditCmdText] = useState('');
 
-  const contextMenuRef = useRef(null);
-  const groupPickerRef = useRef(null);
-  const dragSourceRef = useRef(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  const groupPickerRef = useRef<HTMLSpanElement>(null);
+  const dragSourceRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -289,7 +355,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
   }));
 
   // ── 拖拽 ─────────────────────────────────────────────
-  const handleDragStart = (path) => {
+  const handleDragStart = (path: string) => {
     dragSourceRef.current = path;
   };
 
@@ -299,11 +365,11 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
     setDragVersion(v => v + 1);
   };
 
-  const parsePath = (path) => path.split('/').map(Number);
+  const parsePath = (path: string) => path.split('/').map(Number);
 
-  const hasPathPrefix = (parts, prefix) => prefix.every((value, index) => parts[index] === value);
+  const hasPathPrefix = (parts: number[], prefix: number[]) => prefix.every((value, index) => parts[index] === value);
 
-  const adjustPathAfterRemoval = (targetParts, srcParts) => {
+  const adjustPathAfterRemoval = (targetParts: number[], srcParts: number[]) => {
     const srcParentParts = srcParts.slice(0, -1);
     const srcIdx = srcParts[srcParts.length - 1];
     if (!hasPathPrefix(targetParts, srcParentParts)) return targetParts;
@@ -317,7 +383,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
   };
 
   // ── 统一处理所有拖放（before / inside / after / root）─
-  const handleDropItem = (targetPath, pos) => {
+  const handleDropItem = (targetPath: string, pos: string) => {
     const srcPath = dragSourceRef.current;
     if (!srcPath || srcPath === targetPath) { clearDrag(); return; }
     if (targetPath.startsWith(srcPath + '/')) { clearDrag(); return; }
@@ -372,7 +438,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
         try {
           const raw = await AppGo.GetParamHistory();
           const parsed = JSON.parse(raw);
-          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, Record<string, string[]>>;
         } catch (_) {}
         return {};
       })(),
@@ -413,9 +479,9 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
   // ── 点击外部关闭历史下拉 ───────────────────────────
   useEffect(() => {
     if (!historyDropdown) return;
-    const handler = (e) => {
+    const handler = (e: MouseEvent) => {
       // 如果点击的是历史按钮或下拉内部，不关闭
-      if (e.target.closest('[data-history-dropdown]')) return;
+      if ((e.target as HTMLElement).closest('[data-history-dropdown]')) return;
       setHistoryDropdown(null);
       setHistorySearch('');
     };
@@ -427,8 +493,8 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
   // ── 点击外部关闭命令编辑器「选项」菜单 ───────────────
   useEffect(() => {
     if (!cmdEditorShowOpts) return;
-    const handler = (e) => {
-      if (cmdEditorOptsRef.current?.contains(e.target)) return;
+    const handler = (e: MouseEvent) => {
+      if (cmdEditorOptsRef.current?.contains(e.target as Node)) return;
       setCmdEditorShowOpts(false);
     };
     // 捕获阶段：面板根节点 stopPropagation 也不会挡住
@@ -446,7 +512,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
   }, [showCmdEditor, cmdEditorShowOpts]);
 
   // ── 持久化到文件（保存 + 重新加载，确保双向一致）──
-  const save = async (list) => {
+  const save = async (list: QuickCommandItem[]) => {
     await saveCommands(list);
     const data = await loadCommands();
     if (data.length > 0) setCommands(data);
@@ -457,7 +523,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
   const commitCmdEdit = useCallback(() => {
     if (!selectedPath || dirty === false) return null;
     const sel = resolvePath(commands, selectedPath);
-    if (!sel || sel.item.children) return null; // 不是命令节点
+    if (!sel?.item || sel.item.children) return null; // 不是命令节点
     if (sel.item.name === editCmdName && sel.item.command === editCmdText) return null;
     const list = cloneAlongPath(commands, selectedPath);
     const r = resolvePath(list, selectedPath);
@@ -469,7 +535,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
   }, [commands, selectedPath, editCmdName, editCmdText, dirty]);
 
   // ── 上移/下移 ──────────────────────────────────────
-  const handleMove = (path, direction) => {
+  const handleMove = (path: string, direction: number) => {
     const list = structuredClone(commands);
     const { parent, idx } = resolvePath(list, path);
     const newIdx = idx + direction;
@@ -484,13 +550,13 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
 
   // ── 沿路径浅拷贝各层数组 + 目标节点（避免全树深拷贝）──
   // 用于只修改单一字段的场景：返回新树，路径上各层均为新数组/对象引用
-  const cloneAlongPath = (list, path) => {
+  const cloneAlongPath = (list: QuickCommandItem[], path: string) => {
     const parts = path.split('/').map(Number);
     const newList = [...list];
     let cur = newList;
     for (let i = 0; i < parts.length; i++) {
       const idx = parts[i];
-      cur[idx] = { ...cur[idx] };
+      cur[idx] = { ...(cur[idx] || {}) };
       if (i < parts.length - 1) {
         cur[idx].children = [...(cur[idx].children || [])];
         cur = cur[idx].children;
@@ -500,10 +566,10 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
   };
 
   // ── 从 path 定位节点 ─────────────────────────────────
-  const resolvePath = (list, path) => {
+  const resolvePath = (list: QuickCommandItem[], path: string): { parent: QuickCommandItem[]; idx: number; item: QuickCommandItem | null | undefined } => {
     const parts = path.split('/').map(Number);
     let cur = list;
-    let parent = null;
+    let parent: QuickCommandItem[] = [];
     let idx = -1;
     for (let i = 0; i < parts.length; i++) {
       parent = cur;
@@ -511,12 +577,12 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
       if (i === parts.length - 1) return { parent, idx, item: cur[idx] };
       cur = cur[idx].children || [];
     }
-    return { parent: null, idx: -1, item: null };
+    return { parent, idx, item: null };
   };
 
   // ── 递归收集所有分组 ──────────────────────────────────
-  const collectGroups = (list, basePath = '') => {
-    const groups = [];
+  const collectGroups = (list: QuickCommandItem[], basePath = '') => {
+    const groups: Array<{ name?: string; path: string; children?: QuickCommandItem[] }> = [];
     if (!Array.isArray(list)) return groups;
     list.forEach((item, i) => {
       const path = basePath ? `${basePath}/${i}` : String(i);
@@ -531,7 +597,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
   };
 
   // ── 选中处理 ────────────────────────────────────────
-  const handleSelect = (path) => {
+  const handleSelect = (path: string) => {
     // 先将当前命令编辑写回树
     commitCmdEdit();
     // 切换选中时如果有未保存修改，弹出确认框
@@ -546,7 +612,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
     if (item?.type === 'group') {
       const list = cloneAlongPath(commands, path);
       const r = resolvePath(list, path);
-      r.item.expanded = !r.item.expanded;
+      if (r.item) r.item.expanded = !r.item.expanded;
       setCommands(list);
       saveCommandsLocal(list);
       // 保留选中状态以便右侧显示分组详情
@@ -558,7 +624,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
     if (item?.command) {
       const params = extractQuickCommandParams(item.command);
       const hist = paramHistory[item.command] || {};
-      const initial = {};
+      const initial: Record<number, string> = {};
       params.forEach(p => { initial[p.num] = (hist[p.num]?.[0]) || ''; });
       setParamValues(initial);
     } else {
@@ -586,7 +652,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
         // 分组：切换展开/折叠，并在右侧显示分组详情
         const list = structuredClone(commands);
         const r = resolvePath(list, path);
-        r.item.expanded = !r.item.expanded;
+        if (r.item) r.item.expanded = !r.item.expanded;
         setCommands(list);
         saveCommandsLocal(list);
         // 保留选中状态以便右侧显示分组详情
@@ -599,7 +665,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
       if (item?.command) {
         const params = extractQuickCommandParams(item.command);
         const hist = paramHistory[item.command] || {};
-        const initial = {};
+        const initial: Record<number, string> = {};
         params.forEach(p => { initial[p.num] = (hist[p.num]?.[0]) || ''; });
         setParamValues(initial);
       } else {
@@ -630,7 +696,6 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
         const list = structuredClone(data);
         const r = resolvePath(list, path);
         if (r.item) r.item.expanded = !r.item.expanded;
-        setCommands(list);
         saveCommandsLocal(list);
         // 保留选中状态以便右侧显示分组详情
         setParamValues({});
@@ -643,7 +708,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
       if (item?.command) {
         const params = extractQuickCommandParams(item.command);
         const hist = paramHistory[item.command] || {};
-        const initial = {};
+        const initial: Record<number, string> = {};
         params.forEach(p => { initial[p.num] = (hist[p.num]?.[0]) || ''; });
         setParamValues(initial);
       } else {
@@ -657,14 +722,14 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
     setConfirmUnsaved(null);
   };
 
-  const getSelectedItem = () => {
+  const getSelectedItem = (): QuickCommandItem | null | undefined => {
     if (!selectedPath) return null;
     const { item } = resolvePath(commands, selectedPath);
     return item;
   };
 
   // ── 右键菜单 ────────────────────────────────────────
-  const handleContextMenu = (e, path, type, index) => {
+  const handleContextMenu = (e: React.MouseEvent, path: string, type: 'group' | 'command', index: number) => {
     setContextMenu({
       anchorX: e.clientX,
       anchorY: e.clientY,
@@ -697,7 +762,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
 
   const closeContextMenu = () => setContextMenu(null);
 
-  const doContextAction = async (action) => {
+  const doContextAction = async (action: 'addGroup' | 'addCmd' | 'edit' | 'editGroup' | 'delete' | 'execute') => {
     if (!contextMenu) return;
     const { path, type, index } = contextMenu;
     const parts = path.split('/').map(Number);
@@ -775,6 +840,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
 
   // ── 对话框保存 ──────────────────────────────────────
   const handleDlgSave = () => {
+    if (!dialog) return;
     if (!dlgName.trim()) return;
     const isGroup = dialog.type === 'addGroup' || dialog.type === 'editGroup';
 
@@ -794,8 +860,8 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
         }
         save(list);
       } else if (dialog.type === 'editGroup') {
-        const list = cloneAlongPath(commands, dialog.contextPath);
-        const r = resolvePath(list, dialog.contextPath);
+        const list = cloneAlongPath(commands, dialog.contextPath || '');
+        const r = resolvePath(list, dialog.contextPath || '');
         r.parent[r.idx].name = dlgName.trim();
         r.parent[r.idx].last_modified = Date.now();
         save(list);
@@ -806,17 +872,17 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
 
     // 命令：需要名称和命令内容
     if (!dlgCmd.trim()) return;
-    const newItem = { name: dlgName.trim(), command: dlgCmd.trim(), addCR: dlgAddCR, last_modified: Date.now() };
+    const newItem: QuickCommandItem = { name: dlgName.trim(), command: dlgCmd.trim(), addCR: dlgAddCR, last_modified: Date.now() };
 
     if (dialog.type === 'add') {
-      dialog.targetChildren.push(newItem);
-      save(dialog.parentList);
+      dialog.targetChildren?.push(newItem);
+      save(dialog.parentList || commands);
     } else if (dialog.type === 'edit') {
-      const list = cloneAlongPath(commands, selectedPath);
-      const r = resolvePath(list, selectedPath);
+      const list = cloneAlongPath(commands, selectedPath || '');
+      const r = resolvePath(list, selectedPath || '');
       r.parent[r.idx] = { ...r.parent[r.idx], ...newItem };
-      setEditCmdName(newItem.name);
-      setEditCmdText(newItem.command);
+      setEditCmdName(newItem.name || '');
+      setEditCmdText(newItem.command || '');
       setDirty(false);
       save(list);
     }
@@ -824,18 +890,18 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
   };
 
   // ── 执行命令（使用底部内联参数值）────────────────────
-  const doExecute = (item) => {
+  const doExecute = (item: QuickCommandItem) => {
     if (!item?.command) return;
     sendCommand(item.command, paramValues, item.addCR !== false);
   };
 
-  const sendCommand = (cmd, values, addCR) => {
+  const sendCommand = (cmd: string, values: Record<number, string>, addCR: boolean) => {
     const filled = fillQuickCommandParams(cmd, values);
     const finalCmd = addCR !== false ? filled + '\r' : filled;
 
     // 保存参数历史（每个参数存为数组，用于下拉列表）
     if (Object.keys(values).length > 0) {
-      const pHist = { ...paramHistory, [cmd]: { ...(paramHistory[cmd] || {}) } };
+      const pHist: Record<string, Record<string, string[]>> = { ...paramHistory, [cmd]: { ...(paramHistory[cmd] || {}) } };
       Object.entries(values).forEach(([num, val]) => {
         if (!val) return;
         const arr = pHist[cmd][num] || [];
@@ -904,14 +970,14 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
   }, [addToast, cmdEditorAddCR, cmdEditorClearAfterSend, cmdEditorText, connectedSessions, sendTarget, sessionId, historySessionId, t]);
 
   // ── 插入参数按钮 ────────────────────────────────────
-  const insertParam = (n) => {
+  const insertParam = (n: number) => {
     const tag = `[p#${n} ${t('参数')}${n}]`;
     setDlgCmd(prev => prev + tag);
   };
 
   // ── 通用样式 ──────────────────────────────────────
   const C = getThemeComponentTheme('quickCommands');
-  const inputStyle = {
+  const inputStyle: React.CSSProperties = {
     padding: '5px 8px', fontSize: 12, borderRadius: 3,
     background: C.inputBg, border: '1px solid ' + C.btnBorder,
     color: C.inputColor, outline: 'none', fontFamily: 'inherit',
@@ -921,18 +987,18 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
   const selectedItem = useMemo(() => getSelectedItem(), [selectedPath, commands]);
 
   // ── 内联样式常量（使用主题色）──
-  const _menuItemStyle = {
+  const _menuItemStyle: React.CSSProperties & { _hover?: React.CSSProperties } = {
     padding: '6px 14px', cursor: 'pointer', color: C.inputColor,
     display: 'flex', alignItems: 'center', gap: 6,
     transition: 'background 0.1s',
     _hover: { background: 'var(--surface-hover)' },
   };
 
-  const _menuSepStyle = {
+  const _menuSepStyle: React.CSSProperties = {
     height: 1, background: C.separator, margin: '4px 0',
   };
 
-  const _labelStyle = {
+  const _labelStyle: React.CSSProperties = {
     fontSize: 11, color: C.statusBarColor, display: 'block', marginBottom: 4,
   };
 
@@ -1134,7 +1200,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
                 id="qc-send-target-editor"
                 name="qc-send-target-editor"
                 value={sendTarget}
-                onChange={(e) => setSendTarget(e.target.value)}
+                onChange={(e) => setSendTarget(e.target.value as 'current' | 'all')}
                 style={{
                   fontSize: 11, padding: '3px 8px', borderRadius: 4,
                   background: C.inputBg, border: '1px solid ' + C.btnBorder,
@@ -1251,8 +1317,8 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
                 <button
                   onClick={() => {
                     const list = structuredClone(commands);
-                    const r = resolvePath(list, selectedPath);
-                    r.parent[r.idx].name = editGroupName.trim() || selectedItem.name;
+                    const r = resolvePath(list, selectedPath || '');
+                    r.parent[r.idx].name = editGroupName.trim() || selectedItem.name || '';
                     save(list);
                   }}
                   className="btn btn-primary btn-sm"
@@ -1261,9 +1327,11 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
                   className="btn btn-secondary btn-sm"
                   onClick={() => {
                     const list = structuredClone(commands);
-                    const r = resolvePath(list, selectedPath);
-                    if (!r.item.children) r.item.children = [];
-                    setDialog({ type: 'add', targetChildren: r.item.children, parentList: list, groupName: r.item.name });
+                    const r = resolvePath(list, selectedPath || '');
+                    if (r.item) {
+                      if (!r.item.children) r.item.children = [];
+                      setDialog({ type: 'add', targetChildren: r.item.children, parentList: list, groupName: r.item.name });
+                    }
                     setDlgName(''); setDlgCmd(''); setDlgAddCR(true);
                   }}
                 >{t('＋ 添加命令')}</button>
@@ -1446,7 +1514,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
                                 </div>
                                 <div
                                   onClick={() => {
-                                    const pHist = { ...paramHistory, [cmdKey]: { ...(paramHistory[cmdKey] || {}) } };
+                                    const pHist: Record<string, Record<string, string[]>> = { ...paramHistory, [cmdKey]: { ...(paramHistory[cmdKey] || {}) } };
                                     if (pHist[cmdKey][p.num]) {
                                       pHist[cmdKey][p.num] = [];
                                       setParamHistory(pHist);
@@ -1519,7 +1587,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
                     checked={selectedItem.addCR !== false}
                     onChange={(e) => {
                       const list = structuredClone(commands);
-                      const r = resolvePath(list, selectedPath);
+                      const r = resolvePath(list, selectedPath || '');
                       r.parent[r.idx].addCR = e.target.checked;
                       save(list);
                     }}
@@ -1534,7 +1602,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
                     id="qc-send-target-detail"
                     name="qc-send-target-detail"
                     value={sendTarget}
-                    onChange={(e) => setSendTarget(e.target.value)}
+                    onChange={(e) => setSendTarget(e.target.value as 'current' | 'all')}
                     style={{
                       fontSize: 11, padding: '2px 6px', borderRadius: 3,
                       background: C.inputBg, border: '1px solid ' + C.btnBorder,
@@ -1759,7 +1827,7 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
                 {/* 根目录 */}
                 <div
                   onClick={() => {
-                    setDialog(prev => ({ ...prev, targetChildren: prev.parentList, groupName: '' }));
+                    setDialog(prev => (prev ? { ...prev, targetChildren: prev.parentList, groupName: '' } : prev));
                     setShowGroupPicker(false);
                   }}
                   style={{
@@ -1779,7 +1847,8 @@ const QuickCommands = forwardRef(function QuickCommands({ sessionId, historySess
                       key={i}
                       onClick={() => {
                         setDialog(prev => {
-                          const list = structuredClone(prev.parentList);
+                          if (!prev) return prev;
+                          const list = structuredClone(prev.parentList || commands);
                           const r = resolvePath(list, g.path);
                           if (r?.item?.type === 'group') {
                             if (!r.item.children) r.item.children = [];

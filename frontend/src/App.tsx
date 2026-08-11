@@ -16,6 +16,7 @@ import {
 } from './utils/fileWorkbench.js';
 import AppTopbar, { type TopbarSession } from './components/AppTopbar.jsx';
 import SessionWorkspace from './components/SessionWorkspace.jsx';
+import type { QuickCommandsHandle } from './components/QuickCommands.jsx';
 import AppOverlays, {
   type AppOverlaysProps,
   type TabContextMenuState,
@@ -93,12 +94,6 @@ interface EditFlyItemLike {
   size?: number;
   label?: string;
   value?: string;
-}
-
-/** 快捷命令面板的 imperative 句柄（QuickCommands 转 TSX 后接正式类型） */
-interface QuickCommandsHandle {
-  isDirty?: () => boolean;
-  showCloseConfirm?: () => void;
 }
 
 /** 终端停靠预览分区 */

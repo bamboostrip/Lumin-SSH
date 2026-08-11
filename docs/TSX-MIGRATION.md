@@ -52,7 +52,7 @@
 | 1 | 纯逻辑转 TS：`utils/`(17) + `constants/`(2) + `config.js` | ✅ 完成 |
 | 2 | hooks 转 TS：`hooks/`(17) | ✅ 完成 |
 | 3 | i18n 类型化：28 个语言文件对齐 `zh-CN` 键 | ✅ 完成 |
-| 4 | 小组件 JSX→TSX（批量） | ⏳ |
+| 4 | 小组件 JSX→TSX（批量） | 🔄 进行中（42/76 已转） |
 | 5 | 巨兽组件：FileManager / AIPanel / Terminal / SettingsModal / AI 系列 | ⏳ |
 | 6 | 收尾：移除 allowJs、严格模式全量通过、回归验证 | ⏳ |
 
@@ -143,6 +143,25 @@
 - vite.config.ts 增加自定义 resolve 插件 `lumin-js-to-ts-extension-alias`：
   存量 `import './foo.js'` 自动回退解析 `foo.ts`/`foo.tsx`（vite 5 无 extensionAlias），
   **收尾阶段移除**。`tsconfig.json` include 仅 `src`（wailsjs 生成的 .js 带 `// @ts-check`）。
+
+---
+
+## 阶段 4：小组件 JSX→TSX（进行中，42/76 已转）
+
+**已转（42 个，均含 tsc + build 验证）**：
+- 基础组件：Tiptop、Toast、SyncFailureToast、ErrorBoundary、UpdateModal、ConnectingCard、SessionAuthCard、SearchableGroupedSelect、GlobalContextMenu、SerialConfigModal、CredentialsModal、CommandHistory、ImportExportDialog、ExportSelectedDialog、MCPServersView
+- AI 面板：IconActionButton、AIPanelHeader、AIProviderListRow、AIChangeReviewWorkbench、MCPAccessView、AISlashCommandsSettings、AIChatMarkdown、AIChatErrorBlock、AIChatToolSessionPane、AIChatMessageActionBar、AIChatMessageActions、AIChatCompletionCard、AIChatContextCondenseCard、AIChatReasoningBlock、AIChatRequestStatusRow、AIChatMCPCard、AIChatCommandCard、AIChatUserMessage、AIChatAssistantTurn、AIChatAssistantBodyPane
+- 设置：SharedComponents、ShortcutsTab、RuntimeEnvironmentTab、GeneralTab、NetworkTab、ColorPicker、KeywordRulesPanel
+
+**已确立的转换模式**（后续文件照此执行）：
+1. `git mv X.jsx X.tsx`（保留历史；`.jsx` import 在 tsc 下自动映射到 `.tsx`，vite 侧由回退插件兜底）
+2. 定义 `interface XProps` 并导出（供父级引用）
+3. 被 `.jsx` 子组件推断类型卡住时（`never[]`/`string|undefined`），连同子组件一起转
+4. `settingDefinitions.js` 等未转 .js 数据源：调用处按实际结构断言（`settings as {...}`）
+5. 动态 t() key 用 `as I18nKey` 逃生（附注释）；注入式 t 参数保持宽松 `(key: string)` 签名
+6. 复用已转资产：SessionAuthPrompt/ConnectingServer（useSessionConnections）、KeywordRule（terminalKeywordHighlight）、config.Credential（wailsjs models）、GlobalContextMenuDetail（contextMenu）
+
+**剩余（34 个 .jsx）**：AppTopbar、AppOverlays、GlobalDialog、AddServerModal、Dashboard、ServerList、SessionWorkspace、Terminal、FileManager、AIPanel、SettingsModal、QuickCommands、ProbePanel、FileEditor、NetworkPage、PortForwardDialog、SyncTab、AppTab、FileManagerTab、AppearanceTab、ProcessPage、FileUploadQueuePanel、AIDiffViewerPair、AIConversationBackupSettings、AIConversationDiffOverlay、AICollaborationPromptDropdown、AIAutoApproveDropdown、AIPanelSettingsOverlay、AIChatFollowUpCard、AIChatToolCard、AIChatConversation、AIProviderSelector、AIProviderQuickEditOverlay、AIComposer
 
 ---
 

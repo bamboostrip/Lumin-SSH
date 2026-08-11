@@ -54,7 +54,9 @@
 - `src/i18n.js` → `src/i18n.ts`（git mv 保留历史）：`t()` key 参数改为 `I18nKey`，`setLanguage`/`loadLanguage` 等改用 `LanguageCode`
 - `src/i18n/types.ts` 新增 `LanguageCode`（28 语言代码联合类型，新增语言目录时需同步）
 
-**当前统计**：42 个 .ts（39 .ts + 3 .d.ts）/ 78 个 .jsx / 50 个 .js（i18n 28 语言文件 + components 22）
+**当前统计**：42 个 .tsx（组件）/ 42 个 .ts（39 .ts + 3 .d.ts）/ 34 个 .jsx / 50 个 .js（i18n 28 语言文件 + components 22）
+
+> 阶段 4 进行中：42/76 个组件已转，详细清单与转换模式见 `docs/TSX-MIGRATION.md` 阶段 4 章节
 
 ---
 
@@ -109,15 +111,13 @@
 - 动态 key 逃生：`t(raw as I18nKey)` 共 4 处（useUpdateChecker ×2、terminalCommandAutocompleteProviders ×2），t() 内部对未知 key 有原样兜底
 - 验证：`tsc --noEmit` 零错误 + `npm run i18n:check` 通过 + `npm run build` 通过
 
-### 阶段 4：小组件 JSX→TSX（批量）🔄 下一个做这个
+### 阶段 4：小组件 JSX→TSX（批量）🔄 进行中（42/76 已转）
 
-**剩余组件规模**（`src/components/` 98 个文件，含 ai/chat/settings 子目录）：
-- 先从**小文件**开始：如 SyncFailureToast、SerialConfigModal、CredentialsModal、CommandHistory 等（<300 行）
-- 转换模式：`git mv X.jsx X.tsx` → 补 props 类型（`interface XProps`）→ 修 state/hooks 类型 → tsc 验证
-- 引用 utils/hooks 的地方现在已有类型，会获得自动检查——**这是迁移后期最受益的点**
-- 单个文件转换后若 tsc 报错，通常是 props 未类型化，先定义 Props 接口
+**已转 42 个**（含 Tiptop/Toast/GlobalContextMenu/SessionAuthCard/CommandHistory/MCPServersView 及全部 AI 对话卡片、settings 共享组件与 4 个 Tab），清单见进度文档。
 
-**常用转换模板**：
+**剩余**：AppTopbar、AppOverlays、GlobalDialog、AddServerModal、Dashboard、ServerList、SessionWorkspace、NetworkPage、PortForwardDialog、SyncTab/AppTab/FileManagerTab/AppearanceTab、ProcessPage、FileUploadQueuePanel、AIDiffViewerPair、AI 系列（FollowUpCard/ToolCard/Conversation/AutoApprove/PanelSettingsOverlay/CollaborationPromptDropdown/ConversationBackupSettings/ConversationDiffOverlay）+ 巨兽（FileManager/AIPanel/Terminal/SettingsModal/QuickCommands/ProbePanel/FileEditor/AIProviderSelector/AIProviderQuickEditOverlay/AIComposer）
+
+**转换模板**：
 ```tsx
 interface MyComponentProps {
   sessionId: string;

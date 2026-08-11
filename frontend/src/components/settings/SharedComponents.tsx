@@ -73,7 +73,7 @@ export function SettingsPanel({ children, style = {}, ...rest }: SettingsPanelPr
 export interface SettingsFieldProps {
   definition?: SettingsDefinitionNode;
   title?: string;
-  description?: string;
+  description?: React.ReactNode;
   action?: React.ReactNode;
   children?: React.ReactNode;
   alignItems?: string;

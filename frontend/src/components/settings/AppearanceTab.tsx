@@ -1,9 +1,85 @@
 import React, { useMemo } from 'react';
-import { t as $t } from '../../i18n.js';
+import { t as $t, type I18nKey } from '../../i18n.js';
 import { Sun, Monitor, Moon, Trash2, Copy } from 'lucide-react';
-import { SettingRow, SettingsDivider, SettingsPanel, SettingsSectionTitle, SettingsTabRoot, ToggleSwitch } from './SharedComponents';
+import { SettingRow, SettingsDivider, SettingsPanel, SettingsSectionTitle, SettingsTabRoot, ToggleSwitch, type SettingsDefinitionNode } from './SharedComponents';
 import { settings } from './settingDefinitions';
 import KeywordRulesPanel from './KeywordRulesPanel.jsx';
+import { type KeywordRule } from '../../utils/terminalKeywordHighlight.js';
+import type { ThemePackage, ThemePackagePreview } from '../../utils/theme.js';
+
+/** 程序字体条目 */
+interface ProgramFont {
+  fileName: string;
+  displayName?: string;
+}
+
+/** 主题包设置（SettingsModal 传入的宽松形状） */
+interface ThemePackageSettings {
+  lightThemePackageId?: string;
+  darkThemePackageId?: string;
+  [key: string]: unknown;
+}
+
+export interface AppearanceTabProps {
+  programFonts: ProgramFont[];
+  programFontSearchQuery: string;
+  onProgramFontSearchQueryChange: (query: string) => void;
+  onAddProgramFonts: () => void;
+  programFontImporting: boolean;
+  programFontDeleting: string | null;
+  onDeleteProgramFont?: (fileName: string) => void;
+  programFontAssignments: { uiFileName?: string; terminalFileName?: string; aiFileName?: string };
+  onProgramFontDragStart: (event: React.DragEvent, fileName: string) => void;
+  onProgramFontDragEnd: () => void;
+  onProgramFontDragEnter: (key: string) => void;
+  onProgramFontDragLeave: (key: string) => void;
+  onProgramFontDrop: (key: string, fileName: string) => void;
+  onProgramFontReset: (key: string) => void;
+  activeProgramFontDropTarget: string | null;
+  terminalFontSize: number;
+  onTerminalFontSizeChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  terminalLocalEcho: boolean;
+  onTerminalLocalEchoChange: (v: boolean) => void;
+  terminalTimestamps: boolean;
+  onTerminalTimestampsChange: (v: boolean) => void;
+  terminalCommandBlocks: boolean;
+  onTerminalCommandBlocksChange: (v: boolean) => void;
+  terminalDefaultMouseCursor: boolean;
+  onTerminalDefaultMouseCursorChange: (v: boolean) => void;
+  terminalKeywordHighlight: boolean;
+  onTerminalKeywordHighlightChange: (v: boolean) => void;
+  keywordRules: KeywordRule[];
+  onKeywordRulesChange: (rules: KeywordRule[]) => void;
+  onKeywordRulesReset: () => void;
+  terminalBgColor: string;
+  themePackages: ThemePackage[];
+  themePackageSettings: ThemePackageSettings;
+  themeMode: string;
+  onThemeChange: (mode: string) => void;
+  onSelectLightThemePackage: (id: string) => void;
+  onSelectDarkThemePackage: (id: string) => void;
+  onReloadThemePackages: () => void;
+  onOpenThemePackagesDirectory: () => void;
+  onImportThemePackages: () => void;
+  onTuneActiveThemeWithAI: () => void;
+  onDeleteThemePackage?: (themePackage: ThemePackage) => void;
+  onCopyThemePackageToMode?: (themePackage: ThemePackage, targetMode: string) => void;
+  themePackageBusy: boolean;
+  showThemeQuickEntry: boolean;
+  onToggleThemeQuickEntry: () => void;
+  probePanelPosition: 'left' | 'right';
+  onProbePanelPositionChange: (position: 'left' | 'right') => void;
+  terminalToolbarIconOnly: boolean;
+  onToggleTerminalToolbarIconOnly: () => void;
+  termBgImage: string;
+  onTermBgUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onTermBgReset: () => void;
+  termBgOpacity: number;
+  onTermBgOpacityChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  rememberWindowSize: boolean;
+  onToggleRememberWindowSize: () => void;
+  onResetWindowSize: () => void;
+}
 
 export default function AppearanceTab({
   programFonts,
@@ -46,7 +122,7 @@ export default function AppearanceTab({
   termBgImage, onTermBgUpload, onTermBgReset,
   termBgOpacity, onTermBgOpacityChange,
   rememberWindowSize, onToggleRememberWindowSize, onResetWindowSize,
-}) {
+}: AppearanceTabProps) {
   const fontMap = new Map((Array.isArray(programFonts) ? programFonts : []).map((font) => [font.fileName, font]));
   const filteredFonts = (Array.isArray(programFonts) ? programFonts : []).filter((font) => {
     const query = String(programFontSearchQuery || '').trim().toLowerCase();
@@ -56,6 +132,9 @@ export default function AppearanceTab({
     return String(font.displayName || '').toLowerCase().includes(query) || String(font.fileName || '').toLowerCase().includes(query);
   });
   const fontAssignments = programFontAssignments || { uiFileName: '', terminalFileName: '', aiFileName: '' };
+  // settingDefinitions.js 未转 TS（推断为 Readonly<{}>），此处按实际结构断言
+  const settingsData = settings as { appearance: { node: SettingsDefinitionNode; fields: Record<string, SettingsDefinitionNode>; sections: Record<string, SettingsDefinitionNode> } };
+  const appearanceSettings = settingsData.appearance;
   const fontTargets = [
     {
       key: 'ui',
@@ -80,10 +159,10 @@ export default function AppearanceTab({
     },
   ];
 
-  const fontTargetDefinitions = {
-    ui: settings.appearance.fields.uiFont,
-    terminal: settings.appearance.fields.terminalFont,
-    ai: settings.appearance.fields.aiFont,
+  const fontTargetDefinitions: Record<string, SettingsDefinitionNode | undefined> = {
+    ui: appearanceSettings.fields.uiFont,
+    terminal: appearanceSettings.fields.terminalFont,
+    ai: appearanceSettings.fields.aiFont,
   };
   const normalizedThemePackages = Array.isArray(themePackages) ? themePackages : [];
   const lightThemePackages = normalizedThemePackages.filter((themePackage) => themePackage?.modeHint === 'light');
@@ -92,9 +171,9 @@ export default function AppearanceTab({
   return (
     <SettingsTabRoot>
       <div>
-        <SettingsSectionTitle definition={settings.appearance.sections.terminal} />
+        <SettingsSectionTitle definition={appearanceSettings.sections.terminal} />
         <SettingsPanel style={{ padding: 12, border: '1px solid var(--border-subtle)' }}>
-          <div data-settings-field-id={settings.appearance.fields.fontManager.id} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div data-settings-field-id={appearanceSettings.fields.fontManager.id} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <div>
                 <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 600 }}>{$t('字体管理器')}</div>
@@ -234,7 +313,7 @@ export default function AppearanceTab({
           </div>
           <SettingsDivider margin="12px 0 8px" />
           <SettingRow
-            definition={settings.appearance.fields.terminalFontSize}
+            definition={appearanceSettings.fields.terminalFontSize}
             description={$t('调节终端的字符显示大小')}
             action={(
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -256,31 +335,31 @@ export default function AppearanceTab({
           />
           <SettingsDivider />
           <SettingRow
-            definition={settings.appearance.fields.terminalLocalEcho}
+            definition={appearanceSettings.fields.terminalLocalEcho}
             description={$t('关闭后输入密码等敏感内容时不会显示字符')}
             action={<ToggleSwitch checked={terminalLocalEcho} onChange={() => onTerminalLocalEchoChange(!terminalLocalEcho)} />}
           />
           <SettingsDivider />
           <SettingRow
-            definition={settings.appearance.fields.terminalTimestamps}
+            definition={appearanceSettings.fields.terminalTimestamps}
             description={$t('在终端每行输出前添加时间戳')}
             action={<ToggleSwitch checked={terminalTimestamps} onChange={() => onTerminalTimestampsChange(!terminalTimestamps)} />}
           />
           <SettingsDivider />
           <SettingRow
-            definition={settings.appearance.fields.terminalCommandBlocks}
+            definition={appearanceSettings.fields.terminalCommandBlocks}
             description={$t('左侧显示可折叠命令块，点击收起输出')}
             action={<ToggleSwitch checked={terminalCommandBlocks} onChange={() => onTerminalCommandBlocksChange(!terminalCommandBlocks)} />}
           />
           <SettingsDivider />
           <SettingRow
-            definition={settings.appearance.fields.terminalDefaultMouseCursor}
+            definition={appearanceSettings.fields.terminalDefaultMouseCursor}
             description={$t('开启后, 终端输出区域使用系统默认鼠标指针, 不显示工字型文本光标')}
             action={<ToggleSwitch checked={terminalDefaultMouseCursor} onChange={() => onTerminalDefaultMouseCursorChange(!terminalDefaultMouseCursor)} />}
           />
           <SettingsDivider />
           <SettingRow
-            definition={settings.appearance.fields.terminalKeywordHighlight}
+            definition={appearanceSettings.fields.terminalKeywordHighlight}
             description={$t('对 error、warning、info、success 等关键字着色显示')}
             action={<ToggleSwitch checked={terminalKeywordHighlight} onChange={() => onTerminalKeywordHighlightChange(!terminalKeywordHighlight)} />}
           />
@@ -296,9 +375,9 @@ export default function AppearanceTab({
       </div>
 
       <div>
-        <SettingsSectionTitle definition={settings.appearance.sections.theme} />
+        <SettingsSectionTitle definition={appearanceSettings.sections.theme} />
         <SettingsPanel>
-          <div data-settings-field-id={settings.appearance.fields.theme.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div data-settings-field-id={appearanceSettings.fields.theme.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <div>
               <div style={{ color: 'var(--text-primary)', fontSize: 13 }}>{$t('主题')}</div>
               <div style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{$t('浅色、深色和系统模式分别决定当前应用哪一套主题包')}</div>
@@ -374,7 +453,7 @@ export default function AppearanceTab({
 
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
             <ThemePackagePalette
-              definition={settings.appearance.fields.lightThemePackage}
+              definition={appearanceSettings.fields.lightThemePackage}
               title={$t('浅色主题包')}
               description={$t('当主题为浅色或系统切换到浅色时使用')}
               packages={lightThemePackages}
@@ -386,7 +465,7 @@ export default function AppearanceTab({
               themePackageBusy={themePackageBusy}
             />
             <ThemePackagePalette
-              definition={settings.appearance.fields.darkThemePackage}
+              definition={appearanceSettings.fields.darkThemePackage}
               title={$t('深色主题包')}
               description={$t('当主题为深色或系统切换到深色时使用')}
               packages={darkThemePackages}
@@ -401,7 +480,7 @@ export default function AppearanceTab({
 
           <SettingsDivider />
           <SettingRow
-            definition={settings.appearance.fields.monitorPanel}
+            definition={appearanceSettings.fields.monitorPanel}
             action={(
               <div style={{ display: 'flex', background: 'var(--surface-raised)', borderRadius: 'var(--radius-xl)', padding: 4, border: '1px solid var(--border)' }}>
                 <button className={`btn btn-sm ${probePanelPosition === 'left' ? 'btn-secondary' : 'btn-ghost'}`} onClick={() => onProbePanelPositionChange('left')} style={{ borderRadius: 'var(--radius-xl)', background: probePanelPosition === 'left' ? 'var(--surface-sunken)' : 'transparent' }}>{$t('左侧')}</button>
@@ -413,10 +492,10 @@ export default function AppearanceTab({
       </div>
 
       <div>
-        <SettingsSectionTitle definition={settings.appearance.sections.preferences} />
+        <SettingsSectionTitle definition={appearanceSettings.sections.preferences} />
         <SettingsPanel>
           <SettingRow
-            definition={settings.appearance.fields.toolbarIconOnly}
+            definition={appearanceSettings.fields.toolbarIconOnly}
             description={$t('开启后终端工具栏的进程管理、网络监控等按钮只显示图标')}
             action={<ToggleSwitch checked={terminalToolbarIconOnly} onChange={onToggleTerminalToolbarIconOnly} />}
           />
@@ -424,9 +503,9 @@ export default function AppearanceTab({
       </div>
 
       <div>
-        <SettingsSectionTitle definition={settings.appearance.sections.background} />
+        <SettingsSectionTitle definition={appearanceSettings.sections.background} />
         <SettingsPanel>
-          <div data-settings-field-id={settings.appearance.fields.terminalWallpaper.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div data-settings-field-id={appearanceSettings.fields.terminalWallpaper.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ color: 'var(--text-primary)', fontSize: 13 }}>{$t('自定义终端壁纸')}</div>
               <div style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{$t('设置终端底部的自定义背景图片')}</div>
@@ -444,7 +523,7 @@ export default function AppearanceTab({
             </div>
           </div>
           <SettingsDivider />
-          <div data-settings-field-id={settings.appearance.fields.wallpaperOpacity.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div data-settings-field-id={appearanceSettings.fields.wallpaperOpacity.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ color: 'var(--text-primary)', fontSize: 13 }}>{$t('壁纸可见度')}</div>
             </div>
@@ -468,16 +547,16 @@ export default function AppearanceTab({
       </div>
 
       <div>
-        <SettingsSectionTitle definition={settings.appearance.sections.window} />
+        <SettingsSectionTitle definition={appearanceSettings.sections.window} />
         <SettingsPanel>
           <SettingRow
-            definition={settings.appearance.fields.rememberWindowSize}
+            definition={appearanceSettings.fields.rememberWindowSize}
             description={$t('下次启动时恢复上次调整的窗口尺寸')}
             action={<ToggleSwitch checked={rememberWindowSize} onChange={onToggleRememberWindowSize} />}
           />
           <SettingsDivider />
           <SettingRow
-            definition={settings.appearance.fields.resetWindowSize}
+            definition={appearanceSettings.fields.resetWindowSize}
             description={$t('下次启动时恢复上次调整的窗口尺寸')}
             action={<button className="btn btn-secondary btn-sm" onClick={onResetWindowSize} style={{ fontSize: 12, borderRadius: 'var(--radius-sm)' }}>{$t('恢复默认大小')}</button>}
           />
@@ -485,6 +564,19 @@ export default function AppearanceTab({
       </div>
     </SettingsTabRoot>
   );
+}
+
+interface ThemePackagePaletteProps {
+  definition?: SettingsDefinitionNode;
+  title: string;
+  description: string;
+  packages: ThemePackage[];
+  selectedThemePackageId?: string;
+  onSelectThemePackage: (id: string) => void;
+  onDeleteThemePackage?: (themePackage: ThemePackage) => void;
+  onCopyThemePackageToMode?: (themePackage: ThemePackage, targetMode: string) => void;
+  copyTargetMode: string;
+  themePackageBusy: boolean;
 }
 
 function ThemePackagePalette({
@@ -498,11 +590,11 @@ function ThemePackagePalette({
   onCopyThemePackageToMode,
   copyTargetMode,
   themePackageBusy,
-}) {
+}: ThemePackagePaletteProps) {
   const normalizedPackages = Array.isArray(packages) ? packages : [];
   const palettePackages = useMemo(() => normalizedPackages.map((themePackage) => ({
     ...themePackage,
-    preview: themePackage?.preview || {},
+    preview: themePackage?.preview || ({} as ThemePackagePreview),
   })), [normalizedPackages]);
   const copyLabel = copyTargetMode === 'light' ? $t('复制到浅色') : $t('复制到深色');
 
@@ -551,11 +643,11 @@ function ThemePackagePalette({
                 />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: isActive ? 700 : 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {$t(themePackage.name)}
+                    {$t(themePackage.name as I18nKey)}
                   </div>
                   {themePackage.description ? (
                     <div style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.5, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {$t(themePackage.description)}
+                      {$t(themePackage.description as I18nKey)}
                     </div>
                   ) : null}
                 </div>

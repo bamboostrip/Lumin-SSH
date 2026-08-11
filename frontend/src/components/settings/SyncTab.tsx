@@ -1,21 +1,52 @@
 import React from 'react';
-import { t as $t } from '../../i18n.js';
+import { t as $t, type I18nKey } from '../../i18n.js';
 import * as AppGo from '../../../wailsjs/go/wailsapp/App.js';
-import { Save, Cloud, Database, Folder, FolderOpen, Lock, RefreshCw, Sparkles, Plug } from 'lucide-react';
-import { SettingsPanel, SettingsSectionTitle, SettingsTabRoot } from './SharedComponents';
+import { Save, Cloud, Database, Folder, FolderOpen, Lock, RefreshCw, Sparkles, Plug, type LucideIcon } from 'lucide-react';
+import { SettingsPanel, SettingsSectionTitle, SettingsTabRoot, type SettingsDefinitionNode } from './SharedComponents';
 import { settings } from './settingDefinitions';
 
-const PROVIDER_ICON_CMP = { webdav: Cloud, r2: Database, ftp: Folder, sftp: Lock };
+const PROVIDER_ICON_CMP: Record<string, LucideIcon> = { webdav: Cloud, r2: Database, ftp: Folder, sftp: Lock };
 
-function formatSyncTime(timestamp) {
-  if (!Number.isSafeInteger(timestamp) || timestamp <= 0) return '';
-  const date = new Date(timestamp);
+/** 同步提供方描述（来自 SettingsModal 未转 JS，宽松形状） */
+interface SyncProviderDef {
+  accent: string;
+  titleKey: string;
+  subtitleKey: string;
+  successMsgKey: string;
+  summaryFields: (form: Record<string, string | number>) => Array<{ label: string; value: string; primary?: boolean; fullWidth?: boolean }>;
+}
+
+/** 提供方表单（字段由 SettingsModal 定义，宽松键值） */
+type ProviderForm = Record<string, string | number>;
+
+type FieldSetter = (key: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void;
+
+function formatSyncTime(timestamp: number | null | undefined) {
+  if (!Number.isSafeInteger(Number(timestamp)) || Number(timestamp) <= 0) return '';
+  const date = new Date(Number(timestamp));
   if (!Number.isFinite(date.getTime())) return '';
-  const pad = (value, length = 2) => String(value).padStart(length, '0');
+  const pad = (value: number, length = 2) => String(value).padStart(length, '0');
   return `${pad(date.getFullYear(), 4)}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-function ProviderCard({ provider, providerKey, form, configured, editing, onEdit, onCancelEdit, testing, testResult, onTest, loading, onSave, children, definition }) {
+interface ProviderCardProps {
+  provider: SyncProviderDef;
+  providerKey: string;
+  form: ProviderForm;
+  configured: boolean;
+  editing: boolean;
+  onEdit: () => void;
+  onCancelEdit: () => void;
+  testing: boolean;
+  testResult: string | null;
+  onTest: () => void;
+  loading: boolean;
+  onSave: () => void;
+  children: React.ReactNode;
+  definition?: SettingsDefinitionNode;
+}
+
+function ProviderCard({ provider, providerKey, form, configured, editing, onEdit, onCancelEdit, testing, testResult, onTest, loading, onSave, children, definition }: ProviderCardProps) {
   const accent = provider.accent;
   const IC = PROVIDER_ICON_CMP[providerKey];
   return (
@@ -23,8 +54,8 @@ function ProviderCard({ provider, providerKey, form, configured, editing, onEdit
       <div data-settings-field-id={definition?.id} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
         <div style={{ width: 40, height: 40, borderRadius: 8, background: 'var(--surface-sunken)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>{IC ? <IC size={20} /> : null}</div>
         <div>
-          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>{$t(provider.titleKey)}</div>
-          <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{$t(provider.subtitleKey)}</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>{$t(provider.titleKey as I18nKey)}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{$t(provider.subtitleKey as I18nKey)}</div>
         </div>
       </div>
       {configured && !editing ? (
@@ -33,7 +64,7 @@ function ProviderCard({ provider, providerKey, form, configured, editing, onEdit
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ width: 10, height: 10, borderRadius: '50%', background: accent }}></div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.3px' }}>{$t(provider.successMsgKey)}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.3px' }}>{$t(provider.successMsgKey as I18nKey)}</div>
             </div>
             <button onClick={onEdit} style={{ padding: '6px 14px', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 500, background: 'var(--surface-hover)', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 6 }} onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-sunken)'; e.currentTarget.style.color = 'var(--text-primary)'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
@@ -67,6 +98,77 @@ function ProviderCard({ provider, providerKey, form, configured, editing, onEdit
   );
 }
 
+export interface SyncTabProps {
+  syncProvider: string;
+  onSyncProviderChange: (id: string) => void;
+  syncMode: string;
+  onSyncModeChange: (mode: string) => void;
+  autoSyncEnabled: boolean;
+  onAutoSyncEnabledChange: (v: boolean) => void;
+  providers: Record<string, SyncProviderDef>;
+  providerList: Array<{ id: string; label: React.ReactNode }>;
+  webdavForm: ProviderForm;
+  setWebdavField: FieldSetter;
+  webdavConfigured: boolean;
+  webdavEditing: boolean;
+  setWebdavEditing: (v: boolean) => void;
+  webdavLoading: boolean;
+  webdavTesting: boolean;
+  webdavTestResult: string | null;
+  onWebdavTest: () => void;
+  onWebdavSave: () => void;
+  r2Form: ProviderForm;
+  setR2Field: FieldSetter;
+  r2Configured: boolean;
+  r2Editing: boolean;
+  setR2Editing: (v: boolean) => void;
+  r2Loading: boolean;
+  r2Testing: boolean;
+  r2TestResult: string | null;
+  onR2Test: () => void;
+  onR2Save: () => void;
+  ftpForm: ProviderForm;
+  setFTPField: FieldSetter;
+  ftpConfigured: boolean;
+  ftpEditing: boolean;
+  setFtpEditing: (v: boolean) => void;
+  ftpLoading: boolean;
+  ftpTesting: boolean;
+  ftpTestResult: string | null;
+  onTestFTP: () => void;
+  onSaveFTP: () => void;
+  sftpForm: ProviderForm;
+  setSFTPField: FieldSetter;
+  sftpConfigured: boolean;
+  sftpEditing: boolean;
+  setSftpEditing: (v: boolean) => void;
+  sftpLoading: boolean;
+  sftpTesting: boolean;
+  sftpTestResult: string | null;
+  onTestSFTP: () => void;
+  onSaveSFTP: () => void;
+  setSftpForm: React.Dispatch<React.SetStateAction<ProviderForm>>;
+  lastSyncTime: number | null;
+  syncTombstoneStats: { connections?: number; credentials?: number } | null;
+  onPruneSyncTombstones?: (days: number) => void;
+  pruningTombstones: boolean;
+  syncing: boolean;
+  onSync: () => void;
+  loadingBackups: boolean;
+  restoring: boolean;
+  onRestore: () => void;
+  isAnyConfigured: boolean;
+  addToast: (message: string | Error, type?: string, duration?: number, actions?: unknown[]) => number;
+  hasRecoveryPassword: boolean;
+  recoveryPasswordEditing: boolean;
+  setRecoveryPasswordEditing: (v: boolean) => void;
+  recoveryPasswordInput: string;
+  setRecoveryPasswordInput: (v: string) => void;
+  recoveryPasswordChanging: boolean;
+  onSaveRecoveryPassword: () => void;
+  onClearRecoveryPassword: () => void;
+}
+
 export default function SyncTab({
   syncProvider, onSyncProviderChange,
   syncMode, onSyncModeChange,
@@ -78,22 +180,25 @@ export default function SyncTab({
   sftpForm, setSFTPField, sftpConfigured, sftpEditing, setSftpEditing, sftpLoading, sftpTesting, sftpTestResult, onTestSFTP, onSaveSFTP, setSftpForm,
   lastSyncTime, syncTombstoneStats, onPruneSyncTombstones, pruningTombstones, syncing, onSync, loadingBackups, restoring, onRestore, isAnyConfigured, addToast,
   hasRecoveryPassword, recoveryPasswordEditing, setRecoveryPasswordEditing, recoveryPasswordInput, setRecoveryPasswordInput, recoveryPasswordChanging, onSaveRecoveryPassword, onClearRecoveryPassword
-}) {
+}: SyncTabProps) {
   const formattedLastSyncTime = formatSyncTime(lastSyncTime);
   const tombstoneConnections = Number(syncTombstoneStats?.connections || 0);
   const tombstoneCredentials = Number(syncTombstoneStats?.credentials || 0);
   const tombstoneTotal = tombstoneConnections + tombstoneCredentials;
   const [tombstoneDays, setTombstoneDays] = React.useState(30);
+  // settingDefinitions.js 未转 TS（推断为 Readonly<{}>），此处按实际结构断言
+  const settingsData = settings as { sync: { node: SettingsDefinitionNode; fields: Record<string, SettingsDefinitionNode>; sections: Record<string, SettingsDefinitionNode> } };
+  const syncSettings = settingsData.sync;
   return (
     <SettingsTabRoot>
-      <SettingsPanel data-settings-section-id={settings.sync.sections.sync.id} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div data-settings-field-id={settings.sync.fields.autoSync.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <SettingsPanel data-settings-section-id={syncSettings.sections.sync.id} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div data-settings-field-id={syncSettings.fields.autoSync.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginRight: 4 }}>{$t('自动同步')}</span>
           <button className={autoSyncEnabled ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => onAutoSyncEnabledChange(!autoSyncEnabled)}>
             {autoSyncEnabled ? $t('已开启') : $t('已关闭')}
           </button>
         </div>
-        <div data-settings-field-id={settings.sync.fields.autoSyncMode.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div data-settings-field-id={syncSettings.fields.autoSyncMode.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginRight: 4 }}>{$t('自动同步模式')}</span>
           {[
             { id: 'webdav', label: <><Cloud size={14} /> WebDAV</> },
@@ -107,7 +212,7 @@ export default function SyncTab({
             </button>
           ))}
         </div>
-        <div data-settings-field-id={settings.sync.fields.encryption.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div data-settings-field-id={syncSettings.fields.encryption.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginRight: 4 }}>{$t('同步加密')}</span>
           {hasRecoveryPassword ? (
             <>
@@ -160,7 +265,7 @@ export default function SyncTab({
         </div>
       </SettingsPanel>
 
-      <SettingsPanel data-settings-section-id={settings.sync.sections.provider.id} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, padding: 8 }}>
+      <SettingsPanel data-settings-section-id={syncSettings.sections.provider.id} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, padding: 8 }}>
         {providerList.map((item) => (
           <button
             key={item.id}
@@ -191,7 +296,7 @@ export default function SyncTab({
 
       {syncProvider === 'webdav' ? (
         <ProviderCard
-          definition={settings.sync.fields.webdav}
+          definition={syncSettings.fields.webdav}
           providerKey="webdav"
           provider={providers.webdav}
           form={webdavForm}
@@ -205,23 +310,23 @@ export default function SyncTab({
           loading={webdavLoading}
           onSave={onWebdavSave}
         >
-          <div className="form-group" data-settings-field-id={settings.sync.fields.endpoint.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.endpoint.id}>
             <label htmlFor="sync-webdav-url" className="form-label">{$t('端点地址 (URL)')}</label>
             <input id="sync-webdav-url" name="sync-webdav-url" className="input" autoComplete="off" value={webdavForm.url} onChange={setWebdavField('url')} />
           </div>
-          <div className="form-group" data-settings-field-id={settings.sync.fields.webdavUsername.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.webdavUsername.id}>
             <label htmlFor="sync-webdav-username" className="form-label">{$t('用户名')}</label>
             <input id="sync-webdav-username" name="sync-webdav-username" className="input" autoComplete="off" value={webdavForm.username} onChange={setWebdavField('username')} />
           </div>
-          <div className="form-group" data-settings-field-id={settings.sync.fields.webdavPassword.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.webdavPassword.id}>
             <label htmlFor="sync-webdav-password" className="form-label">{$t('密码 / 授权码')}</label>
             <input id="sync-webdav-password" name="sync-webdav-password" className="input" type="password" autoComplete="current-password" value={webdavForm.password} onChange={setWebdavField('password')} />
           </div>
-          <div className="form-group" data-settings-field-id={settings.sync.fields.webdavRemoteDirectory.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.webdavRemoteDirectory.id}>
             <label htmlFor="sync-webdav-remote-path" className="form-label">{$t('远程保存目录')}</label>
             <input id="sync-webdav-remote-path" name="sync-webdav-remote-path" className="input" autoComplete="off" value={webdavForm.remotePath} onChange={setWebdavField('remotePath')} />
           </div>
-          <div className="form-group" data-settings-field-id={settings.sync.fields.webdavMaxBackups.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.webdavMaxBackups.id}>
             <label htmlFor="sync-webdav-max-backups" className="form-label">{$t('保留份数 (0=不限)')}</label>
             <input id="sync-webdav-max-backups" name="sync-webdav-max-backups" className="input" type="number" min="0" autoComplete="off" value={webdavForm.maxBackups} onChange={setWebdavField('maxBackups')} placeholder="0" />
           </div>
@@ -230,7 +335,7 @@ export default function SyncTab({
 
       {syncProvider === 'r2' ? (
         <ProviderCard
-          definition={settings.sync.fields.r2}
+          definition={syncSettings.fields.r2}
           providerKey="r2"
           provider={providers.r2}
           form={r2Form}
@@ -244,31 +349,31 @@ export default function SyncTab({
           loading={r2Loading}
           onSave={onR2Save}
         >
-          <div className="form-group" data-settings-field-id={settings.sync.fields.accessKey.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.accessKey.id}>
             <label htmlFor="sync-r2-access-key-id" className="form-label">{$t('访问密钥 ID (Access Key ID)')}</label>
             <input id="sync-r2-access-key-id" name="sync-r2-access-key-id" className="input" autoComplete="off" value={r2Form.accessKeyId} onChange={setR2Field('accessKeyId')} />
           </div>
-          <div className="form-group" data-settings-field-id={settings.sync.fields.r2SecretAccessKey.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.r2SecretAccessKey.id}>
             <label htmlFor="sync-r2-secret-access-key" className="form-label">{$t('秘密访问密钥 (Secret Access Key)')}</label>
             <input id="sync-r2-secret-access-key" name="sync-r2-secret-access-key" className="input" type="password" autoComplete="current-password" value={r2Form.secretAccessKey} onChange={setR2Field('secretAccessKey')} />
           </div>
-          <div className="form-group" data-settings-field-id={settings.sync.fields.bucket.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.bucket.id}>
             <label htmlFor="sync-r2-bucket" className="form-label">{$t('存储桶 (Bucket)')}</label>
             <input id="sync-r2-bucket" name="sync-r2-bucket" className="input" autoComplete="off" value={r2Form.bucket} onChange={setR2Field('bucket')} placeholder="your-bucket" />
           </div>
-          <div className="form-group" data-settings-field-id={settings.sync.fields.r2Endpoint.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.r2Endpoint.id}>
             <label htmlFor="sync-r2-endpoint" className="form-label">{$t('端点地址 (Endpoint)')}</label>
             <input id="sync-r2-endpoint" name="sync-r2-endpoint" className="input" autoComplete="off" value={r2Form.endpoint} onChange={setR2Field('endpoint')} placeholder="https://your-account.r2.cloudflarestorage.com" />
           </div>
-          <div className="form-group" data-settings-field-id={settings.sync.fields.r2Region.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.r2Region.id}>
             <label htmlFor="sync-r2-region" className="form-label">{$t('区域 (Region)')}</label>
             <input id="sync-r2-region" name="sync-r2-region" className="input" autoComplete="off" value={r2Form.region} onChange={setR2Field('region')} placeholder="auto" />
           </div>
-          <div className="form-group" data-settings-field-id={settings.sync.fields.r2Prefix.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.r2Prefix.id}>
             <label htmlFor="sync-r2-prefix" className="form-label">{$t('前缀 (Prefix)')}</label>
             <input id="sync-r2-prefix" name="sync-r2-prefix" className="input" autoComplete="off" value={r2Form.prefix} onChange={setR2Field('prefix')} placeholder="Lumin/" />
           </div>
-          <div className="form-group" data-settings-field-id={settings.sync.fields.r2MaxBackups.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.r2MaxBackups.id}>
             <label htmlFor="sync-r2-max-backups" className="form-label">{$t('保留份数 (0=不限)')}</label>
             <input id="sync-r2-max-backups" name="sync-r2-max-backups" className="input" type="number" min="0" autoComplete="off" value={r2Form.maxBackups} onChange={setR2Field('maxBackups')} placeholder="0" />
           </div>
@@ -277,7 +382,7 @@ export default function SyncTab({
 
       {syncProvider === 'ftp' ? (
         <ProviderCard
-          definition={settings.sync.fields.ftp}
+          definition={syncSettings.fields.ftp}
           providerKey="ftp"
           provider={providers.ftp}
           form={ftpForm}
@@ -291,7 +396,7 @@ export default function SyncTab({
           loading={ftpLoading}
           onSave={onSaveFTP}
         >
-          <div className="form-group" data-settings-field-id={settings.sync.fields.ftpMode.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.ftpMode.id}>
             <label htmlFor="sync-ftp-mode" className="form-label">{$t('连接模式')}</label>
             <select id="sync-ftp-mode" name="sync-ftp-mode" className="input" value={ftpForm.mode || 'explicit_tls'} onChange={setFTPField('mode')}>
               <option value="explicit_tls">{$t('显式 FTPS（推荐）')}</option>
@@ -303,27 +408,27 @@ export default function SyncTab({
               {$t('普通 FTP 不加密连接，用户名、密码、文件名和传输数据可能被截获。备份文件加密也无法保护 FTP 登录和传输元数据。')}
             </div>
           ) : null}
-          <div className="form-group" data-settings-field-id={settings.sync.fields.host.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.host.id}>
             <label htmlFor="sync-ftp-host" className="form-label">{$t('主机地址')}</label>
             <input id="sync-ftp-host" name="sync-ftp-host" className="input" autoComplete="off" value={ftpForm.host} onChange={setFTPField('host')} placeholder="ftp.example.com" />
           </div>
-          <div className="form-group" data-settings-field-id={settings.sync.fields.port.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.port.id}>
             <label htmlFor="sync-ftp-port" className="form-label">{$t('端口')}</label>
             <input id="sync-ftp-port" name="sync-ftp-port" className="input" type="number" min="1" max="65535" autoComplete="off" value={ftpForm.port} onChange={setFTPField('port')} />
           </div>
-          <div className="form-group" data-settings-field-id={settings.sync.fields.username.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.username.id}>
             <label htmlFor="sync-ftp-username" className="form-label">{$t('用户名')}</label>
             <input id="sync-ftp-username" name="sync-ftp-username" className="input" autoComplete="off" value={ftpForm.username} onChange={setFTPField('username')} />
           </div>
-          <div className="form-group" data-settings-field-id={settings.sync.fields.password.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.password.id}>
             <label htmlFor="sync-ftp-password" className="form-label">{$t('密码')}</label>
             <input id="sync-ftp-password" name="sync-ftp-password" className="input" type="password" autoComplete="current-password" value={ftpForm.password} onChange={setFTPField('password')} />
           </div>
-          <div className="form-group" data-settings-field-id={settings.sync.fields.remoteDirectory.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.remoteDirectory.id}>
             <label htmlFor="sync-ftp-remote-dir" className="form-label">{$t('远程保存目录')}</label>
             <input id="sync-ftp-remote-dir" name="sync-ftp-remote-dir" className="input" autoComplete="off" value={ftpForm.remoteDir} onChange={setFTPField('remoteDir')} />
           </div>
-          <div className="form-group" data-settings-field-id={settings.sync.fields.ftpMaxBackups.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.ftpMaxBackups.id}>
             <label htmlFor="sync-ftp-max-backups" className="form-label">{$t('保留份数 (0=不限)')}</label>
             <input id="sync-ftp-max-backups" name="sync-ftp-max-backups" className="input" type="number" min="0" autoComplete="off" value={ftpForm.maxBackups} onChange={setFTPField('maxBackups')} placeholder="0" />
           </div>
@@ -332,7 +437,7 @@ export default function SyncTab({
 
       {syncProvider === 'sftp' ? (
         <ProviderCard
-          definition={settings.sync.fields.sftp}
+          definition={syncSettings.fields.sftp}
           providerKey="sftp"
           provider={providers.sftp}
           form={sftpForm}
@@ -346,19 +451,19 @@ export default function SyncTab({
           loading={sftpLoading}
           onSave={onSaveSFTP}
         >
-          <div className="form-group" data-settings-field-id={settings.sync.fields.sftpHost.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.sftpHost.id}>
             <label htmlFor="sync-sftp-host" className="form-label">{$t('主机地址')}</label>
             <input id="sync-sftp-host" name="sync-sftp-host" className="input" autoComplete="off" value={sftpForm.host} onChange={setSFTPField('host')} placeholder="sftp.example.com" />
           </div>
-          <div className="form-group" data-settings-field-id={settings.sync.fields.sftpPort.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.sftpPort.id}>
             <label htmlFor="sync-sftp-port" className="form-label">{$t('端口')}</label>
             <input id="sync-sftp-port" name="sync-sftp-port" className="input" type="number" min="1" max="65535" autoComplete="off" value={sftpForm.port} onChange={setSFTPField('port')} />
           </div>
-          <div className="form-group" data-settings-field-id={settings.sync.fields.sftpUsername.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.sftpUsername.id}>
             <label htmlFor="sync-sftp-username" className="form-label">{$t('用户名')}</label>
             <input id="sync-sftp-username" name="sync-sftp-username" className="input" autoComplete="off" value={sftpForm.username} onChange={setSFTPField('username')} />
           </div>
-          <div className="form-group" data-settings-field-id={settings.sync.fields.authMethod.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.authMethod.id}>
             <label htmlFor="sync-sftp-auth-method" className="form-label">{$t('认证方式')}</label>
             <select id="sync-sftp-auth-method" name="sync-sftp-auth-method" className="input" value={sftpForm.authMethod} onChange={setSFTPField('authMethod')}>
               <option value="password">{$t('密码认证')}</option>
@@ -366,13 +471,13 @@ export default function SyncTab({
             </select>
           </div>
           {sftpForm.authMethod === 'password' ? (
-            <div className="form-group" data-settings-field-id={settings.sync.fields.sftpPassword.id}>
+            <div className="form-group" data-settings-field-id={syncSettings.fields.sftpPassword.id}>
               <label htmlFor="sync-sftp-password" className="form-label">{$t('密码')}</label>
               <input id="sync-sftp-password" name="sync-sftp-password" className="input" type="password" autoComplete="current-password" value={sftpForm.password} onChange={setSFTPField('password')} />
             </div>
           ) : (
             <>
-              <div className="form-group" data-settings-field-id={settings.sync.fields.privateKey.id}>
+              <div className="form-group" data-settings-field-id={syncSettings.fields.privateKey.id}>
                 <label className="form-label" htmlFor="sync-sftp-private-key">{$t('私钥内容')}</label>
                 <textarea id="sync-sftp-private-key" name="sync-sftp-private-key" className="input" style={{ minHeight: 100, fontFamily: 'monospace', fontSize: 12 }} value={sftpForm.privateKey} onChange={setSFTPField('privateKey')} placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----" />
               </div>
@@ -390,19 +495,19 @@ export default function SyncTab({
               </div>
             </>
           )}
-          <div className="form-group" data-settings-field-id={settings.sync.fields.sftpRemoteDirectory.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.sftpRemoteDirectory.id}>
             <label htmlFor="sync-sftp-remote-dir" className="form-label">{$t('远程保存目录')}</label>
             <input id="sync-sftp-remote-dir" name="sync-sftp-remote-dir" className="input" autoComplete="off" value={sftpForm.remoteDir} onChange={setSFTPField('remoteDir')} />
           </div>
-          <div className="form-group" data-settings-field-id={settings.sync.fields.sftpMaxBackups.id}>
+          <div className="form-group" data-settings-field-id={syncSettings.fields.sftpMaxBackups.id}>
             <label htmlFor="sync-sftp-max-backups" className="form-label">{$t('保留份数 (0=不限)')}</label>
             <input id="sync-sftp-max-backups" name="sync-sftp-max-backups" className="input" type="number" min="0" autoComplete="off" value={sftpForm.maxBackups} onChange={setSFTPField('maxBackups')} placeholder="0" />
           </div>
         </ProviderCard>
       ) : null}
 
-      <SettingsPanel data-settings-section-id={settings.sync.sections.cloud.id} style={{ padding: 14 }}>
-        <div data-settings-field-id={settings.sync.fields.cloudBackup.id} style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>{$t('云端同步')}</div>
+      <SettingsPanel data-settings-section-id={syncSettings.sections.cloud.id} style={{ padding: 14 }}>
+        <div data-settings-field-id={syncSettings.fields.cloudBackup.id} style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>{$t('云端同步')}</div>
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 20 }}>
           {hasRecoveryPassword ? $t('同步将写入 .lumin2 加密备份') : $t('未开启同步加密时写入明文 .json 备份')}
         </div>
@@ -413,7 +518,7 @@ export default function SyncTab({
         ) : null}
         {formattedLastSyncTime ? <div style={{ fontSize: 12, color: 'var(--success)', marginBottom: 12 }}>{$t('上次同步')}: {formattedLastSyncTime}</div> : null}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '12px 14px', borderRadius: 'var(--radius-md)', border: '1px solid color-mix(in srgb, var(--warning) 35%, var(--border))', background: 'color-mix(in srgb, var(--warning) 8%, var(--surface-raised))', color: 'var(--text-secondary)', fontSize: 12, marginBottom: 16 }}>
-          <div data-settings-field-id={settings.sync.fields.tombstones.id}>
+          <div data-settings-field-id={syncSettings.fields.tombstones.id}>
             <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{$t('删除记录')}</span>
             <span style={{ marginLeft: 10, padding: '1px 8px', borderRadius: 999, background: 'color-mix(in srgb, var(--warning) 18%, transparent)', color: 'var(--warning)', fontWeight: 600 }}>
               {$t('连接')} {Number.isFinite(tombstoneConnections) ? tombstoneConnections : 0}
@@ -457,10 +562,10 @@ export default function SyncTab({
           ) : null}
         </div>
         <div style={{ display: 'flex', gap: 12 }}>
-          <button data-settings-field-id={settings.sync.fields.mergeSync.id} className="btn btn-secondary" onClick={onSync} disabled={syncing || loadingBackups || restoring}>
+          <button data-settings-field-id={syncSettings.fields.mergeSync.id} className="btn btn-secondary" onClick={onSync} disabled={syncing || loadingBackups || restoring}>
             {syncing ? $t('同步中...') : <><RefreshCw size={14} /> {$t('合并同步')}</>}
           </button>
-          <button data-settings-field-id={settings.sync.fields.restore.id} className="btn btn-secondary" onClick={onRestore} disabled={loadingBackups || restoring || syncing}>
+          <button data-settings-field-id={syncSettings.fields.restore.id} className="btn btn-secondary" onClick={onRestore} disabled={loadingBackups || restoring || syncing}>
             {loadingBackups ? $t('加载备份列表中...') : <><RefreshCw size={14} /> {$t('从云端恢复')}</>}
           </button>
         </div>

@@ -12,25 +12,35 @@ import logoImg from '../../assets/logo.webp';
 import logoLightImg from '../../assets/logo_q.webp';
 import logoDarkImg from '../../assets/logo_s.webp';
 import { Z } from '../../constants/zIndex';
-import { AboutLink } from './SharedComponents';
+import { AboutLink, type SettingsDefinitionNode } from './SharedComponents';
 import { settings } from './settingDefinitions';
 
 const CONTRIBUTORS_CACHE_TTL = 10 * 60 * 1000;
 const CONTRIBUTORS_API_URL = 'https://lumin.callmy.vip/api/';
 
-let contributorsCache = {
+/** 贡献者条目（normalizeContributors 归一化后） */
+interface Contributor {
+  login: string;
+  avatar: string;
+  total: number;
+  additions: number;
+  deletions: number;
+  profileUrl: string;
+}
+
+let contributorsCache: { data: Contributor[] | null; expiresAt: number } = {
   data: null,
   expiresAt: 0,
 };
 
-function getFreshContributorsCache() {
+function getFreshContributorsCache(): Contributor[] | null {
   if (Array.isArray(contributorsCache.data) && contributorsCache.data.length > 0 && Date.now() < contributorsCache.expiresAt) {
     return contributorsCache.data;
   }
   return null;
 }
 
-function getResolvedThemeMode() {
+function getResolvedThemeMode(): 'light' | 'dark' {
   const savedTheme = localStorage.getItem('themeMode') || 'dark';
   if (savedTheme === 'system') {
     return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
@@ -38,7 +48,7 @@ function getResolvedThemeMode() {
   return savedTheme === 'light' ? 'light' : 'dark';
 }
 
-function resolveContributorAvatar(value) {
+function resolveContributorAvatar(value: unknown): string {
   const rawValue = typeof value === 'string' ? value.trim() : '';
   if (!rawValue) {
     return '';
@@ -56,13 +66,13 @@ function resolveContributorAvatar(value) {
   }
 }
 
-function normalizeContributors(payload) {
+function normalizeContributors(payload: unknown): Contributor[] {
   if (!Array.isArray(payload)) {
     return [];
   }
-  return payload
+  return (payload as Array<Record<string, unknown>>)
     .map((item) => {
-      const author = item?.author && typeof item.author === 'object' ? item.author : item;
+      const author = item?.author && typeof item.author === 'object' ? item.author as Record<string, unknown> : item;
       const login = typeof author?.login === 'string' ? author.login.trim() : '';
       const avatar = resolveContributorAvatar(
         typeof author?.avatar === 'string'
@@ -71,7 +81,7 @@ function normalizeContributors(payload) {
       );
       const path = typeof author?.path === 'string' ? author.path.trim() : '';
       const total = Number(item?.total) || 0;
-      const weeks = Array.isArray(item?.weeks) ? item.weeks : (Array.isArray(item?.weeeks) ? item.weeeks : []);
+      const weeks = Array.isArray(item?.weeks) ? item.weeks as Array<Record<string, unknown>> : (Array.isArray(item?.weeeks) ? item.weeeks as Array<Record<string, unknown>> : []);
       const additions = weeks.reduce((sum, week) => sum + (Number(week?.a) || 0), 0);
       const deletions = weeks.reduce((sum, week) => sum + (Number(week?.d) || 0), 0);
       if (!login || !avatar || !path || total <= 0) {
@@ -89,11 +99,11 @@ function normalizeContributors(payload) {
         profileUrl,
       };
     })
-    .filter(Boolean)
+    .filter((item): item is Contributor => item !== null)
     .sort((left, right) => right.total - left.total);
 }
 
-async function fetchContributorsFromApi() {
+async function fetchContributorsFromApi(): Promise<unknown> {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), 10000);
   try {
@@ -109,12 +119,12 @@ async function fetchContributorsFromApi() {
   }
 }
 
-async function loadContributors() {
+async function loadContributors(): Promise<Contributor[]> {
   const cached = getFreshContributorsCache();
   if (cached) {
     return cached;
   }
-  let payload = null;
+  let payload: unknown = null;
   try {
     payload = await fetchContributorsFromApi();
   } catch {
@@ -131,12 +141,25 @@ async function loadContributors() {
   return data;
 }
 
-export default function AppTab({ CURRENT_VERSION, BUILD_TIME, updateInfo, checkingUpdate, downloadProgress, onCheckUpdate, onApplyUpdate }) {
-  const [contributors, setContributors] = useState(() => getFreshContributorsCache() || []);
+export interface AppTabProps {
+  CURRENT_VERSION: string;
+  BUILD_TIME: string | null;
+  updateInfo: { hasUpdate?: boolean; latestVersion?: string } | null;
+  checkingUpdate: boolean;
+  downloadProgress: number;
+  onCheckUpdate: () => void;
+  onApplyUpdate: () => void;
+}
+
+export default function AppTab({ CURRENT_VERSION, BUILD_TIME, updateInfo, checkingUpdate, downloadProgress, onCheckUpdate, onApplyUpdate }: AppTabProps) {
+  const [contributors, setContributors] = useState<Contributor[]>(() => getFreshContributorsCache() || []);
   const [contributorsLoading, setContributorsLoading] = useState(() => !getFreshContributorsCache());
   const [showRefreshedLogo, setShowRefreshedLogo] = useState(false);
-  const [resolvedThemeMode, setResolvedThemeMode] = useState(() => getResolvedThemeMode());
+  const [resolvedThemeMode, setResolvedThemeMode] = useState<'light' | 'dark'>(() => getResolvedThemeMode());
   const logoTransitionImg = resolvedThemeMode === 'light' ? logoLightImg : logoDarkImg;
+  // settingDefinitions.js 未转 TS（推断为 Readonly<{}>），此处按实际结构断言
+  const settingsData = settings as { app: { node: SettingsDefinitionNode; fields: Record<string, SettingsDefinitionNode>; sections: Record<string, SettingsDefinitionNode> } };
+  const appSettings = settingsData.app;
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -270,7 +293,7 @@ export default function AppTab({ CURRENT_VERSION, BUILD_TIME, updateInfo, checki
               </span>
             )}
             <button
-              data-settings-field-id={settings.app.fields.checkUpdate.id}
+              data-settings-field-id={appSettings.fields.checkUpdate.id}
               onClick={onCheckUpdate}
               disabled={checkingUpdate}
               style={{
@@ -331,7 +354,7 @@ export default function AppTab({ CURRENT_VERSION, BUILD_TIME, updateInfo, checki
                   ) : (
                     <>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-                      {updateInfo.latestVersion} {$t('立即更新')}
+                      {(updateInfo?.latestVersion)} {$t('立即更新')}
                     </>
                   )}
                 </span>
@@ -343,32 +366,32 @@ export default function AppTab({ CURRENT_VERSION, BUILD_TIME, updateInfo, checki
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 12, marginTop: 12 }}>
         <AboutLink
-          definition={settings.app.fields.feedback}
+          definition={appSettings.fields.feedback}
           icon={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="M9 15L15 15"></path><path d="M12 12L12 18"></path></svg>}
           title={$t('反馈问题')}
           url={APP_GITHUB_ISSUES_URL}
         />
         <AboutLink
-          definition={settings.app.fields.github}
+          definition={appSettings.fields.github}
           icon={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>}
           title={$t('GitHub')}
           url={APP_GITHUB_REPO_URL}
         />
         <AboutLink
-          definition={settings.app.fields.android}
+          definition={appSettings.fields.android}
           icon={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>}
           title={$t('Android 客户端')}
           url={APP_GITHUB_ANDROID_REPO_URL}
         />
         <AboutLink
-          definition={settings.app.fields.releases}
+          definition={appSettings.fields.releases}
           icon={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>}
           title={$t('更新内容')}
           url={APP_GITHUB_RELEASES_URL}
         />
       </div>
 
-      <div data-settings-field-id={settings.app.fields.crossPlatform.id} style={{
+      <div data-settings-field-id={appSettings.fields.crossPlatform.id} style={{
         marginTop: 4,
         padding: '14px 16px',
         borderRadius: 'var(--radius-md)',
@@ -392,7 +415,7 @@ export default function AppTab({ CURRENT_VERSION, BUILD_TIME, updateInfo, checki
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 2 }}>
           <button
             type="button"
-            onClick={() => window.runtime?.BrowserOpenURL(APP_GITHUB_ANDROID_REPO_URL)}
+            onClick={() => window.runtime?.BrowserOpenURL?.(APP_GITHUB_ANDROID_REPO_URL)}
             style={{
               background: 'var(--surface-base)',
               color: 'var(--accent)',
@@ -408,7 +431,7 @@ export default function AppTab({ CURRENT_VERSION, BUILD_TIME, updateInfo, checki
           </button>
           <button
             type="button"
-            onClick={() => window.runtime?.BrowserOpenURL(APP_GITHUB_ANDROID_RELEASES_URL)}
+            onClick={() => window.runtime?.BrowserOpenURL?.(APP_GITHUB_ANDROID_RELEASES_URL)}
             style={{
               background: 'var(--surface-base)',
               color: 'var(--text-secondary)',
@@ -425,7 +448,7 @@ export default function AppTab({ CURRENT_VERSION, BUILD_TIME, updateInfo, checki
         </div>
       </div>
 
-      <div data-settings-field-id={settings.app.fields.contributors.id} style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 8 }}>
+      <div data-settings-field-id={appSettings.fields.contributors.id} style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 8 }}>
         <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>
           {$t('特别鸣谢')}
         </div>
@@ -447,7 +470,7 @@ export default function AppTab({ CURRENT_VERSION, BUILD_TIME, updateInfo, checki
             : contributors.map((item) => (
                 <div
                   key={item.login}
-                  onClick={() => window.runtime?.BrowserOpenURL(item.profileUrl)}
+                  onClick={() => window.runtime?.BrowserOpenURL?.(item.profileUrl)}
                   className="about-list-item"
                   style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px', borderRadius: 'var(--radius-md)', cursor: 'pointer', transition: 'all 0.2s', background: 'var(--surface-overlay)', border: '1px solid var(--border)', textAlign: 'left' }}
                 >

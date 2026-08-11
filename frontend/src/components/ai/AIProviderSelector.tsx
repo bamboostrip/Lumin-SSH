@@ -8,7 +8,7 @@ import { getAIProviderState, isBuiltinAIProvider, normalizeAIProviderState, save
 import { getAIProviderDefinition } from './providers/index.ts'
 import { isCallMyVipProviderHost } from './providerSpecialHosts.ts'
 
-/** 宽松供应商形状（aiProviderBridge.ts 为 @ts-nocheck 桥接（无类型），字段以 typeof 守卫读取） */
+/** 宽松供应商形状（aiProviderBridge 已类型化，此处为 UI 容错形状，字段以 typeof 守卫读取） */
 export interface AIProviderLike {
   id?: string
   name?: string

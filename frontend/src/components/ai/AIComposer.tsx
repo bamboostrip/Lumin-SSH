@@ -897,7 +897,7 @@ export default function AIComposer({
       const results = await searchRemoteMentionCandidates({
         sessionId: terminalSessionId,
         query: normalizedQuery,
-        // aiMentions.ts 为 @ts-nocheck 桥接（无类型）：默认值推断 selectedType 为 null，按实际语义桥接
+        // aiMentions 已类型化：selectedType 默认 null，按实际语义桥接
         selectedType: selectedType as null,
         getCurrentCwd: async () => currentCwd,
         listDir: (sessionId: string, remotePath: string) => AppGo.ListDir(sessionId, remotePath),

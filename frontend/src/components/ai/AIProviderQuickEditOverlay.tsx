@@ -1,7 +1,7 @@
 import { ArrowLeft, Check, CircleHelp, Clipboard, Globe, Save, Search, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { EventsOn } from '../../../wailsjs/runtime/runtime.js'
-import { useTranslation, t as translate } from '../../i18n.js'
+import { useTranslation, t as translate, type I18nKey } from '../../i18n.js'
 import { getAIGlobalSettings } from './aiGlobalSettingsBridge.js'
 import { isBuiltinAIProvider, runAIProviderAPIKeyPasteHandler } from './aiProviderBridge.js'
 import { getRuntimeEnvironmentStatus } from '../settings/runtimeEnvironmentBridge.js'
@@ -11,6 +11,7 @@ import {
   getAIProviderDefinition,
 } from './providers/index.js'
 import { handleInputDragSelectAll } from './inputDragSelect.js'
+import type { AIProviderLike } from './AIProviderSelector.jsx'
 
 const defaultCacheOptions = [
   { value: 'model', labelKey: '基于模型能力' },
@@ -19,7 +20,7 @@ const defaultCacheOptions = [
   { value: '1h', labelKey: '1小时' },
 ]
 
-const reasoningEffortLabels = {
+const reasoningEffortLabels: Record<string, string> = {
   disable: '无',
   none: '无',
   minimal: '最少',
@@ -32,27 +33,28 @@ const reasoningEffortLabels = {
 const DEFAULT_MAX_OUTPUT_TOKENS = 16384
 const DEFAULT_MAX_THINKING_TOKENS = 8192
 const DEFAULT_EFFORT_REASONING_OPTIONS = ['low', 'medium', 'high', 'xhigh']
-const providerHighlightLabelKeys = {
+const providerHighlightLabelKeys: Record<string, string> = {
   Compatible: '高兼容',
   Responses: '高缓存',
 }
 
-function getProviderDisplayLabel(provider, t) {
+function getProviderDisplayLabel(provider: { value?: string; label?: string } | null | undefined, t: (key: I18nKey) => string) {
   if (!provider || typeof provider !== 'object') {
     return ''
   }
-  const highlightLabelKey = providerHighlightLabelKeys[provider.value]
+  const providerValue = typeof provider.value === 'string' ? provider.value : ''
+  const highlightLabelKey = providerValue ? providerHighlightLabelKeys[providerValue] : undefined
   if (!highlightLabelKey) {
-    return provider.label
+    return provider.label || ''
   }
-  return `(${t(highlightLabelKey)})${provider.label}`
+  return `(${t(highlightLabelKey as I18nKey)})${provider.label || ''}`
 }
 
 function getAppBridge() {
   return window?.go?.wailsapp?.AIBindings || window?.go?.wailsapp?.AIProviderBindings || window?.go?.wailsapp?.App
 }
 
-async function getBuiltinProviderRuntimeStatus(providerId) {
+async function getBuiltinProviderRuntimeStatus(providerId: string) {
   const getter = window?.go?.wailsapp?.App?.GetBuiltinProviderRuntimeStatus
   if (typeof getter !== 'function') {
     return { providerId: 'builtin-kimi', state: 'idle', ready: false }
@@ -71,7 +73,7 @@ async function getBuiltinProviderRuntimeStatus(providerId) {
   }
 }
 
-function requestRuntimeEnvironmentSetup(message) {
+function requestRuntimeEnvironmentSetup(message: string) {
   window.dispatchEvent(new CustomEvent('open-runtime-environment-settings', {
     detail: {
       tab: 'runtimeEnvironment',
@@ -82,7 +84,7 @@ function requestRuntimeEnvironmentSetup(message) {
   }))
 }
 
-async function initializeBuiltinProvider(providerId, language) {
+async function initializeBuiltinProvider(providerId: string, language: string) {
   const runtimeEnvironmentStatus = await getRuntimeEnvironmentStatus()
   if (runtimeEnvironmentStatus?.ready !== true) {
     requestRuntimeEnvironmentSetup(translate('请先安装 uv 运行环境后再初始化内置 Kimi'))
@@ -99,7 +101,7 @@ async function initializeBuiltinProvider(providerId, language) {
   return { blockedByRuntimeEnvironment: false }
 }
 
-function normalizePositiveInteger(value, fallback = 0) {
+function normalizePositiveInteger(value: unknown, fallback = 0) {
   const nextValue = Number(value)
   if (!Number.isFinite(nextValue) || nextValue <= 0) {
     return fallback
@@ -107,17 +109,19 @@ function normalizePositiveInteger(value, fallback = 0) {
   return Math.floor(nextValue)
 }
 
-function buildInitialModelOptions(providerDefinition, model) {
+function buildInitialModelOptions(providerDefinition: unknown, model: string) {
   const trimmedModel = typeof model === 'string' ? model.trim() : ''
-  const initialModels = Array.isArray(providerDefinition?.initialModels) ? providerDefinition.initialModels : []
-  const options = [...initialModels]
+  const initialModels = Array.isArray((providerDefinition as Record<string, unknown> | null)?.initialModels)
+    ? (providerDefinition as Record<string, unknown>).initialModels
+    : []
+  const options: string[] = [...initialModels as string[]]
   if (trimmedModel && !options.includes(trimmedModel)) {
     options.unshift(trimmedModel)
   }
   return options
 }
 
-function buildReasoningOptionsForCapability(capability) {
+function buildReasoningOptionsForCapability(capability: Record<string, unknown> | null | undefined) {
   if (capability?.reasoningMode !== 'effort') {
     return []
   }
@@ -130,16 +134,29 @@ function buildReasoningOptionsForCapability(capability) {
   return [...new Set(nextOptions)]
 }
 
-function getReasoningOptionLabel(value) {
+function getReasoningOptionLabel(value: string) {
   const nextValue = typeof value === 'string' ? value.trim().toLowerCase() : ''
-  return translate(reasoningEffortLabels[nextValue] || nextValue || '无')
+  // 动态 key：reasoningEffortLabels 的值均为合法 i18n 键，未知值原样兜底
+  return translate((reasoningEffortLabels[nextValue] || nextValue || '无') as I18nKey)
 }
 
-function supportsUnifiedEffortReasoning(providerValue) {
+function supportsUnifiedEffortReasoning(providerValue: string) {
   return providerValue === 'Compatible' || providerValue === 'Responses' || providerValue === 'Messages'
 }
 
-function buildDisplayModelCapability(providerValue, capability) {
+interface ModelCapabilityLike {
+  modelId?: string
+  reasoningMode?: string
+  reasoningEffort?: string
+  supportsReasoningEffort?: string[]
+  maxTokens?: number
+  maxThinkingTokens?: number
+  requiredReasoningBudget?: boolean
+  requiredReasoningEffort?: boolean
+  [key: string]: unknown
+}
+
+function buildDisplayModelCapability(providerValue: string, capability: ModelCapabilityLike): ModelCapabilityLike {
   if (!supportsUnifiedEffortReasoning(providerValue)) {
     return capability
   }
@@ -159,21 +176,21 @@ function buildDisplayModelCapability(providerValue, capability) {
   }
 }
 
-function resolveEffortReasoningSelection(draft, capability) {
+function resolveEffortReasoningSelection(draft: ProviderDraft | Record<string, unknown>, capability: Record<string, unknown> | null | undefined) {
   if (capability?.reasoningMode !== 'effort') {
     return 'disable'
   }
   const availableOptions = buildReasoningOptionsForCapability(capability)
-  const storedValue = typeof draft?.reasoningEffort === 'string' ? draft.reasoningEffort.trim().toLowerCase() : ''
+  const storedValue = typeof (draft as Record<string, unknown>).reasoningEffort === 'string' ? String((draft as Record<string, unknown>).reasoningEffort).trim().toLowerCase() : ''
 
   if (capability?.requiredReasoningEffort) {
     if (storedValue && availableOptions.includes(storedValue)) {
       return storedValue
     }
-    return capability?.reasoningEffort || availableOptions[0] || 'high'
+    return typeof capability?.reasoningEffort === 'string' ? capability.reasoningEffort : (availableOptions[0] || 'high')
   }
 
-  if (draft?.enableReasoningEffort === false) {
+  if ((draft as Record<string, unknown>).enableReasoningEffort === false) {
     return 'disable'
   }
 
@@ -184,7 +201,7 @@ function resolveEffortReasoningSelection(draft, capability) {
   return storedValue || 'disable'
 }
 
-function cloneApiKeyField(value) {
+function cloneApiKeyField(value: unknown) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return null
   }
@@ -195,7 +212,30 @@ function cloneApiKeyField(value) {
   }
 }
 
-function buildDraft(provider) {
+interface ProviderDraft {
+  id: string
+  name: string
+  provider: string
+  cacheStrategy: string
+  baseUrl: string
+  apiKey: string
+  model: string
+  webSearchEnabled: boolean
+  dedicatedWebSearchEnabled: boolean
+  dedicatedWebSearchProviderId: string
+  dedicatedProxyEnabled: boolean
+  dedicatedProxyId: string
+  reasoningEffort: string
+  enableReasoningEffort: boolean
+  openAiLegacyReasoningFormatEnabled: boolean
+  modelMaxTokens: number
+  modelMaxThinkingTokens: number
+  pinned: boolean
+  builtinLoginURL: string
+  apiKeyField: Record<string, unknown> | null
+}
+
+function buildDraft(provider?: AIProviderLike | null): ProviderDraft {
   const providerDefinition = getAIProviderDefinition(provider?.provider || 'Compatible')
   const resolvedModel = typeof provider?.model === 'string' && provider.model.trim()
     ? provider.model.trim()
@@ -219,7 +259,7 @@ function buildDraft(provider) {
     dedicatedProxyId: typeof provider?.dedicatedProxyId === 'string' ? provider.dedicatedProxyId.trim() : '',
     reasoningEffort: typeof provider?.reasoningEffort === 'string' && provider.reasoningEffort.trim()
       ? provider.reasoningEffort.trim().toLowerCase()
-      : (capability.reasoningEffort || 'disable'),
+      : (typeof capability.reasoningEffort === 'string' ? capability.reasoningEffort : 'disable'),
     enableReasoningEffort: provider?.enableReasoningEffort === true
       || (typeof provider?.reasoningEffort === 'string' && provider.reasoningEffort.trim().toLowerCase() !== 'disable')
       || normalizePositiveInteger(provider?.modelMaxTokens) > 0
@@ -237,7 +277,25 @@ function buildDraft(provider) {
   }
 }
 
-function SelectMenu({ value, options, open, onToggle, onSelect, menuRef, menuWidth = '100%', showSelectedIcon = true, disabled = false, id, 'aria-labelledby': ariaLabelledBy, 'aria-label': ariaLabel }) {
+interface SelectMenuOption {
+  value: string
+  label: string
+}
+
+function SelectMenu({ value, options, open, onToggle, onSelect, menuRef, menuWidth = '100%', showSelectedIcon = true, disabled = false, id, 'aria-labelledby': ariaLabelledBy, 'aria-label': ariaLabel }: {
+  value: string
+  options: SelectMenuOption[]
+  open: boolean
+  onToggle?: () => void
+  onSelect: (value: string) => void
+  menuRef?: React.Ref<HTMLDivElement>
+  menuWidth?: string
+  showSelectedIcon?: boolean
+  disabled?: boolean
+  id?: string
+  'aria-labelledby'?: string
+  'aria-label'?: string
+}) {
   const currentOption = options.find((option) => option.value === value) || options[0]
 
   return (
@@ -325,11 +383,23 @@ function SelectMenu({ value, options, open, onToggle, onSelect, menuRef, menuWid
   )
 }
 
-export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provider, providers = [], panelBounds, onClose, onSave, onDelete, onOpenBuiltinLogin }) {
+export interface AIProviderQuickEditOverlayProps {
+  open: boolean
+  mode?: 'create' | 'edit'
+  provider?: AIProviderLike | null
+  providers?: AIProviderLike[]
+  panelBounds?: { top: number; left: number; width: number; height: number } | null
+  onClose: () => void
+  onSave?: (draft: Record<string, unknown>) => void | Promise<void>
+  onDelete?: (provider: AIProviderLike) => void | Promise<void>
+  onOpenBuiltinLogin?: (url: string, title: string, context: Record<string, unknown>) => void
+}
+
+export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provider, providers = [], panelBounds, onClose, onSave, onDelete, onOpenBuiltinLogin }: AIProviderQuickEditOverlayProps) {
   const { t, lang } = useTranslation()
-  const [draft, setDraft] = useState(buildDraft())
+  const [draft, setDraft] = useState<ProviderDraft>(buildDraft())
   const [modelQuery, setModelQuery] = useState('')
-  const [modelOptions, setModelOptions] = useState(buildInitialModelOptions(getAIProviderDefinition('Compatible'), ''))
+  const [modelOptions, setModelOptions] = useState<string[]>(buildInitialModelOptions(getAIProviderDefinition('Compatible'), ''))
   const [modelRefreshError, setModelRefreshError] = useState('')
   const [modelRefreshing, setModelRefreshing] = useState(false)
   const [providerMenuOpen, setProviderMenuOpen] = useState(false)
@@ -338,18 +408,18 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
   const [validatingWebSearch, setValidatingWebSearch] = useState(false)
   const [webSearchValidationMessage, setWebSearchValidationMessage] = useState('')
   const [webSearchValidationPassed, setWebSearchValidationPassed] = useState(false)
-  const [proxyNodes, setProxyNodes] = useState([])
+  const [proxyNodes, setProxyNodes] = useState<Array<{ id?: string; name?: string; type?: string; host?: string; port?: number }>>([])
   const [proxyMenuOpen, setProxyMenuOpen] = useState(false)
-  const providerFieldRef = useRef(null)
-  const dedicatedProviderFieldRef = useRef(null)
-  const dedicatedProxyFieldRef = useRef(null)
-  const autoRefreshTimerRef = useRef(null)
+  const providerFieldRef = useRef<HTMLDivElement | null>(null)
+  const dedicatedProviderFieldRef = useRef<HTMLDivElement | null>(null)
+  const dedicatedProxyFieldRef = useRef<HTMLDivElement | null>(null)
+  const autoRefreshTimerRef = useRef<number | null>(null)
   const lastAutoRefreshKeyRef = useRef('')
-  const [builtinProviderRuntimeState, setBuiltinProviderRuntimeState] = useState('idle')
+  const [builtinProviderRuntimeState, setBuiltinProviderRuntimeState] = useState<'idle' | 'starting' | 'running'>('idle')
   const [showBuiltinProviderInitDialog, setShowBuiltinProviderInitDialog] = useState(false)
   const [builtinProviderInitLogs, setBuiltinProviderInitLogs] = useState('')
   const [builtinProviderInitTerminating, setBuiltinProviderInitTerminating] = useState(false)
-  const builtinProviderInitLogsRef = useRef(null)
+  const builtinProviderInitLogsRef = useRef<HTMLTextAreaElement | null>(null)
 
   const providerDefinition = useMemo(
     () => getAIProviderDefinition(draft.provider),
@@ -359,7 +429,7 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
   const builtinProvider = isBuiltinAIProvider(provider) || isBuiltinAIProvider(draft)
 
   const providerOptions = useMemo(
-    () => availableAIProviders.map((provider) => ({
+    () => availableAIProviders.map((provider: { value: string; label?: string }) => ({
       value: provider.value,
       label: getProviderDisplayLabel(provider, t),
     })),
@@ -402,10 +472,14 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
   const supportsPromptCacheSettings = providerDefinition.supportsPromptCacheSettings === true
   const promptCacheOptions = useMemo(() => {
     if (!supportsPromptCacheSettings) {
-      return []
+      return [] as Array<{ value: string; labelKey: string }>
     }
-    if (providerDefinition.value === 'Responses' && typeof providerDefinition.getPromptCacheStrategyOptions === 'function') {
-      return providerDefinition.getPromptCacheStrategyOptions(draft.model || '')
+    if (providerDefinition.value === 'Responses') {
+      // providers JSDoc 未声明该函数，按结构断言
+      const getPromptCacheStrategyOptions = (providerDefinition as unknown as { getPromptCacheStrategyOptions?: (model: string) => Array<{ value: string; labelKey: string }> }).getPromptCacheStrategyOptions
+      if (typeof getPromptCacheStrategyOptions === 'function') {
+        return getPromptCacheStrategyOptions(draft.model || '')
+      }
     }
     return defaultCacheOptions
   }, [draft.model, providerDefinition, supportsPromptCacheSettings])
@@ -425,8 +499,8 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
       .filter((item) => item.id !== draft.id)
       .filter((item) => canUseDedicatedWebSearchCandidate(item.provider))
       .map((item) => ({
-        value: item.id,
-        label: item.model ? `${item.name} · ${item.model}` : item.name,
+        value: item.id || '',
+        label: item.model ? `${item.name || ''} · ${item.model}` : (item.name || ''),
       })),
     [providers, draft.id],
   )
@@ -447,7 +521,7 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
   const dedicatedProxyOptions = useMemo(() => ([
     { value: '', label: t('不使用') },
     ...proxyNodes.map((node) => ({
-      value: node.id,
+      value: node.id || '',
       label: [
         node.name || t('未命名节点'),
         `${node.type === 'http' ? 'http' : 'socks5'}://${node.host}:${node.port}`,
@@ -468,21 +542,23 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
   const title = draft.name || (mode === 'create' ? t('新增供应商') : t('编辑供应商'))
   const subtitle = mode === 'create' ? t('创建供应商配置...') : t('编辑...')
 
-  const handleAPIKeyPaste = (event) => {
-    const handlerId = typeof draft?.apiKeyField?.paste?.handlerId === 'string' ? draft.apiKeyField.paste.handlerId.trim() : ''
+  const handleAPIKeyPaste = (event: React.ClipboardEvent<HTMLInputElement>) => {
+    const apiKeyField = draft.apiKeyField
+    const pasteField = apiKeyField?.paste as Record<string, unknown> | undefined
+    const handlerId = typeof pasteField?.handlerId === 'string' ? pasteField.handlerId.trim() : ''
     if (!handlerId) {
       return
     }
     event.preventDefault()
     const pastedText = event.clipboardData?.getData('text/plain') || ''
-    const resolvedApiKey = runAIProviderAPIKeyPasteHandler(pastedText, draft.apiKeyField)
+    const resolvedApiKey = runAIProviderAPIKeyPasteHandler(pastedText, apiKeyField)
     setDraft((prev) => ({
       ...prev,
       apiKey: typeof resolvedApiKey === 'string' ? resolvedApiKey : '',
     }))
   }
 
-  const refreshModelsWithCredentials = async (providerValue, baseUrlValue, apiKeyValue, selectedModel = '') => {
+  const refreshModelsWithCredentials = async (providerValue: string, baseUrlValue: string, apiKeyValue: string, selectedModel = '') => {
     const trimmedProvider = typeof providerValue === 'string' ? providerValue.trim() : ''
     const trimmedBaseUrl = typeof baseUrlValue === 'string' ? baseUrlValue.trim() : ''
     const trimmedApiKey = typeof apiKeyValue === 'string' ? apiKeyValue.trim() : ''
@@ -577,9 +653,9 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
   // 代理节点变更时实时刷新下拉列表
   useEffect(() => {
     if (!open) return undefined
-    const handler = (event) => {
-      const newProxyNodes = event?.detail
-      if (Array.isArray(newProxyNodes)) setProxyNodes(newProxyNodes)
+    const handler = (event: Event) => {
+      const newProxyNodes = (event as CustomEvent<unknown>).detail
+      if (Array.isArray(newProxyNodes)) setProxyNodes(newProxyNodes as Array<{ id?: string; name?: string; type?: string; host?: string; port?: number }>)
     }
     window.addEventListener('lumin:proxy-nodes-changed', handler)
     return () => window.removeEventListener('lumin:proxy-nodes-changed', handler)
@@ -602,9 +678,10 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
       }
     }
 
-    const unbindLog = EventsOn('builtin-provider-init-log', (payload) => {
-      const normalizedProviderId = typeof (draft.id || provider?.id) === 'string' && (draft.id || provider?.id).trim()
-        ? (draft.id || provider?.id).trim()
+    const unbindLog = EventsOn('builtin-provider-init-log', (payload: { providerId?: unknown; text?: unknown }) => {
+      const currentProviderId = draft.id || provider?.id || ''
+      const normalizedProviderId = typeof currentProviderId === 'string' && currentProviderId.trim()
+        ? currentProviderId.trim()
         : 'builtin-kimi'
       if (payload?.providerId !== normalizedProviderId) {
         return
@@ -635,14 +712,14 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
       return undefined
     }
 
-    const handlePointerDown = (event) => {
-      if (providerFieldRef.current && !providerFieldRef.current.contains(event.target)) {
+    const handlePointerDown = (event: MouseEvent) => {
+      if (providerFieldRef.current && !providerFieldRef.current.contains(event.target as Node)) {
         setProviderMenuOpen(false)
       }
-      if (dedicatedProviderFieldRef.current && !dedicatedProviderFieldRef.current.contains(event.target)) {
+      if (dedicatedProviderFieldRef.current && !dedicatedProviderFieldRef.current.contains(event.target as Node)) {
         setDedicatedProviderMenuOpen(false)
       }
-      if (dedicatedProxyFieldRef.current && !dedicatedProxyFieldRef.current.contains(event.target)) {
+      if (dedicatedProxyFieldRef.current && !dedicatedProxyFieldRef.current.contains(event.target as Node)) {
         setProxyMenuOpen(false)
       }
     }
@@ -719,7 +796,7 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
     return null
   }
 
-  const handleProviderSelect = (nextProvider) => {
+  const handleProviderSelect = (nextProvider: string) => {
     if (builtinProvider) {
       return
     }
@@ -732,7 +809,7 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
         provider: nextProviderDefinition.value,
         model: nextModel,
         cacheStrategy: prev.cacheStrategy || '5m',
-        reasoningEffort: prev.reasoningEffort || nextCapability.reasoningEffort || 'disable',
+        reasoningEffort: prev.reasoningEffort || (typeof nextCapability.reasoningEffort === 'string' ? nextCapability.reasoningEffort : '') || 'disable',
         enableReasoningEffort: nextCapability.requiredReasoningBudget || nextCapability.requiredReasoningEffort
           ? true
           : prev.enableReasoningEffort,
@@ -1234,7 +1311,7 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
             {mode === 'edit' && !builtinProvider ? (
               <button
                 type="button"
-                onClick={() => onDelete?.(provider)}
+                onClick={() => { if (provider) onDelete?.(provider) }}
                 style={{
                   width: 32,
                   height: 32,
@@ -1324,7 +1401,7 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
             <div style={{ display: 'grid', gap: 3 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.2 }}>{t('缓存策略')}</div>
               <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.max(promptCacheOptions.length, 1)}, minmax(0, 1fr))`, gap: 0, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-                {promptCacheOptions.map((option, index) => {
+                {promptCacheOptions.map((option: { value: string; labelKey: string }, index: number) => {
                   const active = selectedPromptCacheStrategy === option.value
                   return (
                     <button
@@ -1341,7 +1418,7 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
                         fontWeight: active ? 700 : 500,
                         transition: 'var(--transition)',
                       }}>
-                      {t(option.labelKey)}
+                      {t(option.labelKey as I18nKey)}
                     </button>
                   )
                 })}
@@ -1937,7 +2014,7 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
                           setDraft((prev) => ({
                             ...prev,
                             model: item,
-                            reasoningEffort: prev.reasoningEffort || capability.reasoningEffort || 'disable',
+                            reasoningEffort: prev.reasoningEffort || (typeof capability.reasoningEffort === 'string' ? capability.reasoningEffort : '') || 'disable',
                             modelMaxTokens: prev.modelMaxTokens || capability.maxTokens || DEFAULT_MAX_OUTPUT_TOKENS,
                             modelMaxThinkingTokens: prev.modelMaxThinkingTokens || capability.maxThinkingTokens || DEFAULT_MAX_THINKING_TOKENS,
                           }))
@@ -1970,7 +2047,7 @@ export default function AIProviderQuickEditOverlay({ open, mode = 'edit', provid
                         setDraft((prev) => ({
                           ...prev,
                           model: customModel,
-                          reasoningEffort: prev.reasoningEffort || capability.reasoningEffort || 'disable',
+                          reasoningEffort: prev.reasoningEffort || (typeof capability.reasoningEffort === 'string' ? capability.reasoningEffort : '') || 'disable',
                           modelMaxTokens: prev.modelMaxTokens || capability.maxTokens || DEFAULT_MAX_OUTPUT_TOKENS,
                           modelMaxThinkingTokens: prev.modelMaxThinkingTokens || capability.maxThinkingTokens || DEFAULT_MAX_THINKING_TOKENS,
                         }))

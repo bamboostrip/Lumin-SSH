@@ -2240,8 +2240,7 @@ export default function AIProviderSelector({
         open={editingState.open}
         mode={editingState.mode}
         provider={editingState.provider}
-        // AIProviderQuickEditOverlay 尚未转 TSX：.jsx 推断 providers=[] → never[]，转 TSX 后移除断言
-        providers={providerList as never[]}
+        providers={providerList}
         panelBounds={panelBounds}
         onClose={() => setEditingState({ open: false, mode: 'edit', provider: null })}
         onSave={handleSaveProvider}

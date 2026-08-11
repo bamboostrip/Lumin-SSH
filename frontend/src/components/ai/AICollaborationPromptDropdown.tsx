@@ -1,24 +1,32 @@
-import { Check, Pencil, Plus, X } from 'lucide-react'
+import { Check, Pencil, Plus, X, type LucideIcon } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from '../../i18n.js'
 
-function normalizePresets(values) {
+/** 常用要求预设 */
+interface CollabPreset {
+  id: string
+  title: string
+  text: string
+}
+
+function normalizePresets(values: unknown): CollabPreset[] {
   if (!Array.isArray(values)) {
     return []
   }
-  const seen = new Set()
-  const normalized = []
+  const seen = new Set<string>()
+  const normalized: CollabPreset[] = []
   values.forEach((value, index) => {
-    const text = typeof value?.text === 'string' ? value.text.replace(/\r\n/g, '\n').trim() : ''
+    const raw = value as Record<string, unknown> | null | undefined
+    const text = typeof raw?.text === 'string' ? raw.text.replace(/\r\n/g, '\n').trim() : ''
     if (!text) {
       return
     }
-    const rawId = typeof value?.id === 'string' ? value.id.trim() : ''
+    const rawId = typeof raw?.id === 'string' ? raw.id.trim() : ''
     const id = rawId || `collab-preset-${index + 1}`
     if (seen.has(id)) {
       return
     }
-    const rawTitle = typeof value?.title === 'string' ? value.title.trim() : ''
+    const rawTitle = typeof raw?.title === 'string' ? raw.title.trim() : ''
     seen.add(id)
     normalized.push({ id, title: rawTitle || text, text })
   })
@@ -29,7 +37,14 @@ function createPresetId() {
   return `collab-preset-${Date.now()}-${Math.floor(Math.random() * 1000)}`
 }
 
-function IconButton({ title, onClick, children, danger = false }) {
+interface IconButtonProps {
+  title: string
+  onClick?: () => void
+  children: React.ReactNode
+  danger?: boolean
+}
+
+function IconButton({ title, onClick, children, danger = false }: IconButtonProps) {
   return (
     <button
       type="button"
@@ -59,6 +74,19 @@ function IconButton({ title, onClick, children, danger = false }) {
   )
 }
 
+export interface AICollaborationPromptDropdownProps {
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  extraPrompt?: string
+  onExtraPromptChange?: (value: string) => void
+  presets?: unknown
+  onPresetsChange?: (presets: unknown) => void
+  anchorRef?: React.RefObject<HTMLElement | null>
+  disabled?: boolean
+  scopeIsTask?: boolean
+  dismissSignal?: number
+}
+
 export default function AICollaborationPromptDropdown({
   open = false,
   onOpenChange,
@@ -70,11 +98,11 @@ export default function AICollaborationPromptDropdown({
   disabled = false,
   scopeIsTask = false,
   dismissSignal = 0,
-}) {
+}: AICollaborationPromptDropdownProps) {
   const { t } = useTranslation()
-  const panelRef = useRef(null)
-  const [triggerRect, setTriggerRect] = useState(null)
-  const [panelBounds, setPanelBounds] = useState(null)
+  const panelRef = useRef<HTMLDivElement | null>(null)
+  const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null)
+  const [panelBounds, setPanelBounds] = useState<{ left: number; width: number } | null>(null)
   const [editingPresetId, setEditingPresetId] = useState('')
   const [draftTitle, setDraftTitle] = useState('')
   const [draftText, setDraftText] = useState('')
@@ -104,17 +132,17 @@ export default function AICollaborationPromptDropdown({
     }
     measure()
     const handleResize = () => measure()
-    const handlePointerDown = (event) => {
+    const handlePointerDown = (event: PointerEvent) => {
       const anchorEl = anchorRef?.current
-      if (panelRef.current?.contains(event.target)) {
+      if (panelRef.current?.contains(event.target as Node)) {
         return
       }
-      if (anchorEl?.contains(event.target)) {
+      if (anchorEl?.contains(event.target as Node)) {
         return
       }
       onOpenChange?.(false)
     }
-    const handleKeyDown = (event) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         onOpenChange?.(false)
       }
@@ -143,7 +171,7 @@ export default function AICollaborationPromptDropdown({
     }
   }, [open])
 
-  const persistPresets = (nextPresets) => {
+  const persistPresets = (nextPresets: unknown) => {
     onPresetsChange?.(normalizePresets(nextPresets))
   }
 
@@ -153,7 +181,7 @@ export default function AICollaborationPromptDropdown({
     setDraftText('')
   }
 
-  const handleStartEdit = (preset) => {
+  const handleStartEdit = (preset: CollabPreset) => {
     setEditingPresetId(preset.id)
     setDraftTitle(preset.title)
     setDraftText(preset.text)
@@ -181,14 +209,14 @@ export default function AICollaborationPromptDropdown({
     handleCancelEdit()
   }
 
-  const handleDeletePreset = (presetId) => {
+  const handleDeletePreset = (presetId: string) => {
     persistPresets(normalizedPresets.filter((preset) => preset.id !== presetId))
     if (editingPresetId === presetId) {
       handleCancelEdit()
     }
   }
 
-  const handleApplyPreset = (preset) => {
+  const handleApplyPreset = (preset: CollabPreset) => {
     const currentValue = typeof extraPrompt === 'string' ? extraPrompt : ''
     const nextValue = currentValue.trim()
       ? `${currentValue.replace(/\s+$/u, '')}\n${preset.text}`

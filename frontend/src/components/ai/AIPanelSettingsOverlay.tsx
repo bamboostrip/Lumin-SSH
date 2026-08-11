@@ -1,4 +1,4 @@
-import { ArrowRightLeft, FolderOpen, Loader2, RotateCcw, X } from 'lucide-react'
+import { ArrowRightLeft, FolderOpen, Loader2, RotateCcw, X, type LucideIcon } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from '../../i18n.js'
 import MCPAccessView from './MCPAccessView.jsx'
@@ -8,11 +8,16 @@ import AIConversationBackupSettings from './AIConversationBackupSettings.jsx'
 import Tiptop from '../Tiptop.jsx'
 import { handleInputDragSelectAll } from './inputDragSelect.js'
 
-function formatTokenCountInMillions(value) {
+function formatTokenCountInMillions(value: number) {
   return `${(value / 1000000).toFixed(6)}M`
 }
 
-function PreviewPill({ label, primary = false }) {
+interface PreviewPillProps {
+  label: string
+  primary?: boolean
+}
+
+function PreviewPill({ label, primary = false }: PreviewPillProps) {
   return (
     <div
       style={{
@@ -36,7 +41,21 @@ function PreviewPill({ label, primary = false }) {
   )
 }
 
-function PositionSelectorCard({ title, description, items, onToggle, toggleLabel }) {
+interface PositionItem {
+  key: string
+  label: string
+  primary?: boolean
+}
+
+interface PositionSelectorCardProps {
+  title: string
+  description: string
+  items: PositionItem[]
+  onToggle: () => void
+  toggleLabel: string
+}
+
+function PositionSelectorCard({ title, description, items, onToggle, toggleLabel }: PositionSelectorCardProps) {
   return (
     <div style={{ padding: 14, borderRadius: 12, background: 'var(--surface-base)', border: '1px solid var(--border)', display: 'grid', gap: 12 }}>
       <div style={{ display: 'grid', gap: 4 }}>
@@ -76,7 +95,12 @@ function PositionSelectorCard({ title, description, items, onToggle, toggleLabel
   )
 }
 
-function ToggleSwitchControl({ checked, onChange }) {
+interface ToggleSwitchControlProps {
+  checked: boolean
+  onChange: () => void
+}
+
+function ToggleSwitchControl({ checked, onChange }: ToggleSwitchControlProps) {
   return (
     <button
       type="button"
@@ -107,6 +131,61 @@ function ToggleSwitchControl({ checked, onChange }) {
       />
     </button>
   )
+}
+
+/** 全局 AI 设置（宽松结构） */
+interface GlobalAISettingsLike {
+  approvalButtonOrder?: string
+  commandActionButtonOrder?: string
+  messageActionBarAtBottom?: boolean
+  messageNavEnabled?: boolean
+  mcpEnabled?: boolean
+  mcpAllowBrowserCalls?: boolean
+  continueAfterToolRejection?: boolean
+  proxyNodes?: Array<{ id?: string; name?: string; type?: string; host?: string; port?: string | number }>
+  aiRequestProxyId?: string
+  toolResultTokenThreshold?: number
+  slashCommands?: unknown
+  [key: string]: unknown
+}
+
+export interface AIPanelSettingsOverlayProps {
+  show: boolean
+  onClose: () => void
+  activeTab: string
+  onChangeTab: (tab: string) => void
+  mcpInfo: { transport?: string; url?: string; tools?: unknown[] }
+  configText: string
+  configRows: number
+  globalAISettings: GlobalAISettingsLike
+  onSaveGlobalAISettings?: (settings: Record<string, unknown>) => Promise<void> | void
+  aiTerminalIsolation: boolean
+  onToggleAiTerminalIsolation: () => void
+  confirmDelete: boolean
+  onToggleConfirmDelete: () => void
+  activeConversationId: string
+  conversationUpdatedAt: number
+  backupRequestInFlight: boolean
+  onRestoreConversationBackup: (snapshot: unknown) => Promise<unknown> | void
+  autoBackupEnabled: boolean
+  onToggleAutoBackup: () => void
+  soundEnabled?: boolean
+  soundVolume?: number
+  terminalOutputLineLimit: number
+  onTerminalOutputLineLimitChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+  terminalOutputCharacterLimit: number
+  onTerminalOutputCharacterLimitChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+  mcpClientServers?: unknown[]
+  mcpClientGlobalConfigPath?: string
+  mcpClientGlobalConfigText?: string
+  onSaveMCPGlobalServer?: (name: string, configText: string) => Promise<unknown>
+  onReloadMCPGlobalServers?: () => Promise<unknown>
+  onDeleteMCPGlobalServer?: (name: string) => Promise<unknown>
+  onRestartMCPClientServer?: (name: string, source: string) => Promise<unknown>
+  onToggleMCPClientServer?: (name: string, source: string, enabled: boolean) => Promise<unknown>
+  onToggleMCPClientServerDisabledForPrompts?: (name: string, source: string, disabled: boolean) => Promise<unknown>
+  onUpdateMCPClientServerTimeout?: (name: string, source: string, timeout: number) => Promise<unknown>
+  onMigratingChange?: (migrating: boolean) => void
 }
 
 export default function AIPanelSettingsOverlay({
@@ -146,11 +225,11 @@ export default function AIPanelSettingsOverlay({
   onToggleMCPClientServerDisabledForPrompts,
   onUpdateMCPClientServerTimeout,
   onMigratingChange,
-}) {
+}: AIPanelSettingsOverlayProps) {
   const { t } = useTranslation()
-  const overlayRef = useRef(null)
-  const tabListRef = useRef(null)
-  const [overlayBounds, setOverlayBounds] = useState(null)
+  const overlayRef = useRef<HTMLDivElement | null>(null)
+  const tabListRef = useRef<HTMLDivElement | null>(null)
+  const [overlayBounds, setOverlayBounds] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
 
   // AI 对话存储目录设置
   const [tasksDir, setTasksDir] = useState('')
@@ -219,7 +298,7 @@ export default function AIPanelSettingsOverlay({
       return undefined
     }
 
-    const firstTabKey = tabListRef.current?.querySelector('[data-ai-settings-tab-key]')?.dataset?.aiSettingsTabKey || ''
+    const firstTabKey = (tabListRef.current?.querySelector('[data-ai-settings-tab-key]') as HTMLElement | null | undefined)?.dataset?.aiSettingsTabKey || ''
     if (firstTabKey) {
       onChangeTab(firstTabKey)
     }
@@ -262,7 +341,7 @@ export default function AIPanelSettingsOverlay({
 
     const rootEl = overlayRef.current?.closest('[data-ai-panel-root="true"]')
     const resizeObserver = rootEl ? new ResizeObserver(updateOverlayBounds) : null
-    if (resizeObserver) {
+    if (resizeObserver && rootEl) {
       resizeObserver.observe(rootEl)
     }
 
@@ -485,7 +564,7 @@ export default function AIPanelSettingsOverlay({
           <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
             {activeTab === 'mcp' && (
               <MCPAccessView
-                mcpInfo={mcpInfo}
+                mcpInfo={mcpInfo as Parameters<typeof MCPAccessView>[0]['mcpInfo']}
                 configText={configText}
                 configRows={configRows}
                 title={t('接入方式')}
@@ -499,7 +578,7 @@ export default function AIPanelSettingsOverlay({
             )}
             {activeTab === 'mcp-servers' ? (
               <MCPServersView
-                servers={mcpClientServers}
+                servers={mcpClientServers as Parameters<typeof MCPServersView>[0]['servers']}
                 globalConfigPath={mcpClientGlobalConfigPath}
                 globalConfigText={mcpClientGlobalConfigText}
                 onSaveServer={onSaveMCPGlobalServer}
@@ -713,7 +792,7 @@ export default function AIPanelSettingsOverlay({
             {activeTab === 'slash-commands' ? (
               <AISlashCommandsSettings
                 slashCommands={globalAISettings?.slashCommands}
-                onSaveGlobalAISettings={onSaveGlobalAISettings}
+                onSaveGlobalAISettings={onSaveGlobalAISettings as Parameters<typeof AISlashCommandsSettings>[0]['onSaveGlobalAISettings']}
               />
             ) : null}
             {activeTab === 'appearance' ? (

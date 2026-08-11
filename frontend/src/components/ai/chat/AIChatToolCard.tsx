@@ -1,18 +1,18 @@
 import { Check, ChevronDown, FileCode2, FileText, RotateCcw, SquarePen, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import Tiptop from '../../Tiptop.jsx'
-import { useTranslation } from '../../../i18n.js'
+import { useTranslation, type I18nKey } from '../../../i18n.js'
 import AIChatMarkdown from './AIChatMarkdown.jsx'
 
-function normalizeAIMessageStatus(value) {
+function normalizeAIMessageStatus(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-function normalizeCompactDiffText(value) {
+function normalizeCompactDiffText(value: unknown) {
   return typeof value === 'string' ? value.replace(/\r\n/g, '\n').replace(/\r/g, '\n') : ''
 }
 
-function splitCompactDiffLines(value) {
+function splitCompactDiffLines(value: unknown) {
   const normalized = normalizeCompactDiffText(value)
   if (normalized === '') {
     return []
@@ -20,7 +20,21 @@ function splitCompactDiffLines(value) {
   return normalized.split('\n')
 }
 
-function buildCompactAlignedLinePairs(leftLines, rightLines) {
+/** 对齐后的左右行对 */
+interface CompactAlignedPair {
+  left: string | null
+  right: string | null
+  equal: boolean
+}
+
+/** 紧凑差异预览行 */
+type CompactDiffRow =
+  | { type: 'file'; text: string; key: string }
+  | { type: 'meta'; text: string; key: string; oldLineNumber: null; newLineNumber: null }
+  | { type: 'add' | 'remove' | 'context'; text: string; key: string; oldLineNumber: number | null; newLineNumber: number | null }
+  | { type: 'hidden'; count: number; key: string }
+
+function buildCompactAlignedLinePairs(leftLines: string[], rightLines: string[]): CompactAlignedPair[] {
   const maxProduct = 32000
   if (leftLines.length * rightLines.length > maxProduct) {
     const prefixPairs = []
@@ -117,8 +131,8 @@ function buildCompactAlignedLinePairs(leftLines, rightLines) {
   return alignedPairs
 }
 
-function buildCompactVisibleRanges(rows, contextLines = 4) {
-  const ranges = []
+function buildCompactVisibleRanges(rows: Array<{ equal: boolean }>, contextLines = 4): Array<{ start: number; end: number }> {
+  const ranges: Array<{ start: number; end: number }> = []
   rows.forEach((row, index) => {
     if (row.equal) {
       return
@@ -135,12 +149,13 @@ function buildCompactVisibleRanges(rows, contextLines = 4) {
   return ranges
 }
 
-function buildCompactDiffRowsFromBlocks(blocks, t) {
-  const rows = []
+function buildCompactDiffRowsFromBlocks(blocks: unknown, t: (key: I18nKey, vars?: Record<string, unknown>) => string): CompactDiffRow[] {
+  const rows: CompactDiffRow[] = []
   const normalizedBlocks = Array.isArray(blocks) ? blocks.filter((block) => block && typeof block === 'object') : []
   normalizedBlocks.forEach((block, blockIndex) => {
-    const beforeLines = splitCompactDiffLines(block.before)
-    const afterLines = splitCompactDiffLines(block.after)
+    const rawBlock = block as Record<string, unknown>
+    const beforeLines = splitCompactDiffLines(rawBlock.before)
+    const afterLines = splitCompactDiffLines(rawBlock.after)
     const alignedPairs = buildCompactAlignedLinePairs(beforeLines, afterLines)
     let oldLineNumber = 1
     let newLineNumber = 1
@@ -164,13 +179,13 @@ function buildCompactDiffRowsFromBlocks(blocks, t) {
     if (visibleRanges.length === 0) {
       return
     }
-    const labelKey = typeof block.label === 'string' && block.label.trim() ? block.label.trim() : '文件 #{count}'
-    const labelParams = block?.labelParams && typeof block.labelParams === 'object'
-      ? block.labelParams
+    const labelKey = typeof rawBlock.label === 'string' && rawBlock.label.trim() ? rawBlock.label.trim() : '文件 #{count}'
+    const labelParams = rawBlock?.labelParams && typeof rawBlock.labelParams === 'object'
+      ? rawBlock.labelParams as Record<string, unknown>
       : { count: blockIndex + 1 }
     rows.push({
       type: 'file',
-      text: t(labelKey, labelParams),
+      text: t(labelKey as I18nKey, labelParams),
       key: `file-${blockIndex}`,
     })
     let previousEnd = -1
@@ -226,17 +241,17 @@ function buildCompactDiffRowsFromBlocks(blocks, t) {
   return rows
 }
 
-function buildCompactDiffRowsFromRawDiff(rawDiff) {
+function buildCompactDiffRowsFromRawDiff(rawDiff: string): CompactDiffRow[] {
   const lines = normalizeCompactDiffText(rawDiff).split('\n')
   if (lines.length > 0 && lines[lines.length - 1] === '') {
     lines.pop()
   }
-  return lines.map((text, index) => {
+  return lines.map((text, index): CompactDiffRow => {
     if (text.startsWith('diff --git')) {
       return { type: 'file', text, key: `raw-file-${index}` }
     }
     if (text.startsWith('@@') || text.startsWith('index ') || text.startsWith('---') || text.startsWith('+++')) {
-      return { type: 'meta', text, key: `raw-meta-${index}` }
+      return { type: 'meta', oldLineNumber: null, newLineNumber: null, text, key: `raw-meta-${index}` }
     }
     if (text.startsWith('+') && !text.startsWith('+++')) {
       return { type: 'add', oldLineNumber: null, newLineNumber: null, text: text.slice(1), key: `raw-add-${index}` }
@@ -254,7 +269,7 @@ function buildCompactDiffRowsFromRawDiff(rawDiff) {
   })
 }
 
-function buildCompactDiffRows(rawDiff, reviewBlocks, t) {
+function buildCompactDiffRows(rawDiff: string, reviewBlocks: unknown, t: (key: I18nKey, vars?: Record<string, unknown>) => string): CompactDiffRow[] {
   const blockRows = buildCompactDiffRowsFromBlocks(reviewBlocks, t)
   if (blockRows.length > 0) {
     return blockRows
@@ -262,7 +277,7 @@ function buildCompactDiffRows(rawDiff, reviewBlocks, t) {
   return buildCompactDiffRowsFromRawDiff(rawDiff)
 }
 
-function resolveCompactDiffRowPalette(row) {
+function resolveCompactDiffRowPalette(row: CompactDiffRow) {
   switch (row?.type) {
     case 'file':
       return { color: 'var(--text-primary)', background: 'rgba(var(--accent-rgb), 0.08)' }
@@ -277,7 +292,15 @@ function resolveCompactDiffRowPalette(row) {
   }
 }
 
-function CompactDiffPreview({ reviewBlocks = [], rawDiff = '', loading = false, t, lang }) {
+interface CompactDiffPreviewProps {
+  reviewBlocks?: unknown
+  rawDiff?: string
+  loading?: boolean
+  t: (key: I18nKey, vars?: Record<string, unknown>) => string
+  lang: string
+}
+
+function CompactDiffPreview({ reviewBlocks = [], rawDiff = '', loading = false, t, lang }: CompactDiffPreviewProps) {
   const normalizedRawDiff = typeof rawDiff === 'string' ? rawDiff.trim() : ''
   const rows = useMemo(() => buildCompactDiffRows(normalizedRawDiff, reviewBlocks, t), [normalizedRawDiff, reviewBlocks, t, lang])
   if (loading) {
@@ -384,13 +407,31 @@ function CompactDiffPreview({ reviewBlocks = [], rawDiff = '', loading = false, 
   )
 }
 
-export default function AIChatToolCard({ restoreArtifactPath = '', copyContent = '', actionLabel, title, summary, code, result = '', status, remainingFileEdits = 0, extra = {}, isLast = false, hasSubsequentAssistantMessage = false, onPreviewRestore, onPreviewDiffFetch, onApplyRestore }) {
+export interface AIChatToolCardProps {
+  restoreArtifactPath?: string
+  copyContent?: string
+  actionLabel?: string
+  title?: string
+  summary?: string
+  code?: string
+  result?: string
+  status?: string
+  remainingFileEdits?: number
+  extra?: Record<string, unknown>
+  isLast?: boolean
+  hasSubsequentAssistantMessage?: boolean
+  onPreviewRestore?: (path: string, targetTerminalId?: string) => void
+  onPreviewDiffFetch?: (path: string, targetTerminalId?: string) => Promise<unknown>
+  onApplyRestore?: (path: string, targetTerminalId?: string) => boolean | Promise<boolean | null | undefined>
+}
+
+export default function AIChatToolCard({ restoreArtifactPath = '', copyContent = '', actionLabel, title, summary, code, result = '', status, remainingFileEdits = 0, extra = {}, isLast = false, hasSubsequentAssistantMessage = false, onPreviewRestore, onPreviewDiffFetch, onApplyRestore }: AIChatToolCardProps) {
   const { t, lang } = useTranslation()
   const [isAutoExpanded, setIsAutoExpanded] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
   const [restored, setRestored] = useState(false)
-  const [inlineDiffReview, setInlineDiffReview] = useState(null)
+  const [inlineDiffReview, setInlineDiffReview] = useState<Record<string, unknown> | null>(null)
   const [inlineDiffLoading, setInlineDiffLoading] = useState(false)
 
   useEffect(() => {
@@ -430,7 +471,7 @@ export default function AIChatToolCard({ restoreArtifactPath = '', copyContent =
         if (cancelled) {
           return
         }
-        setInlineDiffReview(review && typeof review === 'object' ? review : null)
+        setInlineDiffReview(review && typeof review === 'object' ? review as Record<string, unknown> : null)
       })
       .catch(() => {
         if (cancelled) {
@@ -517,7 +558,7 @@ export default function AIChatToolCard({ restoreArtifactPath = '', copyContent =
     }
   }
 
-  const handleCopyFullContent = async (event) => {
+  const handleCopyFullContent = async (event: React.MouseEvent) => {
     event.stopPropagation()
     if (!normalizedCopyContent) {
       return
@@ -534,7 +575,7 @@ export default function AIChatToolCard({ restoreArtifactPath = '', copyContent =
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 12 }}>
         <div style={{ minWidth: 0, display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <FileCode2 size={14} color="var(--text-secondary)" />
-          <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{t(title)}</span>
+          <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{t(title as I18nKey)}</span>
           {showCopyCharacterCount ? (
             <Tiptop text={copied ? t('已复制') : t('复制完整 diff/内容')} style={{ display: 'inline-flex' }}>
               <button
@@ -603,7 +644,7 @@ export default function AIChatToolCard({ restoreArtifactPath = '', copyContent =
             <div style={{ padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4, border: statusPalette.border, background: statusPalette.background, color: statusPalette.color }}>
               {statusPalette.tone === 'success' ? <Check size={11} color="currentColor" strokeWidth={2.5} /> : null}
               {statusPalette.tone === 'danger' ? <X size={11} color="currentColor" strokeWidth={2.5} /> : null}
-              <span>{t(normalizedStatus)}</span>
+              <span>{t(normalizedStatus as I18nKey)}</span>
             </div>
           ) : null}
           {resultTokenEstimateDisplay ? (
@@ -681,7 +722,7 @@ export default function AIChatToolCard({ restoreArtifactPath = '', copyContent =
             {result ? (
               <div style={{ display: 'grid', gap: 6 }}>
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{t('result')}</div>
-                <pre style={{ margin: 0, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border-subtle)', background: 'var(--surface-base)', color: 'var(--text-primary)', fontSize: 12, lineHeight: 1.65, fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 320, overflowY: 'auto', overflowX: 'auto', overscrollBehavior: 'contain' }}>{t(result)}</pre>
+                <pre style={{ margin: 0, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border-subtle)', background: 'var(--surface-base)', color: 'var(--text-primary)', fontSize: 12, lineHeight: 1.65, fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 320, overflowY: 'auto', overflowX: 'auto', overscrollBehavior: 'contain' }}>{t(result as I18nKey)}</pre>
               </div>
             ) : null}
           </div>

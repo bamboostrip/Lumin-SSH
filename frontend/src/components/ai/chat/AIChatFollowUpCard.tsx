@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight, MessageCircleQuestionMark } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { type Components } from 'react-markdown'
 import rehypeSanitize from 'rehype-sanitize'
 import remarkGfm from 'remark-gfm'
 import { useTranslation } from '../../../i18n.js'
@@ -9,7 +9,34 @@ import AIChatMarkdown from './AIChatMarkdown.jsx'
 const FREEZE_AFTER_SUBMIT_MS = 1000
 const FREEZE_AFTER_MULTI_NEXT_MS = 500
 
-const suggestionMarkdownComponents = {
+/** 追问选项 */
+interface FollowUpOption {
+  id: string
+  answer: string
+  mode: string
+  disabled: boolean
+  recommended?: boolean
+}
+
+/** 归一化后的追问问题 */
+interface FollowUpQuestion {
+  id: string
+  text: string
+  type: 'single' | 'multiple' | 'free_text'
+  options: FollowUpOption[]
+}
+
+/** 追问提交的答案结构 */
+interface FollowUpAnswerPayload {
+  questionId: string
+  question: string
+  type: string
+  textAnswer?: string
+  selectedOptionIds?: string[]
+  selectedAnswers?: string[]
+}
+
+const suggestionMarkdownComponents: Components = {
   p: ({ children }) => <span>{children}</span>,
   ul: ({ children }) => <span style={{ display: 'grid', gap: 4, paddingLeft: 18 }}>{children}</span>,
   ol: ({ children }) => <span style={{ display: 'grid', gap: 4, paddingLeft: 18 }}>{children}</span>,
@@ -58,7 +85,12 @@ const suggestionMarkdownComponents = {
   h3: ({ children }) => <span style={{ display: 'block', fontSize: 14, fontWeight: 700, lineHeight: 1.5 }}>{children}</span>,
 }
 
-function FollowUpSuggestionMarkdown({ text, inline = false }) {
+interface FollowUpSuggestionMarkdownProps {
+  text: string
+  inline?: boolean
+}
+
+function FollowUpSuggestionMarkdown({ text, inline = false }: FollowUpSuggestionMarkdownProps) {
   return (
     <span style={{ display: inline ? 'inline' : 'block', width: inline ? 'auto' : '100%', lineHeight: 1.6, wordBreak: 'break-word' }}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={suggestionMarkdownComponents}>
@@ -68,7 +100,7 @@ function FollowUpSuggestionMarkdown({ text, inline = false }) {
   )
 }
 
-function normalizeLegacySuggestions(question, suggestions) {
+function normalizeLegacySuggestions(question: unknown, suggestions: unknown): FollowUpQuestion[] {
   const suggestionList = Array.isArray(suggestions) ? suggestions.filter((item) => typeof item === 'string' && item.trim()) : []
   if (suggestionList.length === 0) {
     return []
@@ -79,14 +111,14 @@ function normalizeLegacySuggestions(question, suggestions) {
     type: 'single',
     options: suggestionList.map((item, index) => ({
       id: `question-1-option-${index + 1}`,
-      answer: item.trim(),
+      answer: (item as string).trim(),
       mode: '',
       disabled: false,
     })),
   }]
 }
 
-function normalizeFollowUpQuestionType(value) {
+function normalizeFollowUpQuestionType(value: unknown): 'single' | 'multiple' | 'free_text' {
   const normalizedValue = String(value || '').trim().toLowerCase()
   if (normalizedValue === 'multiple' || normalizedValue === 'multi_select') {
     return 'multiple'
@@ -97,9 +129,9 @@ function normalizeFollowUpQuestionType(value) {
   return 'single'
 }
 
-function normalizeFollowUpQuestions(question, questions, suggestions) {
+function normalizeFollowUpQuestions(question: unknown, questions: unknown, suggestions: unknown): FollowUpQuestion[] {
   if (Array.isArray(questions) && questions.length > 0) {
-    return questions
+    return (questions as Array<Record<string, unknown>>)
       .map((item, questionIndex) => {
         const id = typeof item?.id === 'string' && item.id.trim() ? item.id.trim() : `question-${questionIndex + 1}`
         const text = typeof item?.text === 'string' && item.text.trim()
@@ -108,9 +140,9 @@ function normalizeFollowUpQuestions(question, questions, suggestions) {
             ? question.trim()
             : `Question ${questionIndex + 1}`
         const type = normalizeFollowUpQuestionType(item?.type)
-        const options = Array.isArray(item?.options)
-          ? item.options
-            .map((option, optionIndex) => {
+        const options: FollowUpOption[] = Array.isArray(item?.options)
+          ? (item.options as Array<Record<string, unknown>>)
+            .map((option, optionIndex): FollowUpOption | null => {
               const answer = typeof option?.answer === 'string' ? option.answer.trim() : ''
               if (!answer) {
                 return null
@@ -123,19 +155,19 @@ function normalizeFollowUpQuestions(question, questions, suggestions) {
                 recommended: option?.recommended === true,
               }
             })
-            .filter(Boolean)
+            .filter((option): option is FollowUpOption => option !== null)
           : []
         if (type !== 'free_text' && options.length === 0) {
           return null
         }
         return { id, text, type, options }
       })
-      .filter(Boolean)
+      .filter((item): item is FollowUpQuestion => item !== null)
   }
   return normalizeLegacySuggestions(question, suggestions)
 }
 
-function buildFollowUpSessionIdentity(requestId, questions) {
+function buildFollowUpSessionIdentity(requestId: unknown, questions: FollowUpQuestion[]) {
   const normalizedRequestId = typeof requestId === 'string' ? requestId.trim() : ''
   const normalizedQuestions = Array.isArray(questions)
     ? questions.map((item) => ({
@@ -159,7 +191,7 @@ function buildFollowUpSessionIdentity(requestId, questions) {
   })
 }
 
-function buildFollowUpReadableText(questions, answers, textAnswers) {
+function buildFollowUpReadableText(questions: FollowUpQuestion[], answers: Record<string, string[]>, textAnswers: Record<string, string>) {
   return questions
     .map((question) => {
       if (question.type === 'free_text') {
@@ -174,8 +206,8 @@ function buildFollowUpReadableText(questions, answers, textAnswers) {
     .join('\n')
 }
 
-function buildFollowUpResponse(questions, answers, textAnswers) {
-  const formattedAnswers = questions.map((question) => {
+function buildFollowUpResponse(questions: FollowUpQuestion[], answers: Record<string, string[]>, textAnswers: Record<string, string>) {
+  const formattedAnswers: FollowUpAnswerPayload[] = questions.map((question) => {
     if (question.type === 'free_text') {
       return {
         questionId: question.id,
@@ -204,7 +236,7 @@ function buildFollowUpResponse(questions, answers, textAnswers) {
   }
 }
 
-function buildOptionButtonStyle(selected, disabled) {
+function buildOptionButtonStyle(selected: boolean, disabled: boolean): React.CSSProperties {
   return {
     width: '100%',
     minHeight: 44,
@@ -224,7 +256,12 @@ function buildOptionButtonStyle(selected, disabled) {
   }
 }
 
-function OptionIndicator({ type, checked }) {
+interface OptionIndicatorProps {
+  type: string
+  checked: boolean
+}
+
+function OptionIndicator({ type, checked }: OptionIndicatorProps) {
   if (type === 'multiple') {
     return (
       <span
@@ -280,7 +317,15 @@ function OptionIndicator({ type, checked }) {
   )
 }
 
-export default function AIChatFollowUpCard({ question, questions, suggestions, requestId, onSelectSuggestion }) {
+export interface AIChatFollowUpCardProps {
+  question?: unknown
+  questions?: unknown
+  suggestions?: unknown
+  requestId?: unknown
+  onSelectSuggestion?: (payload: unknown) => unknown
+}
+
+export default function AIChatFollowUpCard({ question, questions, suggestions, requestId, onSelectSuggestion }: AIChatFollowUpCardProps) {
   const { t } = useTranslation()
   const normalizedQuestions = useMemo(
     () => normalizeFollowUpQuestions(question, questions, suggestions),
@@ -291,15 +336,15 @@ export default function AIChatFollowUpCard({ question, questions, suggestions, r
     [normalizedQuestions, requestId],
   )
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
-  const [answers, setAnswers] = useState({})
-  const [textAnswers, setTextAnswers] = useState({})
+  const [answers, setAnswers] = useState<Record<string, string[]>>({})
+  const [textAnswers, setTextAnswers] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const [isFrozen, setIsFrozen] = useState(false)
-  const [transitionDirection, setTransitionDirection] = useState('next')
+  const [transitionDirection, setTransitionDirection] = useState<'next' | 'prev'>('next')
   const [transitionTick, setTransitionTick] = useState(0)
   const currentQuestionIndexRef = useRef(0)
-  const answersRef = useRef({})
-  const textAnswersRef = useRef({})
+  const answersRef = useRef<Record<string, string[]>>({})
+  const textAnswersRef = useRef<Record<string, string>>({})
   const submittingRef = useRef(false)
   const freezeTimeoutRef = useRef(0)
 
@@ -310,7 +355,7 @@ export default function AIChatFollowUpCard({ question, questions, suggestions, r
     }
   }, [])
 
-  const startFreeze = useCallback((durationMs) => {
+  const startFreeze = useCallback((durationMs: number) => {
     clearFreezeTimeout()
     setIsFrozen(true)
     freezeTimeoutRef.current = window.setTimeout(() => {
@@ -348,7 +393,7 @@ export default function AIChatFollowUpCard({ question, questions, suggestions, r
   const canGoNext = currentQuestion?.type === 'free_text' ? true : selectedIds.length > 0
   const isLastQuestion = currentQuestionIndex === totalQuestions - 1
 
-  const submitResponse = useCallback(async (nextAnswers, nextTextAnswers = textAnswersRef.current || {}) => {
+  const submitResponse = useCallback(async (nextAnswers: Record<string, string[]>, nextTextAnswers: Record<string, string> = textAnswersRef.current || {}) => {
     if (!requestId || typeof onSelectSuggestion !== 'function' || submittingRef.current || isFrozen) {
       return false
     }
@@ -386,7 +431,7 @@ export default function AIChatFollowUpCard({ question, questions, suggestions, r
     }
   }, [isFrozen, normalizedQuestions, onSelectSuggestion, requestId, startFreeze])
 
-  const handleSingleSelect = useCallback(async (questionItem, optionId) => {
+  const handleSingleSelect = useCallback(async (questionItem: FollowUpQuestion, optionId: string) => {
     if (!questionItem || submitting || isFrozen) {
       return
     }
@@ -409,7 +454,7 @@ export default function AIChatFollowUpCard({ question, questions, suggestions, r
     })
   }, [isFrozen, normalizedQuestions.length, submitResponse, submitting])
 
-  const handleMultipleToggle = useCallback((questionItem, optionId) => {
+  const handleMultipleToggle = useCallback((questionItem: FollowUpQuestion, optionId: string) => {
     if (!questionItem || submitting || isFrozen) {
       return
     }
@@ -425,7 +470,7 @@ export default function AIChatFollowUpCard({ question, questions, suggestions, r
     })
   }, [isFrozen, submitting])
 
-  const handleFreeTextChange = useCallback((questionItem, value) => {
+  const handleFreeTextChange = useCallback((questionItem: FollowUpQuestion, value: string) => {
     if (!questionItem || submitting || isFrozen) {
       return
     }

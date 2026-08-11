@@ -1,10 +1,32 @@
 import { useCallback, useMemo, useRef } from 'react'
+import type { I18nKey } from '../../i18n.js'
 
-function normalizeText(value) {
+/** 字符级差异片段 */
+interface DiffSegment {
+  kind: 'equal' | 'remove' | 'add'
+  text: string
+}
+
+/** 对齐后的左右行对 */
+interface AlignedLinePair {
+  left: string | null
+  right: string | null
+  equal: boolean
+}
+
+/** 差异编辑器行 */
+interface DiffEditorRow {
+  lineNumber: number | null
+  text: string | null
+  segments: DiffSegment[]
+  rowKind: string
+}
+
+function normalizeText(value: unknown) {
   return String(value || '').replace(/\r\n/g, '\n')
 }
 
-function splitLines(value) {
+function splitLines(value: unknown) {
   const normalized = normalizeText(value)
   if (normalized === '') {
     return ['']
@@ -12,11 +34,11 @@ function splitLines(value) {
   return normalized.split('\n')
 }
 
-function groupSegments(segments) {
+function groupSegments(segments: DiffSegment[]): DiffSegment[] {
   if (!Array.isArray(segments) || segments.length === 0) {
     return []
   }
-  const grouped = []
+  const grouped: DiffSegment[] = []
   for (const segment of segments) {
     const text = typeof segment?.text === 'string' ? segment.text : ''
     const kind = segment?.kind || 'equal'
@@ -33,7 +55,7 @@ function groupSegments(segments) {
   return grouped
 }
 
-function buildPrefixSuffixCharDiff(leftText, rightText) {
+function buildPrefixSuffixCharDiff(leftText: string, rightText: string): { leftSegments: DiffSegment[]; rightSegments: DiffSegment[] } {
   const left = Array.from(leftText)
   const right = Array.from(rightText)
   let prefix = 0
@@ -46,8 +68,8 @@ function buildPrefixSuffixCharDiff(leftText, rightText) {
     leftSuffix -= 1
     rightSuffix -= 1
   }
-  const leftSegments = []
-  const rightSegments = []
+  const leftSegments: DiffSegment[] = []
+  const rightSegments: DiffSegment[] = []
   if (prefix > 0) {
     const sharedPrefix = left.slice(0, prefix).join('')
     leftSegments.push({ kind: 'equal', text: sharedPrefix })
@@ -72,7 +94,7 @@ function buildPrefixSuffixCharDiff(leftText, rightText) {
   }
 }
 
-function buildLCSCharDiff(leftText, rightText) {
+function buildLCSCharDiff(leftText: string, rightText: string): { leftSegments: DiffSegment[]; rightSegments: DiffSegment[] } {
   const left = Array.from(leftText)
   const right = Array.from(rightText)
   const maxProduct = 24000
@@ -89,8 +111,8 @@ function buildLCSCharDiff(leftText, rightText) {
       }
     }
   }
-  const leftSegments = []
-  const rightSegments = []
+  const leftSegments: DiffSegment[] = []
+  const rightSegments: DiffSegment[] = []
   let i = 0
   let j = 0
   while (i < left.length && j < right.length) {
@@ -123,10 +145,10 @@ function buildLCSCharDiff(leftText, rightText) {
   }
 }
 
-function buildAlignedLinePairs(leftLines, rightLines) {
+function buildAlignedLinePairs(leftLines: string[], rightLines: string[]): AlignedLinePair[] {
   const maxProduct = 32000
   if (leftLines.length * rightLines.length > maxProduct) {
-    const prefixPairs = []
+    const prefixPairs: AlignedLinePair[] = []
     let prefix = 0
     while (prefix < leftLines.length && prefix < rightLines.length && leftLines[prefix] === rightLines[prefix]) {
       prefixPairs.push({ left: leftLines[prefix], right: rightLines[prefix], equal: true })
@@ -134,7 +156,7 @@ function buildAlignedLinePairs(leftLines, rightLines) {
     }
     let leftSuffix = leftLines.length - 1
     let rightSuffix = rightLines.length - 1
-    const suffixPairs = []
+    const suffixPairs: AlignedLinePair[] = []
     while (leftSuffix >= prefix && rightSuffix >= prefix && leftLines[leftSuffix] === rightLines[rightSuffix]) {
       suffixPairs.unshift({ left: leftLines[leftSuffix], right: rightLines[rightSuffix], equal: true })
       leftSuffix -= 1
@@ -142,7 +164,7 @@ function buildAlignedLinePairs(leftLines, rightLines) {
     }
     const middleLeft = leftLines.slice(prefix, leftSuffix + 1)
     const middleRight = rightLines.slice(prefix, rightSuffix + 1)
-    const middlePairs = []
+    const middlePairs: AlignedLinePair[] = []
     const maxLength = Math.max(middleLeft.length, middleRight.length)
     for (let index = 0; index < maxLength; index += 1) {
       middlePairs.push({
@@ -163,7 +185,7 @@ function buildAlignedLinePairs(leftLines, rightLines) {
       }
     }
   }
-  const rawPairs = []
+  const rawPairs: AlignedLinePair[] = []
   let i = 0
   let j = 0
   while (i < leftLines.length && j < rightLines.length) {
@@ -189,7 +211,7 @@ function buildAlignedLinePairs(leftLines, rightLines) {
     rawPairs.push({ left: null, right: rightLines[j], equal: false })
     j += 1
   }
-  const aligned = []
+  const aligned: AlignedLinePair[] = []
   let cursor = 0
   while (cursor < rawPairs.length) {
     if (rawPairs[cursor].equal) {
@@ -197,14 +219,16 @@ function buildAlignedLinePairs(leftLines, rightLines) {
       cursor += 1
       continue
     }
-    const removed = []
-    const added = []
+    const removed: string[] = []
+    const added: string[] = []
     while (cursor < rawPairs.length && !rawPairs[cursor].equal) {
-      if (rawPairs[cursor].left !== null) {
-        removed.push(rawPairs[cursor].left)
+      const leftValue = rawPairs[cursor].left
+      if (leftValue !== null) {
+        removed.push(leftValue)
       }
-      if (rawPairs[cursor].right !== null) {
-        added.push(rawPairs[cursor].right)
+      const rightValue = rawPairs[cursor].right
+      if (rightValue !== null) {
+        added.push(rightValue)
       }
       cursor += 1
     }
@@ -220,7 +244,7 @@ function buildAlignedLinePairs(leftLines, rightLines) {
   return aligned
 }
 
-function renderSegments(segments, side) {
+function renderSegments(segments: DiffSegment[], side: 'left' | 'right') {
   return segments.map((segment, index) => {
     let background = 'transparent'
     let color = 'var(--text-primary)'
@@ -246,11 +270,11 @@ function renderSegments(segments, side) {
 }
 
 function useSyncedScroll() {
-  const leftRef = useRef(null)
-  const rightRef = useRef(null)
+  const leftRef = useRef<HTMLDivElement | null>(null)
+  const rightRef = useRef<HTMLDivElement | null>(null)
   const syncLockRef = useRef(false)
-  const createScrollHandler = useCallback((source) => {
-    return (event) => {
+  const createScrollHandler = useCallback((source: 'left' | 'right') => {
+    return (event: React.UIEvent<HTMLDivElement>) => {
       if (syncLockRef.current) {
         return
       }
@@ -273,7 +297,14 @@ function useSyncedScroll() {
   }
 }
 
-function DiffEditorPane({ rows, side, scrollRef, onScroll }) {
+interface DiffEditorPaneProps {
+  rows: DiffEditorRow[]
+  side: 'left' | 'right'
+  scrollRef: React.RefObject<HTMLDivElement>
+  onScroll: (event: React.UIEvent<HTMLDivElement>) => void
+}
+
+function DiffEditorPane({ rows, side, scrollRef, onScroll }: DiffEditorPaneProps) {
   return (
     <div
       style={{
@@ -338,16 +369,24 @@ function DiffEditorPane({ rows, side, scrollRef, onScroll }) {
   )
 }
 
-export function DiffEditorPair({ block, index, showBlockBadge = false, t }) {
-  const leftText = typeof block?.before === 'string' ? normalizeText(block.before) : ''
-  const rightText = typeof block?.after === 'string' ? normalizeText(block.after) : ''
-  const declaredStartLine = Number(block?.startLine)
-  const matchedStartLine = Number(block?.matchedStartLine)
-  const labelKey = typeof block?.label === 'string' && block.label.trim() ? block.label.trim() : '变更块 #{count}'
-  const labelParams = block?.labelParams && typeof block.labelParams === 'object'
-    ? block.labelParams
-    : { count: index + 1 }
-  const label = t(labelKey, labelParams)
+export interface DiffEditorPairProps {
+  block?: unknown
+  index?: number
+  showBlockBadge?: boolean
+  t: (key: I18nKey, vars?: Record<string, unknown>) => string
+}
+
+export function DiffEditorPair({ block, index, showBlockBadge = false, t }: DiffEditorPairProps) {
+  const rawBlock = block as Record<string, unknown> | null | undefined
+  const leftText = typeof rawBlock?.before === 'string' ? normalizeText(rawBlock.before) : ''
+  const rightText = typeof rawBlock?.after === 'string' ? normalizeText(rawBlock.after) : ''
+  const declaredStartLine = Number(rawBlock?.startLine)
+  const matchedStartLine = Number(rawBlock?.matchedStartLine)
+  const labelKey = typeof rawBlock?.label === 'string' && rawBlock.label.trim() ? rawBlock.label.trim() : '变更块 #{count}'
+  const labelParams = rawBlock?.labelParams && typeof rawBlock.labelParams === 'object'
+    ? rawBlock.labelParams as Record<string, unknown>
+    : { count: (index ?? 0) + 1 }
+  const label = t(labelKey as I18nKey, labelParams)
   const alignedRows = useMemo(() => {
     const leftLines = splitLines(leftText)
     const rightLines = splitLines(rightText)
@@ -362,22 +401,22 @@ export function DiffEditorPair({ block, index, showBlockBadge = false, t }) {
       : Number.isFinite(declaredStartLine) && declaredStartLine > 0
         ? declaredStartLine
         : 1
-    return pairs.map((pair) => {
+    return pairs.map((pair): { leftRow: DiffEditorRow; rightRow: DiffEditorRow } => {
       const leftLine = pair.left
       const rightLine = pair.right
-      const leftSegments = pair.equal
+      const leftSegments: DiffSegment[] = pair.equal
         ? [{ kind: 'equal', text: leftLine ?? '' }]
         : buildLCSCharDiff(leftLine ?? '', rightLine ?? '').leftSegments
-      const rightSegments = pair.equal
+      const rightSegments: DiffSegment[] = pair.equal
         ? [{ kind: 'equal', text: rightLine ?? '' }]
         : buildLCSCharDiff(leftLine ?? '', rightLine ?? '').rightSegments
-      const leftRow = {
+      const leftRow: DiffEditorRow = {
         lineNumber: leftLine !== null ? leftLineNumber++ : null,
         text: leftLine,
         segments: leftLine !== null ? leftSegments : [],
         rowKind: pair.equal ? 'equal' : leftLine === null ? 'empty' : rightLine === null ? 'remove' : 'modify',
       }
-      const rightRow = {
+      const rightRow: DiffEditorRow = {
         lineNumber: rightLine !== null ? rightLineNumber++ : null,
         text: rightLine,
         segments: rightLine !== null ? rightSegments : [],

@@ -47,7 +47,7 @@ function renderToolItem(item: AIChatToolSessionItem, options: AIChatToolSessionO
   const { isLastAssistantTurn = false, hasSubsequentAssistantMessage = false, onSendUserMessage, onPreviewRestore, onPreviewDiffFetch, onApplyRestore, followupInteractionLocked = false } = options
   switch (item.kind) {
     case 'tool':
-      return <AIChatToolCard key={item.id} restoreArtifactPath={typeof item?.extra?.restoreArtifactPath === 'string' ? item.extra.restoreArtifactPath : ''} copyContent={typeof item?.extra?.copyContent === 'string' ? item.extra.copyContent : ''} actionLabel={item.actionLabel} title={item.title} summary={item.summary} code={item.code} result={item.result} status={item.status} remainingFileEdits={item.remainingFileEdits} extra={item.extra} isLast={isLastAssistantTurn} hasSubsequentAssistantMessage={hasSubsequentAssistantMessage} onPreviewRestore={onPreviewRestore} onPreviewDiffFetch={onPreviewDiffFetch} onApplyRestore={onApplyRestore} />
+      return <AIChatToolCard key={item.id} restoreArtifactPath={typeof item?.extra?.restoreArtifactPath === 'string' ? item.extra.restoreArtifactPath : ''} copyContent={typeof item?.extra?.copyContent === 'string' ? item.extra.copyContent : ''} actionLabel={item.actionLabel} title={item.title} summary={item.summary} code={item.code} result={item.result} status={item.status} remainingFileEdits={item.remainingFileEdits} extra={item.extra} isLast={isLastAssistantTurn} hasSubsequentAssistantMessage={hasSubsequentAssistantMessage} onPreviewRestore={onPreviewRestore as (path: string, targetTerminalId?: string) => void} onPreviewDiffFetch={onPreviewDiffFetch as (path: string, targetTerminalId?: string) => Promise<unknown>} onApplyRestore={onApplyRestore as (path: string, targetTerminalId?: string) => boolean | Promise<boolean | null | undefined>} />
     case 'completion':
       return <AIChatCompletionCard key={item.id} title={item.title} summary={item.summary} result={item.result} status={item.status} />
     case 'command':
@@ -57,7 +57,7 @@ function renderToolItem(item: AIChatToolSessionItem, options: AIChatToolSessionO
     case 'followup':
       return (
         <div key={item.id} style={{ pointerEvents: followupInteractionLocked ? 'none' : 'auto', opacity: followupInteractionLocked ? 0.6 : 1 }}>
-          <AIChatFollowUpCard question={item.question} questions={item.questions || []} suggestions={item.suggestions || []} requestId={item.requestId} onSelectSuggestion={onSendUserMessage} />
+          <AIChatFollowUpCard question={item.question} questions={item.questions || []} suggestions={item.suggestions || []} requestId={item.requestId} onSelectSuggestion={onSendUserMessage as (payload: unknown) => unknown} />
         </div>
       )
     default:

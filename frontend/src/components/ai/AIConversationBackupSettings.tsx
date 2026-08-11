@@ -1,20 +1,37 @@
-import { ChevronLeft, History, MessagesSquare, RotateCcw, Trash2 } from 'lucide-react'
+import { ChevronLeft, History, MessagesSquare, RotateCcw, Trash2, type LucideIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from '../../i18n.js'
 import { deleteAIConversationBackup, getAIConversationBackupHistory, listAIConversationBackups, restoreAIConversationBackup } from './aiConversationBackupBridge.js'
 import AIChatMarkdown from './chat/AIChatMarkdown.jsx'
 
-function formatRelativeTime(timestamp, language) {
+/** 备份条目（bridge 归一化后的宽松结构） */
+interface ConversationBackup {
+  id: string
+  ts: number
+  message?: string
+  messageRole?: string
+  [key: string]: unknown
+}
+
+/** 备份历史消息（bridge 归一化后的宽松结构） */
+interface ConversationBackupHistoryEntry {
+  messageId?: string
+  role?: string
+  content?: unknown
+  ts?: number
+}
+
+function formatRelativeTime(timestamp: number, language: string) {
   const diffMs = timestamp - Date.now()
   const absDiffMs = Math.abs(diffMs)
   const divisions = [
-    { unit: 'year', ms: 1000 * 60 * 60 * 24 * 365 },
-    { unit: 'month', ms: 1000 * 60 * 60 * 24 * 30 },
-    { unit: 'week', ms: 1000 * 60 * 60 * 24 * 7 },
-    { unit: 'day', ms: 1000 * 60 * 60 * 24 },
-    { unit: 'hour', ms: 1000 * 60 * 60 },
-    { unit: 'minute', ms: 1000 * 60 },
-    { unit: 'second', ms: 1000 },
+    { unit: 'year' as const, ms: 1000 * 60 * 60 * 24 * 365 },
+    { unit: 'month' as const, ms: 1000 * 60 * 60 * 24 * 30 },
+    { unit: 'week' as const, ms: 1000 * 60 * 60 * 24 * 7 },
+    { unit: 'day' as const, ms: 1000 * 60 * 60 * 24 },
+    { unit: 'hour' as const, ms: 1000 * 60 * 60 },
+    { unit: 'minute' as const, ms: 1000 * 60 },
+    { unit: 'second' as const, ms: 1000 },
   ]
   for (const division of divisions) {
     if (absDiffMs >= division.ms || division.unit === 'second') {
@@ -25,7 +42,7 @@ function formatRelativeTime(timestamp, language) {
   return ''
 }
 
-function formatDateTime(value, language) {
+function formatDateTime(value: number | string, language: string) {
   const date = typeof value === 'number' ? new Date(value) : new Date(String(value || ''))
   if (Number.isNaN(date.getTime())) {
     return String(value || '')
@@ -33,7 +50,7 @@ function formatDateTime(value, language) {
   return date.toLocaleString(language).replace(/\//g, '-')
 }
 
-function formatBackupIdTime(backupId, language) {
+function formatBackupIdTime(backupId: string, language: string) {
   const normalized = String(backupId || '').replace(/^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})(?:-\d+)?Z$/, '$1-$2-$3T$4:$5:$6Z')
   const date = new Date(normalized)
   if (Number.isNaN(date.getTime())) {
@@ -42,14 +59,14 @@ function formatBackupIdTime(backupId, language) {
   return formatDateTime(date.getTime(), language)
 }
 
-function getHistoryText(content) {
+function getHistoryText(content: unknown) {
   if (typeof content === 'string' && content.trim()) {
     return content
   }
   if (Array.isArray(content)) {
-    const parts = content
+    const parts = (content as Array<Record<string, unknown>>)
       .filter((block) => block?.type === 'text' && typeof block?.text === 'string')
-      .map((block) => block.text.trim())
+      .map((block) => (block.text as string).trim())
       .filter(Boolean)
     if (parts.length > 0) {
       return parts.join('\n\n')
@@ -58,7 +75,14 @@ function getHistoryText(content) {
   return ''
 }
 
-function ActionButton({ icon: Icon, label, onClick, disabled = false }) {
+interface ActionButtonProps {
+  icon: LucideIcon
+  label: string
+  onClick: () => void
+  disabled?: boolean
+}
+
+function ActionButton({ icon: Icon, label, onClick, disabled = false }: ActionButtonProps) {
   return (
     <button
       type="button"
@@ -88,7 +112,12 @@ function ActionButton({ icon: Icon, label, onClick, disabled = false }) {
   )
 }
 
-function ToggleSwitchControl({ checked, onChange }) {
+interface ToggleSwitchControlProps {
+  checked: boolean
+  onChange?: () => void
+}
+
+function ToggleSwitchControl({ checked, onChange }: ToggleSwitchControlProps) {
   return (
     <button
       type="button"
@@ -121,6 +150,16 @@ function ToggleSwitchControl({ checked, onChange }) {
   )
 }
 
+export interface AIConversationBackupSettingsProps {
+  active: boolean
+  conversationId: string
+  conversationUpdatedAt?: number
+  requestInFlight?: boolean
+  onRestoreSnapshot?: (snapshot: unknown) => Promise<unknown> | void
+  autoBackupEnabled?: boolean
+  onToggleAutoBackup?: () => void
+}
+
 export default function AIConversationBackupSettings({
   active,
   conversationId,
@@ -129,17 +168,17 @@ export default function AIConversationBackupSettings({
   onRestoreSnapshot,
   autoBackupEnabled = true,
   onToggleAutoBackup,
-}) {
+}: AIConversationBackupSettingsProps) {
   const { t, lang } = useTranslation()
-  const [backups, setBackups] = useState([])
+  const [backups, setBackups] = useState<ConversationBackup[]>([])
   const [isLoaded, setIsLoaded] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [selectedBackup, setSelectedBackup] = useState(null)
-  const [historyEntries, setHistoryEntries] = useState([])
+  const [selectedBackup, setSelectedBackup] = useState<ConversationBackup | null>(null)
+  const [historyEntries, setHistoryEntries] = useState<ConversationBackupHistoryEntry[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [now, setNow] = useState(() => Date.now())
 
-  const loadBackups = useCallback(async (options = {}) => {
+  const loadBackups = useCallback(async (options: { background?: boolean } = {}) => {
     const background = options?.background === true
     if (!conversationId) {
       setBackups([])
@@ -195,7 +234,7 @@ export default function AIConversationBackupSettings({
     [backups, lang, now],
   )
 
-  const handleOpenHistory = useCallback(async (backup) => {
+  const handleOpenHistory = useCallback(async (backup: ConversationBackup) => {
     if (!conversationId || !backup?.id) {
       return
     }
@@ -206,7 +245,7 @@ export default function AIConversationBackupSettings({
     setHistoryLoading(false)
   }, [conversationId])
 
-  const handleRestore = useCallback(async (backupId) => {
+  const handleRestore = useCallback(async (backupId: string) => {
     if (!conversationId || !backupId || requestInFlight) {
       return
     }
@@ -217,7 +256,7 @@ export default function AIConversationBackupSettings({
     }
   }, [conversationId, loadBackups, onRestoreSnapshot, requestInFlight])
 
-  const handleDelete = useCallback(async (backupId) => {
+  const handleDelete = useCallback(async (backupId: string) => {
     if (!conversationId || !backupId || requestInFlight) {
       return
     }
@@ -323,7 +362,7 @@ export default function AIConversationBackupSettings({
                       >
                         {role === 'user' ? t('用户') : t('AI')}
                       </span>
-                      {entry.ts > 0 ? (
+                      {entry.ts && entry.ts > 0 ? (
                         <span style={{ fontSize: 11, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
                           {formatDateTime(entry.ts, lang)}
                         </span>

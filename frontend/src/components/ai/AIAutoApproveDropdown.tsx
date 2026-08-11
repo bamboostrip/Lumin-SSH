@@ -1,8 +1,20 @@
-import { CheckCheck, Eye, SquarePen, Terminal, X } from 'lucide-react'
+import { CheckCheck, Eye, SquarePen, Terminal, X, type LucideIcon } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useTranslation } from '../../i18n.js'
+import { useTranslation, type I18nKey } from '../../i18n.js'
 
-const DEFAULT_AUTO_APPROVAL_SETTINGS = {
+/** 自动批准设置（宽松结构） */
+export interface AutoApprovalSettings {
+  autoApprovalEnabled: boolean
+  alwaysAllowReadOnly: boolean
+  alwaysAllowWrite: boolean
+  alwaysAllowExecute: boolean
+  alwaysAllowExecuteReadOnly: boolean
+  alwaysAllowExecuteAllCommands: boolean
+  allowedCommands: string[]
+  deniedCommands: string[]
+}
+
+const DEFAULT_AUTO_APPROVAL_SETTINGS: AutoApprovalSettings = {
   autoApprovalEnabled: false,
   alwaysAllowReadOnly: false,
   alwaysAllowWrite: false,
@@ -13,18 +25,18 @@ const DEFAULT_AUTO_APPROVAL_SETTINGS = {
   deniedCommands: [],
 }
 
-const VISIBLE_OPTIONS = [
+const VISIBLE_OPTIONS: Array<{ key: 'alwaysAllowReadOnly' | 'alwaysAllowWrite' | 'alwaysAllowExecute'; labelKey: I18nKey; icon: LucideIcon }> = [
   { key: 'alwaysAllowReadOnly', labelKey: '读取', icon: Eye },
   { key: 'alwaysAllowWrite', labelKey: '写入', icon: SquarePen },
   { key: 'alwaysAllowExecute', labelKey: '执行', icon: Terminal },
 ]
 
-function normalizeStringList(values) {
+function normalizeStringList(values: unknown): string[] {
   if (!Array.isArray(values)) {
     return []
   }
-  const seen = new Set()
-  const normalized = []
+  const seen = new Set<string>()
+  const normalized: string[] = []
   values.forEach((value) => {
     if (typeof value !== 'string') {
       return
@@ -39,7 +51,7 @@ function normalizeStringList(values) {
   return normalized
 }
 
-function isAutoApprovalEffectivelyEnabled(settings) {
+function isAutoApprovalEffectivelyEnabled(settings: AutoApprovalSettings) {
   return Boolean(
     settings?.alwaysAllowReadOnly
       || settings?.alwaysAllowWrite
@@ -47,16 +59,17 @@ function isAutoApprovalEffectivelyEnabled(settings) {
   )
 }
 
-function normalizeAutoApprovalSettings(settings) {
-  const allowedCommands = normalizeStringList(settings?.allowedCommands)
-  const deniedCommands = normalizeStringList(settings?.deniedCommands)
-  const normalized = {
+function normalizeAutoApprovalSettings(settings: unknown): AutoApprovalSettings {
+  const raw = settings as Partial<AutoApprovalSettings> | null | undefined
+  const allowedCommands = normalizeStringList(raw?.allowedCommands)
+  const deniedCommands = normalizeStringList(raw?.deniedCommands)
+  const normalized: AutoApprovalSettings = {
     ...DEFAULT_AUTO_APPROVAL_SETTINGS,
-    ...settings,
-    alwaysAllowReadOnly: Boolean(settings?.alwaysAllowReadOnly),
-    alwaysAllowWrite: Boolean(settings?.alwaysAllowWrite),
-    alwaysAllowExecute: Boolean(settings?.alwaysAllowExecute),
-    alwaysAllowExecuteReadOnly: Boolean(settings?.alwaysAllowExecuteReadOnly),
+    ...raw,
+    alwaysAllowReadOnly: Boolean(raw?.alwaysAllowReadOnly),
+    alwaysAllowWrite: Boolean(raw?.alwaysAllowWrite),
+    alwaysAllowExecute: Boolean(raw?.alwaysAllowExecute),
+    alwaysAllowExecuteReadOnly: Boolean(raw?.alwaysAllowExecuteReadOnly),
     alwaysAllowExecuteAllCommands: allowedCommands.includes('*'),
     allowedCommands,
     deniedCommands,
@@ -65,7 +78,7 @@ function normalizeAutoApprovalSettings(settings) {
   return normalized
 }
 
-function buildTriggerLabel(t, settings, enabledCount) {
+function buildTriggerLabel(t: (key: I18nKey, vars?: Record<string, unknown>) => string, settings: AutoApprovalSettings, enabledCount: number) {
   if (!settings.autoApprovalEnabled) {
     return t('自动批准')
   }
@@ -78,7 +91,14 @@ function buildTriggerLabel(t, settings, enabledCount) {
   return `${t('自动批准')} ${enabledCount}`
 }
 
-function OptionButton({ active, icon: Icon, label, onClick }) {
+interface OptionButtonProps {
+  active: boolean
+  icon: LucideIcon
+  label: string
+  onClick: () => void
+}
+
+function OptionButton({ active, icon: Icon, label, onClick }: OptionButtonProps) {
   return (
     <button
       type="button"
@@ -107,7 +127,12 @@ function OptionButton({ active, icon: Icon, label, onClick }) {
   )
 }
 
-function CommandChip({ text, onRemove }) {
+interface CommandChipProps {
+  text: string
+  onRemove: () => void
+}
+
+function CommandChip({ text, onRemove }: CommandChipProps) {
   return (
     <button
       type="button"
@@ -131,7 +156,13 @@ function CommandChip({ text, onRemove }) {
   )
 }
 
-function InlineSwitch({ active, label, onClick }) {
+interface InlineSwitchProps {
+  active: boolean
+  label: string
+  onClick?: () => void
+}
+
+function InlineSwitch({ active, label, onClick }: InlineSwitchProps) {
   return (
     <button
       type="button"
@@ -182,17 +213,24 @@ function InlineSwitch({ active, label, onClick }) {
   )
 }
 
-export default function AIAutoApproveDropdown({ settings, onPatchSettings, disabled = false, dismissSignal = 0 }) {
+export interface AIAutoApproveDropdownProps {
+  settings?: unknown
+  onPatchSettings?: (settings: Partial<AutoApprovalSettings>) => Promise<unknown> | void
+  disabled?: boolean
+  dismissSignal?: number
+}
+
+export default function AIAutoApproveDropdown({ settings, onPatchSettings, disabled = false, dismissSignal = 0 }: AIAutoApproveDropdownProps) {
   const { t } = useTranslation()
-  const containerRef = useRef(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const patchTimerRef = useRef(0)
   const [open, setOpen] = useState(false)
   const [expandLeft, setExpandLeft] = useState(false)
-  const [triggerRect, setTriggerRect] = useState(null)
-  const [panelBounds, setPanelBounds] = useState(null)
+  const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null)
+  const [panelBounds, setPanelBounds] = useState<{ left: number; width: number } | null>(null)
   const [commandInput, setCommandInput] = useState('')
   const [deniedCommandInput, setDeniedCommandInput] = useState('')
-  const [localSettings, setLocalSettings] = useState(() => normalizeAutoApprovalSettings(settings))
+  const [localSettings, setLocalSettings] = useState<AutoApprovalSettings>(() => normalizeAutoApprovalSettings(settings))
   const normalizedSettings = useMemo(() => normalizeAutoApprovalSettings(localSettings), [localSettings])
   const enabledCount = useMemo(
     () => VISIBLE_OPTIONS.filter((option) => normalizedSettings[option.key]).length,
@@ -225,8 +263,8 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
     }
     measure()
     const handleResize = () => measure()
-    const handlePointerDown = (event) => {
-      if (containerRef.current && !containerRef.current.contains(event.target)) {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setOpen(false)
       }
     }
@@ -257,7 +295,7 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
     }
   }, [])
 
-  const persistSettings = async (nextSettings) => {
+  const persistSettings = async (nextSettings: AutoApprovalSettings) => {
     if (typeof onPatchSettings !== 'function') {
       return
     }
@@ -272,7 +310,7 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
     })
   }
 
-  const schedulePersist = (nextSettings) => {
+  const schedulePersist = (nextSettings: AutoApprovalSettings) => {
     if (patchTimerRef.current) {
       window.clearTimeout(patchTimerRef.current)
     }
@@ -282,7 +320,7 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
     }, 180)
   }
 
-  const patchSettings = (patch) => {
+  const patchSettings = (patch: Partial<AutoApprovalSettings>) => {
     setLocalSettings((previous) => {
       const nextSettings = normalizeAutoApprovalSettings({
         ...previous,
@@ -293,7 +331,7 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
     })
   }
 
-  const handleOptionToggle = (key) => {
+  const handleOptionToggle = (key: keyof AutoApprovalSettings) => {
     if (key === 'alwaysAllowExecute') {
       patchSettings({
         alwaysAllowExecute: !normalizedSettings.alwaysAllowExecute,
@@ -302,7 +340,7 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
     }
     patchSettings({
       [key]: !normalizedSettings[key],
-    })
+    } as Partial<AutoApprovalSettings>)
   }
 
   const handleExecuteReadOnlyToggle = () => {
@@ -333,13 +371,13 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
     setDeniedCommandInput('')
   }
 
-  const handleRemoveAllowedCommand = (command) => {
+  const handleRemoveAllowedCommand = (command: string) => {
     patchSettings({
       allowedCommands: normalizedSettings.allowedCommands.filter((item) => item !== command),
     })
   }
 
-  const handleRemoveDeniedCommand = (command) => {
+  const handleRemoveDeniedCommand = (command: string) => {
     patchSettings({
       deniedCommands: normalizedSettings.deniedCommands.filter((item) => item !== command),
     })

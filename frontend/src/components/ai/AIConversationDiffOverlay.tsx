@@ -1,11 +1,24 @@
 import { Columns2, FileText, LoaderCircle, RotateCcw, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import Tiptop from '../Tiptop.jsx'
-import { useTranslation } from '../../i18n.js'
+import { useTranslation, type I18nKey } from '../../i18n.js'
 
-function normalizeItems(items) {
+/** 对话文件变更条目（宽松结构） */
+export interface ConversationDiffItem {
+  id: string
+  messageId: string
+  artifactPath: string
+  toolName: string
+  title: string
+  summary: string
+  status: string
+  copyContent: string
+  order: number
+}
+
+function normalizeItems(items: unknown): ConversationDiffItem[] {
   return Array.isArray(items)
-    ? items
+    ? (items as Array<Record<string, unknown>>)
       .filter((item) => item && typeof item === 'object')
       .map((item, index) => ({
         id: typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `conversation-diff-item-${index}`,
@@ -22,29 +35,34 @@ function normalizeItems(items) {
     : []
 }
 
-function normalizeCompactDiffText(value) {
+function normalizeCompactDiffText(value: unknown) {
   return typeof value === 'string' ? value.replace(/\r\n/g, '\n').replace(/\r/g, '\n') : ''
 }
 
-function buildCompactDiffRows(rawDiff, maxVisibleLines = 24) {
+type CompactDiffRow =
+  | { type: 'line'; text: string; key: string }
+  | { type: 'hidden'; count: number; key: string }
+
+function buildCompactDiffRows(rawDiff: string, maxVisibleLines = 24): CompactDiffRow[] {
   const lines = normalizeCompactDiffText(rawDiff).split('\n')
   if (lines.length > 0 && lines[lines.length - 1] === '') {
     lines.pop()
   }
   if (lines.length <= maxVisibleLines) {
-    return lines.map((text, index) => ({ type: 'line', text, key: `line-${index}` }))
+    return lines.map((text, index): CompactDiffRow => ({ type: 'line', text, key: `line-${index}` }))
   }
   const headCount = Math.min(16, Math.max(10, maxVisibleLines - 6))
   const tailCount = Math.max(5, maxVisibleLines - headCount)
   const hiddenCount = Math.max(lines.length - headCount - tailCount, 0)
-  return [
-    ...lines.slice(0, headCount).map((text, index) => ({ type: 'line', text, key: `head-${index}` })),
-    ...(hiddenCount > 0 ? [{ type: 'hidden', count: hiddenCount, key: 'hidden' }] : []),
-    ...lines.slice(lines.length - tailCount).map((text, index) => ({ type: 'line', text, key: `tail-${index}` })),
+  const rows: CompactDiffRow[] = [
+    ...lines.slice(0, headCount).map((text, index): CompactDiffRow => ({ type: 'line', text, key: `head-${index}` })),
+    ...(hiddenCount > 0 ? [{ type: 'hidden', count: hiddenCount, key: 'hidden' } as CompactDiffRow] : []),
+    ...lines.slice(lines.length - tailCount).map((text, index): CompactDiffRow => ({ type: 'line', text, key: `tail-${index}` })),
   ]
+  return rows
 }
 
-function resolveCompactDiffRowPalette(text) {
+function resolveCompactDiffRowPalette(text: string) {
   if (typeof text !== 'string') {
     return { color: 'var(--text-secondary)', background: 'transparent' }
   }
@@ -63,7 +81,14 @@ function resolveCompactDiffRowPalette(text) {
   return { color: 'var(--text-primary)', background: 'transparent' }
 }
 
-function CompactDiffPreview({ rawDiff = '', loading = false, t, maxHeight = 340 }) {
+interface CompactDiffPreviewProps {
+  rawDiff?: string
+  loading?: boolean
+  t: (key: I18nKey, vars?: Record<string, unknown>) => string
+  maxHeight?: number
+}
+
+function CompactDiffPreview({ rawDiff = '', loading = false, t, maxHeight = 340 }: CompactDiffPreviewProps) {
   const normalizedRawDiff = typeof rawDiff === 'string' ? rawDiff.trim() : ''
   const rows = useMemo(() => buildCompactDiffRows(normalizedRawDiff), [normalizedRawDiff])
   if (loading) {
@@ -143,6 +168,18 @@ function CompactDiffPreview({ rawDiff = '', loading = false, t, maxHeight = 340 
   )
 }
 
+export interface AIConversationDiffOverlayProps {
+  sessionLabel?: string
+  items?: unknown
+  reviewByArtifactPath?: Record<string, unknown>
+  loadingByArtifactPath?: Record<string, unknown>
+  selectedMessageId?: string
+  onSelectItem?: (item: ConversationDiffItem) => void
+  onPreviewRestore?: (artifactPath: string) => boolean | Promise<boolean | null | undefined>
+  onApplyRestore?: (artifactPath: string) => boolean | Promise<boolean | null | undefined>
+  onClose: () => void
+}
+
 export default function AIConversationDiffOverlay({
   sessionLabel = '',
   items = [],
@@ -153,7 +190,7 @@ export default function AIConversationDiffOverlay({
   onPreviewRestore,
   onApplyRestore,
   onClose,
-}) {
+}: AIConversationDiffOverlayProps) {
   const { t } = useTranslation()
   const [copiedItemId, setCopiedItemId] = useState('')
   const [actionSucceeded, setActionSucceeded] = useState({ itemId: '', kind: '' })
@@ -180,10 +217,10 @@ export default function AIConversationDiffOverlay({
     return () => window.clearTimeout(timer)
   }, [actionSucceeded])
 
-  const handleCopyItemContent = async (item) => {
+  const handleCopyItemContent = async (item: ConversationDiffItem) => {
     const itemId = typeof item?.id === 'string' ? item.id : ''
     const review = item?.artifactPath && reviewByArtifactPath && typeof reviewByArtifactPath === 'object'
-      ? reviewByArtifactPath[item.artifactPath] || null
+      ? (reviewByArtifactPath[item.artifactPath] as Record<string, unknown> | null | undefined) || null
       : null
     const copyContent = typeof item?.copyContent === 'string' && item.copyContent.trim()
       ? item.copyContent.trim()
@@ -199,7 +236,7 @@ export default function AIConversationDiffOverlay({
     } catch {}
   }
 
-  const handlePreviewItemRestore = async (item) => {
+  const handlePreviewItemRestore = async (item: ConversationDiffItem) => {
     const artifactPath = typeof item?.artifactPath === 'string' ? item.artifactPath.trim() : ''
     const itemId = typeof item?.id === 'string' ? item.id : ''
     if (!artifactPath) {
@@ -211,7 +248,7 @@ export default function AIConversationDiffOverlay({
     }
   }
 
-  const handleApplyItemRestore = async (event, item) => {
+  const handleApplyItemRestore = async (event: React.MouseEvent, item: ConversationDiffItem) => {
     const artifactPath = typeof item?.artifactPath === 'string' ? item.artifactPath.trim() : ''
     const itemId = typeof item?.id === 'string' ? item.id : ''
     if (!artifactPath) {
@@ -319,7 +356,7 @@ export default function AIConversationDiffOverlay({
             const itemTitle = item.title || item.toolName || item.id
             const itemSummary = item.summary && item.summary !== itemTitle ? item.summary : ''
             const review = item.artifactPath && reviewByArtifactPath && typeof reviewByArtifactPath === 'object'
-              ? reviewByArtifactPath[item.artifactPath] || null
+              ? (reviewByArtifactPath[item.artifactPath] as Record<string, unknown> | null | undefined) || null
               : null
             const currentRawDiff = typeof review?.rawDiff === 'string' ? review.rawDiff : ''
             const currentLoading = item.artifactPath && loadingByArtifactPath && typeof loadingByArtifactPath === 'object'
@@ -399,7 +436,7 @@ export default function AIConversationDiffOverlay({
                       fontSize: 11,
                       fontWeight: 700,
                     }}>
-                    {item.toolName || (item.status ? t(item.status) : t('已完成'))}
+                    {item.toolName || (item.status ? t(item.status as I18nKey) : t('已完成'))}
                   </div>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     {itemCopyCharacterCount > 0 ? (

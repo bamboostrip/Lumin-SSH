@@ -1,20 +1,27 @@
 import { ChevronDown } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Virtuoso } from 'react-virtuoso'
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { useTranslation } from '../../../i18n.js'
 import AIChatAssistantTurn from './AIChatAssistantTurn.jsx'
 import AIChatContextCondenseCard from './AIChatContextCondenseCard.jsx'
 import AIChatReasoningBlock from './AIChatReasoningBlock.jsx'
-import AIChatToolSessionPane from './AIChatToolSessionPane.jsx'
+import AIChatToolSessionPane, { type AIChatToolSessionItem } from './AIChatToolSessionPane.jsx'
 import AIChatUserMessage from './AIChatUserMessage.jsx'
 import { groupConversationMessages } from './aiChatMessageTopology.js'
 
-function formatSendPerfMetrics(record) {
-  if (!record || !Array.isArray(record.stages) || record.stages.length === 0) {
+/** 发送性能指标记录（宽松形状，来自 AIPanel） */
+interface SendPerfRecord {
+  stages?: Array<{ ms?: unknown; label?: unknown }>
+  total?: unknown
+}
+
+function formatSendPerfMetrics(record: unknown) {
+  const r = record as SendPerfRecord | null | undefined
+  if (!r || !Array.isArray(r.stages) || r.stages.length === 0) {
     return ''
   }
-  const total = Number(record.total) || 0
-  const lines = record.stages.map((stage, index) => {
+  const total = Number(r.total) || 0
+  const lines = r.stages.map((stage, index) => {
     const ms = Number(stage.ms) || 0
     const percent = total > 0 ? ((ms / total) * 100).toFixed(1) : '0.0'
     return `${index + 1}.${stage.label} -> ${ms.toFixed(1)}ms (${percent}%)`
@@ -23,7 +30,7 @@ function formatSendPerfMetrics(record) {
   return lines.join('\n')
 }
 
-function resolveSendPerfMetrics(sendPerfMetricsRef, messageId) {
+function resolveSendPerfMetrics(sendPerfMetricsRef: { current: Map<string, unknown> | null } | null | undefined, messageId: unknown) {
   const normalizedId = typeof messageId === 'string' ? messageId.trim() : ''
   if (!normalizedId || !sendPerfMetricsRef?.current) {
     return ''
@@ -31,7 +38,36 @@ function resolveSendPerfMetrics(sendPerfMetricsRef, messageId) {
   return formatSendPerfMetrics(sendPerfMetricsRef.current.get(normalizedId))
 }
 
-function renderGroupedEntry(entry, handlers, entryMeta = {}) {
+/** 会话消息条目（aiChatMessageTopology.js 分组后的宽松形状） */
+export type GroupedConversationEntry =
+  | { id?: string; type: 'user'; message?: { id?: string; text?: string; time?: string; images?: unknown[]; extra?: Record<string, unknown> } }
+  | { id?: string; type: 'assistant-turn'; turnId?: string; assistant?: { id?: string; title?: string; time?: string; text?: string; streaming?: boolean; extra?: Record<string, unknown> }; reasoning?: Array<{ id: string; text?: string; duration?: string }>; tools?: AIChatToolSessionItem[] }
+  | { id?: string; type: 'reasoning'; message?: { id?: string; text?: string; duration?: string } }
+  | { id?: string; type: 'context-condense'; message?: Record<string, unknown> }
+  | { id?: string; type: 'tool-session'; tools?: AIChatToolSessionItem[] }
+
+interface ConversationHandlers {
+  onSendUserMessage?: (text: string) => void
+  onRetryUserMessage?: (id: string, text: string, images: string[]) => void
+  onRetryAssistantMessage?: (id: string) => void
+  onEditUserMessage?: (id: string, text: string, images: string[]) => void
+  onDeleteMessage?: (id: string) => void
+  onPreviewRestore?: (artifactPath: string, targetTerminalId: string) => void
+  onPreviewDiffFetch?: (artifactPath: string, targetTerminalId: string) => void
+  onApplyRestore?: (artifactPath: string, targetTerminalId: string) => void
+  followupInteractionLocked?: boolean
+  messageActionBarAtBottom?: boolean
+  sendPerfMetricsRef?: { current: Map<string, unknown> | null } | null
+  isEditingTarget?: boolean
+}
+
+interface ConversationEntryMeta {
+  isLastAssistantTurn?: boolean
+  hasSubsequentAssistantMessage?: boolean
+  isFirstUserMessage?: boolean
+}
+
+function renderGroupedEntry(entry: GroupedConversationEntry, handlers: ConversationHandlers, entryMeta: ConversationEntryMeta = {}) {
   switch (entry.type) {
     case 'user':
       return (
@@ -66,17 +102,17 @@ function renderGroupedEntry(entry, handlers, entryMeta = {}) {
         />
       )
     case 'reasoning':
-      return <AIChatReasoningBlock text={entry.message.text} duration={entry.message.duration} />
+      return <AIChatReasoningBlock text={entry.message?.text || ''} duration={entry.message?.duration || ''} />
     case 'context-condense':
       return <AIChatContextCondenseCard message={entry.message} />
     case 'tool-session':
-      return <AIChatToolSessionPane items={entry.tools} onSendUserMessage={handlers.onSendUserMessage} onPreviewRestore={handlers.onPreviewRestore} onPreviewDiffFetch={handlers.onPreviewDiffFetch} onApplyRestore={handlers.onApplyRestore} followupInteractionLocked={Boolean(handlers.followupInteractionLocked)} />
+      return <AIChatToolSessionPane items={entry.tools || []} onSendUserMessage={handlers.onSendUserMessage} onPreviewRestore={handlers.onPreviewRestore} onPreviewDiffFetch={handlers.onPreviewDiffFetch} onApplyRestore={handlers.onApplyRestore} followupInteractionLocked={Boolean(handlers.followupInteractionLocked)} />
     default:
       return null
   }
 }
 
-function getEntryKey(entry, index) {
+function getEntryKey(entry: GroupedConversationEntry, index: number) {
   if (entry?.id) {
     return entry.id
   }
@@ -92,7 +128,7 @@ function getEntryKey(entry, index) {
   return `entry-${index}`
 }
 
-function getLastAssistantTurnIndex(entries) {
+function getLastAssistantTurnIndex(entries: GroupedConversationEntry[]) {
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     if (entries[index]?.type === 'assistant-turn') {
       return index
@@ -101,7 +137,7 @@ function getLastAssistantTurnIndex(entries) {
   return -1
 }
 
-function hasSubsequentAssistantTurn(entries, currentIndex) {
+function hasSubsequentAssistantTurn(entries: GroupedConversationEntry[], currentIndex: number) {
   for (let index = currentIndex + 1; index < entries.length; index += 1) {
     if (entries[index]?.type === 'assistant-turn') {
       return true
@@ -110,14 +146,14 @@ function hasSubsequentAssistantTurn(entries, currentIndex) {
   return false
 }
 
-function getAIChatMessageEntryAnimationName(entry) {
+function getAIChatMessageEntryAnimationName(entry: GroupedConversationEntry) {
   if (entry?.type === 'user') {
     return 'ai-chat-msg-enter-right'
   }
   return 'ai-chat-msg-enter-left'
 }
 
-function isVerticallyScrollableElement(element) {
+function isVerticallyScrollableElement(element: Element) {
   if (!(element instanceof HTMLElement)) {
     return false
   }
@@ -128,8 +164,8 @@ function isVerticallyScrollableElement(element) {
   return overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay'
 }
 
-function collectScrollableAncestorsWithinContainer(target, container) {
-  const ancestors = []
+function collectScrollableAncestorsWithinContainer(target: EventTarget | null, container: HTMLElement | null) {
+  const ancestors: HTMLElement[] = []
   let current = target instanceof HTMLElement ? target : null
   while (current && current !== container) {
     if (isVerticallyScrollableElement(current)) {
@@ -140,7 +176,7 @@ function collectScrollableAncestorsWithinContainer(target, container) {
   return ancestors
 }
 
-function canScrollableElementConsumeDelta(element, deltaY) {
+function canScrollableElementConsumeDelta(element: Element, deltaY: number) {
   if (!(element instanceof HTMLElement) || Math.abs(Number(deltaY) || 0) < 1) {
     return false
   }
@@ -151,7 +187,7 @@ function canScrollableElementConsumeDelta(element, deltaY) {
   return element.scrollTop < maxScrollTop - 1
 }
 
-function shouldIgnoreConversationScrollIntentFromNestedScroller(target, container, deltaY = null) {
+function shouldIgnoreConversationScrollIntentFromNestedScroller(target: EventTarget | null, container: HTMLElement | null, deltaY: number | null = null) {
   if (!(container instanceof HTMLElement)) {
     return false
   }
@@ -170,30 +206,52 @@ function shouldIgnoreConversationScrollIntentFromNestedScroller(target, containe
   return true
 }
 
-function getTouchClientY(event) {
+function getTouchClientY(event: React.TouchEvent | React.TouchEvent<HTMLElement>) {
   const touch = event?.touches?.[0] || event?.changedTouches?.[0]
   const value = Number(touch?.clientY)
   return Number.isFinite(value) ? value : null
 }
 
-export default function AIChatConversation({ messages = [], sessionId = '', terminalId = '', conversationId = '', onSendUserMessage, onRetryUserMessage, onRetryAssistantMessage, onEditUserMessage, onDeleteMessage, onPreviewRestore, onPreviewDiffFetch, onApplyRestore, followupInteractionLocked = false, messageActionBarAtBottom = false, messageNavEnabled = true, side = 'right', scrollToBottomSignal = 0, sendPerfMetricsRef = null, editingTargetMessageId = '' }) {
+export interface AIChatConversationProps {
+  messages?: unknown[]
+  sessionId?: string
+  terminalId?: string
+  conversationId?: string
+  onSendUserMessage?: (text: string) => void
+  onRetryUserMessage?: (id: string, text: string, images: string[]) => void
+  onRetryAssistantMessage?: (id: string) => void
+  onEditUserMessage?: (id: string, text: string, images: string[]) => void
+  onDeleteMessage?: (id: string) => void
+  onPreviewRestore?: (artifactPath: string, targetTerminalId: string) => void
+  onPreviewDiffFetch?: (artifactPath: string, targetTerminalId: string) => void
+  onApplyRestore?: (artifactPath: string, targetTerminalId: string) => void
+  followupInteractionLocked?: boolean
+  messageActionBarAtBottom?: boolean
+  messageNavEnabled?: boolean
+  side?: string
+  scrollToBottomSignal?: number
+  sendPerfMetricsRef?: { current: Map<string, unknown> | null } | null
+  editingTargetMessageId?: string
+}
+
+export default function AIChatConversation({ messages = [], sessionId = '', terminalId = '', conversationId = '', onSendUserMessage, onRetryUserMessage, onRetryAssistantMessage, onEditUserMessage, onDeleteMessage, onPreviewRestore, onPreviewDiffFetch, onApplyRestore, followupInteractionLocked = false, messageActionBarAtBottom = false, messageNavEnabled = true, side = 'right', scrollToBottomSignal = 0, sendPerfMetricsRef = null, editingTargetMessageId = '' }: AIChatConversationProps) {
   const { t } = useTranslation()
-  const containerRef = useRef(null)
-  const virtuosoRef = useRef(null)
-  const scrollerElementRef = useRef(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const virtuosoRef = useRef<VirtuosoHandle | null>(null)
+  const scrollerElementRef = useRef<HTMLElement | null>(null)
   const followIntentRef = useRef(true)
   const scrollAnimationFrameRef = useRef(0)
   const lastContainerHeightRef = useRef(0)
-  const lastTouchClientYRef = useRef(null)
+  const lastTouchClientYRef = useRef<number | null>(null)
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
   const [highlightedEntryKey, setHighlightedEntryKey] = useState('')
   const [hoveredNavIndex, setHoveredNavIndex] = useState(-1)
   const isLeftSide = side !== 'left'
-  const groupedMessages = useMemo(() => groupConversationMessages(messages), [messages])
+  const groupedMessages = useMemo(() => groupConversationMessages(messages) as GroupedConversationEntry[], [messages])
   const lastAssistantTurnIndex = useMemo(() => getLastAssistantTurnIndex(groupedMessages), [groupedMessages])
   const firstUserMessageIndex = useMemo(() => groupedMessages.findIndex((entry) => entry?.type === 'user'), [groupedMessages])
   const userMessageEntries = useMemo(() => {
-    const result = []
+    const result: Array<{ entry: Extract<GroupedConversationEntry, { type: 'user' }>; index: number }> = []
     groupedMessages.forEach((entry, idx) => {
       if (entry?.type === 'user' && entry.message) {
         result.push({ entry, index: idx })
@@ -211,7 +269,7 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
     setShowScrollToBottom(true)
   }, [])
 
-  const handleJumpToUserMessage = useCallback((targetIndex, entry) => {
+  const handleJumpToUserMessage = useCallback((targetIndex: number, entry: GroupedConversationEntry) => {
     followIntentRef.current = false
     setShowScrollToBottom(true)
     if (typeof virtuosoRef.current?.scrollToIndex === 'function') {
@@ -226,7 +284,7 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
     setHighlightedEntryKey(getEntryKey(entry, targetIndex))
   }, [])
 
-  const scrollToBottom = useCallback((behavior = 'auto') => {
+  const scrollToBottom = useCallback((behavior: 'auto' | 'smooth' = 'auto') => {
     if (groupedMessages.length === 0) {
       return
     }
@@ -253,7 +311,7 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
     })
   }, [groupedMessages.length])
 
-  const scheduleScrollToBottom = useCallback((behavior = 'auto', force = false) => {
+  const scheduleScrollToBottom = useCallback((behavior: 'auto' | 'smooth' = 'auto', force = false) => {
     if (groupedMessages.length === 0) {
       return
     }
@@ -342,10 +400,11 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
   }, [highlightedEntryKey])
 
   useEffect(() => {
-    const handleLocateConversationDiffItem = (event) => {
-      const targetSessionId = typeof event?.detail?.sessionId === 'string' ? event.detail.sessionId.trim() : ''
-      const targetTerminalId = typeof event?.detail?.terminalId === 'string' ? event.detail.terminalId.trim() : ''
-      const targetMessageId = typeof event?.detail?.messageId === 'string' ? event.detail.messageId.trim() : ''
+    const handleLocateConversationDiffItem = (event: Event) => {
+      const detail = (event as CustomEvent).detail as Record<string, unknown> | undefined
+      const targetSessionId = typeof detail?.sessionId === 'string' ? detail.sessionId.trim() : ''
+      const targetTerminalId = typeof detail?.terminalId === 'string' ? detail.terminalId.trim() : ''
+      const targetMessageId = typeof detail?.messageId === 'string' ? detail.messageId.trim() : ''
       if (!targetMessageId) {
         return
       }
@@ -409,7 +468,7 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
     scrollToBottom('smooth')
   }, [scrollToBottom])
 
-  const handleUserWheelCapture = useCallback((event) => {
+  const handleUserWheelCapture = useCallback((event: React.WheelEvent) => {
     const deltaY = Number(event?.deltaY) || 0
     if (deltaY >= -1) {
       return
@@ -420,11 +479,11 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
     suspendFollow()
   }, [suspendFollow])
 
-  const handleUserTouchStartCapture = useCallback((event) => {
+  const handleUserTouchStartCapture = useCallback((event: React.TouchEvent) => {
     lastTouchClientYRef.current = getTouchClientY(event)
   }, [])
 
-  const handleUserTouchMoveCapture = useCallback((event) => {
+  const handleUserTouchMoveCapture = useCallback((event: React.TouchEvent) => {
     const nextTouchClientY = getTouchClientY(event)
     const previousTouchClientY = lastTouchClientYRef.current
     lastTouchClientYRef.current = nextTouchClientY
@@ -445,7 +504,7 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
     lastTouchClientYRef.current = null
   }, [])
 
-  const handlePointerDownCapture = useCallback((event) => {
+  const handlePointerDownCapture = useCallback((event: React.PointerEvent) => {
     const scroller = scrollerElementRef.current
     if (!(scroller instanceof HTMLElement) || event?.target !== scroller) {
       return
@@ -457,7 +516,7 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
     }
   }, [suspendFollow])
 
-  const handleKeyDownCapture = useCallback((event) => {
+  const handleKeyDownCapture = useCallback((event: React.KeyboardEvent) => {
     if (!['ArrowUp', 'PageUp', 'Home'].includes(event?.key)) {
       return
     }
@@ -593,7 +652,7 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
                 followupInteractionLocked,
                 messageActionBarAtBottom,
                 sendPerfMetricsRef,
-                isEditingTarget: isEditingTargetEntry,
+                isEditingTarget: Boolean(isEditingTargetEntry),
               }, {
                 isLastAssistantTurn: index === lastAssistantTurnIndex,
                 hasSubsequentAssistantMessage: hasSubsequentAssistantTurn(groupedMessages, index),

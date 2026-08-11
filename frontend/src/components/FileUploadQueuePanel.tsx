@@ -1,11 +1,47 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { Upload, Download, FolderOpen, X, CheckCircle2, AlertCircle, Clock3, ClipboardList } from 'lucide-react';
-import { useTranslation } from '../i18n.js';
+import { Upload, Download, FolderOpen, X, CheckCircle2, AlertCircle, Clock3, ClipboardList, type LucideIcon } from 'lucide-react';
+import { useTranslation, type I18nKey } from '../i18n.js';
 import Tiptop from './Tiptop.jsx';
 
 const MAX_RENDER_UPLOAD_CARDS = 1000;
 
-function fmtSize(bytes) {
+/** 传输分块（FileManager 上报的宽松结构） */
+export interface TransferChunk {
+  index: number;
+  status: string;
+  attempt?: number;
+  error?: string;
+}
+
+/** 传输队列条目（FileManager 上报的宽松结构） */
+export interface TransferQueueItem {
+  id: string;
+  name?: string;
+  direction?: string;
+  status: string;
+  mode?: string;
+  phase?: string;
+  phaseDetail?: string;
+  phaseCurrent?: string;
+  phaseProgress?: number;
+  progress?: number;
+  error?: string;
+  localPath?: string;
+  remotePath?: string;
+  createdAt?: number;
+  bytesUploaded?: number;
+  bytesTotal?: number;
+  chunkSizeBytes?: number;
+  chunksCompleted?: number;
+  chunksFailed?: number;
+  chunks?: TransferChunk[];
+  [key: string]: unknown;
+}
+
+/** helper 的 t 参数使用严格 I18nKey 签名（与 useTranslation 返回值一致） */
+type LooseT = (key: I18nKey, vars?: Record<string, unknown>) => string;
+
+function fmtSize(bytes: number | undefined) {
   if (!bytes || bytes <= 0) return '0 B';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -13,7 +49,7 @@ function fmtSize(bytes) {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
-function getStatusMeta(status, direction, t) {
+function getStatusMeta(status: string, direction: string, t: LooseT) {
   if (status === 'uploading') {
     return { label: direction === 'download' ? t('下载中') : t('上传中'), color: 'var(--accent)', bg: 'var(--accent-dim)', Icon: direction === 'download' ? Download : Upload };
   }
@@ -26,7 +62,7 @@ function getStatusMeta(status, direction, t) {
   return { label: t('排队中'), color: 'var(--text-tertiary)', bg: 'var(--surface-sunken)', Icon: Clock3 };
 }
 
-function getChunkColor(status) {
+function getChunkColor(status: string) {
   if (status === 'completed') return 'var(--success)';
   if (status === 'failed') return 'var(--danger)';
   if (status === 'retrying') return 'var(--warning)';
@@ -35,7 +71,7 @@ function getChunkColor(status) {
   return 'var(--border)';
 }
 
-function getChunkLabel(chunk, t) {
+function getChunkLabel(chunk: TransferChunk, t: LooseT) {
   if (chunk.status === 'completed') return t('已完成');
   if (chunk.status === 'failed') return t('失败');
   if (chunk.status === 'retrying') return t('重试中');
@@ -44,7 +80,7 @@ function getChunkLabel(chunk, t) {
   return t('排队中');
 }
 
-function getUploadPhaseLabel(phase, direction, t) {
+function getUploadPhaseLabel(phase: string | undefined, direction: string, t: LooseT) {
   if (phase === 'preparing') return t('准备中');
   if (phase === 'scanning') return t('扫描中');
   if (phase === 'compressing') return direction === 'download' ? t('远端压缩中') : t('压缩中');
@@ -60,7 +96,7 @@ function getUploadPhaseLabel(phase, direction, t) {
   return t('排队中');
 }
 
-function formatCompressedPhaseBytes(item, t) {
+function formatCompressedPhaseBytes(item: TransferQueueItem, t: LooseT) {
   const bytesDone = Number(item.bytesUploaded) || 0;
   const bytesTotal = Number(item.bytesTotal) || 0;
   if (bytesTotal <= 0) {
@@ -69,7 +105,7 @@ function formatCompressedPhaseBytes(item, t) {
   return `${fmtSize(bytesDone)} / ${fmtSize(bytesTotal)}`;
 }
 
-function getCompressedPhaseDetail(item, t) {
+function getCompressedPhaseDetail(item: TransferQueueItem, t: LooseT) {
   const direction = item.direction || 'upload';
   if (item.phase === 'scanning') return item.phaseDetail || t('正在扫描待压缩项目');
   if (item.phase === 'compressing') return item.phaseDetail || (direction === 'download' ? t('正在远端打包压缩包') : t('正在构建本机 tar.gz 压缩包'));
@@ -86,7 +122,15 @@ function getCompressedPhaseDetail(item, t) {
   return item.phaseDetail || '';
 }
 
-function buildCompressedPhaseChunks(item) {
+interface CompressedPhaseChunks {
+  chunks: TransferChunk[];
+  chunkSizeBytes: number;
+  chunksDone: number;
+  chunksFailed: number;
+  chunksActive: number;
+}
+
+function buildCompressedPhaseChunks(item: TransferQueueItem): CompressedPhaseChunks {
   const bytesTotal = Math.max(0, Number(item.bytesTotal) || 0);
   if (bytesTotal <= 0) {
     return { chunks: [], chunkSizeBytes: 0, chunksDone: 0, chunksFailed: 0, chunksActive: 0 };
@@ -104,7 +148,7 @@ function buildCompressedPhaseChunks(item) {
     : -1;
   const activeChunkIndex = item.status === 'uploading' && hasPartialChunk ? completedChunks : -1;
 
-  const chunks = Array.from({ length: totalChunks }, (_, index) => {
+  const chunks: TransferChunk[] = Array.from({ length: totalChunks }, (_, index) => {
     if (index < completedChunks) {
       return { index, status: 'completed', attempt: 0, error: '' };
     }
@@ -126,7 +170,7 @@ function buildCompressedPhaseChunks(item) {
   };
 }
 
-function getTransferErrorSummary(message, t) {
+function getTransferErrorSummary(message: string, t: LooseT) {
   const normalized = String(message || '').trim();
   if (!normalized) {
     return t('查看详情');
@@ -135,8 +179,13 @@ function getTransferErrorSummary(message, t) {
   return firstLine.trim() || t('查看详情');
 }
 
-function AutoFollowChunkGrid({ chunks, titleBuilder }) {
-  const containerRef = useRef(null);
+interface AutoFollowChunkGridProps {
+  chunks: TransferChunk[];
+  titleBuilder: (chunk: TransferChunk) => string;
+}
+
+function AutoFollowChunkGrid({ chunks, titleBuilder }: AutoFollowChunkGridProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoFollowRef = useRef(false);
 
   useEffect(() => {
@@ -184,19 +233,24 @@ function AutoFollowChunkGrid({ chunks, titleBuilder }) {
   );
 }
 
-function isPriorityVisibleItem(item, isAbortable) {
+function isPriorityVisibleItem(item: TransferQueueItem, isAbortable?: (item: TransferQueueItem) => boolean) {
   return Boolean(isAbortable?.(item));
 }
 
-function buildVisibleQueue(items, isAbortable) {
+interface VisibleQueue {
+  visibleItems: TransferQueueItem[];
+  hiddenItems: TransferQueueItem[];
+}
+
+function buildVisibleQueue(items: TransferQueueItem[], isAbortable?: (item: TransferQueueItem) => boolean): VisibleQueue {
   if (items.length <= MAX_RENDER_UPLOAD_CARDS) {
     return { visibleItems: items, hiddenItems: [] };
   }
 
   const visibleLimit = MAX_RENDER_UPLOAD_CARDS - 1;
   const activeItems = items.filter((item) => isPriorityVisibleItem(item, isAbortable));
-  const visibleIds = new Set();
-  let visibleItems = [];
+  const visibleIds = new Set<string>();
+  let visibleItems: TransferQueueItem[] = [];
 
   if (activeItems.length >= visibleLimit) {
     visibleItems = activeItems.slice(-visibleLimit);
@@ -219,7 +273,7 @@ function buildVisibleQueue(items, isAbortable) {
   };
 }
 
-function renderActionButton(label, danger, onClick) {
+function renderActionButton(label: string, danger: boolean, onClick: () => void) {
   return (
     <button
       type="button"
@@ -242,6 +296,16 @@ function renderActionButton(label, danger, onClick) {
   );
 }
 
+export interface FileUploadQueuePanelProps {
+  items: TransferQueueItem[];
+  closing?: boolean;
+  onClose: () => void;
+  isAbortable?: (item: TransferQueueItem) => boolean;
+  onAbortItem?: (item: TransferQueueItem) => void;
+  onAbortItems?: (items: TransferQueueItem[]) => void;
+  onRemoveItems?: (ids: string[]) => void;
+}
+
 export default function FileUploadQueuePanel({
   items,
   closing = false,
@@ -250,10 +314,10 @@ export default function FileUploadQueuePanel({
   onAbortItem,
   onAbortItems,
   onRemoveItems,
-}) {
+}: FileUploadQueuePanelProps) {
   const { t } = useTranslation();
 
-  const handleOpenCompletedDownload = async (item) => {
+  const handleOpenCompletedDownload = async (item: TransferQueueItem) => {
     const localPath = String(item?.localPath || '').trim();
     if (!localPath) {
       return;
@@ -265,7 +329,7 @@ export default function FileUploadQueuePanel({
     }
   };
 
-  const openTransferErrorDetails = async (item, explicitMessage = '') => {
+  const openTransferErrorDetails = async (item: TransferQueueItem, explicitMessage = '') => {
     const message = String(explicitMessage || item?.error || '').trim();
     if (!message) {
       return;
@@ -353,7 +417,7 @@ export default function FileUploadQueuePanel({
               const meta = getStatusMeta(item.status, direction, t);
               const progress = item.status === 'completed'
                 ? 100
-                : Math.max(0, Math.min(100, Number.isFinite(item.progress) ? item.progress : 0));
+                : Math.max(0, Math.min(100, typeof item.progress === 'number' && Number.isFinite(item.progress) ? item.progress : 0));
               const Icon = meta.Icon;
               const chunks = Array.isArray(item.chunks) ? item.chunks : [];
               const chunksDone = item.chunksCompleted || chunks.filter((chunk) => chunk.status === 'completed').length;
@@ -361,7 +425,7 @@ export default function FileUploadQueuePanel({
               const chunksActive = chunks.filter((chunk) => chunk.status === 'reading' || chunk.status === 'uploading' || chunk.status === 'retrying').length;
               const isCompressed = item.mode === 'compressed' || item.mode === 'download-compressed';
               const phaseLabel = getUploadPhaseLabel(item.phase, direction, t);
-              const phaseProgress = Math.max(0, Math.min(100, Number.isFinite(item.phaseProgress) ? item.phaseProgress : 0));
+              const phaseProgress = Math.max(0, Math.min(100, typeof item.phaseProgress === 'number' && Number.isFinite(item.phaseProgress) ? item.phaseProgress : 0));
               const phaseDetail = getCompressedPhaseDetail(item, t);
               const compressedPhaseChunks = isCompressed ? buildCompressedPhaseChunks(item) : null;
               const statusLabel = isCompressed ? phaseLabel : meta.label;

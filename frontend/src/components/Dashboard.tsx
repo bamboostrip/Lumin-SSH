@@ -4,6 +4,74 @@ import { useTranslation } from '../i18n.js';
 import AddServerModal from './AddServerModal.jsx';
 import ServerList from './ServerList.jsx';
 import Tiptop from './Tiptop.jsx';
+import type { config } from '../../wailsjs/go/models.js';
+import type { PingCounts, ServerPingResult } from '../hooks/useServerPing.js';
+import type { DashboardHostPageMode, ServerListViewMode } from '../hooks/useDashboardPreferences.js';
+import type { ServerFormData } from '../hooks/useServerCatalog.js';
+import type { SessionLike } from '../utils/sessionWorkspace.js';
+
+/** 最近连接会话（宽松形状，来自 useSessionConnections） */
+interface DashboardSessionLike {
+  id?: string;
+  serverId?: string;
+  status?: string;
+  [key: string]: unknown;
+}
+
+export interface DashboardProps {
+  editorServer: (config.Connection & { authType?: string }) | null;
+  editorShiningFields?: Record<string, unknown>;
+  saveFlowHighlights: { serverId: string | null; rowPulse: unknown; fields: Record<string, unknown> };
+  isEditFlying?: boolean;
+  onSaveServer: (data: ServerFormData, shouldClearAfterAdd?: boolean) => Promise<config.Connection | null>;
+  onSaveAndConnectServer?: (data: ServerFormData, shouldClearAfterAdd?: boolean) => Promise<config.Connection | null>;
+  onCancelEditor: () => void;
+  allGroups: string[];
+  credentials: config.Credential[];
+  onOpenCredentials: () => void;
+  searchQuery: string;
+  onSearchChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  hideSensitive: boolean;
+  onHideSensitiveToggle: () => void;
+  serverListViewMode: ServerListViewMode;
+  onViewModeChange: (mode: ServerListViewMode) => void;
+  servers: config.Connection[];
+  pingEnabled: boolean;
+  pingCounts: PingCounts;
+  isRefreshingPing: boolean;
+  onRefreshPing: () => void;
+  filteredServers: config.Connection[];
+  pings: Record<string, ServerPingResult>;
+  sessions: DashboardSessionLike[];
+  activeSessionId: string | null;
+  recentConnectionIds?: string[];
+  hostPageMode: DashboardHostPageMode;
+  onHostPageModeChange?: (mode: DashboardHostPageMode) => void;
+  onClearRecentConnections?: () => void;
+  onRemoveRecentConnection?: (id: string) => void;
+  onConnect: (server: config.Connection) => void;
+  onStartAdd: () => void;
+  onEdit: (server: config.Connection, payload: unknown) => void;
+  onClone: (server: config.Connection, payload: unknown) => void;
+  onDelete: (id: string) => void;
+  onMoveGroup: (id: string, group: string) => void;
+  addToast: (message: string | Error, type?: string, duration?: number, actions?: unknown[]) => number;
+  onOpenImportExport: () => void;
+  selectionMode?: boolean;
+  selectedIds?: string[];
+  onSelectChange: (payload: string | string[] | Array<{ id: string; selected: boolean }>) => void;
+  onBatchDelete?: (ids: string[]) => void;
+  onBatchConnect?: (ids: string[]) => void;
+  onBatchMoveGroup?: (ids: string[], group: string) => void;
+  onGroupDelete: (groupName: string, ids: string[]) => void;
+  onRenameGroup: (oldName: string) => string | null | Promise<string | null>;
+  onSelectionModeToggle: () => void;
+  onBatchExport?: (ids: string[]) => void;
+  onExitSelectionMode?: () => void;
+  onConnectLocal?: (name: string, shellPath: string) => void;
+  onConnectSerial?: (config: { port: string; baudRate: number; dataBits: number; stopBits: number; parity: string }) => void;
+  setShowSerialModal?: (v: boolean) => void;
+}
 
 export default function Dashboard({
   editorServer, editorShiningFields, saveFlowHighlights, isEditFlying = false, onSaveServer, onSaveAndConnectServer, onCancelEditor, allGroups,
@@ -34,18 +102,18 @@ export default function Dashboard({
   onConnectLocal,
   onConnectSerial,
   setShowSerialModal,
-}) {
+}: DashboardProps) {
   const { t } = useTranslation();
 
   const [showMoveGroupDropdown, setShowMoveGroupDropdown] = useState(false);
   const [groupSearchQuery, setGroupSearchQuery] = useState('');
-  const [collapsedGroups, setCollapsedGroups] = useState(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [localMenuOpen, setLocalMenuOpen] = useState(false);
-  const [localShells, setLocalShells] = useState([]);
+  const [localShells, setLocalShells] = useState<string[]>([]);
   // 'hosts' | 'recent' — 由 App 持有，便于主页 ping 仅在 hosts 时运行
   const hostPageMode = hostPageModeProp === 'recent' ? 'recent' : 'hosts';
-  const moveGroupMenuRef = useRef(null);
-  const localMenuRef = useRef(null);
+  const moveGroupMenuRef = useRef<HTMLDivElement | null>(null);
+  const localMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     window.go?.wailsapp?.App?.GetLocalShells?.()
@@ -57,14 +125,14 @@ export default function Dashboard({
       });
   }, []);
 
-  const switchHostPageMode = (mode) => {
+  const switchHostPageMode = (mode: string) => {
     onHostPageModeChange?.(mode === 'recent' ? 'recent' : 'hosts');
   };
 
   const recentServers = useMemo(() => {
-    if (!Array.isArray(recentConnectionIds) || recentConnectionIds.length === 0) return [];
+    if (!Array.isArray(recentConnectionIds) || recentConnectionIds.length === 0) return [] as config.Connection[];
     const byId = new Map(servers.map((s) => [s.id, s]));
-    return recentConnectionIds.map((id) => byId.get(id)).filter(Boolean);
+    return recentConnectionIds.map((id) => byId.get(id)).filter((server): server is config.Connection => !!server);
   }, [recentConnectionIds, servers]);
 
   const filteredRecentServers = useMemo(() => {
@@ -82,7 +150,7 @@ export default function Dashboard({
     });
   }, [recentServers, searchQuery]);
 
-  const mask = (value) => {
+  const mask = (value: string) => {
     const text = String(value || '');
     if (!text) return '';
     if (text.length <= 2) return '*'.repeat(text.length);
@@ -97,11 +165,11 @@ export default function Dashboard({
   };
 
   useEffect(() => {
-    function handleClickOutside(event) {
-      if (moveGroupMenuRef.current && !moveGroupMenuRef.current.contains(event.target)) {
+    function handleClickOutside(event: MouseEvent) {
+      if (moveGroupMenuRef.current && !moveGroupMenuRef.current.contains(event.target as Node)) {
         setShowMoveGroupDropdown(false);
       }
-      if (localMenuRef.current && !localMenuRef.current.contains(event.target)) {
+      if (localMenuRef.current && !localMenuRef.current.contains(event.target as Node)) {
         setLocalMenuOpen(false);
       }
     }
@@ -110,7 +178,7 @@ export default function Dashboard({
   }, []);
 
   const existingGroups = useMemo(() => {
-    const groups = new Set();
+    const groups = new Set<string>();
     servers.forEach(s => {
       if (s.group) groups.add(s.group);
     });
@@ -124,7 +192,7 @@ export default function Dashboard({
   }, [existingGroups, groupSearchQuery]);
 
   const visibleGroupNames = useMemo(() => {
-    const groups = new Set();
+    const groups = new Set<string>();
     filteredServers.forEach(s => groups.add(s.group || ''));
     return Array.from(groups);
   }, [filteredServers]);

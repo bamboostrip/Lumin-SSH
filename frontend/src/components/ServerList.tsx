@@ -3,11 +3,14 @@ import { useTranslation } from '../i18n.js';
 import { Monitor, Pencil, Link, Trash2, X, SquarePen, Folder, FolderOpen, ChevronUp, ChevronDown, Copy, Trash, ChevronLeft, ChevronRight, Download, PenLine } from 'lucide-react';
 import { clampMenuPosition } from '../utils/menuPosition.js';
 import Tiptop from './Tiptop.jsx';
+import type { config } from '../../wailsjs/go/models.js';
+import type { ServerPingResult } from '../hooks/useServerPing.js';
+import type { ServerListViewMode } from '../hooks/useDashboardPreferences.js';
 
 const MENU_ESTIMATED_WIDTH = 196;
 const MENU_ESTIMATED_HEIGHT = 160;
 
-const LATENCY_CLASS = (ms) => {
+const LATENCY_CLASS = (ms: number | null) => {
   if (ms === null || ms === undefined) return 'offline';
   if (ms < 0) return 'good';     // -1 = <1ms (proxy/local)
   if (ms <= 300) return 'good';  // 0-300ms 绿色
@@ -15,7 +18,7 @@ const LATENCY_CLASS = (ms) => {
   return 'bad';                  // >400ms 红色
 };
 
-const osIcon = (src, alt) => <img src={src} width="22" height="22" alt={alt} />;
+const osIcon = (src: string, alt: string) => <img src={src} width="22" height="22" alt={alt} />;
 const UbuntuIcon     = () => osIcon('/ubuntu.svg', 'Ubuntu');
 const DebianIcon     = () => osIcon('/debian.svg', 'Debian');
 const CentosIcon     = () => osIcon('/centos.svg', 'CentOS');
@@ -41,16 +44,24 @@ const FreeBSDIcon    = () => osIcon('/freebsd.svg', 'FreeBSD');
 const TencentIcon    = () => osIcon('/TencentOS.svg', 'TencentOS');
 const AlibabaIcon    = () => osIcon('/Alibaba.svg', 'Alibaba');
 
+interface OSInfoResult {
+  icon: React.ReactNode;
+  bg: string;
+  accent: string;
+  accentRgb?: string;
+  label: string;
+}
+
 // 检测OS，支持静态名称匹配和动态 osInfo 对象
 // 使用模块级缓存避免每次渲染都创建新 JSX 元素（性能优化）
-const _osInfoCache = new Map();
-const getOSInfo = (name = '', os = '', osInfo = null) => {
+const _osInfoCache = new Map<string, OSInfoResult>();
+const getOSInfo = (name = '', os = '', osInfo: Record<string, unknown> | null = null): OSInfoResult => {
   // 优先用连接后实际查询到的系统信息
-  const dynStr = (osInfo?.os || osInfo?.platform || '').toLowerCase();
+  const dynStr = String(osInfo?.os || osInfo?.platform || '').toLowerCase();
   const n = dynStr || (name + ' ' + (os || '')).toLowerCase();
   // 缓存键：仅依赖输入字符串，JSX 元素可安全复用
-  if (_osInfoCache.has(n)) return _osInfoCache.get(n);
-  let result;
+  if (_osInfoCache.has(n)) return _osInfoCache.get(n) as OSInfoResult;
+  let result: OSInfoResult;
   // ── 发行版检测（按优先级排列）──
   const distroBg = 'var(--surface-overlay)';
   const distroAccent = 'var(--text-secondary)';
@@ -90,6 +101,40 @@ const getOSInfo = (name = '', os = '', osInfo = null) => {
   return result;
 };
 
+export interface ServerListProps {
+  servers: config.Connection[];
+  pingEnabled: boolean;
+  pings: Record<string, ServerPingResult>;
+  sessions: Array<{ id?: string; serverId?: string; status?: string; osInfo?: unknown; [key: string]: unknown }>;
+  activeSessionId: string | null;
+  viewMode?: ServerListViewMode;
+  hideSensitive?: boolean;
+  onConnect: (server: config.Connection) => void;
+  onEdit: (server: config.Connection, payload: unknown) => void;
+  onClone: (server: config.Connection, payload: unknown) => void;
+  onDelete: (id: string) => void;
+  onMoveGroup?: (id: string, group: string) => void;
+  addToast: (message: string | Error, type?: string, duration?: number, actions?: unknown[]) => number;
+  saveFlowHighlights?: { serverId: string | null; rowPulse: unknown; fields: Record<string, unknown> };
+  selectionMode?: boolean;
+  selectedIds?: string[];
+  onSelectChange: (payload: string | string[] | Array<{ id: string; selected: boolean }>) => void;
+  onBatchDelete?: (ids: string[]) => void;
+  onBatchConnect?: (ids: string[]) => void;
+  onBatchMoveGroup?: (ids: string[], group: string) => void;
+  onGroupDelete?: (groupName: string, ids: string[]) => void;
+  onRenameGroup?: (oldName: string) => string | null | Promise<string | null>;
+  onBatchExport?: (ids: string[]) => void;
+  onExitSelectionMode?: () => void;
+  collapsedGroups: Set<string>;
+  onCollapsedGroupsChange: React.Dispatch<React.SetStateAction<Set<string>>>;
+}
+
+/** 扁平列表条目（分组 header 或服务器卡片） */
+type FlatItem =
+  | { type: 'header'; groupName: string; count: number; collapsed: boolean }
+  | { type: 'server'; server: config.Connection };
+
 export default function ServerList({
   servers,
   pingEnabled,
@@ -117,25 +162,25 @@ export default function ServerList({
   onExitSelectionMode,
   collapsedGroups: controlledCollapsedGroups,
   onCollapsedGroupsChange,
-}) {
+}: ServerListProps) {
   const { t } = useTranslation();
-  const [menuServer, setMenuServer] = useState(null);
+  const [menuServer, setMenuServer] = useState<config.Connection | null>(null);
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
-  const [groupHeaderMenu, setGroupHeaderMenu] = useState(null); // { groupName, x, y }
-  const [hoveredId, setHoveredId] = useState(null);
+  const [groupHeaderMenu, setGroupHeaderMenu] = useState<{ groupName: string; x: number; y: number } | null>(null); // { groupName, x, y }
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [groupMenu, setGroupMenu] = useState(false);
-  const [localCollapsedGroups, setLocalCollapsedGroups] = useState(new Set());
+  const [localCollapsedGroups, setLocalCollapsedGroups] = useState<Set<string>>(new Set());
   const collapsedGroups = controlledCollapsedGroups ?? localCollapsedGroups;
-  const setCollapsedGroups = onCollapsedGroupsChange ?? setLocalCollapsedGroups;
-  const [groupOrder, setGroupOrder] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('serverGroupOrder') || '[]'); } catch { return []; }
+  const setCollapsedGroups: React.Dispatch<React.SetStateAction<Set<string>>> = onCollapsedGroupsChange ?? setLocalCollapsedGroups;
+  const [groupOrder, setGroupOrder] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('serverGroupOrder') || '[]') as string[]; } catch { return []; }
   });
-  const menuRef = useRef(null);
-  const groupHeaderMenuRef = useRef(null);
-  const menuSourceRef = useRef(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const groupHeaderMenuRef = useRef<HTMLDivElement | null>(null);
+  const menuSourceRef = useRef<HTMLElement | null>(null);
   const lastClickedIndex = useRef(-1); // 记录上次点击的扁平索引，用于 Shift 批量选择
   const [showMoveGroupDropdown, setShowMoveGroupDropdown] = useState(false);
-  const moveGroupMenuRef = useRef(null);
+  const moveGroupMenuRef = useRef<HTMLDivElement | null>(null);
 
   // 用指针位移区分「点击连接」与「拖选复制」：
   // - 几乎没移动 → 视为点击，连接时清掉浏览器误选
@@ -156,7 +201,7 @@ export default function ServerList({
     }
   };
 
-  const markPointerDown = (e) => {
+  const markPointerDown = (e: React.PointerEvent) => {
     if (e.button != null && e.button !== 0) return;
     pointerGestureRef.current = {
       x: e.clientX,
@@ -166,7 +211,7 @@ export default function ServerList({
     };
   };
 
-  const markPointerMove = (e) => {
+  const markPointerMove = (e: React.PointerEvent) => {
     const g = pointerGestureRef.current;
     if (!g.active || g.moved) return;
     const dx = Math.abs(e.clientX - g.x);
@@ -183,7 +228,7 @@ export default function ServerList({
 
   const wasDragSelect = () => pointerGestureRef.current.moved;
 
-  const tryConnect = (server) => {
+  const tryConnect = (server: config.Connection) => {
     if (!server || typeof onConnect !== 'function') return;
     // 拖选过：只保留文字选中，不连接
     if (wasDragSelect()) return;
@@ -203,22 +248,22 @@ export default function ServerList({
 
   // 预计算已连接会话的 Map，将 O(n×m) 查找优化为 O(1)
   const connectedSessionMap = useMemo(() => {
-    const m = new Map();
+    const m = new Map<string, (typeof sessions)[number]>();
     sessions.forEach(s => {
-      if (s.status === 'connected') m.set(s.serverId, s);
+      if (s.status === 'connected') m.set(s.serverId || '', s);
     });
     return m;
   }, [sessions]);
 
-  const mask = (text) => hideSensitive ? String(text || '').replace(/[^@.:\/\s-]/g, '*') : text;
+  const mask = (text: string) => hideSensitive ? String(text || '').replace(/[^@.:\/\s-]/g, '*') : text;
 
   // Close context menu on outside click
   useEffect(() => {
-    const handler = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuServer(null);
       }
-      if (groupHeaderMenuRef.current && !groupHeaderMenuRef.current.contains(e.target)) {
+      if (groupHeaderMenuRef.current && !groupHeaderMenuRef.current.contains(e.target as Node)) {
         setGroupHeaderMenu(null);
       }
     };
@@ -227,8 +272,8 @@ export default function ServerList({
   }, []);
 
   useEffect(() => {
-    const handler = (e) => {
-      if (showMoveGroupDropdown && moveGroupMenuRef.current && !moveGroupMenuRef.current.contains(e.target)) {
+    const handler = (e: MouseEvent) => {
+      if (showMoveGroupDropdown && moveGroupMenuRef.current && !moveGroupMenuRef.current.contains(e.target as Node)) {
         setShowMoveGroupDropdown(false);
       }
     };
@@ -247,10 +292,10 @@ export default function ServerList({
     });
   }, [menuServer]);
 
-  const getEditAnimationPayload = (server, sourceRoot) => {
+  const getEditAnimationPayload = (server: config.Connection, sourceRoot: HTMLElement | null) => {
     const root = sourceRoot || null;
     const sourceRect = root?.getBoundingClientRect?.();
-    const getRect = (field) => {
+    const getRect = (field: string) => {
       const el = root?.querySelector?.(`[data-edit-source-field="${field}"]`);
       const rect = el?.getBoundingClientRect?.() || sourceRect;
       if (!rect) return null;
@@ -292,29 +337,29 @@ export default function ServerList({
     };
   };
 
-  const triggerEdit = (server, sourceRoot) => {
+  const triggerEdit = (server: config.Connection, sourceRoot: HTMLElement | null) => {
     onEdit(server, getEditAnimationPayload(server, sourceRoot));
   };
 
-  const handleContextMenu = (e, server) => {
+  const handleContextMenu = (e: React.MouseEvent, server: config.Connection) => {
     e.preventDefault();
     e.stopPropagation();
-    menuSourceRef.current = e.currentTarget;
+    menuSourceRef.current = e.currentTarget as HTMLElement;
     setMenuServer(server);
     setMenuPos(clampMenuPosition(e.clientX, e.clientY, MENU_ESTIMATED_WIDTH, MENU_ESTIMATED_HEIGHT));
   };
 
-  const isActive = (server) => {
+  const isActive = (server: config.Connection) => {
     const session = sessions.find(
       (s) => s.serverId === server.id && s.status !== 'closed'
     );
     return session && session.id === activeSessionId;
   };
 
-  const hasSession = (server) =>
+  const hasSession = (server: config.Connection) =>
     sessions.some((s) => s.serverId === server.id && s.status !== 'closed');
 
-  const getSaveFlowTokens = (server) => {
+  const getSaveFlowTokens = (server: config.Connection) => {
     if (saveFlowHighlights?.serverId !== server.id) {
       return { rowToken: null, nameToken: null, hostToken: null, usernameToken: null };
     }
@@ -330,7 +375,7 @@ export default function ServerList({
   // ── 批量选择逻辑 ──
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const allGroupServerIds = useMemo(() => {
-    const m = {};
+    const m: Record<string, string[]> = {};
     for (const s of servers) {
       const g = s.group || '';
       (m[g] = m[g] || []).push(s.id);
@@ -338,20 +383,20 @@ export default function ServerList({
     return m;
   }, [servers]);
 
-  const flatItemsRef = useRef(null);
+  const flatItemsRef = useRef<FlatItem[] | null>(null);
 
-  const handleServerClick = useCallback((server, flatIdx) => {
+  const handleServerClick = useCallback((server: config.Connection, flatIdx: number) => {
     if (!selectionMode) return;
     onSelectChange(server.id);
     lastClickedIndex.current = flatIdx;
   }, [selectionMode, onSelectChange]);
 
-  const handleShiftClick = useCallback((server, flatIdx) => {
+  const handleShiftClick = useCallback((server: config.Connection, flatIdx: number) => {
     if (!selectionMode || lastClickedIndex.current < 0 || !flatItemsRef.current) return;
     const flatItems = flatItemsRef.current;
     const start = Math.min(lastClickedIndex.current, flatIdx);
     const end = Math.max(lastClickedIndex.current, flatIdx);
-    const serverIds = [];
+    const serverIds: string[] = [];
     for (let i = start; i <= end; i++) {
       const item = flatItems[i];
       if (item && item.type === 'server') serverIds.push(item.server.id);
@@ -360,7 +405,7 @@ export default function ServerList({
     lastClickedIndex.current = flatIdx;
   }, [selectionMode, onSelectChange]);
 
-  const handleGroupToggleSelect = useCallback((groupName) => {
+  const handleGroupToggleSelect = useCallback((groupName: string) => {
     if (!selectionMode) return;
     const ids = allGroupServerIds[groupName] || [];
     if (ids.length === 0) return;
@@ -368,12 +413,12 @@ export default function ServerList({
     onSelectChange(ids.map(id => ({ id, selected: !alreadyAllSelected })));
   }, [selectionMode, allGroupServerIds, selectedSet, onSelectChange]);
 
-  const isGroupSelected = useCallback((groupName) => {
+  const isGroupSelected = useCallback((groupName: string) => {
     const ids = allGroupServerIds[groupName] || [];
     return ids.length > 0 && ids.every(id => selectedSet.has(id));
   }, [allGroupServerIds, selectedSet]);
 
-  const isGroupPartiallySelected = useCallback((groupName) => {
+  const isGroupPartiallySelected = useCallback((groupName: string) => {
     const ids = allGroupServerIds[groupName] || [];
     if (ids.length === 0) return false;
     const selectedCount = ids.filter(id => selectedSet.has(id)).length;
@@ -382,7 +427,7 @@ export default function ServerList({
 
   // 按分组组织服务器
   const groupedServers = useMemo(() => {
-    const groups = {};
+    const groups: Record<string, config.Connection[]> = {};
     for (const s of servers) {
       const g = s.group || '';
       if (!groups[g]) groups[g] = [];
@@ -392,7 +437,7 @@ export default function ServerList({
     // 按用户拖拽顺序排序，新分组追加到已排序列表末尾，未分组始终最后
     const ordered = groupOrder.filter(g => g !== '' && groups[g]);
     const unordered = names.filter(g => g !== '' && !groupOrder.includes(g)).sort((a, b) => a.localeCompare(b));
-    const result = [];
+    const result: Array<[string, config.Connection[]]> = [];
     for (const g of [...ordered, ...unordered]) result.push([g, groups[g]]);
     if (groups['']) result.push(['', groups['']]);
     return result;
@@ -400,12 +445,12 @@ export default function ServerList({
 
   // 已有分组名称列表
   const existingGroups = useMemo(() => {
-    const s = new Set();
+    const s = new Set<string>();
     for (const srv of servers) { if (srv.group) s.add(srv.group); }
     return [...s].sort((a, b) => a.localeCompare(b));
   }, [servers]);
 
-  const toggleGroup = (g) => {
+  const toggleGroup = (g: string) => {
     setCollapsedGroups(prev => {
       const next = new Set(prev);
       if (next.has(g)) next.delete(g); else next.add(g);
@@ -413,7 +458,7 @@ export default function ServerList({
     });
   };
 
-  const openGroupHeaderMenu = (e, groupName) => {
+  const openGroupHeaderMenu = (e: React.MouseEvent, groupName: string) => {
     if (!groupName || !onRenameGroup) return;
     e.preventDefault();
     e.stopPropagation();
@@ -444,7 +489,7 @@ export default function ServerList({
     });
   };
 
-  const moveGroup = (g, dir) => {
+  const moveGroup = (g: string, dir: number) => {
     const names = groupedServers.filter(([n]) => n !== '').map(([n]) => n);
     const idx = names.indexOf(g);
     const newIdx = idx + dir;
@@ -457,7 +502,7 @@ export default function ServerList({
 
   // 构建扁平 items：分组 header + server card 混合列表（hook 必须在 early return 之前）
   const flatItems = useMemo(() => {
-    const items = [];
+    const items: FlatItem[] = [];
     for (const [groupName, groupServers] of groupedServers) {
       const collapsed = collapsedGroups.has(groupName);
       const showHeader = groupedServers.length > 1 || groupName !== '';
@@ -484,18 +529,18 @@ export default function ServerList({
   }
 
   // Server card 渲染
-  const renderServerCard = (server, flatIdx) => {
+  const renderServerCard = (server: config.Connection, flatIdx: number) => {
     const ping = pingEnabled ? pings[server.id] : undefined;
     const latClass = ping ? LATENCY_CLASS(ping.latency) : 'offline';
     const active = isActive(server);
     const connected = hasSession(server);
     const sessionForServer = connectedSessionMap.get(server.id);
-    const osInfo = getOSInfo(server.name, server.os, sessionForServer?.osInfo || null);
+    const osInfo = getOSInfo(server.name, server.os, (sessionForServer?.osInfo as Record<string, unknown> | null | undefined) || null);
     const isHovered = hoveredId === server.id;
     const { rowToken, nameToken, hostToken } = getSaveFlowTokens(server);
     const isChecked = selectedSet.has(server.id);
 
-    const handleCardClick = (e) => {
+    const handleCardClick = (e: React.MouseEvent) => {
       if (selectionMode) {
         e.stopPropagation();
         if (e.shiftKey) {
@@ -773,12 +818,12 @@ export default function ServerList({
                const active = isActive(server);
                const connected = hasSession(server);
                const sessionForServer = connectedSessionMap.get(server.id);
-               const osInfo = getOSInfo(server.name, server.os, sessionForServer?.osInfo || null);
+               const osInfo = getOSInfo(server.name, server.os, (sessionForServer?.osInfo as Record<string, unknown> | null | undefined) || null);
                const isHovered = hoveredId === server.id;
                const { rowToken, nameToken, hostToken, usernameToken } = getSaveFlowTokens(server);
                const isChecked = selectedSet.has(server.id);
 
-               const handleTableRowClick = (e) => {
+               const handleTableRowClick = (e: React.MouseEvent) => {
                  if (selectionMode) {
                    e.stopPropagation();
                    if (e.shiftKey) {

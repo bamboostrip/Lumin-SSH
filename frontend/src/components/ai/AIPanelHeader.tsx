@@ -4,7 +4,7 @@ import { useTranslation } from '../../i18n.js'
 import Tiptop from '../Tiptop.jsx'
 import IconActionButton from './IconActionButton.jsx'
 
-function formatAIContextTokens(value) {
+function formatAIContextTokens(value: unknown) {
   const parsed = Number(value)
   if (!Number.isFinite(parsed) || parsed <= 0) {
     return '0'
@@ -20,6 +20,30 @@ function formatAIContextTokens(value) {
     return `${(rounded / 1e3).toFixed(2)}k`
   }
   return String(rounded)
+}
+
+interface AIPanelHeaderProps {
+  showSettingsPanel: boolean
+  onToggleSettings: () => void
+  onGoHome: () => void
+  showModeToggle?: boolean
+  isDevilMode?: boolean
+  onToggleMode?: () => void
+  onOpenConversationSearch?: () => void
+  onOpenConversationDiff?: () => void
+  showConversationSearchButton?: boolean
+  showConversationDiffButton?: boolean
+  showContextTokens?: boolean
+  contextTokens?: number
+  apiMessageCount?: number
+  isCondensingContext?: boolean
+  canCondenseContext?: boolean
+  canQuickCondenseContext?: boolean
+  canSummaryCondenseContext?: boolean
+  conversationSearchActive?: boolean
+  onCondenseContext?: () => void
+  onCondenseContextFullSummary?: () => void
+  fullSummaryCondenseAvailable?: boolean
 }
 
 export default function AIPanelHeader({
@@ -44,7 +68,7 @@ export default function AIPanelHeader({
   onCondenseContext,
   onCondenseContextFullSummary,
   fullSummaryCondenseAvailable = false,
-}) {
+}: AIPanelHeaderProps) {
   const { t } = useTranslation()
   const [condenseActionsVisible, setCondenseActionsVisible] = useState(false)
   const condenseCloseTimerRef = useRef(0)
@@ -142,7 +166,7 @@ export default function AIPanelHeader({
             onMouseLeave={hideCondenseActionsWithDelay}
             onFocus={showCondenseActions}
             onBlur={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget)) {
+              if (!event.currentTarget.contains(event.relatedTarget as Node)) {
                 hideCondenseActionsWithDelay()
               }
             }}

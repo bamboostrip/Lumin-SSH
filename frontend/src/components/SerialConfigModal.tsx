@@ -3,12 +3,26 @@ import { X, Cpu } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 import { useTranslation } from '../i18n.js';
 
-export default function SerialConfigModal({ onClose, onConnect }) {
+/** 串口连接配置（与 App.ConnectSerial 的参数对应） */
+export interface SerialFormConfig {
+  port: string;
+  baudRate: number;
+  dataBits: number;
+  stopBits: number;
+  parity: string;
+}
+
+interface SerialConfigModalProps {
+  onClose: () => void;
+  onConnect: (form: SerialFormConfig) => void;
+}
+
+export default function SerialConfigModal({ onClose, onConnect }: SerialConfigModalProps) {
   const { t } = useTranslation();
-  const [ports, setPorts] = useState([]);
+  const [ports, setPorts] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<SerialFormConfig>({
     port: '',
     baudRate: 115200,
     dataBits: 8,
@@ -37,7 +51,7 @@ export default function SerialConfigModal({ onClose, onConnect }) {
     };
   }, []);
 
-  const handleConnect = (e) => {
+  const handleConnect = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!form.port) return;
     onConnect(form);

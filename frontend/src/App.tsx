@@ -446,9 +446,9 @@ export default function App() {
     return (
       <div key={t.id} style={isActive ? { display: 'contents' } : { display: 'none' }}>
         <FileManager
-          sessionId={t.id}
-          sessionGroupId={s.id}
-          addToast={addToast}
+          sessionId={String(t.id ?? '')}
+          sessionGroupId={String(s.id ?? '')}
+          addToast={looseAddToast}
           isActive={isActive}
           initialPath={serverConfig?.fileManagerInitPath || ''}
         />

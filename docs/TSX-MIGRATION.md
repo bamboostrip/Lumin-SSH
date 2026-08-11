@@ -53,7 +53,7 @@
 | 2 | hooks 转 TS：`hooks/`(17) | ✅ 完成 |
 | 3 | i18n 类型化：28 个语言文件对齐 `zh-CN` 键 | ✅ 完成 |
 | 4 | 小组件 JSX→TSX（批量） | ✅ 完成（66/76 + main.tsx） |
-| 5 | 巨兽组件：FileManager / AIPanel / Terminal / SettingsModal / AI 系列 | 🔄 进行中（11/12 已转，剩 1 个） |
+| 5 | 巨兽组件：FileManager / AIPanel / Terminal / SettingsModal / AI 系列 | ✅ 完成（12/12） |
 | 6 | 收尾：移除 allowJs、严格模式全量通过、回归验证 | ⏳ |
 
 ---
@@ -176,9 +176,9 @@
 
 ---
 
-## 阶段 5：巨兽组件（进行中 ✅ 11/12，剩余 1 个）
+## 阶段 5：巨兽组件（完成 ✅ 12/12）
 
-**已转（11 个，均含 tsc + build 验证，11 个独立提交）**：
+**已转（12 个，均含 tsc + build 验证，12 个独立提交）**：
 - `App.tsx`（1709 行，前置契约）— 17 处边界桥接：looseAddToast/looseT（`actions?: unknown[]` / `(key: string, vars?)`）、setContentTabLoose、serversRef 经 unknown 桥接 PingServerLike、enqueueChangeReview/setSyncFailed/setTabContextMenu 等 Dispatch 协变桥接、`sessionTerminals={... as never[]}`（AIPanel 未转时的临时断言）
 - `ProbePanel.tsx`（1137 行）— 导出 ProbeSnapshot/ProbeInfo/ProbePanelProps；App 的 probeSnapshots 状态随之类型化
 - `FileEditor.tsx`（1178 行）— CodeMirror 语言映射用 `Extension`（StreamLanguage.define 返回 Language 而非 LanguageSupport）；导出 FileEditorFile/FileEditorProps
@@ -190,6 +190,7 @@
 - `SettingsModal.tsx`（2554 行）— ProviderDefinition<F> 泛型契约化（`{ [K in ProviderKey]: ProviderDefinition<ProviderFormMap[K]]> }` mapped type + makeTestHandler/makeSaveHandler/makeSecureTestHandler 泛型化）；summaryFields 参数加宽到 `F | Record<string, string | number>` 兼容 SyncTab 宽松形状（内部 `form as XxxForm` 收窄）；providerState 四份同构 state 映射类型注解；ftp/sftp summaryFields 端口 String(f.port)（SyncTab 的 SummaryField.value 是 string）；发现缺失 i18n 键「搜索结果」
 - `Terminal.tsx`（4382 行）— refs 全量类型化（XTerm/FitAddon/SearchAddon/HTML 元素/`ReturnType<typeof setTimeout>` timer refs）；tsRingRef/cbBlocksRef 用 `null!` 惰性初始化惯用法；`lineToTextAndCols` 用 `IBufferLine | undefined`（xterm 导出）；右键菜单 union 因字面量拓宽（`type: 'action'` → string）无法收窄 → 显式 `TerminalContextMenuItem` 判别联合 + `as TerminalContextMenuItem[]`；CustomEvent 监听器改 `(e: Event)` + 内部 `as CustomEvent<X>` 收窄（EventListener 严格逆变，方法式接口不豁免）；`useRef` 窄化分支内赋值改用局部变量；移除 SessionWorkspace 两处 `as never[]`（TerminalProps.connectedSessions 放宽为 `Array<{ id?: string }>`）；发现缺失 i18n 键「终端输出搜索」「搜索命令历史」
 - `AIPanel.tsx`（5905 行）— 全量类型化（props 契约即 App 调用处，见下）；发现并修复 3 个潜在 bug：AIPanelHeader 的 `.jsx` 残留传参 `conversationTitle/showRenameConversationButton/onRenameConversation`（组件已不使用，直接删除）；TS 5.9 `typeof any === 'object'` 会把参数收窄为 `object` 导致属性链回调查参 TS7006（局部变量接住或 `as BridgeData` 桥接）；`new Map()` 推断 `Map<unknown, unknown>` 导致 sort/flatMap 回调查参 TS7006（显式 `Map<string, BridgeData>()` 或标注回调查参）
+- `FileManager.tsx`（8038 行，最后的巨兽）— 复用 fileWorkbench.ts 现成类型资产（FileManagerTab/FileManagerTabLike/FileManagerPaneState/FileManagerWorkspaceState/FileManagerPathItem）；`FileManagerProps` 契约即 App 的 renderSessionFileManagers 调用处（sessionId/sessionGroupId 需 `String(x ?? '')` 桥接 + looseAddToast）；发现并修复潜在 bug：`isCwdSystemPinnedTab` 用 `getFileManagerSystemTabType(tab) === 'cwd'` 恒 false（该函数把 cwd 场景返回 ''），改直接检查 `tab.systemPinnedType === 'cwd'`；发现缺失 i18n 键「当前目录路径」「清空输入」
 
 **已确立的新转换模式**（阶段 5 新增）：
 1. 函数类型参数方向：接收方 props 的参数类型必须 ≥ 调用方参数类型（contravariance）——宽松 `(x: unknown) => void` 接收 `(x: Specific) => void` 会报错，需精确匹配调用方
@@ -199,8 +200,14 @@
 5. `declare global { interface Window }` 局部全局声明（__luminFileManagerPaths 等）
 6. git mv 后 Write 需先 Read 新路径（工具要求）
 
-**剩余（1 个 .jsx，8,038 行）**：
-- `FileManager.jsx`（8038 行）— 最大的一个，建议最后转
+**剩余（0 个 .jsx）**：阶段 5 全部完成，可进入阶段 6（收尾）。
+
+**FileManager 转换记录**（已随提交落地，要点保留备查）：
+- props 契约（App 的 renderSessionFileManagers 调用处）：`sessionId: string`、`sessionGroupId: string`、`addToast`（宽松）、`isActive?: boolean`、`initialPath?: string`；App 侧 `sessionId={String(t.id ?? '')}` / `sessionGroupId={String(s.id ?? '')}` 桥接 + `addToast={looseAddToast}`
+- 类型资产：`FileManagerFileItem`（ListDir 返回项 + 本地占位统一形状）、`FileManagerVirtualRow`、`FileManagerPaneEffectState/ViewState`、`DownloadConflictSettings`、`ChmodPerms`、`IdentityOption`、`RowEffectState`、`PanePlaceholderEntry`、`LoadDirOptions`、`SyncTabOverrides`、`ContextMenuState`（含 tab 菜单扩展字段）；`declare global` 补 `window.__luminClipboards/__luminEditorStates`
+- 内嵌子组件 props 契约化：ChmodDialog / RenameInput / ContextMenu（ContextMenu 30+ 回调）；`suppressDragOutClick` 是原生 MouseEvent 签名，RenameInput 里包 `onMouseDown={(event) => suppressDragOutClick(event.nativeEvent)}`
+- 大文件高效路径：先脚本批量替换纯函数签名（60 个）+ 组件主体 hooks 签名（76 个），再按 tsc 错误清单迭代（1015 → 0，约 20 轮）；`useState<BridgeData>(null)` 的 setter 函数式更新回调查参仍报 TS7006（any 别名不豁免），需显式标注 `(current: BridgeData)`
+- 潜在 bug 修复：`isCwdSystemPinnedTab` 恒 false 比较（改直接检查 systemPinnedType）
 
 **AIPanel 转换记录**（已随提交落地，要点保留备查）：
 - props 契约（App.tsx 调用处）：`width: string`、`side: 'left' | 'right'`、`sessionId: string`、`terminalId: string`、`sessionTerminals?: Array<{ id: string; label?: string }>`、`addToast`（宽松，同 SettingsModalProps）、`onDevilModeChange?: (enabled: boolean) => void`
@@ -211,7 +218,7 @@
 
 **FileManager.jsx 转换提示**：被 App 的 renderSessionFileManagers 严格调用（sessionId/sessionGroupId/addToast/isActive/initialPath）；其内部还用 FileEditor（已转，FileEditorFile 可直接复用）、FileUploadQueuePanel（已转）。
 
-**已发现缺失 i18n 键（收尾阶段需补 28 语言键）**：`AI 输入框`（AIComposer）、`搜索结果`（SettingsModal）、`终端输出搜索` + `搜索命令历史`（Terminal）——当前均 `as I18nKey` 逃生，t() 原样兜底显示中文。
+**已发现缺失 i18n 键（收尾阶段需补 28 语言键）**：`AI 输入框`（AIComposer）、`搜索结果`（SettingsModal）、`终端输出搜索` + `搜索命令历史`（Terminal）、`当前目录路径` + `清空输入`（FileManager）——当前均 `as I18nKey` 逃生，t() 原样兜底显示中文。
 
 > SettingsModal/Terminal/AIPanel 的转换要点已随各自提交落地（c80f66b / f651462 / 本次提交），历史要点不再赘述。
 

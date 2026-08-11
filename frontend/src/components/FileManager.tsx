@@ -4,7 +4,7 @@ import { Virtuoso } from 'react-virtuoso';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 const FileEditor = React.lazy(() => import('./FileEditor.jsx'));
 import { CanResolveFilePaths, EventsOn, OnFileDrop, OnFileDropOff } from '../../wailsjs/runtime/runtime.js';
-import { useTranslation, t as tKey, getLanguage } from '../i18n.js';
+import { useTranslation, t as tKey, getLanguage, type I18nKey } from '../i18n.js';
 import { Z } from '../constants/zIndex.js';
 import { clampMenuPosition } from '../utils/menuPosition.js';
 import { isArchive, isBinaryLike, isViewable } from '../utils/fileTypeClassify.js';
@@ -30,6 +30,7 @@ import {
   subscribeSessionWorkbenchState,
   updateSessionUploadQueue,
 } from '../utils/fileWorkbench.js';
+import type { FileManagerTab, FileManagerTabLike, FileManagerPaneState, FileManagerWorkspaceState } from '../utils/fileWorkbench.js';
 import {
   Folder, FolderOpen, FolderPlus, File, FileText, FilePlus, FileCode,
   FileArchive, Settings, ClipboardList, Wrench, Image, Code, Globe, House,
@@ -37,7 +38,226 @@ import {
   Pencil, PenLine, Download, Upload, Trash2, RefreshCw, Lock, FolderUp, SquarePen, Copy,
   Pin, X, ClipboardPaste, Plus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Scissors,
   MonitorSmartphone, PencilLine, FolderSymlink, FileSymlink,
+  type LucideIcon,
 } from 'lucide-react';
+
+// ============================================================
+// FileManager 类型契约（props 见 FileManagerProps；内部数据模型见下）
+// ============================================================
+
+// 来自 Go/.js 桥或事件 payload 的外部数据，字段形状以运行时为准。
+type BridgeData = any
+
+interface FileManagerProps {
+  sessionId: string
+  sessionGroupId: string
+  addToast?: (message: string | Error, type?: string, duration?: number, actions?: unknown[]) => number
+  isActive?: boolean
+  initialPath?: string
+}
+
+// 远端/本地文件条目（ListDir 返回项 + 本地传输占位项的统一形状）
+interface FileManagerFileItem {
+  name: string
+  isDirectory: boolean
+  size?: number
+  permission?: string
+  mode?: string
+  modifyTime?: number
+  uid?: string
+  gid?: string
+  isSymlink?: boolean
+  __rowKey?: string
+  __luminDeletedPlaceholder?: boolean
+  [key: string]: unknown
+}
+
+interface FileManagerVirtualRow {
+  rowKey: string
+  rowType: string
+  logicalPath: string
+  sourcePath: string
+  isDirectory: boolean
+  name: string
+  item: FileManagerFileItem | null
+}
+
+interface FileManagerPaneEffectState {
+  pendingVisualEffects: Map<string, RowEffectState>
+  pendingAutoRevealRowKeys: string[]
+  suppressUserScrollTrackingUntil: number
+  userHasScrolled: boolean
+}
+
+interface FileManagerPaneViewState {
+  pendingRestore: BridgeData
+  lastVisibleAnchor: BridgeData
+}
+
+interface DownloadConflictSettings {
+  strategy: string
+  diffBySize: boolean
+  diffByMtime: boolean
+  renameSuffixMode: string
+}
+
+interface ChmodPerms {
+  user: { r: boolean; w: boolean; x: boolean }
+  group: { r: boolean; w: boolean; x: boolean }
+  other: { r: boolean; w: boolean; x: boolean }
+}
+
+interface IdentityPresetOption {
+  id: string
+  name: string
+}
+
+interface IdentityOption extends IdentityPresetOption {
+  label: string
+  searchText: string
+}
+
+type LooseT = (key: I18nKey, vars?: Record<string, unknown>) => string
+
+// 面板选中态恢复（FileManagerPaneState + 最后点击路径）
+interface PaneSelectionRestore extends FileManagerPaneState {
+  lastClickedPath?: string | null
+}
+
+// syncCurrentTabToWorkspace 的覆盖参数
+interface SyncTabOverrides {
+  path?: string
+  sortField?: string
+  sortDir?: string
+  selectedPaths?: string[]
+  scrollTop?: number
+  reason?: string
+}
+
+// 右键菜单状态（contextMenu state）
+interface ContextMenuState {
+  pos: { x: number; y: number }
+  item: FileManagerFileItem | null
+  mode?: string
+  itemBasePath?: string
+  createBasePath?: string
+  showCreateActions?: boolean
+  deleteItemCount?: number
+  clipboardItemCount?: number
+  deleteUsesSelectedPaths?: boolean
+  clipboardUsesSelectedPaths?: boolean
+  tabId?: string
+  tabPath?: string
+  tabPinned?: boolean
+  tabSystemPinned?: boolean
+}
+
+// 行动画效果状态（queueRowEffect / startRowEffect）
+interface RowEffectState {
+  logicalKey: string
+  rowKey: string
+  effect: string
+  paneKey: string
+  startedAt?: number
+  durationMs?: number
+}
+
+// 虚拟列表视图锚点（captureFileListViewAnchor）
+interface FileListViewAnchor {
+  key: string
+  offset: number
+  scrollTop: number
+}
+
+// 面板瞬态删除占位条目
+interface PanePlaceholderEntry extends FileManagerFileItem {
+  __transientPanePath?: string
+  __logicalPath?: string
+}
+
+// loadDir 的选项
+interface LoadDirOptions {
+  silent?: boolean
+  tabId?: string
+  staleWhileRevalidate?: boolean
+  staleItems?: FileManagerFileItem[]
+  preferPathCache?: boolean
+  transitionMode?: string
+  transitionDirection?: string
+  preserveWorkspacePathOnSuccess?: boolean
+  preserveView?: boolean
+  trackDiff?: boolean
+  showLoading?: boolean
+}
+
+// 跨实例共享的剪贴板/编辑器状态（挂在 window 上，形状以运行时为准）
+declare global {
+  interface Window {
+    __luminClipboards?: Record<string, BridgeData>
+    __luminEditorStates?: Record<string, BridgeData>
+  }
+}
+
+interface ChmodDialogProps {
+  path: string
+  permission: string
+  mode: string
+  rememberedMode?: string
+  autoApplyLastSettings?: boolean
+  uid: string
+  gid: string
+  ownerCandidates?: IdentityPresetOption[]
+  groupCandidates?: IdentityPresetOption[]
+  includeSubdirectories?: boolean
+  showIncludeSubdirectories?: boolean
+  onSave: (mode: string, includeChildren: boolean, ownerInput: string, groupInput: string) => void
+  onClose: () => void
+  t: LooseT
+}
+
+interface RenameInputProps {
+  initialValue: string
+  isDirectory: boolean
+  onConfirm: (value: string, refocus: boolean) => void
+  onCancel: () => void
+  mountedRef?: React.MutableRefObject<HTMLInputElement | null>
+}
+
+interface ContextMenuProps {
+  pos: { x: number; y: number }
+  item: FileManagerFileItem | null
+  mode?: string
+  isPinned?: boolean
+  isSystemPinned?: boolean
+  canTogglePinned?: boolean
+  canCloseTab?: boolean
+  showCreateActions?: boolean
+  deleteItemCount?: number
+  clipboardItemCount?: number
+  canPaste?: boolean
+  clipboardActionArrow?: string
+  onClose: () => void
+  onDownload: () => void
+  onEdit: () => void
+  onOpenSystemEditor: () => void
+  onOpenWithEditor: () => void
+  onRename: () => void
+  onDelete: () => void
+  onDeleteShell: () => void
+  onMkdir: () => void
+  onNewFile: () => void
+  onCompress: () => void
+  onUncompress: () => void
+  onChmod: () => void
+  onCopyPath: () => void
+  onCopyItem: () => void
+  onCutItem: () => void
+  onPaste: () => void
+  onOpenInNewTab: () => void
+  onTogglePinned: () => void
+  onCloseTab: () => void
+  t: LooseT
+}
 
 // 格式化文件大小
 const FILE_LIST_ACTIONS_COLUMN_WIDTH = 110;
@@ -51,7 +271,7 @@ const FILE_LIST_MODIFIED_MAX_WIDTH = 210;
 
 const fileListMeasureCanvas = typeof document !== 'undefined' ? document.createElement('canvas') : null;
 
-function measureFileListTextWidth(text, font) {
+function measureFileListTextWidth(text: unknown, font: unknown) {
   if (!fileListMeasureCanvas) {
     return String(text || '').length * 8;
   }
@@ -59,34 +279,36 @@ function measureFileListTextWidth(text, font) {
   if (!ctx) {
     return String(text || '').length * 8;
   }
-  ctx.font = font;
+  ctx.font = String(font || '');
   return ctx.measureText(String(text || '')).width;
 }
 
-function clampFileListColumnWidth(width, min, max) {
+function clampFileListColumnWidth(width: number, min: number, max: number) {
   return Math.max(min, Math.min(max, Math.ceil(width)));
 }
 
-function fmtSize(bytes) {
-  if (!bytes || bytes === 0) return '-';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
-  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+function fmtSize(bytes: unknown) {
+  const normalizedBytes = Number(bytes) || 0;
+  if (!normalizedBytes) return '-';
+  if (normalizedBytes < 1024) return `${normalizedBytes} B`;
+  if (normalizedBytes < 1024 ** 2) return `${(normalizedBytes / 1024).toFixed(1)} KB`;
+  if (normalizedBytes < 1024 ** 3) return `${(normalizedBytes / 1024 ** 2).toFixed(1)} MB`;
+  return `${(normalizedBytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
 // 格式化日期
-function fmtDate(ts) {
+function fmtDate(ts: unknown) {
   if (!ts) return '-';
   const lang = getLanguage();
   const locale = typeof lang === 'string' && lang.trim() ? lang : 'zh-CN';
-  return new Date(ts).toLocaleString(locale, {
+  const date = new Date(typeof ts === 'string' || typeof ts === 'number' ? ts : Number(ts) || 0);
+  return date.toLocaleString(locale, {
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit',
   });
 }
 
-function isMissingUnzipError(error) {
+function isMissingUnzipError(error: unknown) {
   const message = String(error || '').toLowerCase();
   return /(?:bash|sh):\s*unzip:\s*command not found/.test(message)
     || (message.includes('unzip') && message.includes('command not found'))
@@ -95,7 +317,7 @@ function isMissingUnzipError(error) {
 
 // 文件图标（颜色统一走 CSS 变量，浅/深色主题一致切换）
 const ICON_SIZE = 16;
-function fileIcon(name, isDir, isSymlink = false) {
+function fileIcon(name: unknown, isDir: boolean, isSymlink = false) {
   if (isDir) {
     return (
       <span className={`file-icon-themed file-icon-folder${isSymlink ? ' file-icon-symlink' : ''}`}>
@@ -117,7 +339,7 @@ function fileIcon(name, isDir, isSymlink = false) {
   if (lowerName === 'cmakelists.txt') ext = 'cmake';
   if (lowerName === 'nginx.conf') ext = 'nginx';
 
-  const iconMap = {
+  const iconMap: Record<string, LucideIcon> = {
     js: Code, jsx: Code, mjs: Code, cjs: Code, ts: Code, tsx: Code, vue: Code,
     py: Terminal, pyw: Terminal, pyi: Terminal, rb: HardDrive, lua: Code, go: Code, rs: Code, java: Code,
     c: Code, cc: Code, cpp: Code, cxx: Code, h: Code, hpp: Code, hh: Code, hxx: Code, cs: Code,
@@ -144,7 +366,7 @@ function fileIcon(name, isDir, isSymlink = false) {
 }
 
 // 判断是否可以编辑（文本文件）
-function isEditable(name) {
+function isEditable(name: string) {
   // ponytail: 以 . 开头的文件（如 .htaccess, .bashrc, .env）视为配置文件，默认可编辑
   if (name.startsWith('.')) return true;
   const lowerName = name.toLowerCase();
@@ -169,12 +391,12 @@ function isEditable(name) {
 }
 
 // Track files currently being downloaded/opened
-const globalOpeningFiles = new Set();
-const globalOpeningListeners = new Set();
+const globalOpeningFiles = new Set<string>();
+const globalOpeningListeners = new Set<(files: Set<string>) => void>();
 // key -> safety-timeout id, so removeOpeningFile can clear pending timers
-const globalOpeningTimers = new Map();
+const globalOpeningTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-function addOpeningFile(sessionId, path) {
+function addOpeningFile(sessionId: unknown, path: unknown) {
   if (!sessionId || !path) return;
   const key = `${sessionId}:${path}`;
   globalOpeningFiles.add(key);
@@ -195,7 +417,7 @@ function addOpeningFile(sessionId, path) {
   globalOpeningTimers.set(key, timer);
 }
 
-function removeOpeningFile(sessionId, path) {
+function removeOpeningFile(sessionId: unknown, path: unknown) {
   if (!sessionId || !path) return;
   const key = `${sessionId}:${path}`;
   // Cancel the pending safety-timeout so normal fast opens leave no dangling timer
@@ -239,7 +461,7 @@ const FILE_MANAGER_SYSTEM_TAB_KIND_CWD = 'cwd';
 const FILE_MANAGER_LAYOUT_MODE_CLASSIC = 'classic';
 const FILE_MANAGER_LAYOUT_MODE_SIDEBAR_DUAL = 'sidebar_dual';
 
-function getFileManagerSystemTabType(tab) {
+function getFileManagerSystemTabType(tab: FileManagerTabLike | null | undefined) {
   if (String(tab?.systemPinnedType || '').trim() === FILE_MANAGER_SYSTEM_TAB_KIND_CWD) {
     return '';
   }
@@ -249,7 +471,7 @@ function getFileManagerSystemTabType(tab) {
   return '';
 }
 
-function areFileManagerTabStatesEqual(left, right) {
+function areFileManagerTabStatesEqual(left: FileManagerTabLike | null | undefined, right: FileManagerTabLike | null | undefined) {
   if (!left || !right) {
     return false;
   }
@@ -269,7 +491,7 @@ function areFileManagerTabStatesEqual(left, right) {
     && getFileManagerSystemTabType(left) === getFileManagerSystemTabType(right);
 }
 
-function createLocalItemShell(name, isDirectory, sourceItem = {}) {
+function createLocalItemShell(name: unknown, isDirectory: boolean, sourceItem: BridgeData = {}): FileManagerFileItem {
   const normalizedName = String(name || '').trim();
   return {
     name: normalizedName,
@@ -283,7 +505,7 @@ function createLocalItemShell(name, isDirectory, sourceItem = {}) {
   };
 }
 
-function upsertLocalItem(items, nextItem) {
+function upsertLocalItem(items: FileManagerFileItem[], nextItem: FileManagerFileItem): FileManagerFileItem[] {
   const currentItems = Array.isArray(items) ? items : [];
   const normalizedName = String(nextItem?.name || '').trim();
   if (!normalizedName) {
@@ -333,7 +555,7 @@ function shouldInvertFileManagerDualPaneDragModifier() {
   return localStorage.getItem('fileManagerDualPaneDragInvertModifier') === 'true';
 }
 
-function createFileManagerTab(path = '', options = {}) {
+function createFileManagerTab(path = '', options: BridgeData = {}): FileManagerTab {
   fileManagerTabSequence += 1;
   return {
     id: `file-manager-tab-${Date.now()}-${fileManagerTabSequence}`,
@@ -349,8 +571,9 @@ function createFileManagerTab(path = '', options = {}) {
   };
 }
 
-function extractManualPinnedTabsFromWorkspace(workspace) {
-  const tabs = Array.isArray(workspace?.tabs) ? workspace.tabs : [];
+function extractManualPinnedTabsFromWorkspace(workspace: BridgeData) {
+  const rawTabs = workspace?.tabs
+  const tabs = Array.isArray(rawTabs) ? rawTabs : [];
   return tabs
     .filter((tab) => tab && tab.pinned === true && tab.systemPinned !== true)
     .map((tab) => ({
@@ -361,7 +584,7 @@ function extractManualPinnedTabsFromWorkspace(workspace) {
     .filter((tab) => tab.id);
 }
 
-function mergeSharedPinnedTabsIntoWorkspaceTabs(localTabs, sharedPinnedTabs) {
+function mergeSharedPinnedTabsIntoWorkspaceTabs(localTabs: BridgeData[], sharedPinnedTabs: BridgeData[]): FileManagerTab[] {
   const tabs = Array.isArray(localTabs) ? localTabs : [];
   const shared = Array.isArray(sharedPinnedTabs) ? sharedPinnedTabs : [];
   const homeTabs = tabs.filter((tab) => tab && tab.systemPinned === true);
@@ -408,7 +631,7 @@ function mergeSharedPinnedTabsIntoWorkspaceTabs(localTabs, sharedPinnedTabs) {
   return [...homeTabs, ...mappedPinnedTabs, ...remainderTabs];
 }
 
-function getFileManagerTabLabel(path, t, customTitle = '') {
+function getFileManagerTabLabel(path: unknown, t: LooseT, customTitle: unknown = '') {
   const normalizedCustomTitle = String(customTitle || '').trim();
   if (normalizedCustomTitle) {
     return normalizedCustomTitle;
@@ -421,7 +644,7 @@ function getFileManagerTabLabel(path, t, customTitle = '') {
   return parts[parts.length - 1] || t('目录根');
 }
 
-function renderFileManagerTabTitle(tab, t) {
+function renderFileManagerTabTitle(tab: FileManagerTabLike, t: LooseT) {
   const systemTabType = getFileManagerSystemTabType(tab);
   if (systemTabType === FILE_MANAGER_SYSTEM_TAB_KIND_HOME) {
     return <House size={12} />;
@@ -429,7 +652,7 @@ function renderFileManagerTabTitle(tab, t) {
   return <span>{getFileManagerTabLabel(tab?.path, t, tab?.customTitle)}</span>;
 }
 
-function cloneFileManagerItemsForCache(items) {
+function cloneFileManagerItemsForCache(items: unknown): FileManagerFileItem[] {
   return Array.isArray(items)
     ? items
       .filter((item) => item && typeof item === 'object' && !item.__luminDeletedPlaceholder)
@@ -437,7 +660,7 @@ function cloneFileManagerItemsForCache(items) {
     : [];
 }
 
-function getParentPath(path) {
+function getParentPath(path: unknown) {
   const normalizedPath = String(path || '').trim();
   if (!normalizedPath || normalizedPath === '/') {
     return '/';
@@ -447,7 +670,7 @@ function getParentPath(path) {
   return parts.length > 0 ? `/${parts.join('/')}` : '/';
 }
 
-function buildDirectoryItemFromPath(path) {
+function buildDirectoryItemFromPath(path: unknown): FileManagerFileItem {
   const normalizedPath = String(path || '').trim();
   const safePath = !normalizedPath ? '/' : normalizedPath;
   if (safePath === '/') {
@@ -471,7 +694,7 @@ function buildDirectoryItemFromPath(path) {
   };
 }
 
-function sortFileManagerItems(items, sortField = 'name', sortDir = 'asc') {
+function sortFileManagerItems(items: FileManagerFileItem[], sortField = 'name', sortDir = 'asc'): FileManagerFileItem[] {
   return [...(Array.isArray(items) ? items : [])].sort((a, b) => {
     if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
     let cmp = 0;
@@ -479,7 +702,7 @@ function sortFileManagerItems(items, sortField = 'name', sortDir = 'asc') {
       case 'name': cmp = a.name.localeCompare(b.name); break;
       case 'size': cmp = (a.size || 0) - (b.size || 0); break;
       case 'permissions': cmp = formatPermissionDisplay(a.permission || '-').localeCompare(formatPermissionDisplay(b.permission || '-')); break;
-      case 'modified': cmp = new Date(a.modifyTime || 0) - new Date(b.modifyTime || 0); break;
+      case 'modified': cmp = new Date(a.modifyTime || 0).getTime() - new Date(b.modifyTime || 0).getTime(); break;
       default: cmp = 0;
     }
     return sortDir === 'asc' ? cmp : -cmp;
@@ -489,7 +712,7 @@ function sortFileManagerItems(items, sortField = 'name', sortDir = 'asc') {
 const FILE_MANAGER_VIRTUAL_ROW_PARENT = 'parent';
 const FILE_MANAGER_VIRTUAL_ROW_ITEM = 'item';
 
-function buildFileManagerVirtualRows(items, directoryPath) {
+function buildFileManagerVirtualRows(items: FileManagerFileItem[], directoryPath: unknown): FileManagerVirtualRow[] {
   const normalizedItems = Array.isArray(items) ? items : [];
   const normalizedPath = String(directoryPath || '').trim() || '/';
   const rows = [];
@@ -522,21 +745,21 @@ function buildFileManagerVirtualRows(items, directoryPath) {
   return rows;
 }
 
-function findFileManagerVirtualRowIndex(rows, rowKey) {
+function findFileManagerVirtualRowIndex(rows: FileManagerVirtualRow[], rowKey: unknown) {
   if (!rowKey) return -1;
   return Array.isArray(rows) ? rows.findIndex((row) => row?.rowKey === rowKey) : -1;
 }
 
-function isFileManagerVirtualRangeVisible(range, index) {
+function isFileManagerVirtualRangeVisible(range: BridgeData, index: number) {
   if (!range || index < 0) return false;
   return index >= Number(range.startIndex ?? 0) && index <= Number(range.endIndex ?? -1);
 }
 
-function normalizeFileManagerPaneKey(paneKey) {
+function normalizeFileManagerPaneKey(paneKey: unknown): 'left' | 'right' {
   return paneKey === 'right' ? 'right' : 'left';
 }
 
-function createFileManagerPaneEffectState() {
+function createFileManagerPaneEffectState(): FileManagerPaneEffectState {
   return {
     pendingVisualEffects: new Map(),
     pendingAutoRevealRowKeys: [],
@@ -545,7 +768,7 @@ function createFileManagerPaneEffectState() {
   };
 }
 
-function createFileManagerPaneViewState() {
+function createFileManagerPaneViewState(): FileManagerPaneViewState {
   return {
     pendingRestore: null,
     lastVisibleAnchor: null,
@@ -553,25 +776,25 @@ function createFileManagerPaneViewState() {
 }
 
 // Check if a file name is a hidden/system file that should be skipped
-function isHiddenFile(name) {
+function isHiddenFile(name: string) {
   return /^\./.test(name) || /^Thumbs\.db$/i.test(name) || /^desktop\.ini$/i.test(name);
 }
 
 // Recursively traverse a FileSystemEntry to collect all File objects
-function traverseEntry(entry) {
-  return new Promise((resolve) => {
+function traverseEntry(entry: FileSystemEntry) {
+  return new Promise<File[]>((resolve) => {
     if (entry.isFile) {
       if (isHiddenFile(entry.name)) {
         resolve([]);
         return;
       }
-      entry.file((file) => {
-        file._fullPath = entry.fullPath;
+      (entry as FileSystemFileEntry).file((file) => {
+        (file as File & { _fullPath?: string })._fullPath = entry.fullPath;
         resolve([file]);
       }, () => resolve([]));
     } else if (entry.isDirectory) {
-      const reader = entry.createReader();
-      const allEntries = [];
+      const reader = (entry as FileSystemDirectoryEntry).createReader();
+      const allEntries: FileSystemEntry[] = [];
       let emptyCount = 0;
       function readBatch() {
         reader.readEntries((entries) => {
@@ -600,11 +823,12 @@ function traverseEntry(entry) {
 }
 
 // 读取 Blob 为 base64 字符串（去掉 data URL 前缀）
-function readBlobAsBase64(blob) {
-  return new Promise((resolve, reject) => {
+function readBlobAsBase64(blob: Blob): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
-      const dataUrl = reader.result;
+      const rawResult = reader.result;
+      const dataUrl = typeof rawResult === 'string' ? rawResult : '';
       const commaIdx = dataUrl.indexOf(',');
       resolve(commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : dataUrl);
     };
@@ -621,7 +845,7 @@ function shouldAutoOpenTransferQueue() {
   return localStorage.getItem('fileManagerAutoOpenTransferQueue') !== 'false';
 }
 
-function getDownloadConflictSettingsFromStorage() {
+function getDownloadConflictSettingsFromStorage(): DownloadConflictSettings {
   return {
     strategy: localStorage.getItem('fileManagerDownloadConflictStrategy') || DOWNLOAD_CONFLICT_STRATEGY_AUTO_RENAME,
     diffBySize: localStorage.getItem('fileManagerDownloadConflictDiffBySize') !== 'false',
@@ -630,7 +854,7 @@ function getDownloadConflictSettingsFromStorage() {
   };
 }
 
-function buildDownloadConflictOptionsPayload(settings, overrides = {}) {
+function buildDownloadConflictOptionsPayload(settings: BridgeData, overrides: BridgeData = {}) {
   const next = { ...settings, ...overrides };
   return JSON.stringify({
     strategy: next.strategy || DOWNLOAD_CONFLICT_STRATEGY_AUTO_RENAME,
@@ -641,13 +865,13 @@ function buildDownloadConflictOptionsPayload(settings, overrides = {}) {
   });
 }
 
-function downloadConflictKindLabel(kind, t) {
+function downloadConflictKindLabel(kind: unknown, t: LooseT) {
   if (kind === 'directory') return t('文件夹');
   if (kind === 'file') return t('文件');
   return '-';
 }
 
-function parsePositiveInt(value, fallback) {
+function parsePositiveInt(value: unknown, fallback: number) {
   const parsed = parseInt(String(value || '').trim(), 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
     return fallback;
@@ -655,7 +879,7 @@ function parsePositiveInt(value, fallback) {
   return parsed;
 }
 
-function computeCompressedOverallProgress(phase, phaseProgress, currentProgress = 0) {
+function computeCompressedOverallProgress(phase: unknown, phaseProgress: unknown, currentProgress = 0) {
   const safePhaseProgress = Math.max(0, Math.min(100, Number(phaseProgress) || 0));
   const baseline = Math.max(0, Math.min(100, Number(currentProgress) || 0));
   switch (phase) {
@@ -678,7 +902,7 @@ function computeCompressedOverallProgress(phase, phaseProgress, currentProgress 
   }
 }
 
-function normalizeChmodMode(value) {
+function normalizeChmodMode(value: unknown) {
   const cleaned = String(value || '').replace(/[^0-7]/g, '');
   if (cleaned.length === 4 && cleaned[0] === '0') {
     return cleaned.slice(1);
@@ -686,14 +910,14 @@ function normalizeChmodMode(value) {
   return cleaned.slice(0, 3);
 }
 
-function calcChmodOctal(perms) {
+function calcChmodOctal(perms: ChmodPerms) {
   const u = (perms.user.r ? 4 : 0) + (perms.user.w ? 2 : 0) + (perms.user.x ? 1 : 0);
   const g = (perms.group.r ? 4 : 0) + (perms.group.w ? 2 : 0) + (perms.group.x ? 1 : 0);
   const o = (perms.other.r ? 4 : 0) + (perms.other.w ? 2 : 0) + (perms.other.x ? 1 : 0);
   return `${u}${g}${o}`;
 }
 
-function permsFromChmodMode(modeStr) {
+function permsFromChmodMode(modeStr: unknown): ChmodPerms {
   const normalized = normalizeChmodMode(modeStr) || '644';
   const u = parseInt(normalized[0], 8);
   const g = parseInt(normalized[1], 8);
@@ -728,12 +952,12 @@ const CHMOD_GROUP_PRESET_OPTIONS = [
   { id: '65534', name: 'nogroup' },
 ];
 
-function normalizeIdentityId(value) {
+function normalizeIdentityId(value: unknown) {
   const trimmed = String(value ?? '').trim();
   return trimmed && trimmed !== '-' ? trimmed : '';
 }
 
-function formatIdentityDisplay(name, id) {
+function formatIdentityDisplay(name: unknown, id: unknown) {
   const normalizedId = normalizeIdentityId(id);
   if (!normalizedId) {
     return '-';
@@ -742,11 +966,11 @@ function formatIdentityDisplay(name, id) {
   return trimmedName ? `${trimmedName}(${normalizedId})` : normalizedId;
 }
 
-function formatPermissionDisplay(permission) {
+function formatPermissionDisplay(permission: unknown) {
   return String(permission || '-').trim() || '-';
 }
 
-function buildIdentityOptionList(currentId, presets) {
+function buildIdentityOptionList(currentId: unknown, presets: IdentityPresetOption[]): IdentityOption[] {
   const normalizedCurrentId = normalizeIdentityId(currentId);
   const presetOptions = Array.isArray(presets) ? presets : [];
   const currentOption = normalizedCurrentId
@@ -771,7 +995,7 @@ function buildIdentityOptionList(currentId, presets) {
         searchText: `${name} ${id} ${label}`.toLowerCase(),
       };
     })
-    .filter((item) => {
+    .filter((item): item is IdentityOption => {
       if (!item || seen.has(item.label)) {
         return false;
       }
@@ -780,7 +1004,7 @@ function buildIdentityOptionList(currentId, presets) {
     });
 }
 
-function resolveIdentityInputValue(currentId, presets) {
+function resolveIdentityInputValue(currentId: unknown, presets: IdentityPresetOption[]) {
   const normalizedCurrentId = normalizeIdentityId(currentId);
   if (!normalizedCurrentId) {
     return '-';
@@ -789,7 +1013,7 @@ function resolveIdentityInputValue(currentId, presets) {
   return formatIdentityDisplay(matched?.name || '', normalizedCurrentId);
 }
 
-function resolveIdentityInputSpec(value, options, fallbackId = '') {
+function resolveIdentityInputSpec(value: unknown, options: IdentityOption[], fallbackId: unknown = '') {
   const trimmed = String(value ?? '').trim();
   const candidates = Array.isArray(options) ? options : [];
   if (!trimmed || trimmed === '-') {
@@ -812,7 +1036,7 @@ function resolveIdentityInputSpec(value, options, fallbackId = '') {
   return trimmed;
 }
 
-function resolveIdentityCompareKey(value, options, fallbackId = '') {
+function resolveIdentityCompareKey(value: unknown, options: IdentityOption[], fallbackId: unknown = '') {
   const trimmed = String(value ?? '').trim();
   const fallback = normalizeIdentityId(fallbackId);
   const candidates = Array.isArray(options) ? options : [];
@@ -847,15 +1071,19 @@ function resolveIdentityCompareKey(value, options, fallbackId = '') {
   return `name:${trimmed.toLowerCase()}`;
 }
 
-function createLimiter(limit) {
+function createLimiter(limit: number): (fn: () => unknown) => Promise<unknown> {
   const max = Math.max(1, limit);
   let active = 0;
-  const queue = [];
+  const queue: Array<{ fn: () => unknown; resolve: (value: unknown) => void; reject: (reason?: unknown) => void }> = [];
   const next = () => {
     if (active >= max || queue.length === 0) {
       return;
     }
-    const { fn, resolve, reject } = queue.shift();
+    const entry = queue.shift();
+    if (!entry) {
+      return;
+    }
+    const { fn, resolve, reject } = entry;
     active++;
     Promise.resolve()
       .then(fn)
@@ -871,19 +1099,19 @@ function createLimiter(limit) {
   });
 }
 
-function runWithLimit(items, limit, handler) {
+function runWithLimit(items: unknown[], limit: number, handler: (item: unknown, index: number) => unknown) {
   const limiter = createLimiter(limit);
   return Promise.all(items.map((item, index) => limiter(() => handler(item, index))));
 }
 
-function runWithLimitSettled(items, limit, handler) {
+function runWithLimitSettled<T>(items: T[], limit: number, handler: (item: T, index: number) => unknown): Promise<PromiseSettledResult<unknown>[]> {
   const limiter = createLimiter(limit);
   return Promise.all(items.map((item, index) => limiter(() => handler(item, index))
-    .then((value) => ({ status: 'fulfilled', value }))
-    .catch((reason) => ({ status: 'rejected', reason }))));
+    .then((value) => ({ status: 'fulfilled', value }) as PromiseSettledResult<unknown>)
+    .catch((reason) => ({ status: 'rejected', reason }) as PromiseSettledResult<unknown>)));
 }
 
-async function uploadChunkWithRetry(label, uploadFn, onAttempt, shouldAbort) {
+async function uploadChunkWithRetry(label: string, uploadFn: () => Promise<unknown>, onAttempt?: (attempt: number, error: unknown) => void, shouldAbort?: () => boolean) {
   let firstError = null;
   let lastError = null;
   for (let attempt = 1; attempt <= MAX_CHUNK_UPLOAD_RETRIES; attempt++) {
@@ -908,9 +1136,10 @@ async function uploadChunkWithRetry(label, uploadFn, onAttempt, shouldAbort) {
 }
 
 // ── Chmod Dialog ──────────────────────────────────────────────
-function ChmodDialog({ path, permission, mode, rememberedMode = '', autoApplyLastSettings = false, uid, gid, ownerCandidates = [], groupCandidates = [], includeSubdirectories = false, showIncludeSubdirectories = false, onSave, onClose, t }) {
-  const parsePerms = (permStr) => {
-    const p = permStr && permStr.length >= 10 ? permStr.slice(1) : '---------';
+function ChmodDialog({ path, permission, mode, rememberedMode = '', autoApplyLastSettings = false, uid, gid, ownerCandidates = [], groupCandidates = [], includeSubdirectories = false, showIncludeSubdirectories = false, onSave, onClose, t }: ChmodDialogProps) {
+  const parsePerms = (permStr: unknown) => {
+    const normalizedPermStr = String(permStr || '');
+    const p = normalizedPermStr.length >= 10 ? normalizedPermStr.slice(1) : '---------';
     return {
       user: { r: p[0] === 'r', w: p[1] === 'w', x: p[2] === 'x' },
       group: { r: p[3] === 'r', w: p[4] === 'w', x: p[5] === 'x' },
@@ -970,7 +1199,7 @@ function ChmodDialog({ path, permission, mode, rememberedMode = '', autoApplyLas
     return candidates.slice(0, 80);
   }, [groupInput, groupOptions]);
 
-  const togglePerm = (cat, key) => {
+  const togglePerm = (cat: 'user' | 'group' | 'other', key: 'r' | 'w' | 'x') => {
     setPerms(prev => {
       const next = { ...prev, [cat]: { ...prev[cat], [key]: !prev[cat][key] } };
       setOctal(calcChmodOctal(next));
@@ -978,7 +1207,7 @@ function ChmodDialog({ path, permission, mode, rememberedMode = '', autoApplyLas
     });
   };
 
-  const handleOctalChange = (e) => {
+  const handleOctalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = normalizeChmodMode(e.target.value);
     setOctal(val);
     if (val.length === 3) {
@@ -1061,7 +1290,7 @@ function ChmodDialog({ path, permission, mode, rememberedMode = '', autoApplyLas
               </div>
               <div className="chmod-row">
                 <span className="chmod-row-label">{t('用户')}</span>
-                {['r','w','x'].map(k => (
+                {(['r','w','x'] as const).map(k => (
                   <label key={k} htmlFor={`fm-chmod-user-${k}`} className="chmod-checkbox" style={{ justifyContent: 'center' }}>
                     <input type="checkbox" id={`fm-chmod-user-${k}`} name={`fm-chmod-user-${k}`} autoComplete="off" checked={perms.user[k]} onChange={() => togglePerm('user', k)} />
                   </label>
@@ -1069,7 +1298,7 @@ function ChmodDialog({ path, permission, mode, rememberedMode = '', autoApplyLas
               </div>
               <div className="chmod-row">
                 <span className="chmod-row-label">{t('组')}</span>
-                {['r','w','x'].map(k => (
+                {(['r','w','x'] as const).map(k => (
                   <label key={k} htmlFor={`fm-chmod-group-${k}`} className="chmod-checkbox" style={{ justifyContent: 'center' }}>
                     <input type="checkbox" id={`fm-chmod-group-${k}`} name={`fm-chmod-group-${k}`} autoComplete="off" checked={perms.group[k]} onChange={() => togglePerm('group', k)} />
                   </label>
@@ -1077,7 +1306,7 @@ function ChmodDialog({ path, permission, mode, rememberedMode = '', autoApplyLas
               </div>
               <div className="chmod-row">
                 <span className="chmod-row-label">{t('其他')}</span>
-                {['r','w','x'].map(k => (
+                {(['r','w','x'] as const).map(k => (
                   <label key={k} htmlFor={`fm-chmod-other-${k}`} className="chmod-checkbox" style={{ justifyContent: 'center' }}>
                     <input type="checkbox" id={`fm-chmod-other-${k}`} name={`fm-chmod-other-${k}`} autoComplete="off" checked={perms.other[k]} onChange={() => togglePerm('other', k)} />
                   </label>
@@ -1121,11 +1350,11 @@ function ChmodDialog({ path, permission, mode, rememberedMode = '', autoApplyLas
 //     由 F2 入口（handleFileListKeyDown）与行级点击路径检测“input 已脱离 DOM”
 //     并读取 .value 兜底提交。之所以不用 useEffect cleanup 提交：
 //     StrictMode 下会 mount→unmount→remount，cleanup 会在用户什么都没做时就误触发提交。
-function RenameInput({ initialValue, isDirectory, onConfirm, onCancel, mountedRef }) {
-  const inputRef = useRef(null);
+function RenameInput({ initialValue, isDirectory, onConfirm, onCancel, mountedRef }: RenameInputProps) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const committedRef = useRef(false);
 
-  const commit = useCallback((refocus) => {
+  const commit = useCallback((refocus: boolean) => {
     if (committedRef.current) return;
     committedRef.current = true;
     const el = inputRef.current;
@@ -1154,7 +1383,7 @@ function RenameInput({ initialValue, isDirectory, onConfirm, onCancel, mountedRe
       className="rename-input"
       autoComplete="off"
       defaultValue={initialValue}
-      onMouseDown={suppressDragOutClick}
+      onMouseDown={(event) => suppressDragOutClick(event.nativeEvent)}
       onBlur={() => commit(false)}
       onKeyDown={(event) => {
         event.stopPropagation();
@@ -1172,8 +1401,8 @@ function RenameInput({ initialValue, isDirectory, onConfirm, onCancel, mountedRe
 }
 
 // Context menu component
-function ContextMenu({ pos, item, mode = 'item', isPinned = false, isSystemPinned = false, canTogglePinned = false, canCloseTab = false, showCreateActions = false, deleteItemCount = 1, clipboardItemCount = 1, canPaste = false, clipboardActionArrow = '', onClose, onDownload, onEdit, onOpenSystemEditor, onOpenWithEditor, onRename, onDelete, onDeleteShell, onMkdir, onNewFile, onCompress, onUncompress, onChmod, onCopyPath, onCopyItem, onCutItem, onPaste, onOpenInNewTab, onTogglePinned, onCloseTab, t }) {
-  const ref = useRef(null);
+function ContextMenu({ pos, item, mode = 'item', isPinned = false, isSystemPinned = false, canTogglePinned = false, canCloseTab = false, showCreateActions = false, deleteItemCount = 1, clipboardItemCount = 1, canPaste = false, clipboardActionArrow = '', onClose, onDownload, onEdit, onOpenSystemEditor, onOpenWithEditor, onRename, onDelete, onDeleteShell, onMkdir, onNewFile, onCompress, onUncompress, onChmod, onCopyPath, onCopyItem, onCutItem, onPaste, onOpenInNewTab, onTogglePinned, onCloseTab, t }: ContextMenuProps) {
+  const ref = useRef<HTMLDivElement | null>(null);
   const [adjusted, setAdjusted] = useState({ left: pos.x, top: pos.y });
   const isTabMenu = mode === 'tab';
   const shouldShowCreateActions = showCreateActions || !item;
@@ -1190,8 +1419,8 @@ function ContextMenu({ pos, item, mode = 'item', isPinned = false, isSystemPinne
   }, [pos.x, pos.y]);
 
   useEffect(() => {
-    const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) onClose();
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -1299,14 +1528,14 @@ function ContextMenu({ pos, item, mode = 'item', isPinned = false, isSystemPinne
   );
 }
 
-export default function FileManager({ sessionId, sessionGroupId = sessionId, addToast, isActive = true, initialPath = '' }) {
+export default function FileManager({ sessionId, sessionGroupId = sessionId, addToast, isActive = true, initialPath = '' }: FileManagerProps) {
   const { t } = useTranslation();
 
-  const [openingFiles, setOpeningFiles] = useState(new Set());
+  const [openingFiles, setOpeningFiles] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setOpeningFiles(new Set(globalOpeningFiles));
-    const listener = (newSet) => {
+    const listener = (newSet: Set<string>) => {
       setOpeningFiles(newSet);
     };
     globalOpeningListeners.add(listener);
@@ -1315,16 +1544,16 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     };
   }, []);
 
-  const openingFilesRef = useRef(new Set());
+  const openingFilesRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     openingFilesRef.current = openingFiles;
   }, [openingFiles]);
-  const joinPath = (base, name) => base === '/' ? `/${name}` : `${base}/${name}`;
-  const normalizePath = useCallback((value) => {
+  const joinPath = (base: string, name: string) => base === '/' ? `/${name}` : `${base}/${name}`;
+  const normalizePath = useCallback((value: unknown) => {
     const trimmed = String(value || '').trim();
     if (!trimmed) return '';
     const normalizedSlashes = trimmed.replace(/\\/g, '/').replace(/\/+/g, '/');
-    const parts = [];
+    const parts: string[] = [];
     normalizedSlashes.split('/').forEach((part) => {
       if (!part || part === '.') return;
       if (part === '..') {
@@ -1344,14 +1573,14 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   const pendingTerminalCwdRef = useRef('');
   const preserveWorkspacePathRef = useRef(false);
   const isActiveRef = useRef(isActive);
-  const paneSelectionRestoreRef = useRef({ left: null, right: null });
-  const getPaneSelectionRestore = useCallback((paneKey) => (
+  const paneSelectionRestoreRef = useRef<{ left: Partial<PaneSelectionRestore> | null; right: Partial<PaneSelectionRestore> | null }>({ left: null, right: null });
+  const getPaneSelectionRestore = useCallback((paneKey: string) => (
     paneSelectionRestoreRef.current[normalizeFileManagerPaneKey(paneKey)]
   ), []);
-  const setPaneSelectionRestore = useCallback((paneKey, selectionRestore) => {
+  const setPaneSelectionRestore = useCallback((paneKey: string, selectionRestore: Partial<PaneSelectionRestore> | null) => {
     paneSelectionRestoreRef.current[normalizeFileManagerPaneKey(paneKey)] = selectionRestore;
   }, []);
-  const activePaneKey = fileManagerWorkspace?.activePane === 'right' ? 'right' : 'left';
+  const activePaneKey: 'left' | 'right' = fileManagerWorkspace?.activePane === 'right' ? 'right' : 'left';
   const pendingTabSelectionRestoreRef = useMemo(() => ({
     get current() {
       return getPaneSelectionRestore(activePaneKey);
@@ -1377,16 +1606,16 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   const fileListSwitchTokenRef = useRef(0);
   const fileListSwitchFrameRef = useRef(0);
   const fileListSwitchStartedAtRef = useRef(0);
-  const fileListBodyRef = useRef(null);
+  const fileListBodyRef = useRef<HTMLDivElement | null>(null);
   const clearFileListSwitchFrame = useCallback(() => {
     if (!fileListSwitchFrameRef.current) return;
     cancelAnimationFrame(fileListSwitchFrameRef.current);
     fileListSwitchFrameRef.current = 0;
     fileListSwitchStartedAtRef.current = 0;
   }, []);
-  const finishFileListSwitchFrame = useCallback((token) => {
+  const finishFileListSwitchFrame = useCallback((token: number) => {
     clearFileListSwitchFrame();
-    const step = (timestamp) => {
+    const step = (timestamp: number) => {
       if (token !== fileListSwitchTokenRef.current) {
         fileListSwitchFrameRef.current = 0;
         fileListSwitchStartedAtRef.current = 0;
@@ -1427,7 +1656,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     setFileListSwitchGhostHtml('');
     setFileListSwitchStage('idle');
   }, [clearFileListSwitchFrame]);
-  const commitFileListSwitch = useCallback((token, applyData) => {
+  const commitFileListSwitch = useCallback((token: number, applyData: () => void) => {
     if (typeof applyData !== 'function') return;
     if (!token || token !== fileListSwitchTokenRef.current) {
       clearFileListSwitchFrame();
@@ -1479,8 +1708,8 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   const [fileManagerDualPaneDragPromptOnDirectory, setFileManagerDualPaneDragPromptOnDirectory] = useState(() => shouldPromptFileManagerDualPaneDragDirectory());
   const [fileManagerDualPaneDragInvertModifier, setFileManagerDualPaneDragInvertModifier] = useState(() => shouldInvertFileManagerDualPaneDragModifier());
   const [fileManagerPaneDropTarget, setFileManagerPaneDropTarget] = useState('');
-  const internalFileManagerDragPayloadRef = useRef(null);
-  const [fileManagerDragTip, setFileManagerDragTip] = useState(null);
+  const internalFileManagerDragPayloadRef = useRef<BridgeData>(null);
+  const [fileManagerDragTip, setFileManagerDragTip] = useState<{ x: number; y: number; text: string } | null>(null);
   const [fileManagerSidebarOpen, setFileManagerSidebarOpen] = useState(false);
   const [fileManagerDoubleClickUncompressArchive, setFileManagerDoubleClickUncompressArchive] = useState(false);
   const [fileManagerSmartUncompressConflictStrategy, setFileManagerSmartUncompressConflictStrategy] = useState('auto_rename');
@@ -1489,18 +1718,18 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   const fileManagerAutoRefreshDisabledRef = useRef(false);
   useEffect(() => { fileManagerAutoRefreshDisabledRef.current = fileManagerAutoRefreshDisabled; }, [fileManagerAutoRefreshDisabled]);
   useEffect(() => {
-    const handleChange = (e) => setShowFileManagerTabIcons(e.detail !== false);
+    const handleChange = (e: Event) => setShowFileManagerTabIcons((e as CustomEvent).detail !== false);
     window.addEventListener('file-manager-show-tab-icons-changed', handleChange);
     return () => window.removeEventListener('file-manager-show-tab-icons-changed', handleChange);
   }, []);
   useEffect(() => {
-    const handleChange = (e) => setHideFileManagerTabCloseButton(e.detail === true);
+    const handleChange = (e: Event) => setHideFileManagerTabCloseButton((e as CustomEvent).detail === true);
     window.addEventListener('file-manager-hide-tab-close-button-changed', handleChange);
     return () => window.removeEventListener('file-manager-hide-tab-close-button-changed', handleChange);
   }, []);
   useEffect(() => {
-    const handleChange = (e) => setFileManagerLayoutMode(
-      e.detail === FILE_MANAGER_LAYOUT_MODE_SIDEBAR_DUAL
+    const handleChange = (e: Event) => setFileManagerLayoutMode(
+      (e as CustomEvent).detail === FILE_MANAGER_LAYOUT_MODE_SIDEBAR_DUAL
         ? FILE_MANAGER_LAYOUT_MODE_SIDEBAR_DUAL
         : FILE_MANAGER_LAYOUT_MODE_CLASSIC
     );
@@ -1509,22 +1738,22 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   }, []);
   useEffect(() => { fileManagerSharedPinnedTabsEnabledRef.current = fileManagerSharedPinnedTabsEnabled; }, [fileManagerSharedPinnedTabsEnabled]);
   useEffect(() => {
-    const handleChange = (e) => setFileManagerSharedPinnedTabsEnabled(e.detail === true);
+    const handleChange = (e: Event) => setFileManagerSharedPinnedTabsEnabled((e as CustomEvent).detail === true);
     window.addEventListener('file-manager-shared-pinned-tabs-changed', handleChange);
     return () => window.removeEventListener('file-manager-shared-pinned-tabs-changed', handleChange);
   }, []);
   useEffect(() => {
-    const handleChange = (e) => setFileManagerDualPaneDragTransferEnabled(e.detail !== false);
+    const handleChange = (e: Event) => setFileManagerDualPaneDragTransferEnabled((e as CustomEvent).detail !== false);
     window.addEventListener('file-manager-dual-pane-drag-transfer-enabled-changed', handleChange);
     return () => window.removeEventListener('file-manager-dual-pane-drag-transfer-enabled-changed', handleChange);
   }, []);
   useEffect(() => {
-    const handleChange = (e) => setFileManagerDualPaneDragPromptOnDirectory(e.detail !== false);
+    const handleChange = (e: Event) => setFileManagerDualPaneDragPromptOnDirectory((e as CustomEvent).detail !== false);
     window.addEventListener('file-manager-dual-pane-drag-prompt-on-directory-changed', handleChange);
     return () => window.removeEventListener('file-manager-dual-pane-drag-prompt-on-directory-changed', handleChange);
   }, []);
   useEffect(() => {
-    const handleChange = (e) => setFileManagerDualPaneDragInvertModifier(e.detail === true);
+    const handleChange = (e: Event) => setFileManagerDualPaneDragInvertModifier((e as CustomEvent).detail === true);
     window.addEventListener('file-manager-dual-pane-drag-invert-modifier-changed', handleChange);
     return () => window.removeEventListener('file-manager-dual-pane-drag-invert-modifier-changed', handleChange);
   }, []);
@@ -1558,13 +1787,13 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     };
   }, []);
   useEffect(() => {
-    const handleDoubleClickChange = (e) => setFileManagerDoubleClickUncompressArchive(e.detail === true);
-    const handleStrategyChange = (e) => setFileManagerSmartUncompressConflictStrategy(
-      e.detail === 'overwrite' || e.detail === 'prompt' ? e.detail : 'auto_rename'
+    const handleDoubleClickChange = (e: Event) => setFileManagerDoubleClickUncompressArchive((e as CustomEvent).detail === true);
+    const handleStrategyChange = (e: Event) => setFileManagerSmartUncompressConflictStrategy(
+      (e as CustomEvent).detail === 'overwrite' || (e as CustomEvent).detail === 'prompt' ? (e as CustomEvent).detail : 'auto_rename'
     );
-    const handleAutoRefreshChange = (e) => setFileManagerAutoRefreshDisabled(e.detail === true);
-    const handleMaxEditSizeChange = (e) => {
-      const v = Number(e.detail);
+    const handleAutoRefreshChange = (e: Event) => setFileManagerAutoRefreshDisabled((e as CustomEvent).detail === true);
+    const handleMaxEditSizeChange = (e: Event) => {
+      const v = Number((e as CustomEvent).detail);
       if (Number.isFinite(v) && v >= 1) setMaxEditSizeMB(v);
     };
     window.addEventListener('file-manager-double-click-uncompress-archive-changed', handleDoubleClickChange);
@@ -1586,8 +1815,8 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       detail: { sessionId, path: currentPath }
     }));
   }, [currentPath, isActive, sessionId]);
-  const [editingPath, setEditingPath] = useState(null);
-  const [items, setItems] = useState([]);
+  const [editingPath, setEditingPath] = useState<string | null>(null);
+  const [items, setItems] = useState<FileManagerFileItem[]>([]);
   const [sortField, setSortField] = useState('name');  // name, size, permissions, modified
   const [sortDir, setSortDir] = useState('asc');  // asc, desc
   const [fileLocatorQuery, setFileLocatorQuery] = useState('');
@@ -1603,7 +1832,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     if (fileManagerLayoutMode !== FILE_MANAGER_LAYOUT_MODE_SIDEBAR_DUAL) {
       return items;
     }
-    const collectPaneItems = (paneKey) => {
+    const collectPaneItems = (paneKey: string) => {
       const normalizedPaneKey = paneKey === 'right' ? 'right' : 'left';
       if (normalizedPaneKey === activePaneKey) {
         return Array.isArray(items) ? items : [];
@@ -1661,7 +1890,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   const sortedItems = useMemo(() => sortFileManagerItems(items, sortField, sortDir), [items, sortField, sortDir]);
   const activeVirtualRows = useMemo(() => buildFileManagerVirtualRows(sortedItems, currentPath), [currentPath, sortedItems]);
 
-  const handleSort = (field) => {
+  const handleSort = (field: string) => {
     if (sortField === field) {
       setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     } else {
@@ -1671,25 +1900,25 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   };
   const [loading, setLoading] = useState(false);
   const mountedRef = useRef(true);
-  const fileManagerRootRef = useRef(null);
+  const fileManagerRootRef = useRef<HTMLDivElement | null>(null);
   const nativeDropHandledUntilRef = useRef(0);
-  const abortedUploadIdsRef = useRef(new Set());
-  const fileListRef = useRef(null);
-  const fileLocatorInputRef = useRef(null);
-  const handleFileListScrollRef = useRef(null);
-  const handleFileListKeyDownRef = useRef(null);
-  const paneVirtuosoRefCallbacksRef = useRef({ left: null, right: null });
-  const paneScrollerRefCallbacksRef = useRef({ left: null, right: null });
-  const paneScrollerRefOptionsRef = useRef({ left: {}, right: {} });
-  const paneVirtuosoRefs = useRef({ left: null, right: null });
-  const paneVisibleRangesRef = useRef({
+  const abortedUploadIdsRef = useRef<Set<string>>(new Set());
+  const fileListRef = useRef<HTMLDivElement | null>(null);
+  const fileLocatorInputRef = useRef<HTMLInputElement | null>(null);
+  const handleFileListScrollRef = useRef<((event?: React.UIEvent<HTMLDivElement>) => void) | null>(null);
+  const handleFileListKeyDownRef = useRef<((event: React.KeyboardEvent<HTMLDivElement>) => void) | null>(null);
+  const paneVirtuosoRefCallbacksRef = useRef<{ left: BridgeData | null; right: BridgeData | null }>({ left: null, right: null });
+  const paneScrollerRefCallbacksRef = useRef<{ left: BridgeData | null; right: BridgeData | null }>({ left: null, right: null });
+  const paneScrollerRefOptionsRef = useRef<{ left: BridgeData; right: BridgeData }>({ left: {}, right: {} });
+  const paneVirtuosoRefs = useRef<{ left: BridgeData | null; right: BridgeData | null }>({ left: null, right: null });
+  const paneVisibleRangesRef = useRef<{ left: { startIndex: number; endIndex: number }; right: { startIndex: number; endIndex: number } }>({
     left: { startIndex: 0, endIndex: -1 },
     right: { startIndex: 0, endIndex: -1 },
   });
-  const paneScrollerCleanupRef = useRef({ left: null, right: null });
-  const paneScrollerElementsRef = useRef({ left: null, right: null });
-  const inactivePaneListRefs = useRef({ left: null, right: null });
-  const fileManagerTabScrollRef = useRef(null);
+  const paneScrollerCleanupRef = useRef<{ left: (() => void) | null; right: (() => void) | null }>({ left: null, right: null });
+  const paneScrollerElementsRef = useRef<{ left: HTMLElement | null; right: HTMLElement | null }>({ left: null, right: null });
+  const inactivePaneListRefs = useRef<{ left: HTMLElement | null; right: HTMLElement | null }>({ left: null, right: null });
+  const fileManagerTabScrollRef = useRef<HTMLDivElement | null>(null);
   const fileManagerTabScrollTargetRef = useRef(0);
   const fileManagerTabScrollFrameRef = useRef(0);
   const [fileManagerTabOverflow, setFileManagerTabOverflow] = useState(false);
@@ -1697,9 +1926,9 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   const [fileManagerTabCanScrollRight, setFileManagerTabCanScrollRight] = useState(false);
   const [draggingFileManagerTabId, setDraggingFileManagerTabId] = useState('');
   const draggingFileManagerTabIdRef = useRef('');
-  const [fileManagerTabDropIndicator, setFileManagerTabDropIndicator] = useState(null);
-  const tabItemsCacheRef = useRef(new Map());
-  const getCachedTabItems = useCallback((tabId, path = '') => {
+  const [fileManagerTabDropIndicator, setFileManagerTabDropIndicator] = useState<BridgeData>(null);
+  const tabItemsCacheRef = useRef<Map<string, { path: string; items: FileManagerFileItem[] }>>(new Map());
+  const getCachedTabItems = useCallback((tabId: unknown, path = '') => {
     const key = String(tabId || '').trim();
     if (!key) return null;
     const cached = tabItemsCacheRef.current.get(key);
@@ -1710,10 +1939,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
     return Array.isArray(cached.items) ? cloneFileManagerItemsForCache(cached.items) : null;
   }, [normalizePath]);
-  const getCachedPathItems = useCallback((path) => (
-    getSessionCachedFileManagerPathItems(sessionId, path)
+  const getCachedPathItems = useCallback((path: unknown): FileManagerFileItem[] | null => (
+    getSessionCachedFileManagerPathItems(sessionId, path) as FileManagerFileItem[] | null
   ), [sessionId]);
-  const cacheCurrentTabItems = useCallback((tabId, path, nextItems) => {
+  const cacheCurrentTabItems = useCallback((tabId: unknown, path: unknown, nextItems: FileManagerFileItem[]) => {
     const key = String(tabId || '').trim();
     if (!key) return;
     const normalized = normalizePath(path) || '/';
@@ -1722,10 +1951,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       items: cloneFileManagerItemsForCache(nextItems),
     });
   }, [normalizePath]);
-  const cachePathItems = useCallback((path, nextItems) => {
+  const cachePathItems = useCallback((path: unknown, nextItems: FileManagerFileItem[]) => {
     setSessionCachedFileManagerPathItems(sessionId, path, nextItems);
   }, [sessionId]);
-  const removeCachedTabItems = useCallback((tabId) => {
+  const removeCachedTabItems = useCallback((tabId: unknown) => {
     const key = String(tabId || '').trim();
     if (!key) return;
     tabItemsCacheRef.current.delete(key);
@@ -1779,7 +2008,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     el.scrollLeft = currentLeft + nextStep;
     fileManagerTabScrollFrameRef.current = requestAnimationFrame(stepFileManagerTabScroll);
   }, [syncFileManagerTabOverflowState]);
-  const setFileManagerTabScrollTarget = useCallback((nextLeft) => {
+  const setFileManagerTabScrollTarget = useCallback((nextLeft: number) => {
     const el = fileManagerTabScrollRef.current;
     if (!el) {
       return;
@@ -1791,7 +2020,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       fileManagerTabScrollFrameRef.current = requestAnimationFrame(stepFileManagerTabScroll);
     }
   }, [stepFileManagerTabScroll]);
-  const scrollFileManagerTabs = useCallback((direction) => {
+  const scrollFileManagerTabs = useCallback((direction: number) => {
     const el = fileManagerTabScrollRef.current;
     if (!el) {
       return;
@@ -1800,13 +2029,13 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     const baseLeft = fileManagerTabScrollFrameRef.current ? fileManagerTabScrollTargetRef.current : el.scrollLeft;
     setFileManagerTabScrollTarget(baseLeft + step * direction);
   }, [setFileManagerTabScrollTarget]);
-  const handleFileManagerTabScroll = useCallback((event) => {
+  const handleFileManagerTabScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
     if (!fileManagerTabScrollFrameRef.current) {
       fileManagerTabScrollTargetRef.current = event.currentTarget.scrollLeft;
     }
     syncFileManagerTabOverflowState();
   }, [syncFileManagerTabOverflowState]);
-  const handleFileManagerTabWheel = useCallback((event) => {
+  const handleFileManagerTabWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     const el = fileManagerTabScrollRef.current;
     if (!el || el.scrollWidth <= el.clientWidth) return;
     const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
@@ -1833,13 +2062,13 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     const frame = requestAnimationFrame(syncFileManagerTabOverflowState);
     return () => cancelAnimationFrame(frame);
   }, [fileManagerWorkspace, syncFileManagerTabOverflowState]);
-  const commitFileManagerWorkspace = useCallback((updater) => {
+  const commitFileManagerWorkspace = useCallback((updater: Partial<FileManagerWorkspaceState> | ((current: FileManagerWorkspaceState) => Partial<FileManagerWorkspaceState>)) => {
     const next = setSessionFileManagerWorkspace(sessionId, updater);
     fileManagerWorkspaceRef.current = next;
     setFileManagerWorkspaceState(next);
     return next;
   }, [sessionId]);
-  const publishSharedPinnedTabsFromWorkspace = useCallback((workspace) => {
+  const publishSharedPinnedTabsFromWorkspace = useCallback((workspace: FileManagerWorkspaceState) => {
     if (!fileManagerSharedPinnedTabsEnabledRef.current || !sessionGroupId || applyingSharedPinnedTabsRef.current) {
       return;
     }
@@ -1872,7 +2101,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       }
     });
   }, [commitFileManagerWorkspace, fileManagerSharedPinnedTabsEnabled, sessionGroupId]);
-  const triggerCwdSystemTabHighlight = useCallback((tabId) => {
+  const triggerCwdSystemTabHighlight = useCallback((tabId: unknown) => {
     const normalizedTabId = String(tabId || '').trim();
     if (!normalizedTabId) {
       return;
@@ -1895,10 +2124,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }, 1500);
   }, []);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
-  const openFileManagerPathInNewTabRef = useRef(null);
-  const [contextMenu, setContextMenu] = useState(null); // { pos, item }
-  const [selectedPaths, setSelectedPaths] = useState([]);
-  const lastClickedPathRef = useRef(null);
+  const openFileManagerPathInNewTabRef = useRef<BridgeData>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null); // { pos, item }
+  const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
+  const lastClickedPathRef = useRef<string | null>(null);
   const sortFieldRef = useRef(sortField);
   const sortDirRef = useRef(sortDir);
   const selectedPathsRef = useRef(selectedPaths);
@@ -1926,7 +2155,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
     cachePathItems(currentPath || currentPathRef.current || '/', items);
   }, [cacheCurrentTabItems, cachePathItems, currentPath, items]);
-  const syncCurrentTabToWorkspace = useCallback((overrides = {}) => {
+  const syncCurrentTabToWorkspace = useCallback((overrides: SyncTabOverrides = {}) => {
     const displayedTabId = String(displayedTabIdRef.current || '').trim();
     const activeTabId = String(activeFileManagerTabIdRef.current || '').trim();
     const workspaceTabId = displayedTabId || activeTabId;
@@ -1935,12 +2164,12 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
     const hasExplicitPath = Object.prototype.hasOwnProperty.call(overrides, 'path');
     return commitFileManagerWorkspace((currentWorkspace) => {
-      const currentPanes = currentWorkspace?.panes && typeof currentWorkspace.panes === 'object'
+      const currentPanes = (currentWorkspace?.panes && typeof currentWorkspace.panes === 'object'
         ? currentWorkspace.panes
-        : {};
-      const currentPane = currentPanes[activePaneKey] && typeof currentPanes[activePaneKey] === 'object'
+        : {}) as FileManagerWorkspaceState['panes'];
+      const currentPane = (currentPanes[activePaneKey] && typeof currentPanes[activePaneKey] === 'object'
         ? currentPanes[activePaneKey]
-        : {};
+        : {}) as FileManagerPaneState;
       const nextPath = hasExplicitPath
         ? (overrides.path ?? currentPathRef.current)
         : currentPathRef.current;
@@ -1950,7 +2179,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         tabId: workspaceTabId || String(currentPane.tabId || currentWorkspace?.activeTabId || '').trim(),
         path: normalizedNextPath,
         sortField: overrides.sortField ?? sortFieldRef.current,
-        sortDir: overrides.sortDir ?? sortDirRef.current,
+        sortDir: (overrides.sortDir ?? sortDirRef.current) === 'desc' ? 'desc' : 'asc',
         selectedPaths: Array.isArray(overrides.selectedPaths) ? overrides.selectedPaths : selectedPathsRef.current,
         scrollTop: Number.isFinite(Number(overrides.scrollTop)) ? Number(overrides.scrollTop) : (fileListRef.current?.scrollTop || 0),
       };
@@ -1977,7 +2206,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
             ...tab,
             path: tab.pinned === true && normalizedNextPath !== normalizedTabPath ? tab.path : normalizedNextPath,
             sortField: overrides.sortField ?? sortFieldRef.current,
-            sortDir: overrides.sortDir ?? sortDirRef.current,
+            sortDir: (overrides.sortDir ?? sortDirRef.current) === 'desc' ? 'desc' : 'asc',
             selectedPaths: Array.isArray(overrides.selectedPaths) ? overrides.selectedPaths : selectedPathsRef.current,
             scrollTop: Number.isFinite(Number(overrides.scrollTop)) ? Number(overrides.scrollTop) : (fileListRef.current?.scrollTop || 0),
           };
@@ -1985,7 +2214,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       };
     });
   }, [activePaneKey, commitFileManagerWorkspace, fileManagerLayoutMode, normalizePath, sessionId]);
-  const restoreTabItemsFromCache = useCallback((tab, path) => {
+  const restoreTabItemsFromCache = useCallback((tab: FileManagerTabLike, path: unknown) => {
     const resolvedTabId = String(tab?.id || '').trim();
     const resolvedPath = normalizePath(path ?? tab?.path) || '/';
     const cachedItems = getCachedTabItems(resolvedTabId, resolvedPath);
@@ -2000,7 +2229,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     setCurrentPath(resolvedPath);
     return true;
   }, [getCachedTabItems, normalizePath]);
-  const isFileManagerTabLoadSuperseded = useCallback((tabId) => {
+  const isFileManagerTabLoadSuperseded = useCallback((tabId: unknown) => {
     const normalizedTabId = String(tabId || '').trim();
     const activeTabId = String(activeFileManagerTabIdRef.current || '').trim();
     return Boolean(normalizedTabId && activeTabId && normalizedTabId !== activeTabId);
@@ -2025,7 +2254,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     left: createFileManagerPaneViewState(),
     right: createFileManagerPaneViewState(),
   });
-  const getPaneViewState = useCallback((paneKey) => (
+  const getPaneViewState = useCallback((paneKey: string) => (
     paneViewStateRef.current[normalizeFileManagerPaneKey(paneKey)]
   ), []);
   const pendingViewRestoreRef = useMemo(() => ({
@@ -2040,17 +2269,17 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     left: createFileManagerPaneEffectState(),
     right: createFileManagerPaneEffectState(),
   });
-  const getPaneEffectState = useCallback((paneKey) => (
+  const getPaneEffectState = useCallback((paneKey: string) => (
     paneEffectStateRef.current[normalizeFileManagerPaneKey(paneKey)]
   ), []);
-  const rowEffectTimersRef = useRef(new Map());
+  const rowEffectTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const tombstoneSequenceRef = useRef(0);
-  const [activeRowEffects, setActiveRowEffects] = useState({});
-  const activeRowEffectsRef = useRef({});
-  const [paneTransientRemovedPlaceholders, setPaneTransientRemovedPlaceholders] = useState({ left: [], right: [] });
-  const paneTransientRemovedPlaceholdersRef = useRef({ left: [], right: [] });
+  const [activeRowEffects, setActiveRowEffects] = useState<Record<string, RowEffectState>>({});
+  const activeRowEffectsRef = useRef<Record<string, RowEffectState>>({});
+  const [paneTransientRemovedPlaceholders, setPaneTransientRemovedPlaceholders] = useState<{ left: PanePlaceholderEntry[]; right: PanePlaceholderEntry[] }>({ left: [], right: [] });
+  const paneTransientRemovedPlaceholdersRef = useRef<{ left: PanePlaceholderEntry[]; right: PanePlaceholderEntry[] }>({ left: [], right: [] });
 
-  const captureFileListViewAnchor = useCallback((paneKey = activePaneKey, listElement = null) => {
+  const captureFileListViewAnchor = useCallback((paneKey = activePaneKey, listElement: HTMLElement | null = null) => {
     const normalizedPaneKey = normalizeFileManagerPaneKey(paneKey);
     const paneViewState = getPaneViewState(normalizedPaneKey);
     const list = listElement
@@ -2073,7 +2302,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     const anchorRow = rows.find((row) => row.getBoundingClientRect().bottom > viewportTop + 1);
     const anchorRect = anchorRow?.getBoundingClientRect?.();
     const nextAnchor = {
-      key: anchorRow?.dataset?.fileRowKey || '',
+      key: (anchorRow as HTMLElement | undefined)?.dataset?.fileRowKey || '',
       offset: anchorRect ? anchorRect.top - viewportTop : 0,
       scrollTop: list.scrollTop,
     };
@@ -2081,18 +2310,18 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     return nextAnchor;
   }, [activePaneKey, getPaneViewState]);
 
-  const queueFileListViewRestore = useCallback((anchor = captureFileListViewAnchor(), paneKey = activePaneKey) => {
+  const queueFileListViewRestore = useCallback((anchor: FileListViewAnchor | null = captureFileListViewAnchor(), paneKey = activePaneKey) => {
     const paneViewState = getPaneViewState(paneKey);
     paneViewState.pendingRestore = anchor;
   }, [activePaneKey, captureFileListViewAnchor, getPaneViewState]);
 
-  const updateItemsPreservingView = useCallback((updater, anchor = captureFileListViewAnchor(), paneKey = activePaneKey) => {
+  const updateItemsPreservingView = useCallback((updater: FileManagerFileItem[] | ((current: FileManagerFileItem[]) => FileManagerFileItem[]), anchor: FileListViewAnchor | null = captureFileListViewAnchor(), paneKey = activePaneKey) => {
     const paneViewState = getPaneViewState(paneKey);
     paneViewState.pendingRestore = anchor;
     setItems((current) => (typeof updater === 'function' ? updater(current) : updater));
   }, [activePaneKey, captureFileListViewAnchor, getPaneViewState]);
 
-  const applyPanePendingRestoreIfReady = useCallback((paneKey = activePaneKey, listElement = null) => {
+  const applyPanePendingRestoreIfReady = useCallback((paneKey = activePaneKey, listElement: HTMLElement | null = null) => {
     const normalizedPaneKey = normalizeFileManagerPaneKey(paneKey);
     const paneViewState = getPaneViewState(normalizedPaneKey);
     const pendingRestore = paneViewState.pendingRestore;
@@ -2106,7 +2335,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     const viewportTop = header ? header.getBoundingClientRect().bottom : list.getBoundingClientRect().top;
     const rows = Array.from(list.querySelectorAll('[data-file-row-key]'));
     if (pendingRestore.key) {
-      const anchorRow = rows.find((row) => row.dataset?.fileRowKey === pendingRestore.key);
+      const anchorRow = rows.find((row) => (row as HTMLElement).dataset?.fileRowKey === pendingRestore.key);
       if (anchorRow) {
         const delta = anchorRow.getBoundingClientRect().top - viewportTop - pendingRestore.offset;
         if (delta !== 0) {
@@ -2126,7 +2355,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     return false;
   }, [activePaneKey, captureFileListViewAnchor, getPaneViewState]);
 
-  const mergePaneTransientRemovedPlaceholders = useCallback((paneKey, placeholders, panePath) => {
+  const mergePaneTransientRemovedPlaceholders = useCallback((paneKey: string, placeholders: PanePlaceholderEntry | PanePlaceholderEntry[], panePath: unknown) => {
     const normalizedPaneKey = normalizeFileManagerPaneKey(paneKey);
     const normalizedPanePath = normalizePath(panePath) || '/';
     const placeholderList = (Array.isArray(placeholders) ? placeholders : [placeholders])
@@ -2158,7 +2387,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     });
   }, [normalizePath]);
 
-  const confirmCreatedItem = useCallback(async (targetDirPath, name, isDirectory) => {
+  const confirmCreatedItem = useCallback(async (targetDirPath: unknown, name: unknown, isDirectory: boolean) => {
     const normalizedTargetDirPath = normalizePath(targetDirPath) || '/';
     const trimmedName = String(name || '').trim();
     let listedItems = [];
@@ -2183,16 +2412,16 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     applyPanePendingRestoreIfReady(activePaneKey, fileListRef.current);
   }, [activePaneKey, applyPanePendingRestoreIfReady, items]);
 
-  const isDeletedPlaceholderItem = useCallback((item) => Boolean(item?.__luminDeletedPlaceholder), []);
+  const isDeletedPlaceholderItem = useCallback((item: FileManagerFileItem | null) => Boolean(item?.__luminDeletedPlaceholder), []);
 
-  const captureRowHeight = useCallback((rowKey) => {
+  const captureRowHeight = useCallback((rowKey: unknown) => {
     if (!rowKey || !fileListRef.current) return 36;
     const rows = Array.from(fileListRef.current.querySelectorAll('[data-file-row-key]'));
-    const row = rows.find((entry) => entry.dataset?.fileRowKey === rowKey);
+    const row = rows.find((entry) => (entry as HTMLElement).dataset?.fileRowKey === rowKey) as HTMLElement | undefined;
     return Math.max(28, Math.round(row?.getBoundingClientRect?.().height || row?.offsetHeight || 36));
   }, []);
 
-  const queueRowEffect = useCallback((logicalKey, rowKey, effect, paneKey = activePaneKey) => {
+  const queueRowEffect = useCallback((logicalKey: string, rowKey: string, effect: string, paneKey = activePaneKey) => {
     if (!logicalKey || !rowKey || !effect) return;
     const paneEffectState = getPaneEffectState(paneKey);
     paneEffectState.pendingVisualEffects.set(logicalKey, { logicalKey, rowKey, effect, paneKey: normalizeFileManagerPaneKey(paneKey) });
@@ -2204,7 +2433,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
   }, [activePaneKey, getPaneEffectState]);
 
-  const clearRowEffectTimer = useCallback((rowKey) => {
+  const clearRowEffectTimer = useCallback((rowKey: string) => {
     const timer = rowEffectTimersRef.current.get(rowKey);
     if (timer) {
       window.clearTimeout(timer);
@@ -2212,7 +2441,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
   }, []);
 
-  const clearActiveRowEffect = useCallback((rowKey) => {
+  const clearActiveRowEffect = useCallback((rowKey: string) => {
     clearRowEffectTimer(rowKey);
     setActiveRowEffects((current) => {
       if (!current[rowKey]) return current;
@@ -2223,12 +2452,12 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     });
   }, [clearRowEffectTimer]);
 
-  const finalizeDeletedPlaceholder = useCallback((rowKey) => {
+  const finalizeDeletedPlaceholder = useCallback((rowKey: string) => {
     clearActiveRowEffect(rowKey);
     setItems((current) => current.filter((entry) => entry.__rowKey !== rowKey));
   }, [clearActiveRowEffect]);
 
-  const startRowEffect = useCallback((entry) => {
+  const startRowEffect = useCallback((entry: RowEffectState) => {
     if (!entry?.rowKey || !entry?.effect) return;
     const durationMs = entry.effect === 'added' ? 3200 : 3000;
     const now = Date.now();
@@ -2241,8 +2470,11 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       }
     }
     clearRowEffectTimer(entry.rowKey);
-    const nextEffectState = {
+    const nextEffectState: RowEffectState = {
+      logicalKey: entry.logicalKey,
+      rowKey: entry.rowKey,
       effect: entry.effect,
+      paneKey: entry.paneKey,
       startedAt: now,
       durationMs,
     };
@@ -2280,7 +2512,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     return style.display !== 'none' && style.visibility !== 'hidden';
   }, [isActive]);
 
-  const isListNearBottom = useCallback((paneKey = activePaneKey, listElement = null) => {
+  const isListNearBottom = useCallback((paneKey = activePaneKey, listElement: HTMLElement | null = null) => {
     const normalizedPaneKey = normalizeFileManagerPaneKey(paneKey);
     const list = listElement
       || (normalizedPaneKey === activePaneKey
@@ -2290,7 +2522,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     return list.scrollHeight - (list.scrollTop + list.clientHeight) <= 8;
   }, [activePaneKey]);
 
-  const isRowVisibleInViewport = useCallback((rowKey, options = {}) => {
+  const isRowVisibleInViewport = useCallback((rowKey: string, options: { paneKey?: string; paneRows?: FileManagerVirtualRow[]; listElement?: HTMLElement | null } = {}) => {
     if (!rowKey) return false;
     const paneKey = normalizeFileManagerPaneKey(options.paneKey || activePaneKey);
     const paneRows = Array.isArray(options.paneRows)
@@ -2302,7 +2534,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         : (inactivePaneListRefs.current[paneKey] || paneScrollerElementsRef.current[paneKey]));
     if (list) {
       const rows = Array.from(list.querySelectorAll('[data-file-row-key]'));
-      const row = rows.find((entry) => entry.dataset?.fileRowKey === rowKey);
+      const row = rows.find((entry) => (entry as HTMLElement).dataset?.fileRowKey === rowKey);
       if (row) {
         const header = list.querySelector('.file-list-header');
         const viewportTop = header ? header.getBoundingClientRect().bottom : list.getBoundingClientRect().top;
@@ -2317,7 +2549,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     return isFileManagerVirtualRangeVisible(visibleRange, rowIndex);
   }, [activePaneKey, activeVirtualRows]);
 
-  const revealRowInViewport = useCallback((rowKey, options = {}) => {
+  const revealRowInViewport = useCallback((rowKey: string, options: { paneKey?: string; paneRows?: FileManagerVirtualRow[]; listElement?: HTMLElement | null } = {}) => {
     if (!rowKey) return false;
     const paneKey = normalizeFileManagerPaneKey(options.paneKey || activePaneKey);
     const paneRows = Array.isArray(options.paneRows)
@@ -2345,7 +2577,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         : (inactivePaneListRefs.current[paneKey] || paneScrollerElementsRef.current[paneKey]));
     if (list) {
       const rows = Array.from(list.querySelectorAll('[data-file-row-key]'));
-      const row = rows.find((entry) => entry.dataset?.fileRowKey === rowKey);
+      const row = rows.find((entry) => (entry as HTMLElement).dataset?.fileRowKey === rowKey);
       if (row) {
         const header = list.querySelector('.file-list-header');
         const viewportTop = header ? header.getBoundingClientRect().bottom : list.getBoundingClientRect().top;
@@ -2370,7 +2602,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     return false;
   }, [activePaneKey, activeVirtualRows, captureFileListViewAnchor, getPaneEffectState, getPaneViewState]);
 
-  const flushPendingRowEffects = useCallback((paneKey = activePaneKey, paneRows = activeVirtualRows, listElement = null) => {
+  const flushPendingRowEffects = useCallback((paneKey = activePaneKey, paneRows: FileManagerVirtualRow[] = activeVirtualRows, listElement: HTMLElement | null = null) => {
     if (!isFileManagerActuallyVisible()) return;
     const normalizedPaneKey = normalizeFileManagerPaneKey(paneKey);
     const paneEffectState = getPaneEffectState(normalizedPaneKey);
@@ -2393,15 +2625,15 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     });
   }, [activePaneKey, activeVirtualRows, getPaneEffectState, isFileManagerActuallyVisible, isListNearBottom, isRowVisibleInViewport, revealRowInViewport, startRowEffect]);
 
-  const createDeletedPlaceholder = useCallback((item, logicalPath, rowHeight = captureRowHeight(logicalPath)) => ({
-    ...(item || {}),
+  const createDeletedPlaceholder = useCallback((item: FileManagerFileItem | null, logicalPath: unknown, rowHeight = captureRowHeight(logicalPath)): PanePlaceholderEntry => ({
+    ...(item || { name: '', isDirectory: false }),
     __luminDeletedPlaceholder: true,
-    __logicalPath: logicalPath,
+    __logicalPath: String(logicalPath || ''),
     __rowKey: `__deleted__:${logicalPath}:${Date.now()}:${tombstoneSequenceRef.current++}`,
     __rowHeight: Math.max(28, rowHeight || 36),
   }), [captureRowHeight]);
 
-  const didItemMetadataChange = useCallback((prevItem, nextItem) => (
+  const didItemMetadataChange = useCallback((prevItem: FileManagerFileItem, nextItem: FileManagerFileItem) => (
     prevItem?.isDirectory !== nextItem?.isDirectory
     || Number(prevItem?.size || 0) !== Number(nextItem?.size || 0)
     || String(prevItem?.permission || '') !== String(nextItem?.permission || '')
@@ -2409,7 +2641,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     || String(prevItem?.modifyTime || '') !== String(nextItem?.modifyTime || '')
   ), []);
 
-  const buildItemsWithTrackedDiff = useCallback((currentItems, nextItems, directoryPath, paneKey = activePaneKey) => {
+  const buildItemsWithTrackedDiff = useCallback((currentItems: FileManagerFileItem[], nextItems: FileManagerFileItem[], directoryPath: unknown, paneKey = activePaneKey) => {
     const normalizedPaneKey = normalizeFileManagerPaneKey(paneKey);
     const normalizedNextItems = Array.isArray(nextItems) ? nextItems : [];
     const currentVisibleItems = currentItems.filter((entry) => !isDeletedPlaceholderItem(entry));
@@ -2434,7 +2666,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       .map((entry) => {
         const logicalPath = directoryPath === '/' ? `/${entry.name}` : `${directoryPath}/${entry.name}`;
         const placeholder = createDeletedPlaceholder(entry, logicalPath);
-        queueRowEffect(logicalPath, placeholder.__rowKey, 'removed', paneKey);
+        queueRowEffect(logicalPath, placeholder.__rowKey || '', 'removed', paneKey);
         return placeholder;
       });
 
@@ -2499,8 +2731,8 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   useEffect(() => {
     setPaneTransientRemovedPlaceholders((current) => {
       const nextState = {
-        left: (Array.isArray(current.left) ? current.left : []).filter((entry) => activeRowEffects[entry?.__rowKey]?.effect === 'removed'),
-        right: (Array.isArray(current.right) ? current.right : []).filter((entry) => activeRowEffects[entry?.__rowKey]?.effect === 'removed'),
+        left: (Array.isArray(current.left) ? current.left : []).filter((entry) => (entry.__rowKey ? activeRowEffects[entry.__rowKey]?.effect : undefined) === 'removed'),
+        right: (Array.isArray(current.right) ? current.right : []).filter((entry) => (entry.__rowKey ? activeRowEffects[entry.__rowKey]?.effect : undefined) === 'removed'),
       };
       if (
         nextState.left.length === (Array.isArray(current.left) ? current.left.length : 0)
@@ -2512,12 +2744,12 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     });
   }, [activeRowEffects]);
 
-  const [clipboard, setClipboard] = useState(null); // { paths: string[], mode: 'copy'|'cut', srcDir: string }
-  const [operationProgress, setOperationProgress] = useState(null);
+  const [clipboard, setClipboard] = useState<{ paths: string[]; mode: 'copy' | 'cut'; srcDir: string } | null>(null); // { paths, mode, srcDir }
+  const [operationProgress, setOperationProgress] = useState<{ message: string; current?: number; total?: number } | null>(null);
   // 并发互斥闸门：用 ref 在同步阶段立即生效，避免两个快速事件都读到 stale 的 state 而双双放行
   const operationInProgressRef = useRef(false);
 
-  const updateClipboard = (newClipboard) => {
+  const updateClipboard = (newClipboard: BridgeData) => {
     if (!window.__luminClipboards) {
       window.__luminClipboards = {};
     }
@@ -2536,9 +2768,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     const cached = (window.__luminClipboards && window.__luminClipboards[sessionGroupId]) || null;
     setClipboard(cached);
 
-    const handleClipboardChange = (e) => {
-      if (e.detail && e.detail.sessionGroupId === sessionGroupId) {
-        setClipboard(e.detail.clipboard);
+    const handleClipboardChange = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {}
+      if (detail && detail.sessionGroupId === sessionGroupId) {
+        setClipboard(detail.clipboard);
       }
     };
 
@@ -2557,15 +2790,15 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     };
   }, [sessionGroupId]);
 
-  const [renamingItem, setRenamingItem] = useState(null);
+  const [renamingItem, setRenamingItem] = useState<BridgeData>(null);
   // 跟踪重命名 input 是否仍挂在 DOM：Virtuoso 把行滚出视口会卸载 input，此时
   // renamingItem 仍残留。F2 入口据此判断是否需要先提交残留的重命名再继续。
-  const renamingInputMountedRef = useRef(null);
-  const [chmodTarget, setChmodTarget] = useState(null); // { item, path, mode, includeSubdirectories, showIncludeSubdirectories }
-  const [openEditFiles, setOpenEditFiles] = useState([]);      // [{ path, name, content }]
-  const openEditFilesRef = useRef([]);
+  const renamingInputMountedRef = useRef<HTMLInputElement | null>(null);
+  const [chmodTarget, setChmodTarget] = useState<BridgeData>(null); // { item, path, mode, includeSubdirectories, showIncludeSubdirectories }
+  const [openEditFiles, setOpenEditFiles] = useState<BridgeData[]>([]);      // [{ path, name, content }]
+  const openEditFilesRef = useRef<BridgeData[]>([]);
   useEffect(() => { openEditFilesRef.current = openEditFiles; }, [openEditFiles]);
-  const [activeEditPath, setActiveEditPath] = useState(null);  // 当前激活的文件路径
+  const [activeEditPath, setActiveEditPath] = useState<string | null>(null);  // 当前激活的文件路径
   useEffect(() => {
     if (!sessionId) return;
     window.__luminEditorStates = window.__luminEditorStates || {};
@@ -2590,8 +2823,8 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   const [externalOpening, setExternalOpening] = useState(false);
 
   useEffect(() => {
-    const onMode = (event) => {
-      const mode = event?.detail;
+    const onMode = (event: Event) => {
+      const mode = (event as CustomEvent).detail;
       if (['builtin', 'system', 'external'].includes(mode)) {
         setDefaultOpenMode(mode);
       }
@@ -2599,14 +2832,14 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     window.addEventListener('file-manager-default-open-mode-changed', onMode);
     return () => window.removeEventListener('file-manager-default-open-mode-changed', onMode);
   }, []);
-  const setTransferInfo = useCallback(() => {}, []);
+  const setTransferInfo = useCallback((info: BridgeData) => {}, []);
   const [isDragOver, setIsDragOver] = useState(false);
   const dragCounterRef = useRef(0);
-  const uploadInputRef = useRef(null);
-  const uploadFolderInputRef = useRef(null);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const uploadFolderInputRef = useRef<HTMLInputElement | null>(null);
   const [workbenchState, setWorkbenchStateState] = useState(() => getSessionWorkbenchState(sessionGroupId));
   const [uploadPanelState, setUploadPanelState] = useState(() => getSessionUploadPanelState(sessionGroupId, sessionId));
-  const [uploadQueueItems, setUploadQueueItems] = useState(() => getSessionUploadQueue(sessionGroupId));
+  const [uploadQueueItems, setUploadQueueItems] = useState<BridgeData[]>(() => getSessionUploadQueue(sessionGroupId));
   const activeUploadCount = useMemo(() => uploadQueueItems.filter((item) => item.status === 'queued' || item.status === 'uploading').length, [uploadQueueItems]);
   const uploadPanelCloseTimerRef = useRef(0);
   const [uploadPanelClosing, setUploadPanelClosing] = useState(false);
@@ -2704,7 +2937,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }, UPLOAD_PANEL_CLOSE_ANIMATION_MS);
   }, [clearUploadPanelCloseTimer, finishUploadPanelClose, sessionGroupId, uploadPanelClosing]);
 
-  const setUploadPanelOpen = useCallback((open) => {
+  const setUploadPanelOpen = useCallback((open: boolean) => {
     if (open) {
       openUploadPanel();
       return;
@@ -2718,10 +2951,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
   }, [setUploadPanelOpen]);
 
-  const transferTaskLimiterRef = useRef({ limit: 0, run: null });
-  const uploadChunkLimiterRef = useRef({ limit: 0, run: null });
+  const transferTaskLimiterRef = useRef<{ limit: number; run: ((fn: () => unknown) => Promise<unknown>) | null }>({ limit: 0, run: null });
+  const uploadChunkLimiterRef = useRef<{ limit: number; run: ((fn: () => unknown) => Promise<unknown>) | null }>({ limit: 0, run: null });
 
-  const getTransferTaskRunner = useCallback((limit) => {
+  const getTransferTaskRunner = useCallback((limit: number): (fn: () => unknown) => Promise<unknown> => {
     const normalizedLimit = Math.max(1, limit);
     const currentLimiter = transferTaskLimiterRef.current;
     if (!currentLimiter.run || currentLimiter.limit !== normalizedLimit) {
@@ -2730,10 +2963,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         run: createLimiter(normalizedLimit),
       };
     }
-    return transferTaskLimiterRef.current.run;
+    return transferTaskLimiterRef.current.run as (fn: () => unknown) => Promise<unknown>;
   }, []);
 
-  const getUploadChunkRunner = useCallback((limit) => {
+  const getUploadChunkRunner = useCallback((limit: number): (fn: () => unknown) => Promise<unknown> => {
     const normalizedLimit = Math.max(1, limit);
     const currentLimiter = uploadChunkLimiterRef.current;
     if (!currentLimiter.run || currentLimiter.limit !== normalizedLimit) {
@@ -2742,7 +2975,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         run: createLimiter(normalizedLimit),
       };
     }
-    return uploadChunkLimiterRef.current.run;
+    return uploadChunkLimiterRef.current.run as (fn: () => unknown) => Promise<unknown>;
   }, []);
 
   const toggleUploadPanel = useCallback(() => {
@@ -2815,7 +3048,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     };
   }, [isActive, sessionGroupId, sessionId, workbenchState.editorSplitOpen, uploadPanelState.uploadOpen]);
 
-  const loadDir = useCallback(async (path, options = {}) => {
+  const loadDir = useCallback(async (path: unknown, options: LoadDirOptions | boolean = {}) => {
     const normalizedPath = normalizePath(path) || '/';
     const resolvedOptions = typeof options === 'boolean' ? { silent: options } : (options || {});
     const targetTabId = String(
@@ -2912,9 +3145,9 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       }
       const applyLoadedData = () => {
         if (trackDiff) {
-          updateItemsPreservingView((current) => buildItemsWithTrackedDiff(current, data, normalizedPath));
+          updateItemsPreservingView((current) => buildItemsWithTrackedDiff(current, (data || []) as FileManagerFileItem[], normalizedPath));
         } else {
-          setItems(data || []);
+          setItems((data || []) as FileManagerFileItem[]);
         }
         displayedTabIdRef.current = targetTabId || displayedTabIdRef.current;
         currentPathHydratedRef.current = true;
@@ -2942,7 +3175,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         const msg = String(err).toLowerCase().includes('permission denied')
           ? `${t('权限不足')}: SFTP ${t('仍以')} ${sessionId ? t('原用户') : ''} ${t('身份运行，终端内 sudo 不影响文件管理器')}`
           : `${t('读取目录失败')}: ${err}`;
-        addToast(`${msg} [${normalizedPath}]`, 'error');
+        addToast?.(`${msg} [${normalizedPath}]`, 'error');
       }
       return false;
     } finally {
@@ -2952,7 +3185,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
   }, [sessionId, addToast, normalizePath, t, queueFileListViewRestore, updateItemsPreservingView, isDeletedPlaceholderItem, didItemMetadataChange, queueRowEffect, createDeletedPlaceholder, beginFileListSwitch, commitFileListSwitch, cancelFileListSwitch, getCachedPathItems]);
 
-  const applyAnimatedFileListSnapshot = useCallback((path, nextItems, options = {}) => {
+  const applyAnimatedFileListSnapshot = useCallback((path: unknown, nextItems: FileManagerFileItem[], options: BridgeData = {}) => {
     const normalizedPath = normalizePath(path) || '/';
     const targetTabId = String(
       options.tabId
@@ -2976,8 +3209,8 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   }, [normalizePath, cancelFileListSwitch]);
 
   const buildNonRememberedInitialPathCandidates = useCallback(async () => {
-    const candidates = [];
-    const pushCandidate = (value) => {
+    const candidates: string[] = [];
+    const pushCandidate = (value: unknown) => {
       const normalized = normalizePath(value);
       if (!normalized || candidates.includes(normalized)) {
         return;
@@ -3011,7 +3244,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     return candidates[candidates.length - 1] || '/';
   }, [buildNonRememberedInitialPathCandidates, sessionId]);
 
-  const ensureForcedInitialFileManagerTab = useCallback((workspace, forcedPath, cwdPath = '') => {
+  const ensureForcedInitialFileManagerTab = useCallback((workspace: FileManagerWorkspaceState, forcedPath: unknown, cwdPath = ''): FileManagerWorkspaceState => {
     const normalizedForcedPath = normalizePath(forcedPath) || '/';
     const currentTabs = Array.isArray(workspace?.tabs) ? workspace.tabs.filter((tab) => tab && typeof tab === 'object') : [];
     const currentActiveTabId = typeof workspace?.activeTabId === 'string' ? workspace.activeTabId : '';
@@ -3043,9 +3276,13 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     });
     const nextActiveTabId = nextTabs.some((tab) => tab.id === currentActiveTabId) ? currentActiveTabId : nextHomeTab.id;
     const activeTabPath = normalizePath(nextTabs.find((tab) => tab.id === nextActiveTabId)?.path) || homeTabPath;
-    const currentPanes = workspace?.panes && typeof workspace.panes === 'object' ? workspace.panes : {};
-    const alignPane = (paneKey, fallbackTabId) => {
-      const currentPane = currentPanes?.[paneKey] && typeof currentPanes[paneKey] === 'object' ? currentPanes[paneKey] : {};
+    const currentPanes = (workspace?.panes && typeof workspace.panes === 'object'
+      ? workspace.panes
+      : {}) as FileManagerWorkspaceState['panes'];
+    const alignPane = (paneKey: 'left' | 'right', fallbackTabId: string) => {
+      const currentPane = (currentPanes?.[paneKey] && typeof currentPanes[paneKey] === 'object'
+        ? currentPanes[paneKey]
+        : {}) as FileManagerPaneState;
       const paneTabId = String(currentPane.tabId || fallbackTabId || nextActiveTabId || '').trim();
       const matchedTab = nextTabs.find((tab) => tab.id === paneTabId) || nextTabs.find((tab) => tab.id === nextActiveTabId) || nextHomeTab;
       const matchedPath = normalizePath(matchedTab?.path) || activeTabPath;
@@ -3071,13 +3308,14 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       return workspace;
     }
     return {
+      activePane: workspace.activePane,
       activeTabId: nextActiveTabId,
       tabs: nextTabs,
       panes: nextPanes,
     };
   }, [normalizePath]);
 
-  const resolveTerminalCwdFollowTarget = useCallback((cwdPath) => {
+  const resolveTerminalCwdFollowTarget = useCallback((cwdPath: unknown) => {
     const normalizedCwdPath = normalizePath(cwdPath);
     if (!normalizedCwdPath) {
       return null;
@@ -3106,7 +3344,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     };
   }, [normalizePath]);
 
-  const applyTerminalCwdFollow = useCallback(async (cwd, options = {}) => {
+  const applyTerminalCwdFollow = useCallback(async (cwd: unknown, options: BridgeData = {}) => {
     const followTarget = resolveTerminalCwdFollowTarget(cwd);
     if (!followTarget?.path || !followTarget?.tabId) {
       pendingTerminalCwdRef.current = '';
@@ -3124,12 +3362,12 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     const currentActiveTabId = String(activeFileManagerTabIdRef.current || '').trim();
     if (followTarget.tabId !== currentActiveTabId) {
       const currentWorkspace = syncCurrentTabToWorkspace({ scrollTop: fileListRef.current?.scrollTop || 0 }) || fileManagerWorkspaceRef.current;
-      const currentPanes = currentWorkspace?.panes && typeof currentWorkspace.panes === 'object'
+      const currentPanes = (currentWorkspace?.panes && typeof currentWorkspace.panes === 'object'
         ? currentWorkspace.panes
-        : {};
-      const currentPane = currentPanes[activePaneKey] && typeof currentPanes[activePaneKey] === 'object'
+        : {}) as FileManagerWorkspaceState['panes'];
+      const currentPane = (currentPanes[activePaneKey] && typeof currentPanes[activePaneKey] === 'object'
         ? currentPanes[activePaneKey]
-        : {};
+        : {}) as FileManagerPaneState;
       const targetTab = Array.isArray(currentWorkspace?.tabs)
         ? currentWorkspace.tabs.find((tab) => tab.id === followTarget.tabId) || null
         : null;
@@ -3293,7 +3531,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       const uploadId = typeof payload.uploadId === 'string' ? payload.uploadId.trim() : '';
       if (!uploadId) return;
       if (abortedUploadIdsRef.current.has(uploadId)) return;
-      updateSessionUploadQueue(sessionGroupId, (current) => current.map((item) => {
+      updateSessionUploadQueue(sessionGroupId, (current) => current.map((item: BridgeData) => {
         if (item.id !== uploadId) return item;
         const nextPhase = payload.phase || item.phase || 'preparing';
         const nextPhaseProgress = Math.max(0, Math.min(100, Number(payload.phaseProgress) || 0));
@@ -3322,7 +3560,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       const downloadId = typeof payload.downloadId === 'string' ? payload.downloadId.trim() : '';
       if (!downloadId) return;
       if (abortedUploadIdsRef.current.has(downloadId)) return;
-      updateSessionUploadQueue(sessionGroupId, (current) => current.map((item) => {
+      updateSessionUploadQueue(sessionGroupId, (current) => current.map((item: BridgeData) => {
         if (item.id !== downloadId) return item;
         const nextStatus = payload.status || item.status || 'uploading';
         const nextPhase = payload.phase || item.phase || '';
@@ -3359,7 +3597,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       }, [{ label: t('目录根'), path: '/' }]);
 
   // Navigate into folder
-  const navigate = (item) => {
+  const navigate = (item: FileManagerFileItem) => {
     if (!item.isDirectory) return;
     const newPath = currentPath === '/'
       ? `/${item.name}`
@@ -3383,7 +3621,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     localStorage.getItem('fileManagerDownloadDefaultDir') || DEFAULT_FILE_MANAGER_DOWNLOAD_DIR
   ).trim() || DEFAULT_FILE_MANAGER_DOWNLOAD_DIR, []);
   const getDownloadConflictSettings = useCallback(() => getDownloadConflictSettingsFromStorage(), []);
-  const buildDownloadConflictMessage = useCallback((conflict, fallbackName) => {
+  const buildDownloadConflictMessage = useCallback((conflict: BridgeData, fallbackName: unknown) => {
     const relativePath = String(conflict?.relativePath || '').trim() || fallbackName || t('当前文件');
     const localSize = conflict?.localSize === undefined || conflict?.localSize === null ? '-' : fmtSize(Number(conflict.localSize) || 0);
     const remoteSize = conflict?.remoteSize === undefined || conflict?.remoteSize === null ? '-' : fmtSize(Number(conflict.remoteSize) || 0);
@@ -3405,13 +3643,13 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     lines.push(t('请选择本次冲突的处理方式'));
     return lines.join('\n');
   }, [t]);
-  const resolvePromptDownloadConflict = useCallback(async (item, remotePath, localPath, settings) => {
+  const resolvePromptDownloadConflict = useCallback(async (item: FileManagerFileItem, remotePath: unknown, localPath: string, settings: BridgeData) => {
     const previewDownloadConflicts = window?.go?.wailsapp?.App?.PreviewDownloadConflicts;
     const resolveDownloadLocalPath = window?.go?.wailsapp?.App?.ResolveDownloadLocalPath;
     if (typeof previewDownloadConflicts !== 'function') {
       throw new Error(t('当前环境不支持下载冲突处理'));
     }
-    const conflicts = await previewDownloadConflicts(sessionId, remotePath, localPath, item.isDirectory);
+    const conflicts = await previewDownloadConflicts(sessionId, String(remotePath || ''), String(localPath || ''), item.isDirectory);
     if (!Array.isArray(conflicts) || conflicts.length === 0) {
       return {
         localPath,
@@ -3438,11 +3676,13 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         buttons,
         t('应用到本次剩余冲突'),
       );
-      if (!choice?.value || choice.value === 'cancel') {
+      const choiceValue = choice && typeof choice === 'object' ? (choice as { value?: string; checked?: boolean }).value : undefined;
+      const choiceChecked = choice && typeof choice === 'object' ? (choice as { value?: string; checked?: boolean }).checked : false;
+      if (!choiceValue || choiceValue === 'cancel') {
         return null;
       }
-      if (choice.checked) {
-        if (choice.value === DOWNLOAD_CONFLICT_STRATEGY_AUTO_RENAME) {
+      if (choiceChecked) {
+        if (choiceValue === DOWNLOAD_CONFLICT_STRATEGY_AUTO_RENAME) {
           const renamedPath = typeof resolveDownloadLocalPath === 'function'
             ? await resolveDownloadLocalPath(localPath, item.isDirectory, autoRenameOptionsJSON)
             : localPath;
@@ -3454,13 +3694,13 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         return {
           localPath,
           optionsJSON: buildDownloadConflictOptionsPayload(settings, {
-            strategy: choice.value,
+            strategy: choiceValue,
             pathStrategies: {},
           }),
         };
       }
       const conflictKey = String(conflict?.key || '.').trim() || '.';
-      if (conflictKey === '.' && choice.value === DOWNLOAD_CONFLICT_STRATEGY_AUTO_RENAME) {
+      if (conflictKey === '.' && choiceValue === DOWNLOAD_CONFLICT_STRATEGY_AUTO_RENAME) {
         const renamedPath = typeof resolveDownloadLocalPath === 'function'
           ? await resolveDownloadLocalPath(localPath, item.isDirectory, autoRenameOptionsJSON)
           : localPath;
@@ -3473,7 +3713,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         ...settings,
         pathStrategies: {
           ...(settings.pathStrategies || {}),
-          [conflictKey]: choice.value,
+          [conflictKey]: choiceValue,
         },
       };
     }
@@ -3486,7 +3726,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     };
   }, [buildDownloadConflictMessage, sessionId, t]);
 
-  const isUploadAbortable = useCallback((item) => {
+  const isUploadAbortable = useCallback((item: BridgeData) => {
     if (!item) return false;
     if (item.direction === 'download') {
       if (item.mode === 'download-compressed') {
@@ -3500,10 +3740,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     return item.status === 'queued' || item.status === 'uploading';
   }, []);
 
-  const markUploadAborted = useCallback((queueId, detail = t('已终止')) => {
+  const markUploadAborted = useCallback((queueId: unknown, detail: string = t('已终止')) => {
     if (!queueId) return;
-    abortedUploadIdsRef.current.add(queueId);
-    updateSessionUploadQueue(sessionGroupId, (current) => current.map((item) => (
+    abortedUploadIdsRef.current.add(String(queueId));
+    updateSessionUploadQueue(sessionGroupId, (current) => current.map((item: BridgeData) => (
       item.id === queueId
         ? {
             ...item,
@@ -3517,7 +3757,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     )));
   }, [sessionGroupId, t]);
 
-  const abortUploadItem = useCallback(async (item, detail = t('已终止')) => {
+  const abortUploadItem = useCallback(async (item: BridgeData, detail: string = t('已终止')) => {
     if (!item) return;
     markUploadAborted(item.id, detail);
     try {
@@ -3535,9 +3775,9 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     } catch (_) {}
   }, [markUploadAborted, t]);
 
-  const removeUploadItems = useCallback((ids) => {
+  const removeUploadItems = useCallback((ids: unknown) => {
     const normalizedIds = new Set(
-      Array.from(ids || [])
+      Array.from((ids || []) as unknown[])
         .map((id) => String(id || '').trim())
         .filter(Boolean),
     );
@@ -3547,7 +3787,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     normalizedIds.forEach((id) => abortedUploadIdsRef.current.delete(id));
     let shouldClosePanel = false;
     updateSessionUploadQueue(sessionGroupId, (current) => {
-      const next = current.filter((item) => !normalizedIds.has(item.id));
+      const next = current.filter((item: BridgeData) => !normalizedIds.has(item.id));
       shouldClosePanel = next.length === 0;
       return next;
     });
@@ -3556,20 +3796,20 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
   }, [closeUploadPanel, sessionGroupId]);
 
-  const abortUploadItems = useCallback((items, detail = t('已终止')) => {
-    (items || []).forEach((item) => {
+  const abortUploadItems = useCallback((items: BridgeData[], detail: string = t('已终止')) => {
+    (items || []).forEach((item: BridgeData) => {
       if (item) {
         void abortUploadItem(item, detail);
       }
     });
   }, [abortUploadItem, t]);
 
-  const abortActiveUploadsForSession = useCallback((disconnectedSessionId, detail = t('已终止')) => {
+  const abortActiveUploadsForSession = useCallback((disconnectedSessionId: unknown, detail: string = t('已终止')) => {
     if (!disconnectedSessionId || disconnectedSessionId !== sessionId) return;
     const queue = getSessionUploadQueue(sessionGroupId)
-      .filter((item) => item?.sourceTerminalId === disconnectedSessionId)
-      .filter((item) => isUploadAbortable(item));
-    queue.forEach((item) => {
+      .filter((item: BridgeData) => item?.sourceTerminalId === disconnectedSessionId)
+      .filter((item: BridgeData) => isUploadAbortable(item));
+    queue.forEach((item: BridgeData) => {
       void abortUploadItem(item, detail);
     });
   }, [abortUploadItem, isUploadAbortable, sessionGroupId, sessionId, t]);
@@ -3578,7 +3818,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     abortActiveUploadsForSession(sessionId, t('已终止'));
   }, [abortActiveUploadsForSession, sessionId, t]);
 
-  const refreshDirectoryAfterTransfer = useCallback(async (targetPath) => {
+  const refreshDirectoryAfterTransfer = useCallback(async (targetPath: unknown) => {
     const normalizedTargetPath = normalizePath(targetPath) || '/';
     if (!normalizedTargetPath) {
       return;
@@ -3590,7 +3830,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     try {
       const nextItems = await AppGo.ListDir(sessionId, normalizedTargetPath);
       const currentWorkspace = fileManagerWorkspaceRef.current;
-      const matchingPaneKeys = [];
+      const matchingPaneKeys: Array<'left' | 'right'> = [];
       const leftPanePath = normalizePath(currentWorkspace?.panes?.left?.path) || '';
       const rightPanePath = normalizePath(currentWorkspace?.panes?.right?.path) || '';
       if (leftPanePath && leftPanePath === normalizedTargetPath) {
@@ -3600,17 +3840,17 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         matchingPaneKeys.push('right');
       }
 
-      const cachedItemsSnapshot = getSessionCachedFileManagerPathItems(sessionId, normalizedTargetPath) || [];
+      const cachedItemsSnapshot = (getSessionCachedFileManagerPathItems(sessionId, normalizedTargetPath) || []) as FileManagerFileItem[];
       const primaryPaneKey = matchingPaneKeys[0] || activePaneKey;
       const mergedItems = buildItemsWithTrackedDiff(
         cachedItemsSnapshot,
-        nextItems,
+        (nextItems || []) as FileManagerFileItem[],
         normalizedTargetPath,
         primaryPaneKey,
       );
       if (matchingPaneKeys.length > 1) {
         matchingPaneKeys.slice(1).forEach((paneKey) => {
-          buildItemsWithTrackedDiff(cachedItemsSnapshot, nextItems, normalizedTargetPath, paneKey);
+          buildItemsWithTrackedDiff(cachedItemsSnapshot, (nextItems || []) as FileManagerFileItem[], normalizedTargetPath, paneKey);
         });
       }
 
@@ -3640,8 +3880,8 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   // 防抖刷新当前目录。SFTP 无远程变更通知，只能客户端主动探测；按需刷新避免轰炸服务器。
   useEffect(() => {
     if (!sessionGroupId) return;
-    let refreshTimer = null;
-    const scheduleRefresh = (delay) => {
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = (delay: number) => {
       if (refreshTimer) clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => {
         refreshTimer = null;
@@ -3659,8 +3899,9 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       }, delay);
     };
     // A：终端命令完成（提示符回归）。事件携带会话组 id，匹配本会话组才刷新。
-    const handleCommandFinished = (e) => {
-      if (!e?.detail || e.detail.sessionId !== sessionGroupId) return;
+    const handleCommandFinished = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {}
+      if (!detail || detail.sessionId !== sessionGroupId) return;
       scheduleRefresh(800);
     };
     // C：应用窗口重新聚焦（兜底 A 的漏判：自定义提示符/TUI 等）。
@@ -3687,9 +3928,9 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
   }, [isActive, loadDir, currentPath]);
 
-  const fileManagerUndoStackRef = useRef([]);
+  const fileManagerUndoStackRef = useRef<BridgeData[]>([]);
 
-  const pushFileManagerUndoEntry = useCallback((entry) => {
+  const pushFileManagerUndoEntry = useCallback((entry: BridgeData) => {
     if (!entry || typeof entry.undo !== 'function') {
       return;
     }
@@ -3700,7 +3941,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     if (operationInProgressRef.current) return;
     const undoEntry = fileManagerUndoStackRef.current[fileManagerUndoStackRef.current.length - 1];
     if (!undoEntry) {
-      addToast(t('没有可撤销的操作'), 'info');
+      addToast?.(t('没有可撤销的操作'), 'info');
       return;
     }
     fileManagerUndoStackRef.current = fileManagerUndoStackRef.current.slice(0, -1);
@@ -3708,10 +3949,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     setOperationProgress({ message: t('正在撤销中...') });
     try {
       await undoEntry.undo();
-      addToast(t('已撤销'), 'success');
+      addToast?.(t('已撤销'), 'success');
     } catch (err) {
       fileManagerUndoStackRef.current = [...fileManagerUndoStackRef.current, undoEntry].slice(-100);
-      addToast(`${t('撤销失败')}: ${err}`, 'error');
+      addToast?.(`${t('撤销失败')}: ${err}`, 'error');
     } finally {
       setOperationProgress(null);
       operationInProgressRef.current = false;
@@ -3719,8 +3960,8 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
   }, [addToast, t]);
 
-  const uploadNativePaths = useCallback(async (paths) => {
-    const localPaths = Array.from(paths || []).map((path) => String(path || '').trim()).filter(Boolean);
+  const uploadNativePaths = useCallback(async (paths: unknown) => {
+    const localPaths = Array.from((paths || []) as unknown[]).map((path) => String(path || '').trim()).filter(Boolean);
     if (localPaths.length === 0) {
       return;
     }
@@ -3728,7 +3969,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     openTransferQueueIfNeeded();
     const settings = getUploadSettings();
     const createdAt = Date.now();
-    const queueSeed = localPaths.map((localPath, index) => {
+    const queueSeed: BridgeData[] = localPaths.map((localPath, index) => {
       const name = localPath.split(/[\\/]/).filter(Boolean).pop() || t('文件');
       return {
         id: `native-upload-${createdAt}-${index}`,
@@ -3757,8 +3998,8 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       };
     });
     updateSessionUploadQueue(sessionGroupId, (current) => [...queueSeed, ...current]);
-    const patchQueueItem = (queueId, patch) => {
-      updateSessionUploadQueue(sessionGroupId, (current) => current.map((item) => (
+    const patchQueueItem = (queueId: unknown, patch: BridgeData | ((item: BridgeData) => BridgeData)) => {
+      updateSessionUploadQueue(sessionGroupId, (current) => current.map((item: BridgeData) => (
         item.id === queueId
           ? { ...item, ...(typeof patch === 'function' ? patch(item) : patch) }
           : item
@@ -3766,7 +4007,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     };
     const transferTaskRunner = getTransferTaskRunner(settings.maxTransferTasks);
     let successCount = 0;
-    const failures = [];
+    const failures: string[] = [];
     await Promise.all(localPaths.map((localPath, index) => transferTaskRunner(async () => {
       const queueId = queueSeed[index]?.id;
       const name = queueSeed[index]?.name || localPath.split(/[\\/]/).filter(Boolean).pop() || t('文件');
@@ -3807,18 +4048,18 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       }
     })));
     if (failures.length > 0) {
-      addToast(`${successCount > 0 ? t('上传完成') : t('上传失败')}: ${successCount}${t('项成功')}, ${failures.length}${t('项失败')} (${failures.slice(0, 3).join(', ')})`, 'error');
+      addToast?.(`${successCount > 0 ? t('上传完成') : t('上传失败')}: ${successCount}${t('项成功')}, ${failures.length}${t('项失败')} (${failures.slice(0, 3).join(', ')})`, 'error');
     } else if (successCount > 0) {
-      addToast(`${t('上传成功')}: ${successCount}${t('项')}`, 'success');
+      addToast?.(`${t('上传成功')}: ${successCount}${t('项')}`, 'success');
     }
     if (successCount > 0) {
       await refreshDirectoryAfterTransfer(uploadTargetPath);
     }
   }, [sessionId, sessionGroupId, currentPath, addToast, t, getTransferTaskRunner, getUploadSettings, openTransferQueueIfNeeded, normalizePath, refreshDirectoryAfterTransfer]);
 
-  const uploadEntries = useCallback(async (entries) => {
+  const uploadEntries = useCallback(async (entries: BridgeData[]) => {
     const uploadEntriesList = entries
-      .filter((entry) => entry?.file && entry?.relativePath)
+      .filter((entry: BridgeData) => entry?.file && entry?.relativePath)
       .map((entry) => ({
         file: entry.file,
         relativePath: String(entry.relativePath).replace(/^\/+/, '').replace(/\\/g, '/'),
@@ -3878,25 +4119,25 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
 
     let uploadedBytes = 0;
     let completedFiles = 0;
-    const failures = [];
-    const patchQueueItem = (queueId, patch) => {
-      updateSessionUploadQueue(sessionGroupId, (current) => current.map((item) => (
+    const failures: string[] = [];
+    const patchQueueItem = (queueId: unknown, patch: BridgeData | ((item: BridgeData) => BridgeData)) => {
+      updateSessionUploadQueue(sessionGroupId, (current) => current.map((item: BridgeData) => (
         item.id === queueId
           ? { ...item, ...(typeof patch === 'function' ? patch(item) : patch) }
           : item
       )));
     };
-    const patchQueueChunk = (queueId, chunkIndex, patch) => {
-      updateSessionUploadQueue(sessionGroupId, (current) => current.map((item) => {
+    const patchQueueChunk = (queueId: unknown, chunkIndex: number, patch: BridgeData | ((chunk: BridgeData) => BridgeData)) => {
+      updateSessionUploadQueue(sessionGroupId, (current) => current.map((item: BridgeData) => {
         if (item.id !== queueId) return item;
-        const chunks = Array.isArray(item.chunks) ? item.chunks.map((chunk) => (
+        const chunks = Array.isArray(item.chunks) ? item.chunks.map((chunk: BridgeData) => (
           chunk.index === chunkIndex ? { ...chunk, ...(typeof patch === 'function' ? patch(chunk) : patch) } : chunk
         )) : [];
         return {
           ...item,
           chunks,
-          chunksCompleted: chunks.filter((chunk) => chunk.status === 'completed').length,
-          chunksFailed: chunks.filter((chunk) => chunk.status === 'failed').length,
+          chunksCompleted: chunks.filter((chunk: BridgeData) => chunk.status === 'completed').length,
+          chunksFailed: chunks.filter((chunk: BridgeData) => chunk.status === 'failed').length,
           updatedAt: Date.now(),
         };
       }));
@@ -3969,11 +4210,11 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
               patchQueueChunk(queueId, index, {
                 status: 'failed',
                 attempt: MAX_CHUNK_UPLOAD_RETRIES,
-                error: String(result.reason),
+                error: String(result.status === 'rejected' ? result.reason : ''),
                 updatedAt: Date.now(),
               });
             });
-            throw new Error(failedChunks.map(({ result }) => String(result.reason)).slice(0, 3).join('；'));
+            throw new Error(failedChunks.map(({ result }) => String(result.status === 'rejected' ? result.reason : '')).slice(0, 3).join('；'));
           }
           await AppGo.CompleteChunkedUploadFile(taskId, fileId);
           completedFiles++;
@@ -4010,15 +4251,15 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       })));
 
       if (failures.length > 0) {
-        addToast(`${completedFiles > 0 ? t('上传完成') : t('上传失败')}: ${completedFiles}${t('项成功')}, ${failures.length}${t('项失败')} (${failures.slice(0, 3).join(', ')})`, 'error');
+        addToast?.(`${completedFiles > 0 ? t('上传完成') : t('上传失败')}: ${completedFiles}${t('项成功')}, ${failures.length}${t('项失败')} (${failures.slice(0, 3).join(', ')})`, 'error');
       } else if (completedFiles > 0) {
-        addToast(`${t('上传成功')}: ${completedFiles}${t('项')}`, 'success');
+        addToast?.(`${t('上传成功')}: ${completedFiles}${t('项')}`, 'success');
       }
       if (completedFiles > 0) {
         await refreshDirectoryAfterTransfer(uploadTargetPath);
       }
     } catch (err) {
-      if (err) addToast(`${t('上传失败')}: ${err}`, 'error');
+      if (err) addToast?.(`${t('上传失败')}: ${err}`, 'error');
     } finally {
       if (mountedRef.current) setTransferInfo(null);
     }
@@ -4029,11 +4270,12 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       const data = (payload && typeof payload === 'object')
         ? payload
         : { sessionId: payload, terminalIds: payload ? [payload] : [] };
-      const ids = new Set();
+      const ids = new Set<string>();
       if (data.sessionId) ids.add(data.sessionId);
       if (data.parentSessionId) ids.add(data.parentSessionId);
       if (Array.isArray(data.terminalIds)) {
-        data.terminalIds.forEach((id) => id && ids.add(id));
+        const rawTerminalIds = data.terminalIds
+        rawTerminalIds.forEach((id: BridgeData) => id && ids.add(String(id)));
       }
       ids.forEach((id) => abortActiveUploadsForSession(id, t('已终止')));
     });
@@ -4047,7 +4289,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     const offSynced = EventsOn('external-edit-synced', (payload = {}) => {
       if (payload.sessionId !== sessionId) return;
       const remotePath = payload.remotePath || '';
-      addToast(`${t('外部编辑已同步到远程')}${remotePath ? `: ${remotePath}` : ''}`, 'success');
+      addToast?.(`${t('外部编辑已同步到远程')}${remotePath ? `: ${remotePath}` : ''}`, 'success');
       // Refresh in-memory editor buffer if the same file is open internally.
       if (remotePath && openEditFilesRef.current.some((f) => f.path === remotePath)) {
         AppGo.ReadFile(sessionId, remotePath)
@@ -4059,7 +4301,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     });
     const offError = EventsOn('external-edit-error', (payload = {}) => {
       if (payload.sessionId !== sessionId) return;
-      addToast(`${t('外部编辑同步失败')}: ${payload.error || ''}`, 'error');
+      addToast?.(`${t('外部编辑同步失败')}: ${payload.error || ''}`, 'error');
     });
     return () => {
       offSynced?.();
@@ -4067,7 +4309,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     };
   }, [sessionId, addToast, t]);
 
-  const handleSelectedFiles = useCallback(async (e) => {
+  const handleSelectedFiles = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawSelectedFiles = Array.from(e.target.files || []);
     const selectedFiles = rawSelectedFiles
       .filter((file) => !isHiddenFile(file.name))
@@ -4091,7 +4333,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       const paths = await AppGo.SelectUploadFiles();
       await uploadNativePaths(paths || []);
     } catch (err) {
-      if (err) addToast(`${t('上传失败')}: ${err}`, 'error');
+      if (err) addToast?.(`${t('上传失败')}: ${err}`, 'error');
     }
   };
 
@@ -4108,22 +4350,22 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
 
       await uploadNativePaths([dirPath]);
     } catch (err) {
-      if (err) addToast(`${t('上传失败')}: ${err}`, 'error');
+      if (err) addToast?.(`${t('上传失败')}: ${err}`, 'error');
     }
   }, [uploadNativePaths, addToast, t]);
 
   // Download file via Wails native file dialog
-  const handleCopyPath = (item, basePath = currentPath) => {
+  const handleCopyPath = (item: FileManagerFileItem, basePath = currentPath) => {
     let fullPath = joinPath(basePath, item.name);
     if (item.isDirectory && !fullPath.endsWith('/')) fullPath += '/';
     navigator.clipboard?.writeText(fullPath).then(() => {
-      addToast(`${t('已复制')}: ${fullPath}`, 'success');
+      addToast?.(`${t('已复制')}: ${fullPath}`, 'success');
     }).catch(() => {
-      addToast(t('复制失败'), 'error');
+      addToast?.(t('复制失败'), 'error');
     });
   };
 
-  const handleClipboardCopy = useCallback((paths, sourceDir = currentPathRef.current || currentPath) => {
+  const handleClipboardCopy = useCallback((paths: unknown, sourceDir = currentPathRef.current || currentPath) => {
     const normalizedPaths = Array.isArray(paths)
       ? paths.map((path) => String(path || '').trim()).filter(Boolean)
       : [];
@@ -4135,10 +4377,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       mode: 'copy',
       srcDir: normalizePath(sourceDir) || '/',
     });
-    addToast(t('已复制'), 'info');
+    addToast?.(t('已复制'), 'info');
   }, [addToast, currentPath, normalizePath, t]);
 
-  const handleClipboardCut = useCallback((paths, sourceDir = currentPathRef.current || currentPath) => {
+  const handleClipboardCut = useCallback((paths: unknown, sourceDir = currentPathRef.current || currentPath) => {
     const normalizedPaths = Array.isArray(paths)
       ? paths.map((path) => String(path || '').trim()).filter(Boolean)
       : [];
@@ -4150,7 +4392,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       mode: 'cut',
       srcDir: normalizePath(sourceDir) || '/',
     });
-    addToast(t('已剪切'), 'info');
+    addToast?.(t('已剪切'), 'info');
   }, [addToast, currentPath, normalizePath, t]);
 
   const getInactiveFileManagerPaneState = useCallback(() => {
@@ -4163,10 +4405,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     };
   }, [activePaneKey, normalizePath]);
 
-  const resolveFileManagerPaneKeysForPath = useCallback((targetPath) => {
+  const resolveFileManagerPaneKeysForPath = useCallback((targetPath: unknown) => {
     const normalizedTargetPath = normalizePath(targetPath) || '/';
     const currentWorkspace = fileManagerWorkspaceRef.current;
-    const keys = [];
+    const keys: string[] = [];
     const leftPanePath = normalizePath(currentWorkspace?.panes?.left?.path) || '';
     const rightPanePath = normalizePath(currentWorkspace?.panes?.right?.path) || '';
     if (leftPanePath === normalizedTargetPath) {
@@ -4181,7 +4423,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     return Array.from(new Set(keys.map((paneKey) => normalizeFileManagerPaneKey(paneKey))));
   }, [activePaneKey, normalizePath]);
 
-  const queueRowEffectForMatchingPanes = useCallback((directoryPath, logicalKey, rowKey, effect, placeholderItem = null) => {
+  const queueRowEffectForMatchingPanes = useCallback((directoryPath: unknown, logicalKey: string, rowKey: string, effect: string, placeholderItem: PanePlaceholderEntry | null = null) => {
     const matchingPaneKeys = resolveFileManagerPaneKeysForPath(directoryPath);
     const targetPaneKeys = matchingPaneKeys.length > 0 ? matchingPaneKeys : [activePaneKey];
     targetPaneKeys.forEach((paneKey) => {
@@ -4202,7 +4444,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     sourceDir,
     targetDirPath,
     clearClipboardOnSuccess = false,
-  }) => {
+  }: { paths: unknown; mode: string; sourceDir: unknown; targetDirPath: unknown; clearClipboardOnSuccess?: boolean }) => {
     if (operationInProgressRef.current) return false;
     const normalizedPaths = Array.isArray(paths)
       ? paths.map((path) => String(path || '').trim()).filter(Boolean)
@@ -4214,23 +4456,23 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     const isCurrentTargetPath = normalizedTargetPath === visibleCurrentPath;
     const isCurrentSourcePath = normalizedSourcePath === visibleCurrentPath;
     if (normalizedSourcePath === normalizedTargetPath && mode === 'cut') {
-      addToast(t('源目录与目标目录相同，无需移动'), 'warning');
+      addToast?.(t('源目录与目标目录相同，无需移动'), 'warning');
       return false;
     }
     operationInProgressRef.current = true;
     let count = 0;
-    let targetItems = isCurrentTargetPath ? items : [];
+    let targetItems: FileManagerFileItem[] = isCurrentTargetPath ? items : [];
     try {
       if (!isCurrentTargetPath) {
-        targetItems = await AppGo.ListDir(sessionId, normalizedTargetPath);
+        targetItems = (await AppGo.ListDir(sessionId, normalizedTargetPath) || []) as FileManagerFileItem[];
       }
     } catch (err) {
       operationInProgressRef.current = false;
-      addToast(`${t('读取目录失败')}: ${err}`, 'error');
+      addToast?.(`${t('读取目录失败')}: ${err}`, 'error');
       return false;
     }
     const existing = new Set((Array.isArray(targetItems) ? targetItems : []).map((item) => item.name));
-    const localPatchedItems = [];
+    const localPatchedItems: FileManagerFileItem[] = [];
     const successfulOperations = [];
     let shouldFallbackRefresh = !isCurrentTargetPath;
     const total = normalizedPaths.length;
@@ -4238,7 +4480,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     try {
       for (let i = 0; i < total; i++) {
         const srcPath = normalizedPaths[i];
-        const name = srcPath.split('/').pop();
+        const name = srcPath.split('/').pop() || '';
         const sourceItem = normalizedSourcePath === normalizedTargetPath && isCurrentTargetPath
           ? items.find((entry) => entry.name === name)
           : null;
@@ -4258,7 +4500,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           destPath = joinPath(normalizedTargetPath, copyName);
         } else if (existing.has(name)) {
           if (typeof window.luminDialog?.confirm !== 'function') {
-            addToast(`${t('无法确认覆盖操作，已跳过')} ${name}`, 'error');
+            addToast?.(`${t('无法确认覆盖操作，已跳过')} ${name}`, 'error');
             continue;
           }
           const ok = await window.luminDialog.confirm(
@@ -4297,7 +4539,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
             shouldFallbackRefresh = true;
           }
         } catch (err) {
-          addToast(`${t('操作失败')}: ${name} - ${err}`, 'error');
+          addToast?.(`${t('操作失败')}: ${name} - ${err}`, 'error');
         }
       }
     } finally {
@@ -4330,7 +4572,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           },
         });
       }
-      addToast(`${t('操作完成')}: ${count} ${t('项')}`, 'success');
+      addToast?.(`${t('操作完成')}: ${count} ${t('项')}`, 'success');
       if (clearClipboardOnSuccess && mode === 'cut') {
         updateClipboard(null);
       }
@@ -4349,7 +4591,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       if (mode === 'cut' && normalizedSourcePath !== normalizedTargetPath) {
         if (isCurrentSourcePath) {
           setSelectedPaths((currentSelectedPaths) => currentSelectedPaths.filter((path) => !normalizedPaths.includes(path)));
-          if (normalizedPaths.includes(lastClickedPathRef.current)) {
+          if (lastClickedPathRef.current && normalizedPaths.includes(lastClickedPathRef.current)) {
             lastClickedPathRef.current = null;
           }
         }
@@ -4360,7 +4602,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     return false;
   }, [addToast, currentPath, items, normalizePath, queueRowEffect, refreshDirectoryAfterTransfer, sessionId, t, updateItemsPreservingView]);
 
-  const handleDownload = useCallback(async (item, options = {}) => {
+  const handleDownload = useCallback(async (item: FileManagerFileItem, options: BridgeData = {}) => {
     const basePath = typeof options === 'string' ? options : (options.basePath || currentPath);
     const remotePath = joinPath(basePath, item.name);
     const defaultDownloadDir = getDefaultDownloadDir();
@@ -4375,9 +4617,9 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     const createdAt = Date.now();
     let queueId = '';
 
-    const patchQueueItem = (id, patch) => {
+    const patchQueueItem = (id: unknown, patch: BridgeData | ((queueItem: BridgeData) => BridgeData)) => {
       if (!id) return;
-      updateSessionUploadQueue(sessionGroupId, (current) => current.map((queueItem) => (
+      updateSessionUploadQueue(sessionGroupId, (current) => current.map((queueItem: BridgeData) => (
         queueItem.id === id
           ? { ...queueItem, ...(typeof patch === 'function' ? patch(queueItem) : patch) }
           : queueItem
@@ -4476,7 +4718,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
               error: '',
               updatedAt: Date.now(),
             });
-            addToast(`${t('下载成功')}: ${item.name}`, 'success');
+            addToast?.(`${t('下载成功')}: ${item.name}`, 'success');
             return;
           }
 
@@ -4498,7 +4740,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
             error: '',
             updatedAt: Date.now(),
           });
-          addToast(`${t('下载成功')}: ${item.name}`, 'success');
+          addToast?.(`${t('下载成功')}: ${item.name}`, 'success');
         } catch (err) {
           const isAborted = abortedUploadIdsRef.current.has(queueId) || String(err).toLowerCase().includes('context canceled');
           patchQueueItem(queueId, {
@@ -4508,7 +4750,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
             error: isAborted ? t('已终止') : String(err),
             updatedAt: Date.now(),
           });
-          if (!isAborted && err) addToast(`${t('下载失败')}: ${err}`, 'error');
+          if (!isAborted && err) addToast?.(`${t('下载失败')}: ${err}`, 'error');
         }
       });
     } catch (err) {
@@ -4520,15 +4762,15 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         error: isAborted ? t('已终止') : String(err),
         updatedAt: Date.now(),
       });
-      if (!isAborted && err) addToast(`${t('下载失败')}: ${err}`, 'error');
+      if (!isAborted && err) addToast?.(`${t('下载失败')}: ${err}`, 'error');
     }
   }, [sessionId, sessionGroupId, currentPath, addToast, t, getDefaultDownloadDir, getDownloadConflictSettings, getTransferTaskRunner, getUploadSettings, resolvePromptDownloadConflict, openTransferQueueIfNeeded]);
 
-  const rememberExternalEditorPath = useCallback((path) => {
+  const rememberExternalEditorPath = useCallback((path: unknown) => {
     const cleaned = String(path || '').trim();
     if (!cleaned) return;
     localStorage.setItem('fileEditorPreferredApp', cleaned);
-    let recent = [];
+    let recent: string[] = [];
     try {
       recent = JSON.parse(localStorage.getItem('fileEditorRecentApps') || '[]');
     } catch {
@@ -4539,41 +4781,41 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     localStorage.setItem('fileEditorRecentApps', JSON.stringify(recent));
   }, []);
 
-  const openExternalEditor = useCallback(async (remotePath, content, editorPath = '', readOnly = false, size = 0) => {
+  const openExternalEditor = useCallback(async (remotePath: string, content: unknown, editorPath = '', readOnly = false, size = 0) => {
     if (!sessionId || !remotePath) return false;
     // 下载前拦截大文件，避免把 GB 级文件读进内存后才报错（后端也会再校验一道）
     if (size && size > maxEditSizeMB * 1024 * 1024) {
-      addToast(`${t('文件过大')} (${(size / 1024 / 1024).toFixed(1)}MB)，${t('最大支持 {size}MB 编辑', { size: maxEditSizeMB })}`, 'error');
+      addToast?.(`${t('文件过大')} (${(size / 1024 / 1024).toFixed(1)}MB)，${t('最大支持 {size}MB 编辑', { size: maxEditSizeMB })}`, 'error');
       return false;
     }
     setExternalOpening(true);
     try {
       if (editorPath) {
-        await AppGo.OpenRemoteFileWithEditor(sessionId, remotePath, content || '', editorPath, readOnly);
+        await AppGo.OpenRemoteFileWithEditor(sessionId, remotePath, String(content || ''), editorPath, readOnly);
         rememberExternalEditorPath(editorPath);
-        addToast(t('已用外部编辑器打开'), 'success');
+        addToast?.(t('已用外部编辑器打开'), 'success');
       } else {
-        await AppGo.OpenRemoteFileInSystemEditor(sessionId, remotePath, content || '', readOnly);
-        addToast(t('已用系统编辑器打开'), 'success');
+        await AppGo.OpenRemoteFileInSystemEditor(sessionId, remotePath, String(content || ''), readOnly);
+        addToast?.(t('已用系统编辑器打开'), 'success');
       }
       return true;
     } catch (err) {
-      addToast(`${t('打开外部编辑器失败')}: ${err}`, 'error');
+      addToast?.(`${t('打开外部编辑器失败')}: ${err}`, 'error');
       return false;
     } finally {
       setExternalOpening(false);
     }
   }, [sessionId, addToast, t, rememberExternalEditorPath, maxEditSizeMB]);
 
-  const handleOpenSystemEditor = useCallback(async (file, content, readOnly = false) => {
+  const handleOpenSystemEditor = useCallback(async (file: BridgeData, content: unknown, readOnly = false) => {
     if (!file?.path) return;
     if (openingFilesRef.current.has(`${sessionId}:${file.path}`)) {
-      addToast(t('文件正在打开中，请稍候...'), 'warning');
+      addToast?.(t('文件正在打开中，请稍候...'), 'warning');
       return;
     }
     try {
       addOpeningFile(sessionId, file.path);
-      addToast(t('正在打开文件...'), 'info');
+      addToast?.(t('正在打开文件...'), 'info');
       await openExternalEditor(file.path, content ?? file.content ?? '', '', readOnly, file?.size || 0);
     } finally {
       removeOpeningFile(sessionId, file.path);
@@ -4581,15 +4823,15 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   }, [sessionId, openExternalEditor, addToast, t]);
 
   // forcePick=true：始终弹出选择框；false：有记忆路径则直接打开（对齐 electerm）
-  const handleOpenWithEditor = useCallback(async (file, content, forcePick = false, readOnly = false) => {
+  const handleOpenWithEditor = useCallback(async (file: BridgeData, content: unknown, forcePick = false, readOnly = false) => {
     if (!file?.path) return;
     if (openingFilesRef.current.has(`${sessionId}:${file.path}`)) {
-      addToast(t('文件正在打开中，请稍候...'), 'warning');
+      addToast?.(t('文件正在打开中，请稍候...'), 'warning');
       return;
     }
     try {
       addOpeningFile(sessionId, file.path);
-      addToast(t('正在打开文件...'), 'info');
+      addToast?.(t('正在打开文件...'), 'info');
       let editorPath = '';
       if (!forcePick) {
         editorPath = (localStorage.getItem('fileEditorPreferredApp') || '').trim();
@@ -4597,7 +4839,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       if (!editorPath) {
         editorPath = await AppGo.SelectExternalEditor();
         if (!editorPath) {
-          addToast(t('未选择编辑器'), 'warning');
+          addToast?.(t('未选择编辑器'), 'warning');
           return;
         }
       }
@@ -4611,24 +4853,24 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         }
       }
     } catch (err) {
-      addToast(`${t('打开外部编辑器失败')}: ${err}`, 'error');
+      addToast?.(`${t('打开外部编辑器失败')}: ${err}`, 'error');
     } finally {
       removeOpeningFile(sessionId, file.path);
     }
   }, [sessionId, openExternalEditor, addToast, t]);
 
   // Open file editor / external editor according to settings default.
-  const handleEdit = async (item) => {
+  const handleEdit = async (item: FileManagerFileItem) => {
     const remotePath = joinPath(currentPath, item.name);
 
     if (openingFilesRef.current.has(`${sessionId}:${remotePath}`)) {
-      addToast(t('文件正在打开中，请稍候...'), 'warning');
+      addToast?.(t('文件正在打开中，请稍候...'), 'warning');
       return;
     }
 
     // 文件大小检查，避免加载过大文件导致卡顿
     if (item.size && item.size > maxEditSizeMB * 1024 * 1024) {
-      addToast(`${t('文件过大')} (${(item.size / 1024 / 1024).toFixed(1)}MB)，${t('最大支持 {size}MB 编辑', { size: maxEditSizeMB })}`, 'error');
+      addToast?.(`${t('文件过大')} (${(item.size / 1024 / 1024).toFixed(1)}MB)，${t('最大支持 {size}MB 编辑', { size: maxEditSizeMB })}`, 'error');
       return;
     }
 
@@ -4644,7 +4886,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           await handleOpenWithEditor(file, '', false);
         }
       } catch (err) {
-        addToast(`${t('无法打开文件')}: ${err}`, 'error');
+        addToast?.(`${t('无法打开文件')}: ${err}`, 'error');
       }
       return;
     }
@@ -4658,23 +4900,23 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
 
     try {
       addOpeningFile(sessionId, remotePath);
-      addToast(t('正在下载并打开文件...'), 'info');
+      addToast?.(t('正在下载并打开文件...'), 'info');
       const content = await AppGo.ReadFile(sessionId, remotePath);
       const newFile = { path: remotePath, name: item.name, content };
       setOpenEditFiles(prev => [...prev, newFile]);
       setActiveEditPath(remotePath);
     } catch (err) {
-      addToast(`${t('无法打开文件')}: ${err}`, 'error');
+      addToast?.(`${t('无法打开文件')}: ${err}`, 'error');
     } finally {
       removeOpeningFile(sessionId, remotePath);
     }
   };
 
   // Save file from editor
-  const handleSaveFile = async (path, content) => {
+  const handleSaveFile = async (path: string, content: unknown) => {
     try {
-      await AppGo.WriteFile(sessionId, path, content);
-      addToast(t('文件保存成功'), 'success');
+      await AppGo.WriteFile(sessionId, path, String(content ?? ''));
+      addToast?.(t('文件保存成功'), 'success');
       // 更新 openEditFiles 中对应文件的内容
       setOpenEditFiles(prev => prev.map(f => f.path === path ? { ...f, content } : f));
       // 只有弹窗模式才在保存后自动关闭编辑器，popup/split 保持打开
@@ -4682,12 +4924,12 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         closeEditFile(path);
       }
     } catch (err) {
-      addToast(`${t('保存失败')}: ${err}`, 'error');
+      addToast?.(`${t('保存失败')}: ${err}`, 'error');
     }
   };
 
   // 关闭单个文件
-  const closeEditFile = (path) => {
+  const closeEditFile = (path: string) => {
     if (sessionId && path) {
       AppGo.StopExternalEdit(sessionId, path).catch(() => {});
     }
@@ -4715,21 +4957,21 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   };
 
   // 激活文件
-  const activateEditFile = (path) => {
+  const activateEditFile = (path: string | null) => {
     setActiveEditPath(path);
   };
 
-  const handleEditorModeChange = (mode) => {
+  const handleEditorModeChange = (mode: string) => {
     setEditorMode(mode);
     localStorage.setItem('fileEditorMode', mode);
   };
 
-  const handleEditorSplitPositionChange = (pos) => {
+  const handleEditorSplitPositionChange = (pos: string) => {
     setEditorSplitPosition(pos);
     localStorage.setItem('editorSplitPosition', pos);
   };
 
-  const activateFileManagerTab = useCallback(async (tabId) => {
+  const activateFileManagerTab = useCallback(async (tabId: string) => {
     const isDualPane = fileManagerLayoutMode === FILE_MANAGER_LAYOUT_MODE_SIDEBAR_DUAL;
     if (!tabId) {
       return;
@@ -4744,8 +4986,12 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       return;
     }
     const targetPath = normalizePath(targetTab.path) || '/';
-    const currentPanes = currentWorkspace?.panes && typeof currentWorkspace.panes === 'object' ? currentWorkspace.panes : {};
-    const currentPane = currentPanes[activePaneKey] && typeof currentPanes[activePaneKey] === 'object' ? currentPanes[activePaneKey] : {};
+    const currentPanes = (currentWorkspace?.panes && typeof currentWorkspace.panes === 'object'
+      ? currentWorkspace.panes
+      : {}) as FileManagerWorkspaceState['panes'];
+    const currentPane = (currentPanes[activePaneKey] && typeof currentPanes[activePaneKey] === 'object'
+      ? currentPanes[activePaneKey]
+      : {}) as FileManagerPaneState;
     commitFileManagerWorkspace({
       activePane: activePaneKey,
       activeTabId: tabId,
@@ -4878,7 +5124,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
   }, [activePaneKey, applyAnimatedFileListSnapshot, cancelFileListSwitch, commitFileManagerWorkspace, fileManagerLayoutMode, fileManagerWorkspace, getCachedPathItems, getCachedTabItems, loadDir, normalizePath, syncCurrentTabToWorkspace]);
 
-  const activateFileManagerPane = useCallback(async (paneKey) => {
+  const activateFileManagerPane = useCallback(async (paneKey: unknown) => {
     const nextPaneKey = paneKey === 'right' ? 'right' : 'left';
     if (nextPaneKey === activePaneKey) {
       return;
@@ -4996,7 +5242,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     return '/';
   }, [initialPath, normalizePath, sessionId]);
 
-  const openFileManagerPathInNewTab = useCallback(async (targetPath) => {
+  const openFileManagerPathInNewTab = useCallback(async (targetPath: unknown) => {
     const normalizedTargetPath = normalizePath(targetPath) || '/';
     const fallbackCurrentPath = normalizePath(currentPathRef.current) || '/';
     const candidatePaths = Array.from(new Set([normalizedTargetPath, getParentPath(normalizedTargetPath), fallbackCurrentPath, '/']));
@@ -5075,7 +5321,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     setFileManagerTabDropIndicator(null);
   }, []);
 
-  const resolveFileManagerTabDropSide = useCallback((event, tab) => {
+  const resolveFileManagerTabDropSide = useCallback((event: React.MouseEvent<HTMLDivElement>, tab: FileManagerTabLike) => {
     if (tab?.systemPinned === true) {
       return 'after';
     }
@@ -5083,7 +5329,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     return event.clientX - rect.left < rect.width / 2 ? 'before' : 'after';
   }, []);
 
-  const getFileManagerTabDropPreviewText = useCallback((draggedTabId, targetTab, side = 'after') => {
+  const getFileManagerTabDropPreviewText = useCallback((draggedTabId: string, targetTab: FileManagerTabLike, side = 'after') => {
     if (!draggedTabId || !targetTab) {
       return '';
     }
@@ -5109,7 +5355,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     return movableTabs[movableTabs.length - 1] || currentTabs[currentTabs.length - 1] || null;
   }, []);
 
-  const reorderFileManagerTabs = useCallback((draggedTabId, targetTabId, side = 'after') => {
+  const reorderFileManagerTabs = useCallback((draggedTabId: string, targetTabId: string, side = 'after') => {
     if (!draggedTabId || !targetTabId || draggedTabId === targetTabId) {
       return;
     }
@@ -5142,7 +5388,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     publishSharedPinnedTabsFromWorkspace(nextWorkspace);
   }, [commitFileManagerWorkspace, publishSharedPinnedTabsFromWorkspace]);
 
-  const handleToggleFileManagerTabPinned = useCallback((tabId) => {
+  const handleToggleFileManagerTabPinned = useCallback((tabId: string) => {
     const nextWorkspace = commitFileManagerWorkspace((current) => ({
       activeTabId: current?.activeTabId || '',
       tabs: (current?.tabs || []).map((tab) => (
@@ -5154,7 +5400,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     publishSharedPinnedTabsFromWorkspace(nextWorkspace);
   }, [commitFileManagerWorkspace, publishSharedPinnedTabsFromWorkspace]);
 
-  const handleCloseFileManagerTab = useCallback(async (tabId, event) => {
+  const handleCloseFileManagerTab = useCallback(async (tabId: string, event: React.MouseEvent | undefined) => {
     event?.stopPropagation();
     cancelFileListSwitch();
     const currentWorkspace = syncCurrentTabToWorkspace({ scrollTop: fileListRef.current?.scrollTop || 0 }) || fileManagerWorkspace;
@@ -5167,7 +5413,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       return;
     }
     if (targetTab.pinned === true) {
-      addToast(t('固定标签不能关闭'), 'warning');
+      addToast?.(t('固定标签不能关闭'), 'warning');
       return;
     }
     const closingIndex = currentTabs.findIndex((tab) => tab.id === tabId);
@@ -5257,7 +5503,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   }, [addToast, applyAnimatedFileListSnapshot, cancelFileListSwitch, commitFileManagerWorkspace, fileManagerWorkspace, getCachedTabItems, loadDir, normalizePath, removeCachedTabItems, syncCurrentTabToWorkspace, t]);
 
   // Delete
-  const handleDelete = async (item) => {
+  const handleDelete = async (item: FileManagerFileItem) => {
     if (operationInProgressRef.current) return;
     operationInProgressRef.current = true;
     const remotePath = joinPath(currentPath, item.name);
@@ -5275,12 +5521,12 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       if (lastClickedPathRef.current === remotePath) {
         lastClickedPathRef.current = null;
       }
-      queueRowEffectForMatchingPanes(currentPathRef.current || currentPath, remotePath, deletedPlaceholder.__rowKey, 'removed', deletedPlaceholder);
+      queueRowEffectForMatchingPanes(currentPathRef.current || currentPath, remotePath, deletedPlaceholder.__rowKey || '', 'removed', deletedPlaceholder);
       updateItemsPreservingView((prev) => prev.map((entry) => (
         entry.name === item.name ? deletedPlaceholder : entry
       )));
     } catch (err) {
-      addToast(`${t('删除失败')}: ${err}`, 'error');
+      addToast?.(`${t('删除失败')}: ${err}`, 'error');
     } finally {
       setOperationProgress(null);
       operationInProgressRef.current = false;
@@ -5289,7 +5535,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   };
 
   // Delete via rm -rf
-  const handleDeleteShell = async (item) => {
+  const handleDeleteShell = async (item: FileManagerFileItem) => {
     if (operationInProgressRef.current) return;
     operationInProgressRef.current = true;
     const remotePath = joinPath(currentPath, item.name);
@@ -5307,12 +5553,12 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       if (lastClickedPathRef.current === remotePath) {
         lastClickedPathRef.current = null;
       }
-      queueRowEffectForMatchingPanes(currentPathRef.current || currentPath, remotePath, deletedPlaceholder.__rowKey, 'removed', deletedPlaceholder);
+      queueRowEffectForMatchingPanes(currentPathRef.current || currentPath, remotePath, deletedPlaceholder.__rowKey || '', 'removed', deletedPlaceholder);
       updateItemsPreservingView((prev) => prev.map((entry) => (
         entry.name === item.name ? deletedPlaceholder : entry
       )));
     } catch (err) {
-      addToast(`${t('删除失败')}: ${err}`, 'error');
+      addToast?.(`${t('删除失败')}: ${err}`, 'error');
     } finally {
       setOperationProgress(null);
       operationInProgressRef.current = false;
@@ -5333,14 +5579,14 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       if (!ok) { operationInProgressRef.current = false; return; }
     }
     const total = selectedPaths.length;
-    let removedPaths = [];
+    let removedPaths: string[] = [];
     setOperationProgress({ message: t('正在删除中...'), current: 0, total });
     try {
       await AppGo.BatchDeleteItemShell(sessionId, selectedPaths);
       removedPaths = [...selectedPaths];
     } catch (err) {
       console.error('batch delete failed:', err);
-      addToast(`${t('删除失败')}: ${err?.message || err}`, 'error');
+      addToast?.(`${t('删除失败')}: ${err instanceof Error ? err.message : String(err || '')}`, 'error');
     } finally {
       setOperationProgress(null);
       operationInProgressRef.current = false;
@@ -5349,7 +5595,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       fileListRef.current?.focus();
       return;
     }
-    addToast(`${t('已删除')} ${removedPaths.length} ${t('项')}`, 'success');
+    addToast?.(`${t('已删除')} ${removedPaths.length} ${t('项')}`, 'success');
     const deletedPlaceholders = new Map(removedPaths.map((path) => {
       const existingItem = items.find((entry) => joinPath(currentPath, entry.name) === path);
       const fallbackName = path.split('/').pop() || '';
@@ -5361,7 +5607,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         mode: '',
         modifyTime: Date.now(),
       }, path);
-      queueRowEffectForMatchingPanes(currentPathRef.current || currentPath, path, placeholder.__rowKey, 'removed', placeholder);
+      queueRowEffectForMatchingPanes(currentPathRef.current || currentPath, path, placeholder.__rowKey || '', 'removed', placeholder);
       return [path, placeholder];
     }));
     if (lastClickedPathRef.current && removedPaths.includes(lastClickedPathRef.current)) {
@@ -5376,7 +5622,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   };
 
   // Keyboard shortcuts for file list
-  const handleFileListKeyDown = (e) => {
+  const handleFileListKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (operationInProgressRef.current) return;
     // 重命名残留兜底：若上一次重命名的 input 已被虚拟化滚出视口而卸载（React 不会
     // 触发 onBlur，renamingItem 会残留），这里先把它提交掉，再继续本次按键。
@@ -5478,10 +5724,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       clearClipboardOnSuccess: true,
     });
   }, [clipboard, currentPath, transferFileManagerItems]);
-
   const handleMkdir = async (targetDirPath = currentPath) => {
     const normalizedTargetDirPath = normalizePath(typeof targetDirPath === 'string' ? targetDirPath : (currentPathRef.current || currentPath)) || '/';
-    const name = await window.luminDialog?.prompt(t('新文件夹名称:'));
+    const promptResult = await window.luminDialog?.prompt(t('新文件夹名称:'));
+    const name = typeof promptResult === 'string' ? promptResult : '';
     if (!name) return;
     const remotePath = joinPath(normalizedTargetDirPath, name);
     try {
@@ -5490,7 +5736,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       const currentVisiblePath = normalizePath(currentPathRef.current) || '/';
       if (normalizedTargetDirPath === currentVisiblePath) {
         queueRowEffectForMatchingPanes(normalizedTargetDirPath, remotePath, remotePath, 'added');
-        updateItemsPreservingView(listedItems);
+        updateItemsPreservingView((listedItems || []) as FileManagerFileItem[]);
       } else {
         setSessionCachedFileManagerPathItems(sessionId, normalizedTargetDirPath, listedItems);
       }
@@ -5500,20 +5746,21 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           await refreshDirectoryAfterTransfer(normalizedTargetDirPath);
         },
       });
-      addToast(
+      addToast?.(
         normalizedTargetDirPath === currentVisiblePath
           ? `${t('文件夹创建成功')}: ${matchedItem.name}`
           : `${t('文件夹创建成功')}: ${matchedItem.name} [${normalizedTargetDirPath}]`,
         'success',
       );
     } catch (err) {
-      addToast(`${t('创建失败')}: ${err}`, 'error');
+      addToast?.(`${t('创建失败')}: ${err}`, 'error');
     }
   };
 
   const handleNewFile = async (targetDirPath = currentPath) => {
     const normalizedTargetDirPath = normalizePath(typeof targetDirPath === 'string' ? targetDirPath : (currentPathRef.current || currentPath)) || '/';
-    const name = await window.luminDialog?.prompt(t('新文件名称:'));
+    const promptResult = await window.luminDialog?.prompt(t('新文件名称:'));
+    const name = typeof promptResult === 'string' ? promptResult : '';
     if (!name) return;
     const remotePath = joinPath(normalizedTargetDirPath, name);
     try {
@@ -5522,7 +5769,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       const currentVisiblePath = normalizePath(currentPathRef.current) || '/';
       if (normalizedTargetDirPath === currentVisiblePath) {
         queueRowEffectForMatchingPanes(normalizedTargetDirPath, remotePath, remotePath, 'added');
-        updateItemsPreservingView(listedItems);
+        updateItemsPreservingView((listedItems || []) as FileManagerFileItem[]);
       } else {
         setSessionCachedFileManagerPathItems(sessionId, normalizedTargetDirPath, listedItems);
       }
@@ -5532,18 +5779,18 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           await refreshDirectoryAfterTransfer(normalizedTargetDirPath);
         },
       });
-      addToast(
+      addToast?.(
         normalizedTargetDirPath === currentVisiblePath
           ? `${t('文件创建成功')}: ${matchedItem.name}`
           : `${t('文件创建成功')}: ${matchedItem.name} [${normalizedTargetDirPath}]`,
         'success',
       );
     } catch (err) {
-      addToast(`${t('创建失败')}: ${err}`, 'error');
+      addToast?.(`${t('创建失败')}: ${err}`, 'error');
     }
   };
 
-  const updateFileManagerTabPath = useCallback((tabId, nextPath, options = {}) => {
+  const updateFileManagerTabPath = useCallback((tabId: string, nextPath: unknown, options: BridgeData = {}) => {
     const normalizedNextPath = normalizePath(nextPath) || '/';
     const resetSelection = options.resetSelection === true;
     const clearCache = options.clearCache === true;
@@ -5575,13 +5822,13 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
   }, [commitFileManagerWorkspace, normalizePath, removeCachedTabItems]);
 
-  const handleRenameFileManagerTabTitle = useCallback(async (tabId) => {
+  const handleRenameFileManagerTabTitle = useCallback(async (tabId: string) => {
     const targetTab = (fileManagerWorkspaceRef.current?.tabs || []).find((tab) => tab.id === tabId);
     if (!targetTab) {
       return;
     }
     if (targetTab.systemPinned === true) {
-      addToast(t('初始目录标签不可修改'), 'warning');
+      addToast?.(t('初始目录标签不可修改'), 'warning');
       return;
     }
     const currentCustomTitle = String(targetTab.customTitle || '').trim();
@@ -5607,15 +5854,15 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     publishSharedPinnedTabsFromWorkspace(nextWorkspace);
   }, [addToast, commitFileManagerWorkspace, publishSharedPinnedTabsFromWorkspace, t]);
 
-  const handleDeleteTabDirectory = useCallback(async (tabId, targetPath, useShell = false) => {
+  const handleDeleteTabDirectory = useCallback(async (tabId: string, targetPath: unknown, useShell = false) => {
     const normalizedTargetPath = normalizePath(targetPath) || '/';
     const targetTab = (fileManagerWorkspace?.tabs || []).find((tab) => tab.id === tabId);
     if (targetTab?.systemPinned === true) {
-      addToast(t('初始目录标签不可修改'), 'warning');
+      addToast?.(t('初始目录标签不可修改'), 'warning');
       return;
     }
     if (targetTab?.pinned === true) {
-      addToast(t('固定标签路径不可变，请先取消固定'), 'warning');
+      addToast?.(t('固定标签路径不可变，请先取消固定'), 'warning');
       return;
     }
     const displayName = normalizedTargetPath === '/' ? t('目录根') : (normalizedTargetPath.split('/').filter(Boolean).pop() || normalizedTargetPath);
@@ -5634,7 +5881,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     const parentPath = getParentPath(normalizedTargetPath);
     try {
       await AppGo.DeleteItemShell(sessionId, normalizedTargetPath);
-      addToast(`${t('已删除')}: ${displayName}`, 'success');
+      addToast?.(`${t('已删除')}: ${displayName}`, 'success');
       updateFileManagerTabPath(tabId, parentPath, { resetSelection: true, clearCache: true });
       if (tabId === activeFileManagerTabIdRef.current) {
         await loadDir(parentPath, {
@@ -5647,28 +5894,28 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         });
       }
     } catch (err) {
-      addToast(`${t('删除失败')}: ${err}`, 'error');
+      addToast?.(`${t('删除失败')}: ${err}`, 'error');
     }
   }, [addToast, fileManagerWorkspace, loadDir, normalizePath, sessionId, t, updateFileManagerTabPath]);
 
   // Compress
-  const handleCompress = async (item, options = {}) => {
+  const handleCompress = async (item: FileManagerFileItem, options: BridgeData = {}) => {
     const basePath = typeof options === 'string' ? options : (options.basePath || currentPath);
     const remotePath = joinPath(basePath, item.name);
     try {
-      addToast(`${t('正在压缩')} ${item.name}...`, 'info');
+      addToast?.(`${t('正在压缩')} ${item.name}...`, 'info');
       await AppGo.CompressItem(sessionId, remotePath);
-      addToast(t('压缩成功'), 'success');
+      addToast?.(t('压缩成功'), 'success');
       if (basePath === currentPathRef.current) {
         await loadDir(currentPathRef.current, { preserveView: true, showLoading: false });
       }
     } catch (err) {
-      addToast(`${t('压缩失败')}: ${err}`, 'error');
+      addToast?.(`${t('压缩失败')}: ${err}`, 'error');
     }
   };
 
   // Uncompress
-  const handleUncompress = async (item, options = {}) => {
+  const handleUncompress = async (item: FileManagerFileItem, options: BridgeData = {}) => {
     const basePath = typeof options === 'string' ? options : (options.basePath || currentPath);
     const remotePath = joinPath(basePath, item.name);
     const isZip = String(item.name || '').toLowerCase().endsWith('.zip');
@@ -5691,20 +5938,21 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
               { label: t('取消'), value: 'cancel', secondary: true },
             ]
           );
-          const selectedValue = typeof choice === 'object' && choice !== null ? choice.value : choice;
+          const choiceObj = choice && typeof choice === 'object' ? (choice as { value?: unknown }) : null;
+          const selectedValue = choiceObj ? choiceObj.value : choice;
           if (!selectedValue || selectedValue === 'cancel') {
             return;
           }
           requestedStrategy = selectedValue === 'overwrite' ? 'overwrite' : 'auto_rename';
         }
       }
-      addToast(`${t('正在解压')} ${item.name}...`, 'info');
+      addToast?.(`${t('正在解压')} ${item.name}...`, 'info');
       if (typeof uncompressItemWithStrategy === 'function') {
         await uncompressItemWithStrategy(sessionId, remotePath, requestedStrategy);
       } else {
         await AppGo.UncompressItem(sessionId, remotePath);
       }
-      addToast(t('解压成功'), 'success');
+      addToast?.(t('解压成功'), 'success');
       if (basePath === currentPathRef.current) {
         await loadDir(currentPathRef.current, { preserveView: true, showLoading: false });
       }
@@ -5720,17 +5968,17 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
             await handleUncompress(item, nextOptions);
             return;
           } catch (installErr) {
-            addToast(`${t('解压失败')}: ${installErr}`, 'error');
+            addToast?.(`${t('解压失败')}: ${installErr}`, 'error');
             return;
           }
         }
       }
-      addToast(`${t('解压失败')}: ${err}`, 'error');
+      addToast?.(`${t('解压失败')}: ${err}`, 'error');
     }
   };
 
   // Rename
-  const startRename = (item) => {
+  const startRename = (item: FileManagerFileItem) => {
     // 切换到另一个条目的重命名时，先提交当前编辑中的值（input 卸载不会触发 onBlur）
     if (renamingItem && renamingItem.name !== item.name) {
       const el = renamingInputMountedRef.current;
@@ -5739,16 +5987,16 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     setRenamingItem(item);
   };
 
-  const renameCommittingRef = useRef(null);
+  const renameCommittingRef = useRef<FileManagerFileItem | null>(null);
 
-  const confirmRename = async (nextValue, refocus = false) => {
+  const confirmRename = async (nextValue: unknown, refocus = false) => {
     const targetItem = renamingItem;
     // 同一 item 的提交正在进行中时忽略重复触发（残留清理可能被连续点击多次调用）
     if (!targetItem || renameCommittingRef.current === targetItem) return;
     const nextName = String(nextValue ?? '').trim();
     if (!nextName || nextName === targetItem.name) {
       // 函数式更新 + 身份比较：避免异步窗口内清掉刚启动的新重命名
-      setRenamingItem((current) => (current === targetItem ? null : current));
+      setRenamingItem((current: BridgeData) => (current === targetItem ? null : current));
       if (refocus) fileListRef.current?.focus();
       return;
     }
@@ -5763,7 +6011,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           await refreshDirectoryAfterTransfer(currentPathRef.current || currentPath);
         },
       });
-      addToast(t('重命名成功'), 'success');
+      addToast?.(t('重命名成功'), 'success');
       const anchor = captureFileListViewAnchor();
       if (anchor?.key === oldPath) {
         anchor.key = newPath;
@@ -5784,10 +6032,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           : entry
       )), anchor);
     } catch (err) {
-      addToast(`${t('重命名失败')}: ${err}`, 'error');
+      addToast?.(`${t('重命名失败')}: ${err}`, 'error');
     } finally {
       if (renameCommittingRef.current === targetItem) renameCommittingRef.current = null;
-      setRenamingItem((current) => (current === targetItem ? null : current));
+      setRenamingItem((current: BridgeData) => (current === targetItem ? null : current));
       if (refocus) fileListRef.current?.focus();
     }
   };
@@ -5797,7 +6045,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     ? joinPath(contextMenu.itemBasePath || currentPath, contextMenu.item.name)
     : '';
 
-  const openChmodTarget = useCallback(async (itemPath, item) => {
+  const openChmodTarget = useCallback(async (itemPath: unknown, item: FileManagerFileItem) => {
     let rememberedMode = '';
     let rememberedIncludeSubdirectories = false;
     let rememberedAutoApplyLastSettings = false;
@@ -5812,14 +6060,15 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     const needsMetadata = !item?.permission || !item?.mode || !item?.uid || item?.uid === '-' || !item?.gid || item?.gid === '-';
     if (needsMetadata && typeof getPathOwnership === 'function') {
       try {
-        const ownership = await getPathOwnership(sessionId, itemPath);
+        const ownership = await getPathOwnership(sessionId, String(itemPath || ''));
         if (ownership && typeof ownership === 'object') {
+          const ownershipData = ownership as BridgeData
           resolvedItem = {
             ...item,
-            permission: ownership.permission || item?.permission || '',
-            mode: ownership.mode || item?.mode || '',
-            uid: ownership.uid || item?.uid || '-',
-            gid: ownership.gid || item?.gid || '-',
+            permission: ownershipData.permission || item?.permission || '',
+            mode: ownershipData.mode || item?.mode || '',
+            uid: ownershipData.uid || item?.uid || '-',
+            gid: ownershipData.gid || item?.gid || '-',
           };
         }
       } catch (error) {
@@ -5844,7 +6093,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
     try {
       const nextCandidates = await listOwnershipCandidates(sessionId);
-      setChmodTarget((current) => {
+      setChmodTarget((current: BridgeData) => {
         if (!current || current.path !== itemPath) {
           return current;
         }
@@ -5860,12 +6109,12 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   }, [sessionId]);
 
   // Chmod
-  const handleChmod = async (item, basePath = currentPath) => {
+  const handleChmod = async (item: FileManagerFileItem, basePath = currentPath) => {
     const itemPath = joinPath(basePath, item.name);
     await openChmodTarget(itemPath, item);
   };
 
-  const handleChmodSave = async (modeStr, includeSubdirectories, ownerValue, groupValue) => {
+  const handleChmodSave = async (modeStr: unknown, includeSubdirectories: unknown, ownerValue: unknown, groupValue: unknown) => {
     if (!chmodTarget) return;
     const normalizedMode = normalizeChmodMode(modeStr) || '644';
     const currentMode = normalizeChmodMode(chmodTarget.item?.mode) || normalizeChmodMode(chmodTarget.mode) || normalizedMode;
@@ -5919,13 +6168,13 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           }
         },
       });
-      addToast(t('权限修改成功'), 'success');
+      addToast?.(t('权限修改成功'), 'success');
       setChmodTarget(null);
       if (getParentPath(chmodTarget.path) === currentPathRef.current) {
         await loadDir(currentPathRef.current, { preserveView: true, showLoading: false });
       }
     } catch (err) {
-      addToast(`${t('权限修改失败')}: ${err}`, 'error');
+      addToast?.(`${t('权限修改失败')}: ${err}`, 'error');
     }
   };
 
@@ -5964,7 +6213,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     return () => OnFileDropOff();
   }, [isActive, uploadNativePaths]);
 
-  const isFileTransferDragEvent = useCallback((event) => {
+  const isFileTransferDragEvent = useCallback((event: React.DragEvent) => {
     const types = Array.from(event?.dataTransfer?.types || []);
     if (types.includes('Files')) {
       return true;
@@ -5973,7 +6222,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     return items.some((item) => item?.kind === 'file');
   }, []);
 
-  const handleDragEnter = (e) => {
+  const handleDragEnter = (e: React.DragEvent) => {
     if (!isFileTransferDragEvent(e)) {
       return;
     }
@@ -5985,7 +6234,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     setIsDragOver(true);
   };
 
-  const handleDragOver = (e) => {
+  const handleDragOver = (e: React.DragEvent) => {
     if (!isFileTransferDragEvent(e)) {
       return;
     }
@@ -5995,7 +6244,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
   };
 
-  const handleDragLeave = (e) => {
+  const handleDragLeave = (e: React.DragEvent) => {
     if (!isFileTransferDragEvent(e)) {
       return;
     }
@@ -6010,7 +6259,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
   };
 
-  const handleDrop = async (e) => {
+  const handleDrop = async (e: React.DragEvent) => {
     if (!isFileTransferDragEvent(e)) {
       return;
     }
@@ -6025,8 +6274,8 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     const droppedFiles = Array.from(e.dataTransfer.files || []);
     if (droppedItems.length === 0 && droppedFiles.length === 0) return;
 
-    const entryMap = new Map();
-    const addEntry = (file, relativePath) => {
+    const entryMap = new Map<string, { file: File; relativePath: string }>();
+    const addEntry = (file: File, relativePath: unknown) => {
       if (!file || isHiddenFile(file.name)) return;
       const normalizedPath = String(relativePath || file.webkitRelativePath || file.name)
         .replace(/^\/+/, '')
@@ -6042,10 +6291,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       const entry = item.webkitGetAsEntry && item.webkitGetAsEntry();
       if (entry) {
         const files = await traverseEntry(entry);
-        files.forEach((file) => addEntry(file, file._fullPath || file.webkitRelativePath || file.name));
+        files.forEach((file) => addEntry(file, (file as File & { _fullPath?: string })._fullPath || file.webkitRelativePath || file.name));
         continue;
       }
-      let file;
+      let file: File | null;
       try { file = item.getAsFile(); } catch (_) { file = null; }
       if (file) addEntry(file, file.webkitRelativePath || file.name);
     }
@@ -6062,15 +6311,15 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     await uploadEntries(Array.from(entryMap.values()));
   };
 
-  const buildFileManagerDragPayload = useCallback((itemPath) => {
+  const buildFileManagerDragPayload = useCallback((itemPath: unknown) => {
     if (!itemPath) {
       return null;
     }
     const sourceDirPath = normalizePath(currentPathRef.current || currentPath) || '/';
     const currentSelectedPaths = Array.isArray(selectedPathsRef.current) ? selectedPathsRef.current : [];
-    const dragPaths = currentSelectedPaths.length > 1 && currentSelectedPaths.includes(itemPath)
+    const dragPaths: string[] = currentSelectedPaths.length > 1 && currentSelectedPaths.includes(String(itemPath || ''))
       ? currentSelectedPaths
-      : [itemPath];
+      : [String(itemPath || '')];
     const payloadItems = dragPaths.map((path) => {
       const matchedItem = items.find((entry) => joinPath(sourceDirPath, entry.name) === path);
       return {
@@ -6086,7 +6335,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     };
   }, [currentPath, items, normalizePath, sessionId]);
 
-  const parseFileManagerDragPayload = useCallback((event) => {
+  const parseFileManagerDragPayload = useCallback((event: React.DragEvent) => {
     const rawPayload = event?.dataTransfer?.getData(FILE_MANAGER_INTERNAL_DRAG_MIME);
     if (!rawPayload) {
       return null;
@@ -6094,14 +6343,16 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     try {
       const parsedPayload = JSON.parse(rawPayload);
       const sourceDir = normalizePath(parsedPayload?.sourceDir) || '/';
-      const paths = Array.isArray(parsedPayload?.paths)
-        ? parsedPayload.paths.map((path) => String(path || '').trim()).filter(Boolean)
+      const rawPaths = parsedPayload?.paths
+      const paths = Array.isArray(rawPaths)
+        ? rawPaths.map((path: BridgeData) => String(path || '').trim()).filter(Boolean)
         : [];
       if (!paths.length) {
         return null;
       }
-      const payloadItems = Array.isArray(parsedPayload?.items)
-        ? parsedPayload.items.map((item, index) => ({
+      const rawItems = parsedPayload?.items
+      const payloadItems = Array.isArray(rawItems)
+        ? rawItems.map((item: BridgeData, index) => ({
           path: paths[index] || String(item?.path || '').trim(),
           isDirectory: item?.isDirectory === true,
         }))
@@ -6117,17 +6368,17 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
   }, [normalizePath]);
 
-  const confirmDualPaneDirectoryDrag = useCallback(async (mode, paneState, payload) => {
+  const confirmDualPaneDirectoryDrag = useCallback(async (mode: string, paneState: BridgeData, payload: BridgeData) => {
     if (!fileManagerDualPaneDragPromptOnDirectory) {
       return true;
     }
-    if (!Array.isArray(payload?.items) || !payload.items.some((item) => item?.isDirectory === true)) {
+    if (!Array.isArray(payload?.items) || !payload.items.some((item: BridgeData) => item?.isDirectory === true)) {
       return true;
     }
     const actionLabel = mode === 'cut' ? t('移动') : t('复制');
     const normalizedTargetDirPath = normalizePath(paneState?.path) || '/';
     const normalizedPaths = Array.isArray(payload?.paths)
-      ? payload.paths.map((path) => normalizePath(path)).filter(Boolean)
+      ? payload.paths.map((path: BridgeData) => normalizePath(path)).filter(Boolean)
       : [];
     const primarySourcePath = normalizedPaths[0] || normalizePath(payload?.sourceDir) || '/';
     const sourceName = primarySourcePath.split('/').filter(Boolean).pop() || '';
@@ -6149,7 +6400,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     setFileManagerDragTip(null);
   }, []);
 
-  const updateFileManagerDragTip = useCallback((clientX, clientY, targetPath, ctrlKey = false) => {
+  const updateFileManagerDragTip = useCallback((clientX: number, clientY: number, targetPath: unknown, ctrlKey = false) => {
     const mode = resolveDualPaneDragTransferMode(ctrlKey);
     const actionLabel = mode === 'cut' ? t('移动') : t('复制');
     const normalizedTargetPath = normalizePath(targetPath) || '/';
@@ -6160,7 +6411,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     });
   }, [normalizePath, resolveDualPaneDragTransferMode, t]);
 
-  const handleDualPaneTransferDragOver = useCallback((event, paneState) => {
+  const handleDualPaneTransferDragOver = useCallback((event: React.DragEvent, paneState: BridgeData) => {
     if (fileManagerLayoutMode !== FILE_MANAGER_LAYOUT_MODE_SIDEBAR_DUAL || !fileManagerDualPaneDragTransferEnabled) {
       return;
     }
@@ -6183,7 +6434,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     setFileManagerPaneDropTarget(paneState.key);
   }, [activePaneKey, fileManagerDualPaneDragTransferEnabled, fileManagerLayoutMode, resolveDualPaneDragTransferMode, sessionId, updateFileManagerDragTip]);
 
-  const handleDualPaneTransferDrop = useCallback(async (event, paneState) => {
+  const handleDualPaneTransferDrop = useCallback(async (event: React.DragEvent, paneState: BridgeData) => {
     setFileManagerPaneDropTarget('');
     hideFileManagerDragTip();
     if (fileManagerLayoutMode !== FILE_MANAGER_LAYOUT_MODE_SIDEBAR_DUAL || !fileManagerDualPaneDragTransferEnabled) {
@@ -6219,7 +6470,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     return String(activeFileManagerTab?.id || '').trim();
   }, [activeFileManagerTab?.id, activePaneKey, fileManagerWorkspace]);
   const activePaneLabel = activePaneKey === 'right' ? t('右侧') : t('左侧');
-  const buildFileManagerPaneState = useCallback((paneKey) => {
+  const buildFileManagerPaneState = useCallback((paneKey: unknown) => {
     const normalizedPaneKey = paneKey === 'right' ? 'right' : 'left';
     const paneSnapshot = fileManagerWorkspace?.panes?.[normalizedPaneKey] || {};
     const panePath = normalizedPaneKey === activePaneKey
@@ -6315,7 +6566,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       setFileListTypeaheadActiveRowKey('');
     }, 2000);
   }, []);
-  const getFileListTypeaheadMatches = useCallback((query) => {
+  const getFileListTypeaheadMatches = useCallback((query: unknown) => {
     const normalizedQuery = String(query || '').trim().toLowerCase();
     if (!normalizedQuery) {
       return [];
@@ -6335,7 +6586,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
     return '';
   }, [activePaneLocatorRows, fileListTypeaheadActiveRowKey]);
-  const resolveFileListTypeaheadMatchIndex = useCallback((matches, anchorRowKey, cycleCurrent = false) => {
+  const resolveFileListTypeaheadMatchIndex = useCallback((matches: FileManagerVirtualRow[], anchorRowKey: unknown, cycleCurrent = false) => {
     if (!Array.isArray(matches) || matches.length === 0) {
       return -1;
     }
@@ -6359,7 +6610,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
     return anchorMatchIndex >= 0 ? anchorMatchIndex : 0;
   }, [activePaneLocatorRows]);
-  const applyFileListTypeaheadState = useCallback((query, matches, matchIndex = 0) => {
+  const applyFileListTypeaheadState = useCallback((query: unknown, matches: FileManagerVirtualRow[], matchIndex = 0) => {
     if (!Array.isArray(matches) || matches.length === 0) {
       return false;
     }
@@ -6381,7 +6632,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
     return true;
   }, [activePaneKey, currentFileManagerPane, revealRowInViewport, scheduleFileListTypeaheadClear]);
-  const handleFileListTypeaheadKey = useCallback((rawKey) => {
+  const handleFileListTypeaheadKey = useCallback((rawKey: unknown) => {
     const normalizedKey = String(rawKey || '').trim().toLowerCase();
     if (!/^[a-z]$/.test(normalizedKey)) {
       return false;
@@ -6432,7 +6683,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     return false;
   }, [applyFileListTypeaheadState, clearFileListTypeahead, getFileListTypeaheadAnchorRowKey, getFileListTypeaheadMatches, resolveFileListTypeaheadMatchIndex]);
   const effectiveLocatorActiveRowKey = fileListTypeaheadQuery ? fileListTypeaheadActiveRowKey : fileLocatorActiveRowKey;
-  const applyFileLocatorMatch = useCallback((matchIndex, shouldReveal = true) => {
+  const applyFileLocatorMatch = useCallback((matchIndex: number, shouldReveal = true) => {
     if (fileLocatorMatches.length === 0) {
       setFileLocatorActiveIndex(0);
       setFileLocatorActiveRowKey('');
@@ -6451,7 +6702,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       });
     }
   }, [activePaneKey, currentFileManagerPane, fileLocatorMatches, revealRowInViewport]);
-  const navigateFileLocatorMatch = useCallback((step) => {
+  const navigateFileLocatorMatch = useCallback((step: number) => {
     if (fileLocatorMatches.length === 0) {
       return;
     }
@@ -6494,17 +6745,19 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
   }, []);
 
-  const syncFileManagerPaneScrollTop = useCallback((paneKey, listElement) => {
+  const syncFileManagerPaneScrollTop = useCallback((paneKey: unknown, listElement: HTMLElement | null) => {
     const normalizedPaneKey = normalizeFileManagerPaneKey(paneKey);
     if (!(listElement instanceof HTMLElement)) {
       return;
     }
     const nextScrollTop = Number(listElement.scrollTop || 0);
     commitFileManagerWorkspace((current) => {
-      const currentPanes = current?.panes && typeof current.panes === 'object' ? current.panes : {};
-      const currentPane = currentPanes[normalizedPaneKey] && typeof currentPanes[normalizedPaneKey] === 'object'
+      const currentPanes = (current?.panes && typeof current.panes === 'object'
+        ? current.panes
+        : {}) as FileManagerWorkspaceState['panes'];
+      const currentPane = (currentPanes[normalizedPaneKey] && typeof currentPanes[normalizedPaneKey] === 'object'
         ? currentPanes[normalizedPaneKey]
-        : {};
+        : {}) as FileManagerPaneState;
       if (Number(currentPane.scrollTop || 0) === nextScrollTop) {
         return current;
       }
@@ -6535,7 +6788,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     flushPendingRowEffects('right', rightFileManagerPane.rows, rightListElement);
   }, [activePaneKey, flushPendingRowEffects, leftFileManagerPane.rows, rightFileManagerPane.rows]);
 
-  const bindFileManagerPaneScroller = useCallback((paneKey, element, options = {}) => {
+  const bindFileManagerPaneScroller = useCallback((paneKey: unknown, element: HTMLElement | null, options: BridgeData = {}) => {
     const normalizedPaneKey = paneKey === 'right' ? 'right' : 'left';
     const previousElement = paneScrollerElementsRef.current[normalizedPaneKey];
     const previousCleanup = paneScrollerCleanupRef.current[normalizedPaneKey];
@@ -6565,13 +6818,13 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
 
     if (options.active === true) {
-      fileListRef.current = element;
+      fileListRef.current = element as HTMLDivElement;
       if (options.captureGhost === true) {
-        fileListBodyRef.current = element;
+        fileListBodyRef.current = element as HTMLDivElement;
       }
       element.tabIndex = 0;
       const handleScroll = () => handleFileListScrollRef.current?.();
-      const handleKeyDown = (event) => handleFileListKeyDownRef.current?.(event);
+      const handleKeyDown = (event: KeyboardEvent) => handleFileListKeyDownRef.current?.(event as unknown as React.KeyboardEvent<HTMLDivElement>);
       element.addEventListener('scroll', handleScroll, { passive: true });
       element.addEventListener('keydown', handleKeyDown);
       paneScrollerCleanupRef.current[normalizedPaneKey] = () => {
@@ -6584,27 +6837,27 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     inactivePaneListRefs.current[normalizedPaneKey] = element;
   }, []);
 
-  const getPaneVirtuosoRefCallback = useCallback((paneKey) => {
+  const getPaneVirtuosoRefCallback = useCallback((paneKey: unknown) => {
     const normalizedPaneKey = normalizeFileManagerPaneKey(paneKey);
     if (!paneVirtuosoRefCallbacksRef.current[normalizedPaneKey]) {
-      paneVirtuosoRefCallbacksRef.current[normalizedPaneKey] = (handle) => {
+      paneVirtuosoRefCallbacksRef.current[normalizedPaneKey] = (handle: BridgeData) => {
         paneVirtuosoRefs.current[normalizedPaneKey] = handle;
       };
     }
     return paneVirtuosoRefCallbacksRef.current[normalizedPaneKey];
   }, []);
 
-  const getPaneScrollerRefCallback = useCallback((paneKey) => {
+  const getPaneScrollerRefCallback = useCallback((paneKey: unknown) => {
     const normalizedPaneKey = normalizeFileManagerPaneKey(paneKey);
     if (!paneScrollerRefCallbacksRef.current[normalizedPaneKey]) {
-      paneScrollerRefCallbacksRef.current[normalizedPaneKey] = (element) => {
+      paneScrollerRefCallbacksRef.current[normalizedPaneKey] = (element: HTMLElement | null) => {
         bindFileManagerPaneScroller(normalizedPaneKey, element, paneScrollerRefOptionsRef.current[normalizedPaneKey] || {});
       };
     }
     return paneScrollerRefCallbacksRef.current[normalizedPaneKey];
   }, [bindFileManagerPaneScroller]);
 
-  const renderFileManagerVirtualRow = useCallback((row, paneState, options = {}) => {
+  const renderFileManagerVirtualRow = useCallback((row: FileManagerVirtualRow, paneState: BridgeData, options: BridgeData = {}) => {
     const isInteractive = options.interactive === true;
     const basePath = paneState?.path || '/';
     const normalizedBasePath = normalizePath(basePath) || '/';
@@ -6668,7 +6921,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       : 0;
     const permissionDisplay = formatPermissionDisplay(item.permission || '-');
 
-    const handleItemClick = (event) => {
+    const handleItemClick = (event: React.MouseEvent) => {
       if (!isInteractive || isDeletedPlaceholder) return;
       if ((event.detail || 1) >= 2) return;
       // 重命名 input 已被虚拟化卸载时（renamingItem 残留、onBlur 不会触发），
@@ -6689,16 +6942,16 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         lastClickedPathRef.current = itemPath;
       } else if (event.shiftKey && lastClickedPathRef.current) {
         window.getSelection()?.removeAllRanges();
-        const lastIndex = paneState.rows.findIndex((entry) => entry?.logicalPath === lastClickedPathRef.current);
-        const currentIndex = paneState.rows.findIndex((entry) => entry?.logicalPath === itemPath);
+        const lastIndex = paneState.rows.findIndex((entry: BridgeData) => entry?.logicalPath === lastClickedPathRef.current);
+        const currentIndex = paneState.rows.findIndex((entry: BridgeData) => entry?.logicalPath === itemPath);
         if (lastIndex >= 0 && currentIndex >= 0) {
           const startIndex = Math.min(lastIndex, currentIndex);
           const endIndex = Math.max(lastIndex, currentIndex);
           setSelectedPaths(
             paneState.rows
               .slice(startIndex, endIndex + 1)
-              .filter((entry) => entry?.rowType === FILE_MANAGER_VIRTUAL_ROW_ITEM && !isDeletedPlaceholderItem(entry?.item))
-              .map((entry) => entry.logicalPath)
+              .filter((entry: BridgeData) => entry?.rowType === FILE_MANAGER_VIRTUAL_ROW_ITEM && !isDeletedPlaceholderItem(entry?.item))
+              .map((entry: BridgeData) => entry.logicalPath)
           );
         }
       } else {
@@ -6707,7 +6960,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       }
     };
 
-    const rowStyle = isDeletedPlaceholder ? { '--file-row-height': `${item.__rowHeight || 36}px` } : {};
+    const rowStyle: React.CSSProperties = isDeletedPlaceholder ? ({ '--file-row-height': `${item.__rowHeight || 36}px` } as React.CSSProperties) : {};
     if (rowEffect && rowEffectDurationMs > 0) {
       rowStyle.animationDuration = `${rowEffectDurationMs}ms`;
       rowStyle.animationDelay = `-${Math.min(rowEffectElapsedMs, Math.max(0, rowEffectDurationMs - 16))}ms`;
@@ -6750,11 +7003,11 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
             if (fileManagerDoubleClickUncompressArchive) {
               void handleUncompress(item);
             } else {
-              addToast(t('该文件是压缩包，可通过右键菜单解压'), 'warning');
+              addToast?.(t('该文件是压缩包，可通过右键菜单解压'), 'warning');
             }
           } else if (isBinaryLike(item.name)) {
             // 二进制文件不适合编辑，直接拦截
-            addToast(t('该文件类型不适合用编辑器打开'), 'warning');
+            addToast?.(t('该文件类型不适合用编辑器打开'), 'warning');
           } else if (isEditable(item.name)) {
             void handleEdit(item);
           } else if (isViewable(item.name)) {
@@ -6867,7 +7120,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
                 onClick={(event) => {
                   event.stopPropagation();
                   if (operationInProgressRef.current) {
-                    addToast(t('有操作正在进行，请稍候'), 'warning');
+                    addToast?.(t('有操作正在进行，请稍候'), 'warning');
                   } else {
                     void handleDelete(item);
                   }
@@ -6882,7 +7135,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     );
   }, [activePaneKey, activeRowEffects, addToast, buildFileManagerDragPayload, clipboard, confirmRename, contextMenuTargetPath, defaultOpenMode, effectiveLocatorActiveRowKey, fileManagerDoubleClickUncompressArchive, fileManagerDualPaneDragTransferEnabled, handleChmod, handleDelete, handleDownload, handleEdit, handleOpenSystemEditor, handleOpenWithEditor, handleUncompress, hideFileManagerDragTip, isDeletedPlaceholderItem, isDualPaneLayout, navigate, normalizePath, renamingItem, t, updateFileManagerDragTip, openingFiles, sessionId]);
 
-  const renderFileManagerVirtualViewport = useCallback((paneState, options = {}) => {
+  const renderFileManagerVirtualViewport = useCallback((paneState: BridgeData, options: BridgeData = {}) => {
     const normalizedPaneKey = paneState?.key === 'right' ? 'right' : 'left';
     const paneRows = Array.isArray(paneState?.rows) ? paneState.rows : [];
     const showEmptyState = options.loading !== true && Array.isArray(paneState?.items) && paneState.items.length === 0;
@@ -6943,7 +7196,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     );
   }, [applyPanePendingRestoreIfReady, captureFileListViewAnchor, fileListSwitchGhostHtml, fileListSwitchStage, flushPendingRowEffects, getPaneScrollerRefCallback, getPaneVirtuosoRefCallback, renderFileManagerVirtualRow, syncFileManagerPaneScrollTop, t]);
 
-  const renderInactiveFileManagerPane = useCallback((paneState) => {
+  const renderInactiveFileManagerPane = useCallback((paneState: BridgeData) => {
     const isDropTarget = fileManagerPaneDropTarget === paneState.key;
     return (
       <div
@@ -6971,7 +7224,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           handleDualPaneTransferDragOver(event, paneState);
         }}
         onDragLeave={(event) => {
-          if (event.currentTarget.contains(event.relatedTarget)) {
+          if (event.currentTarget.contains(event.relatedTarget as Node)) {
             return;
           }
           hideFileManagerDragTip();
@@ -7018,11 +7271,11 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
             handleDualPaneTransferDragOver(event, paneState);
           }}
           onDragLeave={(event) => {
-            if (event.currentTarget.parentElement?.contains(event.relatedTarget)) {
+            if (event.currentTarget.parentElement?.contains(event.relatedTarget as Node)) {
               return;
             }
             hideFileManagerDragTip();
-            setFileManagerPaneDropTarget((current) => current === paneState.key ? '' : current);
+            setFileManagerPaneDropTarget((current: string) => current === paneState.key ? '' : current);
           }}
           onDrop={(event) => {
             void handleDualPaneTransferDrop(event, paneState);
@@ -7054,7 +7307,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         '--file-col-modified': `${fileListColumnWidths.modified}px`,
         '--file-col-actions': `${fileListColumnWidths.actions ?? FILE_LIST_ACTIONS_COLUMN_WIDTH}px`,
         '--file-list-min-width': fileListColumnWidths.minWidth,
-      }}
+      } as React.CSSProperties}
       onContextMenu={(e) => {
         e.preventDefault();
         setContextMenu({
@@ -7086,8 +7339,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         ref={uploadFolderInputRef}
         type="file"
         multiple
-        webkitdirectory=""
-        directory=""
+        {...({ webkitdirectory: '', directory: '' } as React.InputHTMLAttributes<HTMLInputElement>)}
         style={{ display: 'none' }}
         autoComplete="off"
         onChange={(e) => { void handleSelectedFiles(e); }}
@@ -7099,7 +7351,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           className="path-input"
           type="text"
           name="directoryPath"
-          aria-label={t('当前目录路径')}
+          aria-label={t('当前目录路径' as I18nKey)}
           value={editingPath !== null ? editingPath : currentPath}
           onChange={(e) => setEditingPath(e.target.value)}
           onFocus={() => setEditingPath(currentPath)}
@@ -7130,10 +7382,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
-              e.target.blur();
+              (e.target as HTMLInputElement).blur();
             } else if (e.key === 'Escape') {
               setEditingPath(null);
-              e.target.blur();
+              (e.target as HTMLInputElement).blur();
             }
           }}
           style={{ flex: 1, minWidth: 0 }}
@@ -7147,7 +7399,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
                 aria-label={t('粘贴')}
                 onClick={() => {
                   if (operationInProgressRef.current) {
-                    addToast(t('有操作正在进行，请稍候'), 'warning');
+                    addToast?.(t('有操作正在进行，请稍候'), 'warning');
                   } else {
                     void handlePaste();
                   }
@@ -7215,7 +7467,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
               <button
                 type="button"
                 className="file-locator-clear-btn"
-                aria-label={t('清空输入')}
+                aria-label={t('清空输入' as I18nKey)}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
                   setFileLocatorQuery('');
@@ -7381,7 +7633,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
             if (!draggedTabId) {
               return;
             }
-            if (event.target?.closest?.('.terminal-sub-tab')) {
+            if ((event.target as HTMLElement | null)?.closest?.('.terminal-sub-tab')) {
               return;
             }
             const appendTarget = resolveFileManagerTabAppendTarget();
@@ -7390,17 +7642,17 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
             }
             event.preventDefault();
             event.stopPropagation();
-            setFileManagerTabDropIndicator((current) => (
+            setFileManagerTabDropIndicator((current: BridgeData) => (
               current?.tabId === appendTarget.id && current?.side === 'after'
                 ? current
                 : { tabId: appendTarget.id, side: 'after' }
             ));
           }}
           onDragLeave={(event) => {
-            if (event.currentTarget.contains(event.relatedTarget)) {
+            if (event.currentTarget.contains(event.relatedTarget as Node)) {
               return;
             }
-            setFileManagerTabDropIndicator((current) => (
+            setFileManagerTabDropIndicator((current: BridgeData) => (
               current?.side === 'after' ? null : current
             ));
           }}
@@ -7410,7 +7662,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
               clearFileManagerTabDragState();
               return;
             }
-            if (event.target?.closest?.('.terminal-sub-tab')) {
+            if ((event.target as HTMLElement | null)?.closest?.('.terminal-sub-tab')) {
               return;
             }
             const appendTarget = resolveFileManagerTabAppendTarget();
@@ -7428,7 +7680,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
             const isActiveTab = activeFileManagerTab?.id === tab.id;
             const isPinnedTab = tab.pinned === true;
             const isSystemPinnedTab = tab.systemPinned === true;
-            const isCwdSystemPinnedTab = getFileManagerSystemTabType(tab) === FILE_MANAGER_SYSTEM_TAB_KIND_CWD;
+            const isCwdSystemPinnedTab = String(tab.systemPinnedType || '').trim() === FILE_MANAGER_SYSTEM_TAB_KIND_CWD;
             const isCwdSystemTabHighlightVisible = isCwdSystemPinnedTab && cwdSystemTabHighlight.tabId === tab.id;
             const isDraggingTab = draggingFileManagerTabId === tab.id;
             const showDropIndicator = fileManagerTabDropIndicator?.tabId === tab.id;
@@ -7468,7 +7720,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
                   event.preventDefault();
                   event.stopPropagation();
                   const side = resolveFileManagerTabDropSide(event, tab);
-                  setFileManagerTabDropIndicator((current) => (
+                  setFileManagerTabDropIndicator((current: BridgeData) => (
                     current?.tabId === tab.id && current?.side === side
                       ? current
                       : { tabId: tab.id, side }
@@ -7476,7 +7728,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
                 }}
                 onDragLeave={(event) => {
                   event.stopPropagation();
-                  setFileManagerTabDropIndicator((current) => (current?.tabId === tab.id ? null : current));
+                  setFileManagerTabDropIndicator((current: BridgeData) => (current?.tabId === tab.id ? null : current));
                 }}
                 onDrop={(event) => {
                   const draggedTabId = event.dataTransfer.getData('text/plain') || draggingFileManagerTabIdRef.current || draggingFileManagerTabId;
@@ -7571,7 +7823,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
                 }
                 event.preventDefault();
                 event.stopPropagation();
-                setFileManagerTabDropIndicator((current) => (
+                setFileManagerTabDropIndicator((current: BridgeData) => (
                   current?.tabId === appendTarget.id && current?.side === 'after'
                     ? current
                     : { tabId: appendTarget.id, side: 'after' }
@@ -7801,13 +8053,13 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           onClose={closeContextMenu}
           onTogglePinned={() => {
             if (contextMenu.mode === 'tab') {
-              handleToggleFileManagerTabPinned(contextMenu.tabId);
+              handleToggleFileManagerTabPinned(String(contextMenu.tabId || ''));
             }
             closeContextMenu();
           }}
           onCloseTab={() => {
             if (contextMenu.mode === 'tab') {
-              void handleCloseFileManagerTab(contextMenu.tabId);
+              void handleCloseFileManagerTab(String(contextMenu.tabId || ''), undefined);
             }
             closeContextMenu();
           }}
@@ -7899,7 +8151,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           }}
           onRename={() => {
             if (contextMenu.mode === 'tab') {
-              void handleRenameFileManagerTabTitle(contextMenu.tabId);
+              void handleRenameFileManagerTabTitle(String(contextMenu.tabId || ''));
             } else if (contextMenu.item) {
               startRename(contextMenu.item);
             }
@@ -7915,11 +8167,11 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           }}
           onDelete={() => {
             if (operationInProgressRef.current) {
-              addToast(t('有操作正在进行，请稍候'), 'warning');
+              addToast?.(t('有操作正在进行，请稍候'), 'warning');
             } else if (contextMenu.deleteUsesSelectedPaths) {
               void handleDeleteItems();
             } else if (contextMenu.mode === 'tab') {
-              void handleDeleteTabDirectory(contextMenu.tabId, contextMenu.tabPath, false);
+              void handleDeleteTabDirectory(String(contextMenu.tabId || ''), contextMenu.tabPath, false);
             } else if (contextMenu.item) {
               void handleDelete(contextMenu.item);
             }
@@ -7927,9 +8179,9 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           }}
           onDeleteShell={() => {
             if (operationInProgressRef.current) {
-              addToast(t('有操作正在进行，请稍候'), 'warning');
+              addToast?.(t('有操作正在进行，请稍候'), 'warning');
             } else if (contextMenu.mode === 'tab') {
-              void handleDeleteTabDirectory(contextMenu.tabId, contextMenu.tabPath, true);
+              void handleDeleteTabDirectory(String(contextMenu.tabId || ''), contextMenu.tabPath, true);
             } else if (contextMenu.item) {
               void handleDeleteShell(contextMenu.item);
             }
@@ -7966,14 +8218,14 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         <Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-tertiary)' }}>{t('加载中...')}</div>}>
           <FileEditor
             files={openEditFiles}
-            activePath={activeEditPath}
+            activePath={activeEditPath || undefined}
             onSave={handleSaveFile}
             onCloseFile={closeEditFile}
             onCloseAll={closeAllEditFiles}
             onActivate={activateEditFile}
-            mode={editorMode}
+            mode={editorMode as 'split' | 'modal' | 'popup'}
             onModeChange={handleEditorModeChange}
-            splitPosition={editorSplitPosition}
+            splitPosition={editorSplitPosition as 'bottom' | 'left' | 'right'}
             onSplitPositionChange={handleEditorSplitPositionChange}
             isActive={isActive}
             workbenchSessionId={sessionGroupId}
@@ -8012,17 +8264,17 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
             <div className="file-operation-title">
               {operationProgress.message}
             </div>
-            {operationProgress.total > 0 ? (
+            {operationProgress.total && operationProgress.total > 0 ? (
               <>
                 <div className="file-operation-progress-container">
                   <div
                     className="file-operation-progress-bar"
-                    style={{ width: `${(operationProgress.current / operationProgress.total) * 100}%` }}
+                    style={{ width: `${((operationProgress.current || 0) / operationProgress.total) * 100}%` }}
                   />
                 </div>
                 <div className="file-operation-details">
-                  <span>{Math.round((operationProgress.current / operationProgress.total) * 100)}%</span>
-                  <span>{operationProgress.current} / {operationProgress.total}</span>
+                  <span>{Math.round(((operationProgress.current || 0) / operationProgress.total) * 100)}%</span>
+                  <span>{operationProgress.current || 0} / {operationProgress.total}</span>
                 </div>
               </>
             ) : (

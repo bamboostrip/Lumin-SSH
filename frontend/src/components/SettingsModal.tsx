@@ -1,16 +1,16 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
-import { getAvailableLanguages, setLanguage as setGlobalLanguage, t as $t } from '../i18n.js';
+import { getAvailableLanguages, setLanguage as setGlobalLanguage, t as $t, type I18nKey, type LanguageCode } from '../i18n.js';
 import { getModKey } from '../utils/platform.js';
 import logoImg from '../assets/logo.webp';
 import { APP_BUILD_TIME, APP_VERSION } from '../config.js';
-import { formatUpdateError, useUpdateChecker } from '../hooks/useUpdateChecker.js';
-import { Sun, Monitor, Moon, Keyboard, Cloud, Info, Database, Folder, X, RefreshCw, Globe, Palette, Lock, SlidersHorizontal } from 'lucide-react';
+import { formatUpdateError, useUpdateChecker, type UpdateCheckResult } from '../hooks/useUpdateChecker.js';
+import { Sun, Monitor, Moon, Keyboard, Cloud, Info, Database, Folder, X, RefreshCw, Globe, Palette, Lock, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import { Z } from '../constants/zIndex';
 import { EventsOn, WindowSetSize, WindowUnmaximise } from '../../wailsjs/runtime/runtime.js';
 import { deleteProgramFont, getProgramFontAssignmentSnapshot, listProgramFonts, selectAndImportProgramFontFiles, setProgramFontPreference } from '../utils/programFonts.js';
-import { getAppThemeMode, getThemePackageSettings as getStoredThemePackageSettings, getTerminalTheme, listThemePackages, loadThemePackages, saveThemePackageSettings } from '../utils/theme.js';
-import { loadKeywordRulesFromStorage, saveKeywordRulesToStorage, resetKeywordRulesToDefault, setKeywordRules } from '../utils/terminalKeywordHighlight.js';
+import { getAppThemeMode, getThemePackageSettings as getStoredThemePackageSettings, getTerminalTheme, listThemePackages, loadThemePackages, saveThemePackageSettings, type ThemePackage } from '../utils/theme.js';
+import { loadKeywordRulesFromStorage, saveKeywordRulesToStorage, resetKeywordRulesToDefault, setKeywordRules, type KeywordRule } from '../utils/terminalKeywordHighlight.js';
 import { syncWithRecoveryPassword } from '../utils/recoveryPasswordSync.js';
 import AppTab from './settings/AppTab';
 import GeneralTab from './settings/GeneralTab';
@@ -22,21 +22,86 @@ import ShortcutsTab from './settings/ShortcutsTab';
 import SyncTab from './settings/SyncTab';
 import { DEFAULT_RUNTIME_ENVIRONMENT_SETTINGS, getRuntimeEnvironmentSettings, resolveRuntimeEnvironmentPathPreview, saveRuntimeEnvironmentSettings } from './settings/runtimeEnvironmentBridge.js';
 import { SETTINGS_SEARCH_DEFINITIONS, SETTINGS_SECTIONS } from './settings/settingDefinitions';
+import type { config } from '../../wailsjs/go/models.js';
+import type { LuminDialogChoice, LuminDialogPromptOptions } from '../types/luminDialog.js';
 
 const SETTINGS_DIALOG_OPTIONS = { priority: 'settings' };
-const settingsConfirm = (message, title = $t('操作确认'), checkboxLabel = '') => (
+const settingsConfirm = (message: string, title = $t('操作确认'), checkboxLabel = ''): Promise<boolean | { confirmed: boolean; checked: boolean }> | undefined => (
   window.luminDialog?.confirm?.(message, title, checkboxLabel, SETTINGS_DIALOG_OPTIONS)
 );
-const settingsChoice = (message, title, buttons, checkboxLabel = '') => (
+const settingsChoice = (message: string, title: string, buttons: unknown[], checkboxLabel = ''): Promise<unknown> | undefined => (
   window.luminDialog?.choice?.(message, title, buttons, checkboxLabel, SETTINGS_DIALOG_OPTIONS)
 );
-const settingsPrompt = (message, defaultValue = '', title = $t('输入信息'), checkboxLabel = '', options = {}) => (
-  window.luminDialog?.prompt?.(message, defaultValue, title, checkboxLabel, { ...options, ...SETTINGS_DIALOG_OPTIONS })
+const settingsPrompt = (message: string, defaultValue = '', title = $t('输入信息'), checkboxLabel = '', options: LuminDialogPromptOptions = {}): Promise<string | null | LuminDialogChoice> | undefined => (
+  window.luminDialog?.prompt?.(message, defaultValue, title, checkboxLabel, { ...options, ...SETTINGS_DIALOG_OPTIONS } as LuminDialogPromptOptions)
 );
 
-const TAB_ICON = { general: SlidersHorizontal, network: Globe, fileManager: Folder, runtimeEnvironment: Database, appearance: Palette, shortcuts: Keyboard, sync: Cloud, app: Info };
+type ProviderKey = 'webdav' | 'r2' | 'ftp' | 'sftp';
+type ProviderTestResult = 'ok' | 'fail' | null;
 
-const TAB_LABELS = { general: '通用', network: '网络', fileManager: '文件管理器', runtimeEnvironment: '运行环境', appearance: '外观', shortcuts: '快捷键', sync: '同步与云', app: '关于' };
+type WebdavForm = { url: string; username: string; password: string; remotePath: string; maxBackups: string };
+type R2Form = { accessKeyId: string; secretAccessKey: string; bucket: string; endpoint: string; region: string; prefix: string; maxBackups: string };
+type FTPForm = { mode: string; host: string; port: number; username: string; password: string; remoteDir: string; maxBackups: string };
+type SFTPForm = { host: string; port: number; username: string; password: string; authMethod: string; privateKey: string; remoteDir: string; maxBackups: string };
+type ProviderFormMap = { webdav: WebdavForm; r2: R2Form; ftp: FTPForm; sftp: SFTPForm };
+
+/** 云同步提供方定义（test/save 等方法均由 wailsjs 生成类型，返回 Record<string, any> 直接透传） */
+interface ProviderDefinition<F extends Record<string, unknown>> {
+  name: string;
+  titleKey: string;
+  subtitleKey: string;
+  accent: string;
+  accentRgb: string;
+  successMsgKey: string;
+  defaultForm: F;
+  test: (form: F) => Promise<unknown>;
+  save: (form: F) => Promise<unknown>;
+  sync: () => Promise<Record<string, any>>;
+  backup: () => Promise<Record<string, any>>;
+  list: () => Promise<Array<Record<string, any>>>;
+  restore: (name: string) => Promise<unknown>;
+  restoreWithPassword: (name: string, password: string) => Promise<unknown>;
+  getConfig: () => Promise<Record<string, any>>;
+  isConfigured: (form: F) => boolean;
+  applyConfig: (data: Record<string, any>) => F;
+  // 参数加宽到 SyncTab 的宽松 ProviderForm，保证 PROVIDERS 整体可赋给 SyncTab providers
+  summaryFields: (form: F | Record<string, string | number>) => SummaryField[];
+}
+
+/** 云同步提供方状态（四份同构 state 的统一定义） */
+interface ProviderStateEntry<F extends Record<string, unknown>> {
+  form: F;
+  setForm: React.Dispatch<React.SetStateAction<F>>;
+  configured: boolean;
+  setConfigured: React.Dispatch<React.SetStateAction<boolean>>;
+  editing: boolean;
+  setEditing: React.Dispatch<React.SetStateAction<boolean>>;
+  loading: boolean;
+  setLoading: React.Dispatch<React.SetStateAction<boolean>>;
+  testing: boolean;
+  setTesting: React.Dispatch<React.SetStateAction<boolean>>;
+  testResult: ProviderTestResult;
+  setTestResult: React.Dispatch<React.SetStateAction<ProviderTestResult>>;
+}
+
+interface SummaryField { label: string; value: string; primary?: boolean; fullWidth?: boolean; }
+
+/** 设置搜索定义（settingDefinitions.js 未转 TS，按实际结构断言） */
+interface SettingsSearchDefinition {
+  id: string;
+  type: string;
+  tab: string;
+  titleKey: string;
+  descriptionKey?: string;
+  section?: string;
+  breadcrumbTitleKeys?: string[];
+  targetId?: string;
+  providerId?: string;
+}
+
+const TAB_ICON: Record<string, LucideIcon> = { general: SlidersHorizontal, network: Globe, fileManager: Folder, runtimeEnvironment: Database, appearance: Palette, shortcuts: Keyboard, sync: Cloud, app: Info };
+
+const TAB_LABELS: Record<string, string> = { general: '通用', network: '网络', fileManager: '文件管理器', runtimeEnvironment: '运行环境', appearance: '外观', shortcuts: '快捷键', sync: '同步与云', app: '关于' };
 
 const TABS = [
   { id: 'general' },
@@ -49,7 +114,7 @@ const TABS = [
   { id: 'app' },
 ];
 
-const defaultWebdavForm = {
+const defaultWebdavForm: WebdavForm = {
   url: '',
   username: '',
   password: '',
@@ -57,7 +122,7 @@ const defaultWebdavForm = {
   maxBackups: '',
 };
 
-const defaultR2Form = {
+const defaultR2Form: R2Form = {
   accessKeyId: '',
   secretAccessKey: '',
   bucket: '',
@@ -67,7 +132,7 @@ const defaultR2Form = {
   maxBackups: '',
 };
 
-const defaultFTPForm = {
+const defaultFTPForm: FTPForm = {
   mode: 'explicit_tls',
   host: '',
   port: 21,
@@ -77,7 +142,7 @@ const defaultFTPForm = {
   maxBackups: '',
 };
 
-const defaultSFTPForm = {
+const defaultSFTPForm: SFTPForm = {
   host: '',
   port: 22,
   username: '',
@@ -88,7 +153,7 @@ const defaultSFTPForm = {
   maxBackups: '',
 };
 
-const parseConnectionTestPort = (value) => {
+const parseConnectionTestPort = (value: unknown) => {
   const port = parseInt(String(value ?? '').trim(), 10);
   if (!Number.isFinite(port) || port <= 0 || port > 65535) {
     throw new Error($t('请输入有效端口'));
@@ -96,7 +161,7 @@ const parseConnectionTestPort = (value) => {
   return port;
 };
 
-const PROVIDERS = {
+const PROVIDERS: { [K in ProviderKey]: ProviderDefinition<ProviderFormMap[K]> } = {
   webdav: {
     name: 'WebDAV',
     titleKey: 'WebDAV 配置',
@@ -115,12 +180,15 @@ const PROVIDERS = {
     getConfig: () => AppGo.GetWebdavConfig(),
     isConfigured: (f) => !!f.username,
     applyConfig: (data) => ({ url: data.url || '', username: data.username || '', password: data.password || '', remotePath: data.remotePath || '/Lumin/', maxBackups: data.maxBackups || '' }),
-    summaryFields: (f) => [
-      { label: $t('绑定账号'), value: f.username, primary: true },
-      { label: $t('备份目录'), value: f.remotePath },
-      { label: $t('保留份数'), value: f.maxBackups || $t('不限') },
-      { label: $t('服务器地址'), value: f.url, fullWidth: true },
-    ],
+    summaryFields: (form) => {
+      const f = form as WebdavForm;
+      return [
+        { label: $t('绑定账号'), value: f.username, primary: true },
+        { label: $t('备份目录'), value: f.remotePath },
+        { label: $t('保留份数'), value: f.maxBackups || $t('不限') },
+        { label: $t('服务器地址'), value: f.url, fullWidth: true },
+      ];
+    },
   },
   r2: {
     name: 'R2',
@@ -140,12 +208,15 @@ const PROVIDERS = {
     getConfig: () => AppGo.GetR2Config(),
     isConfigured: (f) => !!(f.bucket && f.endpoint),
     applyConfig: (data) => ({ accessKeyId: data.accessKeyId || '', secretAccessKey: data.secretAccessKey || '', bucket: data.bucket || '', endpoint: data.endpoint || '', region: data.region || 'auto', prefix: data.prefix || 'Lumin/', maxBackups: data.maxBackups || '' }),
-    summaryFields: (f) => [
-      { label: $t('存储桶'), value: f.bucket, primary: true },
-      { label: $t('前缀目录'), value: f.prefix },
-      { label: $t('端点地址'), value: f.endpoint, fullWidth: true },
-      { label: $t('保留份数'), value: f.maxBackups || $t('不限') },
-    ],
+    summaryFields: (form) => {
+      const f = form as R2Form;
+      return [
+        { label: $t('存储桶'), value: f.bucket, primary: true },
+        { label: $t('前缀目录'), value: f.prefix },
+        { label: $t('端点地址'), value: f.endpoint, fullWidth: true },
+        { label: $t('保留份数'), value: f.maxBackups || $t('不限') },
+      ];
+    },
   },
   ftp: {
     name: 'FTP',
@@ -165,14 +236,17 @@ const PROVIDERS = {
     getConfig: () => AppGo.GetFTPConfig(),
     isConfigured: (f) => !!f.host,
     applyConfig: (data) => ({ mode: data.mode || 'explicit_tls', host: data.host || '', port: data.port || 21, username: data.username || '', password: data.password || '', remoteDir: data.remoteDir || '/Lumin/', maxBackups: data.maxBackups || '' }),
-    summaryFields: (f) => [
-      { label: $t('连接模式'), value: f.mode === 'plain' ? $t('普通 FTP（不安全）') : $t('显式 FTPS（推荐）'), primary: true },
-      { label: $t('主机地址'), value: f.host, primary: true },
-      { label: $t('端口'), value: f.port },
-      { label: $t('用户名'), value: f.username, primary: true },
-      { label: $t('远程目录'), value: f.remoteDir },
-      { label: $t('保留份数'), value: f.maxBackups || $t('不限') },
-    ],
+    summaryFields: (form) => {
+      const f = form as FTPForm;
+      return [
+        { label: $t('连接模式'), value: f.mode === 'plain' ? $t('普通 FTP（不安全）') : $t('显式 FTPS（推荐）'), primary: true },
+        { label: $t('主机地址'), value: f.host, primary: true },
+        { label: $t('端口'), value: String(f.port) },
+        { label: $t('用户名'), value: f.username, primary: true },
+        { label: $t('远程目录'), value: f.remoteDir },
+        { label: $t('保留份数'), value: f.maxBackups || $t('不限') },
+      ];
+    },
   },
   sftp: {
     name: 'SFTP',
@@ -192,13 +266,16 @@ const PROVIDERS = {
     getConfig: () => AppGo.GetSFTPConfig(),
     isConfigured: (f) => !!f.host,
     applyConfig: (data) => ({ host: data.host || '', port: data.port || 22, username: data.username || '', password: data.password || '', authMethod: data.authMethod || 'password', privateKey: data.privateKey || '', remoteDir: data.remoteDir || '/Lumin/', maxBackups: data.maxBackups || '' }),
-    summaryFields: (f) => [
-      { label: $t('主机地址'), value: f.host, primary: true },
-      { label: $t('端口'), value: f.port },
-      { label: $t('用户名'), value: f.username, primary: true },
-      { label: $t('远程目录'), value: f.remoteDir },
-      { label: $t('保留份数'), value: f.maxBackups || $t('不限') },
-    ],
+    summaryFields: (form) => {
+      const f = form as SFTPForm;
+      return [
+        { label: $t('主机地址'), value: f.host, primary: true },
+        { label: $t('端口'), value: String(f.port) },
+        { label: $t('用户名'), value: f.username, primary: true },
+        { label: $t('远程目录'), value: f.remoteDir },
+        { label: $t('保留份数'), value: f.maxBackups || $t('不限') },
+      ];
+    },
   },
 };
 
@@ -219,13 +296,13 @@ function getBackupFormatLabel(name = '') {
   return 'UNKNOWN';
 }
 
-function resolveFileManagerDownloadDirPreview(template, programDirectory) {
+function resolveFileManagerDownloadDirPreview(template: string, programDirectory: string) {
   const baseDir = String(programDirectory || '').trim();
   const rawTemplate = String(template || '').trim() || DEFAULT_FILE_MANAGER_DOWNLOAD_DIR;
   const separator = baseDir.includes('\\') ? '\\' : '/';
   const replaced = rawTemplate
-    .replaceAll('${APP_DIR}', baseDir)
-    .replaceAll('%APP_DIR%', baseDir)
+    .replace(/\$\{APP_DIR\}/g, baseDir)
+    .replace(/%APP_DIR%/g, baseDir)
     .replace(/[\\/]+/g, separator);
   if (!replaced) {
     return '';
@@ -236,6 +313,16 @@ function resolveFileManagerDownloadDirPreview(template, programDirectory) {
   return `${baseDir}${baseDir.endsWith('\\') || baseDir.endsWith('/') ? '' : separator}${replaced}`;
 }
 
+export interface SettingsModalProps {
+  onClose: () => void;
+  addToast: (message: string | Error, type?: string, duration?: number, actions?: unknown[]) => number;
+  onRestored?: () => void;
+  probePanelPosition: 'left' | 'right';
+  onProbePanelPositionChange: (pos: 'left' | 'right') => void;
+  forceDarkTheme?: boolean;
+  initialTab?: string;
+}
+
 export default function SettingsModal({
   onClose,
   addToast,
@@ -244,10 +331,10 @@ export default function SettingsModal({
   onProbePanelPositionChange,
   forceDarkTheme = false,
   initialTab = 'general',
-}) {
+}: SettingsModalProps) {
   const CURRENT_VERSION = APP_VERSION;
   const CURRENT_BUILD_TIME = APP_BUILD_TIME;
-  const [updateInfo, setUpdateInfo] = useState(null);
+  const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null);
 
   const { checking: checkingUpdate, downloadProgress, checkUpdate, applyUpdate } = useUpdateChecker({
     onResult: (result) => {
@@ -257,6 +344,8 @@ export default function SettingsModal({
           latestVersion: 'v' + result.latestVersion,
           url: result.url,
           filename: result.filename,
+          assetReady: result.assetReady,
+          reason: result.reason,
         });
         addToast($t('发现新版本: v') + result.latestVersion, 'success');
         return;
@@ -270,7 +359,8 @@ export default function SettingsModal({
       addToast($t('当前已是最新版本'), 'info');
     },
     onError: (err) => {
-      addToast($t('检查更新失败: ') + (err?.message || err), 'error');
+      const message = err instanceof Error ? err.message : String(err ?? '');
+      addToast($t('检查更新失败: ') + message, 'error');
     },
   });
 
@@ -297,12 +387,13 @@ export default function SettingsModal({
   const [syncing, setSyncing] = useState(false);
   const [confirmRestore, setConfirmRestore] = useState(false);
   const [confirmRestoreProvider, setConfirmRestoreProvider] = useState(false);
-  const [backupsList, setBackupsList] = useState([]);
-  const [selectedBackup, setSelectedBackup] = useState(null);
-  const [restoreProvider, setRestoreProvider] = useState(null);
-  const [failedRestoreProviders, setFailedRestoreProviders] = useState([]);
+  // 备份列表来自 AppGo.List*Backups()（wailsjs 生成类型为 Record<string, any>）
+  const [backupsList, setBackupsList] = useState<Array<Record<string, any>>>([]);
+  const [selectedBackup, setSelectedBackup] = useState<string | null>(null);
+  const [restoreProvider, setRestoreProvider] = useState<ProviderKey | null>(null);
+  const [failedRestoreProviders, setFailedRestoreProviders] = useState<ProviderKey[]>([]);
   const [loadingBackups, setLoadingBackups] = useState(false);
-  const [testResult, setTestResult] = useState(null); // null | 'ok' | 'fail'
+  const [testResult, setTestResult] = useState<ProviderTestResult>(null); // null | 'ok' | 'fail'
   const [lastSyncTime, setLastSyncTime] = useState(0);
   const [syncTombstoneStats, setSyncTombstoneStats] = useState({ connections: 0, credentials: 0 });
   const [pruningTombstones, setPruningTombstones] = useState(false);
@@ -360,23 +451,23 @@ export default function SettingsModal({
   const [r2Editing, setR2Editing] = useState(false);
   const [r2Loading, setR2Loading] = useState(false);
   const [r2Testing, setR2Testing] = useState(false);
-  const [r2TestResult, setR2TestResult] = useState(null);
+  const [r2TestResult, setR2TestResult] = useState<ProviderTestResult>(null);
 
   // FTP state
-  const [ftpForm, setFtpForm] = useState(defaultFTPForm);
+  const [ftpForm, setFtpForm] = useState<FTPForm>(defaultFTPForm);
   const [ftpConfigured, setFtpConfigured] = useState(false);
   const [ftpEditing, setFtpEditing] = useState(false);
   const [ftpLoading, setFtpLoading] = useState(false);
   const [ftpTesting, setFtpTesting] = useState(false);
-  const [ftpTestResult, setFtpTestResult] = useState(null);
+  const [ftpTestResult, setFtpTestResult] = useState<ProviderTestResult>(null);
 
   // SFTP state
-  const [sftpForm, setSftpForm] = useState(defaultSFTPForm);
+  const [sftpForm, setSftpForm] = useState<SFTPForm>(defaultSFTPForm);
   const [sftpConfigured, setSftpConfigured] = useState(false);
   const [sftpEditing, setSftpEditing] = useState(false);
   const [sftpLoading, setSftpLoading] = useState(false);
   const [sftpTesting, setSftpTesting] = useState(false);
-  const [sftpTestResult, setSftpTestResult] = useState(null);
+  const [sftpTestResult, setSftpTestResult] = useState<ProviderTestResult>(null);
 
   // Network/Ping state
   const [pingEnabled, setPingEnabled] = useState(localStorage.getItem('pingEnabled') !== 'false');
@@ -397,7 +488,7 @@ export default function SettingsModal({
   const [terminalTimestamps, setTerminalTimestamps] = useState(localStorage.getItem('terminalTimestamps') === 'true');
   const [terminalCommandBlocks, setTerminalCommandBlocks] = useState(localStorage.getItem('terminalCommandBlocks') === 'true');
   const [terminalKeywordHighlight, setTerminalKeywordHighlight] = useState(localStorage.getItem('terminalKeywordHighlight') === 'true');
-  const [keywordRules, setKeywordRulesState] = useState(() => loadKeywordRulesFromStorage());
+  const [keywordRules, setKeywordRulesState] = useState<KeywordRule[]>(() => loadKeywordRulesFromStorage());
   const [terminalDefaultMouseCursor, setTerminalDefaultMouseCursor] = useState(localStorage.getItem('terminalOutputDefaultMouseCursor') === 'true');
   const [terminalRightClickPasteOnEmpty, setTerminalRightClickPasteOnEmpty] = useState(localStorage.getItem('terminalRightClickPasteOnEmpty') === 'true');
   const [terminalRightClickPasteMode, setTerminalRightClickPasteMode] = useState(localStorage.getItem('terminalRightClickPasteMode') === 'always' ? 'always' : 'empty');
@@ -420,7 +511,7 @@ export default function SettingsModal({
   const [rememberWindowSize, setRememberWindowSize] = useState(localStorage.getItem('rememberWindowSize') !== 'false');
   const [showThemeQuickEntry, setShowThemeQuickEntry] = useState(localStorage.getItem('showThemeQuickEntry') !== 'false');
   const [terminalToolbarIconOnly, setTerminalToolbarIconOnly] = useState(localStorage.getItem('terminalToolbarIconOnly') === 'true');
-  const [programFonts, setProgramFonts] = useState([]);
+  const [programFonts, setProgramFonts] = useState<Array<{ fileName: string; displayName?: string }>>([]);
   const [programFontSearchQuery, setProgramFontSearchQuery] = useState('');
   const [programFontAssignments, setProgramFontAssignments] = useState(() => getProgramFontAssignmentSnapshot());
   const [programFontImporting, setProgramFontImporting] = useState(false);
@@ -447,7 +538,7 @@ export default function SettingsModal({
       return defaultShortcuts;
     }
   });
-  const [listeningKey, setListeningKey] = useState(null); // 'copy' | 'paste' | 'clear' | 'newTab' | null
+  const [listeningKey, setListeningKey] = useState<string | null>(null); // 'copy' | 'paste' | 'clear' | 'newTab' | null
 
   const handleResetShortcuts = () => {
     const defaults = { ...defaultShortcuts };
@@ -460,7 +551,7 @@ export default function SettingsModal({
 
   // Esc 关闭模态框（仅在未监听快捷键时生效）
   useEffect(() => {
-    const handleKeyDown = (e) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !e.defaultPrevented && !listeningKey) {
         if (document.querySelector('[data-global-dialog-active="true"]')) return;
         e.preventDefault();
@@ -475,7 +566,7 @@ export default function SettingsModal({
   useEffect(() => {
     if (!listeningKey) return;
 
-    const handleKeyDown = (e) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
@@ -519,8 +610,11 @@ export default function SettingsModal({
     }
   }, [initialTab])
 
-  const settingsSectionTitleMap = useMemo(() => Object.fromEntries(SETTINGS_SECTIONS.map((item) => [item.id, $t(item.titleKey)])), [language]);
-  const availableSettingsSearchDefinitions = useMemo(() => SETTINGS_SEARCH_DEFINITIONS.filter((item) => {
+  // settingDefinitions.js 未转 TS（推断为 Readonly<{}>），按实际结构断言（同 AppTab 处理方式）
+  const settingsSectionTitleMap = useMemo(() => Object.fromEntries(
+    (SETTINGS_SECTIONS as unknown as Array<{ id: string; titleKey: string }>).map((item): [string, string] => [item.id, $t(item.titleKey as I18nKey)]),
+  ), [language]);
+  const availableSettingsSearchDefinitions = useMemo(() => (SETTINGS_SEARCH_DEFINITIONS as unknown as SettingsSearchDefinition[]).filter((item) => {
     if (supportsWebviewGpuDisable) {
       return true;
     }
@@ -531,15 +625,15 @@ export default function SettingsModal({
     if (!normalizedQuery) {
       return [];
     }
-    const typePriority = { action: 0, option: 1, field: 2, 'field-group': 3, section: 4 };
+    const typePriority: Record<string, number> = { action: 0, option: 1, field: 2, 'field-group': 3, section: 4 };
     const deduped = new Map();
     availableSettingsSearchDefinitions.forEach((item) => {
-      const title = item.titleKey ? $t(item.titleKey) : '';
-      const description = item.descriptionKey ? $t(item.descriptionKey) : '';
-      const tabLabel = TAB_LABELS[item.tab] ? $t(TAB_LABELS[item.tab]) : '';
+      const title = item.titleKey ? $t(item.titleKey as I18nKey) : '';
+      const description = item.descriptionKey ? $t(item.descriptionKey as I18nKey) : '';
+      const tabLabel = TAB_LABELS[item.tab] ? $t(TAB_LABELS[item.tab] as I18nKey) : '';
       const sectionLabel = item.section && item.section !== item.id ? (settingsSectionTitleMap[item.section] || '') : '';
       const breadcrumbLabels = Array.isArray(item.breadcrumbTitleKeys)
-        ? item.breadcrumbTitleKeys.map((key) => $t(key)).filter(Boolean)
+        ? item.breadcrumbTitleKeys.map((key) => $t(key as I18nKey)).filter(Boolean)
         : [];
       const resolvedBreadcrumbLabels = breadcrumbLabels.length > 0 ? breadcrumbLabels : [tabLabel, sectionLabel].filter(Boolean);
       const searchText = [...resolvedBreadcrumbLabels, title, description].filter(Boolean).join(' ').toLowerCase();
@@ -566,7 +660,8 @@ export default function SettingsModal({
     });
     return Array.from(deduped.values()).sort((left, right) => left.rank - right.rank || left.typeRank - right.typeRank || left.breadcrumbLabels.join(' / ').localeCompare(right.breadcrumbLabels.join(' / ')) || left.title.localeCompare(right.title));
   }, [availableSettingsSearchDefinitions, language, settingsSearchQuery, settingsSectionTitleMap]);
-  const handleSelectSettingsSearchResult = useCallback((result) => {
+  type SettingsSearchResultItem = (typeof settingsSearchResults)[number];
+  const handleSelectSettingsSearchResult = useCallback((result: SettingsSearchResultItem) => {
     if (!result) {
       return;
     }
@@ -577,7 +672,7 @@ export default function SettingsModal({
       }
     }
     setActiveTab(result.tab);
-    setPendingSettingsScrollTargetId(result.targetId);
+    setPendingSettingsScrollTargetId(result.targetId ?? '');
   }, []);
   useEffect(() => {
     if (!pendingSettingsScrollTargetId) {
@@ -609,7 +704,7 @@ export default function SettingsModal({
     setThemeMode(nextSettings.themeMode || 'dark');
   }, []);
 
-  const handleThemeChange = async (mode) => {
+  const handleThemeChange = async (mode: string) => {
     if (forceDarkTheme) {
       return;
     }
@@ -643,7 +738,7 @@ export default function SettingsModal({
     window.dispatchEvent(new CustomEvent('terminal-toolbar-icon-only-changed'));
   };
 
-  const handleSelectThemePackage = async (slot, packageId) => {
+  const handleSelectThemePackage = async (slot: 'light' | 'dark', packageId: string) => {
     if (!packageId) {
       return;
     }
@@ -706,11 +801,12 @@ export default function SettingsModal({
     }
   };
 
-  const handleDeleteThemePackage = async (themePackage) => {
+  const handleDeleteThemePackage = async (themePackage: ThemePackage) => {
     if (!themePackage?.id || themePackage.source === 'builtin') {
       return;
     }
-    const ok = await settingsConfirm(`${$t('确定删除')}${$t(themePackage.name)}${$t('？此操作不可撤销')}`);
+    // 主题包 name 是动态显示名，不是 i18n key，t() 内部对未知 key 原样兜底
+    const ok = await settingsConfirm(`${$t('确定删除')}${$t(themePackage.name as I18nKey)}${$t('？此操作不可撤销')}`);
     if (!ok) {
       return;
     }
@@ -726,7 +822,7 @@ export default function SettingsModal({
     }
   };
 
-  const handleCopyThemePackageToMode = async (themePackage, targetMode) => {
+  const handleCopyThemePackageToMode = async (themePackage: ThemePackage, targetMode: string) => {
     if (!themePackage?.id || (targetMode !== 'light' && targetMode !== 'dark')) {
       return;
     }
@@ -746,7 +842,7 @@ export default function SettingsModal({
     }
   };
 
-  const handleStartAIThemeTuning = useCallback((slot) => {
+  const handleStartAIThemeTuning = useCallback((slot?: string) => {
     if (typeof window === 'undefined') {
       return;
     }
@@ -761,44 +857,45 @@ export default function SettingsModal({
     handleClose();
   }, [handleClose]);
 
-  const handleLanguageChange = async (e) => {
+  const handleLanguageChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const lang = e.target.value;
     setLanguage(lang);
-    await setGlobalLanguage(lang);
+    // 选项值即语言代码，setGlobalLanguage 期待 LanguageCode
+    await setGlobalLanguage(lang as LanguageCode);
   };
 
-  const handleTerminalFontChange = (e) => {
+  const handleTerminalFontChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const size = parseInt(e.target.value, 10);
     setTerminalFontSize(size);
-    localStorage.setItem('terminalFontSize', size);
+    localStorage.setItem('terminalFontSize', String(size));
     window.dispatchEvent(new CustomEvent('terminal-font-size-changed', { detail: size }));
   };
 
-  const handleTerminalLocalEchoChange = (enabled) => {
+  const handleTerminalLocalEchoChange = (enabled: boolean) => {
     setTerminalLocalEcho(enabled);
     localStorage.setItem('terminalLocalEcho', String(enabled));
     window.dispatchEvent(new CustomEvent('terminal-local-echo-changed', { detail: enabled }));
   };
 
-  const handleTerminalTimestampsChange = (enabled) => {
+  const handleTerminalTimestampsChange = (enabled: boolean) => {
     setTerminalTimestamps(enabled);
     localStorage.setItem('terminalTimestamps', String(enabled));
     window.dispatchEvent(new CustomEvent('terminal-timestamps-changed', { detail: enabled }));
   };
 
-  const handleTerminalCommandBlocksChange = (enabled) => {
+  const handleTerminalCommandBlocksChange = (enabled: boolean) => {
     setTerminalCommandBlocks(enabled);
     localStorage.setItem('terminalCommandBlocks', String(enabled));
     window.dispatchEvent(new CustomEvent('terminal-command-blocks-changed', { detail: enabled }));
   };
 
-  const handleTerminalKeywordHighlightChange = (enabled) => {
+  const handleTerminalKeywordHighlightChange = (enabled: boolean) => {
     setTerminalKeywordHighlight(enabled);
     localStorage.setItem('terminalKeywordHighlight', String(enabled));
     window.dispatchEvent(new CustomEvent('terminal-keyword-highlight-changed', { detail: enabled }));
   };
 
-  const handleKeywordRulesChange = (rules) => {
+  const handleKeywordRulesChange = (rules: KeywordRule[]) => {
     setKeywordRulesState(rules);
     setKeywordRules(rules);
     saveKeywordRulesToStorage(rules);
@@ -811,19 +908,19 @@ export default function SettingsModal({
     window.dispatchEvent(new CustomEvent('terminal-keyword-rules-changed', { detail: defaults }));
   };
 
-  const handleTerminalDefaultMouseCursorChange = (enabled) => {
+  const handleTerminalDefaultMouseCursorChange = (enabled: boolean) => {
     setTerminalDefaultMouseCursor(enabled);
     localStorage.setItem('terminalOutputDefaultMouseCursor', String(enabled));
     window.dispatchEvent(new CustomEvent('terminal-output-default-mouse-cursor-changed', { detail: enabled }));
   };
 
-  const handleTerminalRightClickPasteOnEmptyChange = (enabled) => {
+  const handleTerminalRightClickPasteOnEmptyChange = (enabled: boolean) => {
     setTerminalRightClickPasteOnEmpty(enabled);
     localStorage.setItem('terminalRightClickPasteOnEmpty', String(enabled));
     window.dispatchEvent(new CustomEvent('terminal-right-click-paste-on-empty-changed', { detail: enabled }));
   };
 
-  const handleTerminalRightClickPasteModeChange = (mode) => {
+  const handleTerminalRightClickPasteModeChange = (mode: string) => {
     const next = mode === 'always' ? 'always' : 'empty';
     setTerminalRightClickPasteMode(next);
     if (next === 'empty') localStorage.removeItem('terminalRightClickPasteMode');
@@ -831,13 +928,13 @@ export default function SettingsModal({
     window.dispatchEvent(new CustomEvent('terminal-right-click-paste-mode-changed', { detail: next }));
   };
 
-  const handleTerminalLeftClickCopyOnSelectionChange = (enabled) => {
+  const handleTerminalLeftClickCopyOnSelectionChange = (enabled: boolean) => {
     setTerminalLeftClickCopyOnSelection(enabled);
     localStorage.setItem('terminalLeftClickCopyOnSelection', String(enabled));
     window.dispatchEvent(new CustomEvent('terminal-left-click-copy-on-selection-changed', { detail: enabled }));
   };
 
-  const handleTerminalLeftClickCopyOnSelectionModeChange = (mode) => {
+  const handleTerminalLeftClickCopyOnSelectionModeChange = (mode: string) => {
     const next = mode === 'mouseup' ? 'mouseup' : 'click';
     setTerminalLeftClickCopyOnSelectionMode(next);
     if (next === 'click') localStorage.removeItem('terminalLeftClickCopyOnSelectionMode');
@@ -845,23 +942,24 @@ export default function SettingsModal({
     window.dispatchEvent(new CustomEvent('terminal-left-click-copy-on-selection-mode-changed', { detail: next }));
   };
 
-  const handleTerminalTabDoubleClickActionEnabledChange = (enabled) => {
+  const handleTerminalTabDoubleClickActionEnabledChange = (enabled: boolean) => {
     setTerminalTabDoubleClickActionEnabled(enabled);
     localStorage.setItem('terminalTabDoubleClickActionEnabled', String(enabled));
   };
 
-  const handleTerminalTabDoubleClickActionChange = (action) => {
+  const handleTerminalTabDoubleClickActionChange = (action: string) => {
     const next = action === 'close' ? 'close' : 'duplicate';
     setTerminalTabDoubleClickAction(next);
     localStorage.setItem('terminalTabDoubleClickAction', next);
   };
 
-  const handleTermBgUpload = (e) => {
-    const file = e.target.files[0];
+  const handleTermBgUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const base64 = ev.target.result;
+      // readAsDataURL 始终产出字符串 data URL
+      const base64 = typeof ev.target?.result === 'string' ? ev.target.result : '';
       try {
         localStorage.setItem('termBgImage', base64);
         setTermBgImage(base64);
@@ -884,7 +982,7 @@ export default function SettingsModal({
     addToast($t('已恢复默认壁纸'), 'success');
   };
 
-  const handleTermBgOpacityChange = (e) => {
+  const handleTermBgOpacityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseFloat(e.target.value);
     setTermBgOpacity(val);
     localStorage.setItem('termBgOpacity', String(val));
@@ -932,7 +1030,7 @@ export default function SettingsModal({
     }
   };
 
-  const handleDeleteProgramFont = async (fileName) => {
+  const handleDeleteProgramFont = async (fileName: string) => {
     const normalizedFileName = typeof fileName === 'string' ? fileName.trim() : '';
     if (!normalizedFileName || programFontDeleting) {
       return;
@@ -943,13 +1041,13 @@ export default function SettingsModal({
       await refreshProgramFonts();
       addToast($t('字体已删除'), 'success');
     } catch (err) {
-      addToast($t('字体删除失败') + ': ' + err, 'error');
+      addToast($t('字体删除失败') + ': ' + String(err), 'error');
     } finally {
       setProgramFontDeleting(false);
     }
   };
 
-  const handleProgramFontDragStart = (event, fileName) => {
+  const handleProgramFontDragStart = (event: React.DragEvent, fileName: string) => {
     event.dataTransfer.effectAllowed = 'copy';
     event.dataTransfer.setData('text/plain', fileName);
   };
@@ -958,15 +1056,15 @@ export default function SettingsModal({
     setActiveProgramFontDropTarget('');
   };
 
-  const handleProgramFontDragEnter = (target) => {
+  const handleProgramFontDragEnter = (target: string) => {
     setActiveProgramFontDropTarget(target);
   };
 
-  const handleProgramFontDragLeave = (target) => {
+  const handleProgramFontDragLeave = (target: string) => {
     setActiveProgramFontDropTarget((current) => current === target ? '' : current);
   };
 
-  const handleProgramFontDrop = async (target, fileName) => {
+  const handleProgramFontDrop = async (target: string, fileName: string) => {
     const normalizedTarget = typeof target === 'string' ? target.trim() : '';
     const normalizedFileName = typeof fileName === 'string' ? fileName.trim() : '';
     setActiveProgramFontDropTarget('');
@@ -978,11 +1076,11 @@ export default function SettingsModal({
       setProgramFontAssignments(getProgramFontAssignmentSnapshot());
       addToast($t('字体分配已更新'), 'success');
     } catch (err) {
-      addToast($t('字体分配失败') + ': ' + err, 'error');
+      addToast($t('字体分配失败') + ': ' + String(err), 'error');
     }
   };
 
-  const handleProgramFontReset = async (target) => {
+  const handleProgramFontReset = async (target: string) => {
     const normalizedTarget = typeof target === 'string' ? target.trim() : '';
     if (!normalizedTarget) {
       return;
@@ -992,7 +1090,7 @@ export default function SettingsModal({
       setProgramFontAssignments(getProgramFontAssignmentSnapshot());
       addToast($t('已恢复默认字体'), 'success');
     } catch (err) {
-      addToast($t('恢复默认字体失败') + ': ' + err, 'error');
+      addToast($t('恢复默认字体失败') + ': ' + String(err), 'error');
     }
   };
 
@@ -1037,7 +1135,7 @@ export default function SettingsModal({
   const [fileManagerDoubleClickUncompressArchive, setFileManagerDoubleClickUncompressArchive] = useState(false);
   const [fileManagerSmartUncompressConflictStrategy, setFileManagerSmartUncompressConflictStrategy] = useState('auto_rename');
   const [fileManagerAutoRefreshDisabled, setFileManagerAutoRefreshDisabled] = useState(false);
-  const [fileManagerMaxEditSizeMB, setFileManagerMaxEditSizeMB] = useState(5);
+  const [fileManagerMaxEditSizeMB, setFileManagerMaxEditSizeMB] = useState<number | string>(5);
   const [fileManagerDefaultOpenMode, setFileManagerDefaultOpenMode] = useState(() => {
     const mode = localStorage.getItem('fileManagerDefaultOpenMode') || 'builtin';
     return ['builtin', 'system', 'external'].includes(mode) ? mode : 'builtin';
@@ -1045,7 +1143,8 @@ export default function SettingsModal({
   const [fileManagerPreferredExternalApp, setFileManagerPreferredExternalApp] = useState(
     () => (localStorage.getItem('fileEditorPreferredApp') || '').trim(),
   );
-  const [runtimeEnvironmentEnabled, setRuntimeEnvironmentEnabled] = useState(DEFAULT_RUNTIME_ENVIRONMENT_SETTINGS.enabled);
+  // bridge 的 DEFAULT_RUNTIME_ENVIRONMENT_SETTINGS 实际无 enabled 字段（原 .jsx 同样读取 undefined，运行期按 !undefined 工作）
+  const [runtimeEnvironmentEnabled, setRuntimeEnvironmentEnabled] = useState((DEFAULT_RUNTIME_ENVIRONMENT_SETTINGS as typeof DEFAULT_RUNTIME_ENVIRONMENT_SETTINGS & { enabled?: boolean }).enabled);
   const [runtimeEnvironmentType, setRuntimeEnvironmentType] = useState(DEFAULT_RUNTIME_ENVIRONMENT_SETTINGS.environmentType);
   const [runtimeEnvironmentTargetPathTemplate, setRuntimeEnvironmentTargetPathTemplate] = useState(DEFAULT_RUNTIME_ENVIRONMENT_SETTINGS.targetPathTemplate);
   const [runtimeEnvironmentModulePath, setRuntimeEnvironmentModulePath] = useState(DEFAULT_RUNTIME_ENVIRONMENT_SETTINGS.modulePath);
@@ -1080,7 +1179,7 @@ export default function SettingsModal({
     if (next) localStorage.removeItem('skipTerminalSelectionPasteConfirm');
     else localStorage.setItem('skipTerminalSelectionPasteConfirm', 'true');
   };
-  const handleWindowCloseActionChange = (value) => {
+  const handleWindowCloseActionChange = (value: string) => {
     setWindowCloseAction(value);
     if (value === 'ask') localStorage.removeItem('windowCloseAction');
     else localStorage.setItem('windowCloseAction', value);
@@ -1102,7 +1201,7 @@ export default function SettingsModal({
       addToast($t('记忆工作区设置保存失败') + `: ${err}`, 'error');
     }
   };
-  const handleWorkspacePersistenceLevelChange = async (value) => {
+  const handleWorkspacePersistenceLevelChange = async (value: string) => {
     const next = value === 'session' ? 'session' : 'program';
     const previous = workspacePersistenceLevel;
     setWorkspacePersistenceLevel(next);
@@ -1158,7 +1257,7 @@ export default function SettingsModal({
     else localStorage.removeItem('fileManagerSharedPinnedTabs');
     window.dispatchEvent(new CustomEvent('file-manager-shared-pinned-tabs-changed', { detail: next }));
   };
-  const handleFileManagerLayoutModeChange = (value) => {
+  const handleFileManagerLayoutModeChange = (value: string) => {
     const next = value === 'sidebar_dual' ? 'sidebar_dual' : 'classic';
     setFileManagerLayoutMode(next);
     if (next === 'classic') localStorage.removeItem('fileManagerLayoutMode');
@@ -1186,11 +1285,11 @@ export default function SettingsModal({
     else localStorage.removeItem('fileManagerDualPaneDragInvertModifier');
     window.dispatchEvent(new CustomEvent('file-manager-dual-pane-drag-invert-modifier-changed', { detail: next }));
   };
-  const handleFileManagerInitialPathModeChange = (value) => {
+  const handleFileManagerInitialPathModeChange = (value: string) => {
     setFileManagerInitialPathMode(value);
     localStorage.setItem('fileManagerInitialPathMode', value);
   };
-  const handleFileManagerNewTabPathModeChange = (value) => {
+  const handleFileManagerNewTabPathModeChange = (value: string) => {
     setFileManagerNewTabPathMode(value);
     localStorage.setItem('fileManagerNewTabPathMode', value);
   };
@@ -1200,7 +1299,7 @@ export default function SettingsModal({
     if (next) localStorage.setItem('fileManagerAskDownloadEveryTime', 'true');
     else localStorage.removeItem('fileManagerAskDownloadEveryTime');
   };
-  const handleFileManagerDownloadConflictStrategyChange = (value) => {
+  const handleFileManagerDownloadConflictStrategyChange = (value: string) => {
     setFileManagerDownloadConflictStrategy(value);
     localStorage.setItem('fileManagerDownloadConflictStrategy', value);
   };
@@ -1218,17 +1317,17 @@ export default function SettingsModal({
     if (next) localStorage.removeItem('fileManagerDownloadConflictDiffByMtime');
     else localStorage.setItem('fileManagerDownloadConflictDiffByMtime', 'false');
   };
-  const handleFileManagerDownloadRenameSuffixModeChange = (value) => {
+  const handleFileManagerDownloadRenameSuffixModeChange = (value: string) => {
     setFileManagerDownloadRenameSuffixMode(value);
     localStorage.setItem('fileManagerDownloadRenameSuffixMode', value);
   };
-  const handleFileManagerUploadSettingChange = (key, setter) => (e) => {
+  const handleFileManagerUploadSettingChange = (key: string, setter: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const next = e.target.value;
     setter(next);
     if (next === '') localStorage.removeItem(key);
     else localStorage.setItem(key, next);
   };
-  const persistTransferTuning = (overrides = {}) => {
+  const persistTransferTuning = (overrides: Record<string, number | boolean> = {}) => {
     const next = {
       maxPacketKiB: parseInt(transferMaxPacketKiB, 10) || 128,
       maxRequestsPerFile: parseInt(transferMaxRequestsPerFile, 10) || 16,
@@ -1243,7 +1342,7 @@ export default function SettingsModal({
       next.applyToSharedClient,
     ).catch(() => {});
   };
-  const handleTransferNumberChange = (setter, field) => (e) => {
+  const handleTransferNumberChange = (setter: (v: string) => void, field: 'maxPacketKiB' | 'maxRequestsPerFile') => (e: React.ChangeEvent<HTMLInputElement>) => {
     const next = e.target.value;
     setter(next);
     const parsed = parseInt(next, 10);
@@ -1261,7 +1360,7 @@ export default function SettingsModal({
     setTransferApplyToSharedClient(next);
     persistTransferTuning({ applyToSharedClient: next });
   };
-  const handleFileManagerDefaultOpenModeChange = (value) => {
+  const handleFileManagerDefaultOpenModeChange = (value: string) => {
     const mode = ['builtin', 'system', 'external'].includes(value) ? value : 'builtin';
     setFileManagerDefaultOpenMode(mode);
     if (mode === 'builtin') localStorage.removeItem('fileManagerDefaultOpenMode');
@@ -1330,7 +1429,7 @@ export default function SettingsModal({
       addToast($t('请求失败') + `: ${err}`, 'error');
     }
   };
-  const handleFileManagerMaxEditSizeChange = async (e) => {
+  const handleFileManagerMaxEditSizeChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value;
     // 用 Number 而非 parseInt：避免 "12abc" 被解析为 12 而误持久化
     const next = Number(raw);
@@ -1354,7 +1453,7 @@ export default function SettingsModal({
       addToast($t('请求失败') + `: ${err}`, 'error');
     }
   };
-  const handleFileManagerSmartUncompressConflictStrategyChange = async (value) => {
+  const handleFileManagerSmartUncompressConflictStrategyChange = async (value: string) => {
     const next = value === 'overwrite' || value === 'prompt' ? value : 'auto_rename';
     const previous = fileManagerSmartUncompressConflictStrategy;
     setFileManagerSmartUncompressConflictStrategy(next);
@@ -1389,7 +1488,7 @@ export default function SettingsModal({
       addToast($t('运行环境设置保存失败') + `: ${err}`, 'error');
     }
   };
-  const handleRuntimeEnvironmentTypeChange = async (e) => {
+  const handleRuntimeEnvironmentTypeChange = async (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const next = e.target.value;
     setRuntimeEnvironmentType(next);
     try {
@@ -1407,7 +1506,7 @@ export default function SettingsModal({
       addToast($t('运行环境设置保存失败') + `: ${err}`, 'error');
     }
   };
-  const handleRuntimeEnvironmentTargetPathTemplateChange = async (e) => {
+  const handleRuntimeEnvironmentTargetPathTemplateChange = async (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const next = e.target.value;
     setRuntimeEnvironmentTargetPathTemplate(next);
     try {
@@ -1626,75 +1725,80 @@ export default function SettingsModal({
     return () => window.removeEventListener('program-font-settings-changed', handleProgramFontSettingsChange);
   }, []);
 
-  const setWebdav = (key) => (e) => setWebdavForm((f) => ({ ...f, [key]: e.target.value }));
-  const setR2 = (key) => (e) => setR2Form((f) => ({ ...f, [key]: e.target.value }));
-  const setFTP = (field) => (e) => setFtpForm((f) => ({ ...f, [field]: e.target.value }));
-  const setSFTP = (field) => (e) => setSftpForm((f) => ({ ...f, [field]: e.target.value }));
+  const setWebdav = (key: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setWebdavForm((f) => ({ ...f, [key]: e.target.value }));
+  const setR2 = (key: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setR2Form((f) => ({ ...f, [key]: e.target.value }));
+  const setFTP = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setFtpForm((f) => ({ ...f, [field]: e.target.value }));
+  const setSFTP = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setSftpForm((f) => ({ ...f, [field]: e.target.value }));
 
   // ────────────────────── Cloud Sync Handlers ──────────────────────
-  const providerState = {
+  const providerState: { [K in ProviderKey]: ProviderStateEntry<ProviderFormMap[K]> } = {
     webdav: { form: webdavForm, setForm: setWebdavForm, configured: isConfigured, setConfigured: setIsConfigured, editing: isEditing, setEditing: setIsEditing, loading, setLoading, testing, setTesting, testResult, setTestResult },
     r2: { form: r2Form, setForm: setR2Form, configured: r2Configured, setConfigured: setR2Configured, editing: r2Editing, setEditing: setR2Editing, loading: r2Loading, setLoading: setR2Loading, testing: r2Testing, setTesting: setR2Testing, testResult: r2TestResult, setTestResult: setR2TestResult },
     ftp: { form: ftpForm, setForm: setFtpForm, configured: ftpConfigured, setConfigured: setFtpConfigured, editing: ftpEditing, setEditing: setFtpEditing, loading: ftpLoading, setLoading: setFtpLoading, testing: ftpTesting, setTesting: setFtpTesting, testResult: ftpTestResult, setTestResult: setFtpTestResult },
     sftp: { form: sftpForm, setForm: setSftpForm, configured: sftpConfigured, setConfigured: setSftpConfigured, editing: sftpEditing, setEditing: setSftpEditing, loading: sftpLoading, setLoading: setSftpLoading, testing: sftpTesting, setTesting: setSftpTesting, testResult: sftpTestResult, setTestResult: setSftpTestResult },
   };
-  const configuredProviderIds = () => PROVIDER_LIST.map(p => p.id).filter(id => providerState[id]?.configured);
+  const configuredProviderIds = () => PROVIDER_LIST.map(p => p.id).filter((id): id is ProviderKey => providerState[id as ProviderKey]?.configured);
 
-  const makeTestHandler = (key) => async () => {
+  function makeTestHandler<K extends ProviderKey>(key: K) {
     const p = PROVIDERS[key];
     const s = providerState[key];
-    s.setTesting(true);
-    s.setTestResult(null);
-    try {
-      await p.test(s.form);
-      s.setTestResult('ok');
-      addToast(`${p.name} ${$t('连接测试成功 ✓')}`, 'success');
-    } catch (err) {
-      s.setTestResult('fail');
-      addToast(`${p.name} ` + $t('连接测试失败') + `: ${err}`, 'error');
-    } finally {
-      s.setTesting(false);
-    }
-  };
-
-  const makeSaveHandler = (key, beforeSave) => async () => {
-    const p = PROVIDERS[key];
-    const s = providerState[key];
-    const form = { ...s.form };
-    s.setLoading(true);
-    try {
-      await beforeSave?.(form);
-      await p.save(form);
-      if (p.isConfigured(form)) {
-        s.setConfigured(true);
-        s.setEditing(false);
-        try {
-          const res = await p.sync();
-          await refreshSyncMeta();
-          addToast(`${p.name} ${$t('同步成功！本地')} ${res.localCount} ${$t('个 + 云端')} ${res.remoteCount} ${$t('个 =')} ${res.mergedCount} ${$t('个')}`, 'success');
-          onRestored?.();
-        } catch (_) {
-          try {
-            const data = await p.backup();
-            await refreshSyncMeta();
-            addToast(`${p.name} ${$t('配置已保存，已上传')} ${data.count} ${$t('个服务器')}`, 'success');
-          } catch (e) {
-            addToast(`${p.name} ${$t('配置已保存，但同步失败，可稍后手动上传')}`, 'warning');
-          }
-        }
-      } else {
-        addToast(`${p.name} ${$t('配置已保存')}`, 'success');
+    return async () => {
+      s.setTesting(true);
+      s.setTestResult(null);
+      try {
+        await p.test(s.form);
+        s.setTestResult('ok');
+        addToast(`${p.name} ${$t('连接测试成功 ✓')}`, 'success');
+      } catch (err) {
+        s.setTestResult('fail');
+        addToast(`${p.name} ` + $t('连接测试失败') + `: ${err}`, 'error');
+      } finally {
+        s.setTesting(false);
       }
-    } catch (err) {
-      addToast(err, 'error');
-    } finally {
-      s.setLoading(false);
-    }
-  };
+    };
+  }
 
-  const confirmFTPConnection = async (form) => {
+  function makeSaveHandler<K extends ProviderKey>(key: K, beforeSave?: (form: ProviderFormMap[K]) => Promise<void> | void) {
+    const p = PROVIDERS[key];
+    const s = providerState[key];
+    return async () => {
+      const form = { ...s.form };
+      s.setLoading(true);
+      try {
+        await beforeSave?.(form);
+        await p.save(form);
+        if (p.isConfigured(form)) {
+          s.setConfigured(true);
+          s.setEditing(false);
+          try {
+            const res = await p.sync();
+            await refreshSyncMeta();
+            addToast(`${p.name} ${$t('同步成功！本地')} ${res.localCount} ${$t('个 + 云端')} ${res.remoteCount} ${$t('个 =')} ${res.mergedCount} ${$t('个')}`, 'success');
+            onRestored?.();
+          } catch (_) {
+            try {
+              const data = await p.backup();
+              await refreshSyncMeta();
+              addToast(`${p.name} ${$t('配置已保存，已上传')} ${data.count} ${$t('个服务器')}`, 'success');
+            } catch (e) {
+              addToast(`${p.name} ${$t('配置已保存，但同步失败，可稍后手动上传')}`, 'warning');
+            }
+          }
+        } else {
+          addToast(`${p.name} ${$t('配置已保存')}`, 'success');
+        }
+      } catch (err) {
+        addToast(err instanceof Error ? err : String(err), 'error');
+      } finally {
+        s.setLoading(false);
+      }
+    };
+  }
+
+  const confirmFTPConnection = async (form: FTPForm) => {
     const port = parseConnectionTestPort(form.port);
-    const result = await PROVIDERS.ftp.test(form);
+    // ProviderDefinition.test 声明为 Promise<unknown>，此处按 wailsjs 模型收窄
+    const result = await PROVIDERS.ftp.test(form) as config.FTPConnectionTestResult;
     const certificate = result?.certificateApprovalRequired;
     if (!certificate) return;
 
@@ -1725,9 +1829,10 @@ export default function SettingsModal({
     );
   };
 
-  const confirmSFTPConnection = async (form) => {
+  const confirmSFTPConnection = async (form: SFTPForm) => {
     const port = parseConnectionTestPort(form.port);
-    const result = await PROVIDERS.sftp.test(form);
+    // ProviderDefinition.test 声明为 Promise<unknown>，此处按 wailsjs 模型收窄
+    const result = await PROVIDERS.sftp.test(form) as config.SFTPConnectionTestResult;
     const mismatch = result?.hostKeyMismatch;
     if (!mismatch) return;
 
@@ -1757,7 +1862,7 @@ export default function SettingsModal({
     );
   };
 
-  const confirmSecureProviders = async (providerIds) => {
+  const confirmSecureProviders = async (providerIds: ProviderKey[]) => {
     for (const providerId of [...new Set(providerIds)]) {
       if (providerId === 'ftp' && providerState.ftp.configured) {
         await confirmFTPConnection({ ...providerState.ftp.form });
@@ -1767,23 +1872,25 @@ export default function SettingsModal({
     }
   };
 
-  const makeSecureTestHandler = (key, confirmConnection) => async () => {
+  function makeSecureTestHandler<K extends ProviderKey>(key: K, confirmConnection: (form: ProviderFormMap[K]) => Promise<void>) {
     const p = PROVIDERS[key];
     const s = providerState[key];
-    const form = { ...s.form };
-    s.setTesting(true);
-    s.setTestResult(null);
-    try {
-      await confirmConnection(form);
-      s.setTestResult('ok');
-      addToast(`${p.name} ${$t('连接测试成功 ✓')}`, 'success');
-    } catch (err) {
-      s.setTestResult('fail');
-      addToast(`${p.name} ${$t('连接测试失败')}: ${err}`, 'error');
-    } finally {
-      s.setTesting(false);
-    }
-  };
+    return async () => {
+      const form = { ...s.form };
+      s.setTesting(true);
+      s.setTestResult(null);
+      try {
+        await confirmConnection(form);
+        s.setTestResult('ok');
+        addToast(`${p.name} ${$t('连接测试成功 ✓')}`, 'success');
+      } catch (err) {
+        s.setTestResult('fail');
+        addToast(`${p.name} ${$t('连接测试失败')}: ${err}`, 'error');
+      } finally {
+        s.setTesting(false);
+      }
+    };
+  }
 
   const handleTest = makeTestHandler('webdav');
   const handleSave = makeSaveHandler('webdav');
@@ -1794,27 +1901,29 @@ export default function SettingsModal({
   const handleTestSFTP = makeSecureTestHandler('sftp', confirmSFTPConnection);
   const handleSaveSFTP = makeSaveHandler('sftp', confirmSFTPConnection);
 
-  const loadRestoreBackups = async (providerId) => {
+  const loadRestoreBackups = async (providerId: string) => {
+    // PROVIDERS 仅含 4 个 key；运行期 providerId 均来自 configuredProviderIds()/syncMode 选项
+    const providerKey = providerId as ProviderKey;
     setLoadingBackups(true);
     try {
-      const p = PROVIDERS[providerId];
-      await confirmSecureProviders([providerId]);
+      const p = PROVIDERS[providerKey];
+      await confirmSecureProviders([providerKey]);
       const list = await p.list();
       if (!list || list.length === 0) {
-        setFailedRestoreProviders(prev => [...new Set([...prev, providerId])]);
+        setFailedRestoreProviders(prev => [...new Set([...prev, providerKey])]);
         addToast($t('云端未找到任何备份文件') + '，' + $t('请重新选择'), 'error');
         if (syncMode === 'all') setConfirmRestoreProvider(true);
         return;
       }
-      list.sort((a, b) => new Date(b.time) - new Date(a.time));
-      setRestoreProvider(providerId);
+      list.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+      setRestoreProvider(providerKey);
       setBackupsList(list);
       setSelectedBackup(list[0].name);
       setConfirmRestoreProvider(false);
       setConfirmRestore(true);
     } catch (err) {
-      setFailedRestoreProviders(prev => [...new Set([...prev, providerId])]);
-      addToast($t('获取备份列表失败') + ': ' + err + '，' + $t('请重新选择'), 'error');
+      setFailedRestoreProviders(prev => [...new Set([...prev, providerKey])]);
+      addToast($t('获取备份列表失败') + ': ' + String(err) + '，' + $t('请重新选择'), 'error');
       if (syncMode === 'all') setConfirmRestoreProvider(true);
     } finally {
       setLoadingBackups(false);
@@ -1835,7 +1944,7 @@ export default function SettingsModal({
     }
   };
 
-  const doRestore = async (password) => {
+  const doRestore = async (password?: string) => {
     if (!selectedBackup || !restoreProvider) return;
     setRestoring(true);
     try {
@@ -1882,7 +1991,8 @@ export default function SettingsModal({
   const handleSync = async () => {
     setSyncing(true);
     try {
-      await confirmSecureProviders(syncMode === 'all' ? configuredProviderIds() : [syncMode]);
+      // syncMode 非 'all' 时必为 4 个 provider key 之一
+      await confirmSecureProviders(syncMode === 'all' ? configuredProviderIds() : [syncMode as ProviderKey]);
 
       // 先读目标云，再决定是否应用本地删除墓碑（不是点切换模式就弹）
       try {
@@ -1927,14 +2037,19 @@ export default function SettingsModal({
 
       const sync = syncMode === 'all'
         ? () => AppGo.SyncAllProviders()
-        : () => (PROVIDERS[syncMode] || PROVIDERS.webdav).sync();
+        : () => (PROVIDERS[syncMode as ProviderKey] || PROVIDERS.webdav).sync();
       const { result: res, cancelled } = await syncWithRecoveryPassword({
         sync,
         retry: (password) => AppGo.SyncWithRecoveryPassword(password),
-        prompt: (...args) => settingsPrompt(...args),
-        t: $t,
+        // 保持原 spread 语义（按位置透传）；无 checkbox 场景恒为 string | null，非 string 视作取消
+        prompt: async (title, placeholder, message, okLabel, options) => {
+          const value = await settingsPrompt(title, placeholder, message, okLabel, options as LuminDialogPromptOptions);
+          return typeof value === 'string' ? value : null;
+        },
+        // $t 是严格 key 签名（I18nKey），此处逃生为宽松 (key: string)
+        t: (key: string) => $t(key as I18nKey),
       });
-      if (cancelled) return;
+      if (cancelled || !res) return;
       await refreshSyncMeta();
       addToast(`${$t('合并同步成功！本地')} ${res.localCount} ${$t('个 + 云端')} ${res.remoteCount} ${$t('个 =')} ${res.mergedCount} ${$t('个')}`, 'success');
       onRestored?.();
@@ -1952,15 +2067,15 @@ export default function SettingsModal({
     localStorage.setItem('pingEnabled', String(next));
     window.dispatchEvent(new Event('pingEnabledChanged'));
   };
-  const handleProbeIntervalChange = (s) => { setProbeInterval(s); localStorage.setItem('probeInterval', String(s)); window.dispatchEvent(new Event('probeIntervalChanged')); };
-  const handlePingIntervalChange = (s) => {
+  const handleProbeIntervalChange = (s: number) => { setProbeInterval(s); localStorage.setItem('probeInterval', String(s)); window.dispatchEvent(new Event('probeIntervalChanged')); };
+  const handlePingIntervalChange = (s: number) => {
     // Banner 模式半开 SSH 成本更高：不允许低于 15s，避免短时间多次登录失败类告警。
     const next = pingMode === 'banner' ? Math.max(15, Number(s) || 15) : s;
     setPingInterval(next);
     localStorage.setItem('pingInterval', String(next));
     window.dispatchEvent(new Event('pingIntervalChanged'));
   };
-  const handlePingModeChange = (mode) => {
+  const handlePingModeChange = (mode: string) => {
     setPingMode(mode);
     localStorage.setItem('pingMode', mode);
     window.dispatchEvent(new Event('pingModeChanged'));
@@ -1975,9 +2090,9 @@ export default function SettingsModal({
       }
     }
   };
-  const handleSyncModeChange = async (mode) => { setSyncMode(mode); try { await AppGo.SetSyncMode(mode); } catch (_) {} };
-  const handleAutoSyncEnabledChange = async (enabled) => { setAutoSyncEnabled(enabled); try { await AppGo.SetAutoSyncEnabled(enabled); } catch (_) {} };
-  const handlePruneSyncTombstones = async (days) => {
+  const handleSyncModeChange = async (mode: string) => { setSyncMode(mode); try { await AppGo.SetSyncMode(mode); } catch (_) {} };
+  const handleAutoSyncEnabledChange = async (enabled: boolean) => { setAutoSyncEnabled(enabled); try { await AppGo.SetAutoSyncEnabled(enabled); } catch (_) {} };
+  const handlePruneSyncTombstones = async (days: number) => {
     const total = (syncTombstoneStats?.connections || 0) + (syncTombstoneStats?.credentials || 0);
     if (total <= 0) return;
     const dayNum = Number(days);
@@ -2008,7 +2123,7 @@ export default function SettingsModal({
     }
   };
 
-  const changeRecoveryPassword = async (password) => {
+  const changeRecoveryPassword = async (password: string) => {
     setRecoveryPasswordChanging(true);
     try {
       try {
@@ -2100,7 +2215,7 @@ export default function SettingsModal({
             </div>
             {settingsSearchQuery.trim() ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, overflowY: 'auto', padding: '0 4px 4px' }}>
-                <div style={{ padding: '0 6px', fontSize: 11, color: 'var(--text-tertiary)' }}>{$t('搜索结果')} · {settingsSearchResults.length}</div>
+                <div style={{ padding: '0 6px', fontSize: 11, color: 'var(--text-tertiary)' }}>{$t('搜索结果' as I18nKey)} · {settingsSearchResults.length}</div>
                 {settingsSearchResults.length > 0 ? settingsSearchResults.map((result) => (
                   <button
                     type="button"
@@ -2150,7 +2265,7 @@ export default function SettingsModal({
                   fontSize: 13,
                 }}
               >
-                <span style={{ display: 'inline-flex', alignItems: 'center' }}>{(() => { const IC = TAB_ICON[tab.id]; return IC ? <IC size={15} /> : null; })()}</span> {$t(TAB_LABELS[tab.id])}
+                <span style={{ display: 'inline-flex', alignItems: 'center' }}>{(() => { const IC = TAB_ICON[tab.id]; return IC ? <IC size={15} /> : null; })()}</span> {$t(TAB_LABELS[tab.id] as I18nKey)}
               </div>
             ))}
           </div>
@@ -2252,7 +2367,7 @@ export default function SettingsModal({
                 onFileManagerSmartUncompressConflictStrategyChange={handleFileManagerSmartUncompressConflictStrategyChange}
                 fileManagerAutoRefreshDisabled={fileManagerAutoRefreshDisabled}
                 onToggleFileManagerAutoRefreshDisabled={handleToggleFileManagerAutoRefreshDisabled}
-                fileManagerMaxEditSizeMB={fileManagerMaxEditSizeMB}
+                fileManagerMaxEditSizeMB={Number(fileManagerMaxEditSizeMB)}
                 onFileManagerMaxEditSizeChange={handleFileManagerMaxEditSizeChange}
                 fileManagerDefaultOpenMode={fileManagerDefaultOpenMode}
                 onFileManagerDefaultOpenModeChange={handleFileManagerDefaultOpenModeChange}
@@ -2276,17 +2391,17 @@ export default function SettingsModal({
                 fileManagerDownloadDefaultDir={fileManagerDownloadDefaultDir}
                 onFileManagerDownloadDefaultDirChange={handleFileManagerUploadSettingChange('fileManagerDownloadDefaultDir', setFileManagerDownloadDefaultDir)}
                 fileManagerDownloadDefaultDirPreview={resolveFileManagerDownloadDirPreview(fileManagerDownloadDefaultDir, programDirectory)}
-                fileManagerUploadChunkSizeKiB={fileManagerUploadChunkSizeKiB}
+                fileManagerUploadChunkSizeKiB={Number(fileManagerUploadChunkSizeKiB)}
                 onFileManagerUploadChunkSizeKiBChange={handleFileManagerUploadSettingChange('fileManagerUploadChunkSizeKiB', setFileManagerUploadChunkSizeKiB)}
-                fileManagerUploadMaxFiles={fileManagerUploadMaxFiles}
+                fileManagerUploadMaxFiles={Number(fileManagerUploadMaxFiles)}
                 onFileManagerUploadMaxFilesChange={handleFileManagerUploadSettingChange('fileManagerUploadMaxFiles', setFileManagerUploadMaxFiles)}
-                fileManagerUploadMaxChunksPerFile={fileManagerUploadMaxChunksPerFile}
+                fileManagerUploadMaxChunksPerFile={Number(fileManagerUploadMaxChunksPerFile)}
                 onFileManagerUploadMaxChunksPerFileChange={handleFileManagerUploadSettingChange('fileManagerUploadMaxChunksPerFile', setFileManagerUploadMaxChunksPerFile)}
-                fileManagerUploadGlobalInflightLimit={fileManagerUploadGlobalInflightLimit}
+                fileManagerUploadGlobalInflightLimit={Number(fileManagerUploadGlobalInflightLimit)}
                 onFileManagerUploadGlobalInflightLimitChange={handleFileManagerUploadSettingChange('fileManagerUploadGlobalInflightLimit', setFileManagerUploadGlobalInflightLimit)}
-                transferMaxPacketKiB={transferMaxPacketKiB}
+                transferMaxPacketKiB={Number(transferMaxPacketKiB)}
                 onTransferMaxPacketKiBChange={handleTransferNumberChange(setTransferMaxPacketKiB, 'maxPacketKiB')}
-                transferMaxRequestsPerFile={transferMaxRequestsPerFile}
+                transferMaxRequestsPerFile={Number(transferMaxRequestsPerFile)}
                 onTransferMaxRequestsPerFileChange={handleTransferNumberChange(setTransferMaxRequestsPerFile, 'maxRequestsPerFile')}
                 transferConcurrentWrites={transferConcurrentWrites}
                 onToggleTransferConcurrentWrites={handleToggleTransferConcurrentWrites}
@@ -2304,7 +2419,6 @@ export default function SettingsModal({
                 onProgramFontSearchQueryChange={setProgramFontSearchQuery}
                 onAddProgramFonts={handleAddProgramFonts}
                 programFontImporting={programFontImporting}
-                programFontDeleting={programFontDeleting}
                 onDeleteProgramFont={(fileName) => { void handleDeleteProgramFont(fileName); }}
                 programFontAssignments={programFontAssignments}
                 onProgramFontDragStart={handleProgramFontDragStart}
@@ -2313,7 +2427,9 @@ export default function SettingsModal({
                 onProgramFontDragLeave={handleProgramFontDragLeave}
                 onProgramFontDrop={(target, fileName) => { void handleProgramFontDrop(target, fileName); }}
                 onProgramFontReset={(target) => { void handleProgramFontReset(target); }}
-                activeProgramFontDropTarget={activeProgramFontDropTarget}
+                activeProgramFontDropTarget={activeProgramFontDropTarget || null}
+                // AppearanceTab 的 programFontDeleting 为 string | null，仅作 truthiness 使用
+                programFontDeleting={programFontDeleting ? 'busy' : null}
                 terminalFontSize={terminalFontSize}
                 onTerminalFontSizeChange={handleTerminalFontChange}
                 terminalLocalEcho={terminalLocalEcho}
@@ -2331,7 +2447,8 @@ export default function SettingsModal({
                 onKeywordRulesReset={handleKeywordRulesReset}
                 terminalBgColor={(() => { try { return getTerminalTheme()?.container?.containerBg || ''; } catch (_) { return ''; } })()}
                 themePackages={themePackages}
-                themePackageSettings={themePackageSettings}
+                // AppearanceTab 本地 ThemePackageSettings 带索引签名（宽松形状），theme.ts 接口无索引签名，桥接
+                themePackageSettings={themePackageSettings as unknown as { lightThemePackageId?: string; darkThemePackageId?: string; [key: string]: unknown }}
                 themeMode={forceDarkTheme ? 'dark' : themeMode}
                 onThemeChange={forceDarkTheme ? () => {} : handleThemeChange}
                 onSelectLightThemePackage={(packageId) => { void handleSelectThemePackage('light', packageId); }}
@@ -2419,7 +2536,8 @@ export default function SettingsModal({
                 sftpTestResult={sftpTestResult}
                 onTestSFTP={handleTestSFTP}
                 onSaveSFTP={handleSaveSFTP}
-                setSftpForm={setSftpForm}
+                // SyncTab 期待宽松 ProviderForm（Record<string, string|number>），Dispatch 逆变不兼容需桥接
+                setSftpForm={setSftpForm as React.Dispatch<React.SetStateAction<Record<string, string | number>>>}
                 lastSyncTime={lastSyncTime}
                 syncTombstoneStats={syncTombstoneStats}
                 onPruneSyncTombstones={handlePruneSyncTombstones}

@@ -1811,4 +1811,11 @@ export default {
   "AI 对话数据已迁移到新目录。": "AI-gespreksgegevens zijn gemigreerd naar de nieuwe map.",
   "恢复为默认目录？数据将自动迁移到默认目录。": "Standaardmap herstellen? Gegevens worden automatisch naar de standaardmap gemigreerd.",
   "AI 对话数据已迁移到默认目录。": "AI-gespreksgegevens zijn gemigreerd naar de standaardmap.",
+  "AI 输入框": "AI-invoerveld",
+  "搜索结果": "Zoekresultaten",
+  "终端输出搜索": "Zoeken in terminaluitvoer",
+  "搜索命令历史": "Zoeken in opdrachtgeschiedenis",
+  "当前目录路径": "Pad van de huidige map",
+  "清空输入": "Invoer wissen",
+  "增大后可能提高同一会话内的 SFTP/SSH 通道占用": "kan het SFTP/SSH-kanaalgebruik in dezelfde sessie verhogen",
 };

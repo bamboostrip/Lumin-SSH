@@ -1811,4 +1811,11 @@ export default {
   "AI 对话数据已迁移到新目录。": "AI sohbet verileri yeni dizine taşındı.",
   "恢复为默认目录？数据将自动迁移到默认目录。": "Varsayılan dizine geri yüklensin mi? Veriler otomatik olarak varsayılan dizine taşınacaktır.",
   "AI 对话数据已迁移到默认目录。": "AI sohbet verileri varsayılan dizine taşındı.",
+  "AI 输入框": "AI giriş kutusu",
+  "搜索结果": "Arama sonuçları",
+  "终端输出搜索": "Terminal çıktısında ara",
+  "搜索命令历史": "Komut geçmişinde ara",
+  "当前目录路径": "Geçerli dizin yolu",
+  "清空输入": "Girişi temizle",
+  "增大后可能提高同一会话内的 SFTP/SSH 通道占用": "aynı oturumda SFTP/SSH kanal kullanımını artırabilir",
 };

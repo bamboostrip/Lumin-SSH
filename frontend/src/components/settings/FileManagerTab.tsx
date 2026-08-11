@@ -404,7 +404,7 @@ export default function FileManagerTab({
           <SettingsDivider />
           <SettingRow
             definition={fmSettings.fields.maxTransferTasks}
-            description={renderWarningDescription(withTransferDefaultValue($t('控制当前会话内同时进行的上传和下载任务数量,每个文件或文件夹都算一个任务'), '6'), $t('增大后可能提高同一会话内的 SFTP/SSH 通道占用' as I18nKey))}
+            description={renderWarningDescription(withTransferDefaultValue($t('控制当前会话内同时进行的上传和下载任务数量,每个文件或文件夹都算一个任务'), '6'), $t('增大后可能提高同一会话内的 SFTP/SSH 通道占用'))}
             action={<input id="fm-max-transfer-tasks" name="fm-max-transfer-tasks" className="input" type="number" autoComplete="off" value={fileManagerUploadMaxFiles} onChange={onFileManagerUploadMaxFilesChange} style={{ width: 160, textAlign: 'right' }} />}
           />
           <SettingsDivider />

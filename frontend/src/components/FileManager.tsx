@@ -7351,7 +7351,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           className="path-input"
           type="text"
           name="directoryPath"
-          aria-label={t('当前目录路径' as I18nKey)}
+          aria-label={t('当前目录路径')}
           value={editingPath !== null ? editingPath : currentPath}
           onChange={(e) => setEditingPath(e.target.value)}
           onFocus={() => setEditingPath(currentPath)}
@@ -7467,7 +7467,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
               <button
                 type="button"
                 className="file-locator-clear-btn"
-                aria-label={t('清空输入' as I18nKey)}
+                aria-label={t('清空输入')}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
                   setFileLocatorQuery('');

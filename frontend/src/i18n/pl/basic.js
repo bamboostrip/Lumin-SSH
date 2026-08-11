@@ -1811,4 +1811,11 @@ export default {
   "AI 对话数据已迁移到新目录。": "Dane rozmów AI zostały przeniesione do nowego katalogu.",
   "恢复为默认目录？数据将自动迁移到默认目录。": "Przywrócić domyślny katalog? Dane zostaną automatycznie przeniesione do domyślnego katalogu.",
   "AI 对话数据已迁移到默认目录。": "Dane rozmów AI zostały przeniesione do domyślnego katalogu.",
+  "AI 输入框": "Pole wprowadzania AI",
+  "搜索结果": "Wyniki wyszukiwania",
+  "终端输出搜索": "Szukaj w wyjściu terminala",
+  "搜索命令历史": "Szukaj w historii poleceń",
+  "当前目录路径": "Ścieżka bieżącego katalogu",
+  "清空输入": "Wyczyść pole",
+  "增大后可能提高同一会话内的 SFTP/SSH 通道占用": "może zwiększyć użycie kanałów SFTP/SSH w tej samej sesji",
 };

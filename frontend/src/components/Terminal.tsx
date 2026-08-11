@@ -3479,8 +3479,7 @@ export default function Terminal({
           <input
             name="terminal-search"
             autoComplete="off"
-            // 「终端输出搜索」缺失 i18n 键（t() 原样兜底），逃生留待收尾补键
-            aria-label={t('终端输出搜索' as I18nKey)}
+            aria-label={t('终端输出搜索')}
             ref={termSearchInputRef}
             value={termSearchQuery}
             onChange={(e) => setTermSearchQuery(e.target.value)}
@@ -4177,8 +4176,7 @@ export default function Terminal({
                 ref={historySearchInputRef}
                 name="terminal-history-search"
                 autoComplete="off"
-                // 「搜索命令历史」缺失 i18n 键（t() 原样兜底），逃生留待收尾补键
-                aria-label={t('搜索命令历史' as I18nKey)}
+                aria-label={t('搜索命令历史')}
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 onKeyDown={handleHistorySearchKeyDown}

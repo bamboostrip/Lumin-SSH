@@ -1811,4 +1811,11 @@ export default {
   "AI 对话数据已迁移到新目录。": "Datele conversațiilor AI au fost migrate în noul director.",
   "恢复为默认目录？数据将自动迁移到默认目录。": "Restabiliți directorul implicit? Datele vor fi migrate automat în directorul implicit.",
   "AI 对话数据已迁移到默认目录。": "Datele conversațiilor AI au fost migrate în directorul implicit.",
+  "AI 输入框": "Câmp de introducere AI",
+  "搜索结果": "Rezultatele căutării",
+  "终端输出搜索": "Căutare în ieșirea terminalului",
+  "搜索命令历史": "Căutare în istoricul comenzilor",
+  "当前目录路径": "Calea directorului curent",
+  "清空输入": "Golește intrarea",
+  "增大后可能提高同一会话内的 SFTP/SSH 通道占用": "poate crește utilizarea canalelor SFTP/SSH în aceeași sesiune",
 };

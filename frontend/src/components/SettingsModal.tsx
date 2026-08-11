@@ -2215,7 +2215,7 @@ export default function SettingsModal({
             </div>
             {settingsSearchQuery.trim() ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, overflowY: 'auto', padding: '0 4px 4px' }}>
-                <div style={{ padding: '0 6px', fontSize: 11, color: 'var(--text-tertiary)' }}>{$t('搜索结果' as I18nKey)} · {settingsSearchResults.length}</div>
+                <div style={{ padding: '0 6px', fontSize: 11, color: 'var(--text-tertiary)' }}>{$t('搜索结果')} · {settingsSearchResults.length}</div>
                 {settingsSearchResults.length > 0 ? settingsSearchResults.map((result) => (
                   <button
                     type="button"

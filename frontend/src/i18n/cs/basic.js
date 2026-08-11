@@ -1811,4 +1811,11 @@ export default {
   "AI 对话数据已迁移到新目录。": "Data konverzací AI byla přesunuta do nového adresáře.",
   "恢复为默认目录？数据将自动迁移到默认目录。": "Obnovit výchozí adresář? Data budou automaticky přesunuta do výchozího adresáře.",
   "AI 对话数据已迁移到默认目录。": "Data konverzací AI byla přesunuta do výchozího adresáře.",
+  "AI 输入框": "Pole pro zadání AI",
+  "搜索结果": "Výsledky hledání",
+  "终端输出搜索": "Hledat ve výstupu terminálu",
+  "搜索命令历史": "Hledat v historii příkazů",
+  "当前目录路径": "Cesta k aktuálnímu adresáři",
+  "清空输入": "Vymazat vstup",
+  "增大后可能提高同一会话内的 SFTP/SSH 通道占用": "může zvýšit využití kanálů SFTP/SSH ve stejné relaci",
 };

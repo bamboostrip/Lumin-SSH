@@ -1811,4 +1811,11 @@ export default {
   "AI 对话数据已迁移到新目录。": "Dữ liệu hội thoại AI đã được di chuyển sang thư mục mới.",
   "恢复为默认目录？数据将自动迁移到默认目录。": "Khôi phục về thư mục mặc định? Dữ liệu sẽ được tự động di chuyển sang thư mục mặc định.",
   "AI 对话数据已迁移到默认目录。": "Dữ liệu hội thoại AI đã được di chuyển sang thư mục mặc định.",
+  "AI 输入框": "Hộp nhập AI",
+  "搜索结果": "Kết quả tìm kiếm",
+  "终端输出搜索": "Tìm kiếm đầu ra thiết bị đầu cuối",
+  "搜索命令历史": "Tìm kiếm lịch sử lệnh",
+  "当前目录路径": "Đường dẫn thư mục hiện tại",
+  "清空输入": "Xóa nội dung nhập",
+  "增大后可能提高同一会话内的 SFTP/SSH 通道占用": "có thể làm tăng mức sử dụng kênh SFTP/SSH trong cùng phiên",
 };

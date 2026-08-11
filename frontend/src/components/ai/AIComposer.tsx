@@ -1869,8 +1869,7 @@ export default function AIComposer({
               <textarea
                 ref={textareaRef}
                 name="aiComposer"
-                // 缺少「AI 输入框」i18n 键（28 语言待补，收尾阶段统一处理）
-                aria-label={t('AI 输入框' as I18nKey)}
+                aria-label={t('AI 输入框')}
                 value={value}
                 onChange={handleTextareaChange}
                 onKeyDown={handleKeyDown}

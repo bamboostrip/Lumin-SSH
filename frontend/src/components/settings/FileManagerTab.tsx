@@ -151,8 +151,8 @@ export default function FileManagerTab({
       {renderChannelImpactHint(warningText)}
     </>
   );
-  // settingDefinitions.ts 为 @ts-nocheck 桥接（无类型，推断 Readonly<{}>），此处按实际结构断言
-  const settingsData = settings as { fileManager: { node: SettingsDefinitionNode; fields: Record<string, SettingsDefinitionNode>; sections: Record<string, SettingsDefinitionNode> } };
+  // settingDefinitions.ts 已类型化，直接使用 settings 注册表
+  const settingsData = settings;
   const fmSettings = settingsData.fileManager;
   return (
     <SettingsTabRoot>

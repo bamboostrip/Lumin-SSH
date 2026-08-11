@@ -157,8 +157,8 @@ export default function AppTab({ CURRENT_VERSION, BUILD_TIME, updateInfo, checki
   const [showRefreshedLogo, setShowRefreshedLogo] = useState(false);
   const [resolvedThemeMode, setResolvedThemeMode] = useState<'light' | 'dark'>(() => getResolvedThemeMode());
   const logoTransitionImg = resolvedThemeMode === 'light' ? logoLightImg : logoDarkImg;
-  // settingDefinitions.ts 为 @ts-nocheck 桥接（无类型，推断 Readonly<{}>），此处按实际结构断言
-  const settingsData = settings as { app: { node: SettingsDefinitionNode; fields: Record<string, SettingsDefinitionNode>; sections: Record<string, SettingsDefinitionNode> } };
+  // settingDefinitions.ts 已类型化，直接使用 settings 注册表
+  const settingsData = settings;
   const appSettings = settingsData.app;
 
   useEffect(() => {

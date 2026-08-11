@@ -8,11 +8,11 @@ import { settings } from './settingDefinitions'
 export default function RuntimeEnvironmentTab() {
   const [runtimeEnvironmentStatus, setRuntimeEnvironmentStatus] = useState(DEFAULT_RUNTIME_ENVIRONMENT_STATUS)
   const [installing, setInstalling] = useState(false)
-  // settingDefinitions.ts 为 @ts-nocheck 桥接（无类型，推断 Readonly<{}>），此处按实际结构断言
-  const runtimeSettings = settings as { runtimeEnvironment: { sections: { environment: SettingsDefinitionNode }; fields: { uv: SettingsDefinitionNode; uvBinary: SettingsDefinitionNode } } };
-  const sectionNode = runtimeSettings.runtimeEnvironment.sections.environment
-  const uvNode = runtimeSettings.runtimeEnvironment.fields.uv
-  const uvBinaryNode = runtimeSettings.runtimeEnvironment.fields.uvBinary
+  // settingDefinitions.ts 已类型化，直接使用 settings 注册表
+  const runtimeSettings = settings.runtimeEnvironment;
+  const sectionNode = runtimeSettings.sections.environment!
+  const uvNode = runtimeSettings.fields.uv!
+  const uvBinaryNode = runtimeSettings.fields.uvBinary!
 
   const refreshRuntimeEnvironmentStatus = useCallback(async () => {
     const status = await getRuntimeEnvironmentStatus()

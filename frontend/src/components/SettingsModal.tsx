@@ -86,19 +86,6 @@ interface ProviderStateEntry<F extends Record<string, unknown>> {
 
 interface SummaryField { label: string; value: string; primary?: boolean; fullWidth?: boolean; }
 
-/** 设置搜索定义（settingDefinitions.ts 为 @ts-nocheck 桥接（无类型），按实际结构断言） */
-interface SettingsSearchDefinition {
-  id: string;
-  type: string;
-  tab: string;
-  titleKey: string;
-  descriptionKey?: string;
-  section?: string;
-  breadcrumbTitleKeys?: string[];
-  targetId?: string;
-  providerId?: string;
-}
-
 const TAB_ICON: Record<string, LucideIcon> = { general: SlidersHorizontal, network: Globe, fileManager: Folder, runtimeEnvironment: Database, appearance: Palette, shortcuts: Keyboard, sync: Cloud, app: Info };
 
 const TAB_LABELS: Record<string, string> = { general: '通用', network: '网络', fileManager: '文件管理器', runtimeEnvironment: '运行环境', appearance: '外观', shortcuts: '快捷键', sync: '同步与云', app: '关于' };
@@ -610,11 +597,11 @@ export default function SettingsModal({
     }
   }, [initialTab])
 
-  // settingDefinitions.ts 为 @ts-nocheck 桥接（无类型，推断 Readonly<{}>），按实际结构断言（同 AppTab 处理方式）
+  // settingDefinitions.ts 已类型化，直接使用导出定义
   const settingsSectionTitleMap = useMemo(() => Object.fromEntries(
-    (SETTINGS_SECTIONS as unknown as Array<{ id: string; titleKey: string }>).map((item): [string, string] => [item.id, $t(item.titleKey as I18nKey)]),
+    SETTINGS_SECTIONS.map((item): [string, string] => [item.id || '', $t((item.titleKey || '') as I18nKey)]),
   ), [language]);
-  const availableSettingsSearchDefinitions = useMemo(() => (SETTINGS_SEARCH_DEFINITIONS as unknown as SettingsSearchDefinition[]).filter((item) => {
+  const availableSettingsSearchDefinitions = useMemo(() => SETTINGS_SEARCH_DEFINITIONS.filter((item) => {
     if (supportsWebviewGpuDisable) {
       return true;
     }

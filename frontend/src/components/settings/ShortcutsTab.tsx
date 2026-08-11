@@ -46,8 +46,8 @@ interface ShortcutsTabProps {
 }
 
 export default function ShortcutsTab({ shortcuts, listeningKey, onSetListeningKey, onResetShortcuts }: ShortcutsTabProps) {
-  // settingDefinitions.ts 为 @ts-nocheck 桥接（无类型，推断 Readonly<{}>），此处按实际结构断言
-  const sectionNode = (settings as { shortcuts: { sections: { terminal: SettingsDefinitionNode } } }).shortcuts.sections.terminal;
+  // settingDefinitions.ts 已类型化，直接使用 settings 注册表
+  const sectionNode = settings.shortcuts.sections.terminal!;
   const shortcutNodes = (sectionNode.children || []).flatMap((node) => node.children || []).filter((node) => node.type === 'field');
   const resetNode = (sectionNode.children || []).flatMap((node) => node.children || []).find((node) => node.type === 'action');
   return (

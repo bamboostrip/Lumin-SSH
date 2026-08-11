@@ -1,33 +1,65 @@
-// @ts-nocheck
-// TODO(tsx): 桥接模块自 .js 收编（阶段 6 关 allowJs），保持原运行语义，类型化留待后续
-function createSettingsNode(config) {
+// 桥接模块（自 .js 收编后类型化）：设置树定义与注册表构建
+import type { SettingsDefinitionNode } from './SharedComponents.tsx'
+
+/** 设置节点类型集合 */
+export type SettingsNodeType = 'root' | 'tab' | 'section' | 'panel' | 'conditional' | 'field' | 'field-group' | 'option' | 'action'
+
+/** 设置节点（宽松形状：config/extra 任意字段透传；含 normalize 产出字段） */
+export interface SettingsTreeNode extends SettingsDefinitionNode {
+  tab?: string;
+  section?: string;
+  parentId?: string;
+  providerId?: string;
+  targetId?: string;
+  breadcrumbTitleKeys?: string[];
+}
+
+/** 单个 Tab 的注册表（按 alias 索引 sections/fields） */
+export interface SettingsTabRegistry {
+  node: SettingsTreeNode
+  sections: Record<string, SettingsTreeNode>
+  fields: Record<string, SettingsTreeNode>
+}
+
+/** 搜索索引定义（buildSearchDefinitions 输出，字段归一化后必填） */
+export interface SettingsSearchDefinition {
+  id: string
+  type: string
+  tab: string
+  section: string
+  providerId: string
+  targetId: string
+  titleKey: string
+  descriptionKey: string
+  breadcrumbTitleKeys: string[]
+}
+
+function createSettingsNode(config: Record<string, unknown> | null | undefined): SettingsTreeNode {
   return {
     titleKey: '',
     descriptionKey: '',
-    targetId: config?.id || '',
-    keywords: [],
-    children: [],
+    targetId: (config?.id as string | undefined) || '',
     ...config,
     keywords: Array.isArray(config?.keywords) ? config.keywords : [],
-    children: Array.isArray(config?.children) ? config.children : [],
+    children: Array.isArray(config?.children) ? config.children as SettingsTreeNode[] : [],
   };
 }
 
-export function createSettingDefinition(config) {
+export function createSettingDefinition(config: Record<string, unknown> | null | undefined): SettingsTreeNode {
   return createSettingsNode(config);
 }
 
-export function createSettingsSectionDefinition(config) {
+export function createSettingsSectionDefinition(config: Record<string, unknown> | null | undefined): SettingsTreeNode {
   return createSettingsNode({
     type: 'section',
-    targetId: config?.targetId || config?.id || '',
+    targetId: (config?.targetId as string | undefined) || (config?.id as string | undefined) || '',
     ...config,
   });
 }
 
-const rootNode = (...children) => createSettingsNode({ type: 'root', id: 'settings', children });
-const tabNode = (id, titleKey, icon, children = []) => createSettingsNode({ type: 'tab', id, alias: id, titleKey, icon, children });
-const sectionNode = (tabId, alias, titleKey, children = [], extra = {}) => createSettingsSectionDefinition({
+const rootNode = (...children: SettingsTreeNode[]): SettingsTreeNode => createSettingsNode({ type: 'root', id: 'settings', children });
+const tabNode = (id: string, titleKey: string, icon: string, children: SettingsTreeNode[] = []): SettingsTreeNode => createSettingsNode({ type: 'tab', id, alias: id, titleKey, icon, children });
+const sectionNode = (tabId: string, alias: string, titleKey: string, children: SettingsTreeNode[] = [], extra: Record<string, unknown> = {}): SettingsTreeNode => createSettingsSectionDefinition({
   id: `${tabId}.section.${alias}`,
   tab: tabId,
   alias,
@@ -35,9 +67,9 @@ const sectionNode = (tabId, alias, titleKey, children = [], extra = {}) => creat
   children,
   ...extra,
 });
-const panelNode = (id, children = []) => createSettingsNode({ type: 'panel', id, children });
-const conditionalNode = (id, when, children = []) => createSettingsNode({ type: 'conditional', id, when, children });
-const fieldNode = (id, alias, titleKey, descriptionKey = '', extra = {}) => createSettingsNode({
+const panelNode = (id: string, children: SettingsTreeNode[] = []): SettingsTreeNode => createSettingsNode({ type: 'panel', id, children });
+const conditionalNode = (id: string, when: unknown, children: SettingsTreeNode[] = []): SettingsTreeNode => createSettingsNode({ type: 'conditional', id, when, children });
+const fieldNode = (id: string, alias: string, titleKey: string, descriptionKey = '', extra: Record<string, unknown> = {}): SettingsTreeNode => createSettingsNode({
   type: 'field',
   id,
   alias,
@@ -46,7 +78,7 @@ const fieldNode = (id, alias, titleKey, descriptionKey = '', extra = {}) => crea
   targetId: extra.targetId || id,
   ...extra,
 });
-const fieldGroupNode = (id, alias, titleKey, descriptionKey = '', children = [], extra = {}) => createSettingsNode({
+const fieldGroupNode = (id: string, alias: string, titleKey: string, descriptionKey = '', children: SettingsTreeNode[] = [], extra: Record<string, unknown> = {}): SettingsTreeNode => createSettingsNode({
   type: 'field-group',
   id,
   alias,
@@ -56,7 +88,7 @@ const fieldGroupNode = (id, alias, titleKey, descriptionKey = '', children = [],
   targetId: extra.targetId || id,
   ...extra,
 });
-const optionNode = (id, alias, titleKey, descriptionKey = '', extra = {}) => createSettingsNode({
+const optionNode = (id: string, alias: string, titleKey: string, descriptionKey = '', extra: Record<string, unknown> = {}): SettingsTreeNode => createSettingsNode({
   type: 'option',
   id,
   alias,
@@ -65,7 +97,7 @@ const optionNode = (id, alias, titleKey, descriptionKey = '', extra = {}) => cre
   targetId: extra.targetId || id,
   ...extra,
 });
-const actionNode = (id, alias, titleKey, descriptionKey = '', extra = {}) => createSettingsNode({
+const actionNode = (id: string, alias: string, titleKey: string, descriptionKey = '', extra: Record<string, unknown> = {}): SettingsTreeNode => createSettingsNode({
   type: 'action',
   id,
   alias,
@@ -75,12 +107,19 @@ const actionNode = (id, alias, titleKey, descriptionKey = '', extra = {}) => cre
   ...extra,
 });
 
-function normalizeSettingsTree(node, parent = null, context = { tab: '', section: '', providerId: '', breadcrumbs: [] }) {
-  const nextTab = node.type === 'tab' ? node.id : context.tab;
-  const nextSection = node.type === 'section' ? node.id : context.section;
+interface SettingsTreeContext {
+  tab: string;
+  section: string;
+  providerId: string;
+  breadcrumbs: string[];
+}
+
+function normalizeSettingsTree(node: SettingsTreeNode, parent: SettingsTreeNode | null = null, context: SettingsTreeContext = { tab: '', section: '', providerId: '', breadcrumbs: [] }): SettingsTreeNode {
+  const nextTab = node.type === 'tab' ? node.id || '' : context.tab;
+  const nextSection = node.type === 'section' ? node.id || '' : context.section;
   const nextProviderId = node.providerId || context.providerId || '';
   const breadcrumbTitleKeys = context.breadcrumbs;
-  const childBreadcrumbs = ['root', 'panel', 'conditional'].includes(node.type)
+  const childBreadcrumbs = (node.type ? ['root', 'panel', 'conditional'].includes(node.type) : false)
     ? context.breadcrumbs
     : (node.titleKey ? [...context.breadcrumbs, node.titleKey] : context.breadcrumbs);
   const normalizedNode = {
@@ -100,7 +139,7 @@ function normalizeSettingsTree(node, parent = null, context = { tab: '', section
   return Object.freeze({
     ...normalizedNode,
     children,
-  });
+  }) as SettingsTreeNode;
 }
 
 const settingsTreeSource = rootNode(
@@ -418,51 +457,53 @@ const settingsTreeSource = rootNode(
   ]),
 );
 
-function buildSettingsRegistry(root) {
-  const registry = {};
-  root.children.forEach((tabItem) => {
-    const tabRegistry = { node: tabItem, sections: {}, fields: {} };
-    const stack = [...tabItem.children];
+function buildSettingsRegistry(root: SettingsTreeNode): Record<string, SettingsTabRegistry> {
+  const registry: Record<string, SettingsTabRegistry> = {};
+  root.children?.forEach((tabItem) => {
+    const tabRegistry: SettingsTabRegistry = { node: tabItem, sections: {}, fields: {} };
+    const stack: SettingsTreeNode[] = [...(tabItem.children || [])];
     while (stack.length > 0) {
-      const current = stack.shift();
+      const current = stack.shift()!;
       if (current.type === 'section' && current.alias) {
         tabRegistry.sections[current.alias] = current;
       }
-      if (['field', 'field-group', 'option', 'action'].includes(current.type) && current.alias) {
+      if (current.type && ['field', 'field-group', 'option', 'action'].includes(current.type) && current.alias) {
         tabRegistry.fields[current.alias] = current;
       }
-      stack.unshift(...current.children);
+      stack.unshift(...(current.children || []));
     }
-    registry[tabItem.id] = Object.freeze(tabRegistry);
+    registry[tabItem.id || ''] = Object.freeze(tabRegistry);
   });
   return Object.freeze(registry);
 }
 
-function buildSearchDefinitions(root) {
-  const results = [];
-  const stack = [root];
+function buildSearchDefinitions(root: SettingsTreeNode): readonly SettingsSearchDefinition[] {
+  const results: SettingsSearchDefinition[] = [];
+  const stack: SettingsTreeNode[] = [root];
   while (stack.length > 0) {
-    const node = stack.shift();
-    if (['section', 'field', 'field-group', 'option', 'action'].includes(node.type) && node.titleKey) {
+    const node = stack.shift()!;
+    if (node.type && ['section', 'field', 'field-group', 'option', 'action'].includes(node.type) && node.titleKey) {
       results.push(Object.freeze({
-        id: node.id,
+        id: node.id || '',
         type: node.type,
-        tab: node.tab,
-        section: node.section,
+        tab: node.tab || '',
+        section: node.section || '',
         providerId: node.providerId || '',
-        targetId: node.targetId || node.id,
+        targetId: node.targetId || node.id || '',
         titleKey: node.titleKey,
         descriptionKey: node.descriptionKey || '',
         breadcrumbTitleKeys: Array.isArray(node.breadcrumbTitleKeys) ? node.breadcrumbTitleKeys : [],
-      }));
+      }) as SettingsSearchDefinition);
     }
-    stack.unshift(...node.children);
+    stack.unshift(...(node.children || []));
   }
   return Object.freeze(results);
 }
 
-export const SETTINGS_TREE = normalizeSettingsTree(settingsTreeSource);
-export const settings = buildSettingsRegistry(SETTINGS_TREE);
-export const SETTINGS_SECTIONS = Object.freeze(Object.values(settings).flatMap((group) => Object.values(group.sections)));
-export const SETTINGS_DEFINITIONS = Object.freeze(Object.values(settings).flatMap((group) => Object.values(group.fields)));
-export const SETTINGS_SEARCH_DEFINITIONS = buildSearchDefinitions(SETTINGS_TREE);
+export type SettingsTabId = 'general' | 'network' | 'fileManager' | 'runtimeEnvironment' | 'appearance' | 'shortcuts' | 'sync' | 'app';
+
+export const SETTINGS_TREE: SettingsTreeNode = normalizeSettingsTree(settingsTreeSource);
+export const settings: Record<SettingsTabId, SettingsTabRegistry> = buildSettingsRegistry(SETTINGS_TREE);
+export const SETTINGS_SECTIONS: readonly SettingsTreeNode[] = Object.freeze(Object.values(settings).flatMap((group) => Object.values(group.sections)));
+export const SETTINGS_DEFINITIONS: readonly SettingsTreeNode[] = Object.freeze(Object.values(settings).flatMap((group) => Object.values(group.fields)));
+export const SETTINGS_SEARCH_DEFINITIONS: readonly SettingsSearchDefinition[] = Object.freeze(buildSearchDefinitions(SETTINGS_TREE));

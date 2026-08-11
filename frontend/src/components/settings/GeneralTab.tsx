@@ -87,14 +87,14 @@ export default function GeneralTab({
   webviewGpuDisabled,
   onToggleWebviewGpuDisabled,
 }: GeneralTabProps) {
-  // settingDefinitions.ts 为 @ts-nocheck 桥接（无类型，推断 Readonly<{}>），此处按实际结构断言
-  const settingsData = settings as { general: { node: SettingsDefinitionNode; fields: Record<string, SettingsDefinitionNode>; sections: { rendering: SettingsDefinitionNode } } };
-  const generalTabNode = settingsData.general.node;
+  // settingDefinitions.ts 已类型化，直接使用 settings 注册表
+  const settingsData = settings.general;
+  const generalTabNode = settingsData.node;
   const fieldValuesById: Record<string, boolean> = {
-    [(settingsData.general.fields.rightClickPaste.id || '')]: terminalRightClickPasteOnEmpty,
-    [(settingsData.general.fields.leftClickCopy.id || '')]: terminalLeftClickCopyOnSelection,
-    [(settingsData.general.fields.terminalDoubleClick.id || '')]: terminalTabDoubleClickActionEnabled,
-    [(settingsData.general.fields.rememberWorkspace.id || '')]: rememberWorkspace,
+    [(settingsData.fields.rightClickPaste.id || '')]: terminalRightClickPasteOnEmpty,
+    [(settingsData.fields.leftClickCopy.id || '')]: terminalLeftClickCopyOnSelection,
+    [(settingsData.fields.terminalDoubleClick.id || '')]: terminalTabDoubleClickActionEnabled,
+    [(settingsData.fields.rememberWorkspace.id || '')]: rememberWorkspace,
   };
   const toggleBindings: Record<string, { checked: boolean; onChange: () => void }> = {
     confirmCloseSession: { checked: confirmCloseSession, onChange: onToggleConfirmCloseSession },
@@ -134,7 +134,7 @@ export default function GeneralTab({
     workspacePersistenceLevel: { value: workspacePersistenceLevel, onChange: onWorkspacePersistenceLevelChange },
   };
   const shouldRenderNode = (node: SettingsDefinitionNode) => {
-    if (node.id === settingsData.general.fields.webviewGpu.id) {
+    if (node.id === settingsData.fields.webviewGpu.id) {
       return supportsWebviewGpuDisable;
     }
     if (node.type === 'conditional') {
@@ -208,7 +208,7 @@ export default function GeneralTab({
   return (
     <SettingsTabRoot>
       {(generalTabNode.children || []).map((sectionNode) => {
-        if (sectionNode.id === settingsData.general.sections.rendering.id && !supportsWebviewGpuDisable) {
+        if (sectionNode.id === settingsData.sections.rendering!.id && !supportsWebviewGpuDisable) {
           return null;
         }
         const renderedItems = (sectionNode.children || []).flatMap((node) => renderNode(node));

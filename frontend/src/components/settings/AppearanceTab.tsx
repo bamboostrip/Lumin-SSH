@@ -132,8 +132,8 @@ export default function AppearanceTab({
     return String(font.displayName || '').toLowerCase().includes(query) || String(font.fileName || '').toLowerCase().includes(query);
   });
   const fontAssignments = programFontAssignments || { uiFileName: '', terminalFileName: '', aiFileName: '' };
-  // settingDefinitions.ts 为 @ts-nocheck 桥接（无类型，推断 Readonly<{}>），此处按实际结构断言
-  const settingsData = settings as { appearance: { node: SettingsDefinitionNode; fields: Record<string, SettingsDefinitionNode>; sections: Record<string, SettingsDefinitionNode> } };
+  // settingDefinitions.ts 已类型化，直接使用 settings 注册表
+  const settingsData = settings;
   const appearanceSettings = settingsData.appearance;
   const fontTargets = [
     {

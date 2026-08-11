@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { useTranslation } from '../i18n.js';
+import { useTranslation } from '../i18n.ts';
 import { Monitor, Pencil, Link, Trash2, X, SquarePen, Folder, FolderOpen, ChevronUp, ChevronDown, Copy, Trash, ChevronLeft, ChevronRight, Download, PenLine } from 'lucide-react';
-import { clampMenuPosition } from '../utils/menuPosition.js';
+import { clampMenuPosition } from '../utils/menuPosition.ts';
 import Tiptop from './Tiptop.jsx';
-import type { config } from '../../wailsjs/go/models.js';
-import type { ServerPingResult } from '../hooks/useServerPing.js';
-import type { ServerListViewMode } from '../hooks/useDashboardPreferences.js';
+import type { config } from '../../wailsjs/go/models.ts';
+import type { ServerPingResult } from '../hooks/useServerPing.ts';
+import type { ServerListViewMode } from '../hooks/useDashboardPreferences.ts';
 
 const MENU_ESTIMATED_WIDTH = 196;
 const MENU_ESTIMATED_HEIGHT = 160;

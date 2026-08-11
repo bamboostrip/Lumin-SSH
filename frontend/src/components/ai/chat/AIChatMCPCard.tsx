@@ -1,6 +1,6 @@
 import { ChevronDown, Server } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { useTranslation } from '../../../i18n.js'
+import { useTranslation } from '../../../i18n.ts'
 
 interface AIChatMCPCardProps {
   serverName?: string

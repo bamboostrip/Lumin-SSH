@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Check, Clipboard, RefreshCw, SquarePen, Trash2, type LucideIcon } from 'lucide-react'
-import { t, type I18nKey } from '../../../i18n.js'
+import { t, type I18nKey } from '../../../i18n.ts'
 
 interface ActionSpec {
   icon: LucideIcon

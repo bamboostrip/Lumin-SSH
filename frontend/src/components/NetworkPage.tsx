@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
-import { useTranslation } from '../i18n.js';
+import { useTranslation } from '../i18n.ts';
 import Tiptop from './Tiptop.jsx';
-import { formatRate, formatTransferTotal } from './probeFormatting.js';
+import { formatRate, formatTransferTotal } from './probeFormatting.ts';
 import { Globe, RefreshCw, ArrowDown, ArrowUp, Info, ArrowUpDown, Search, X } from 'lucide-react';
 
 const HISTORY_SIZE = 60;

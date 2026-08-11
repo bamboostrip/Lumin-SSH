@@ -1,10 +1,10 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import CodeMirror, { keymap, EditorView, EditorState, Prec, EditorSelection, showDialog, type Extension } from '@uiw/react-codemirror';
-import { useTranslation } from '../i18n.js';
-import { formatShortcut } from '../utils/platform.js';
-import { clampMenuPosition } from '../utils/menuPosition.js';
-import { getTerminalTheme } from '../utils/theme.js';
+import { useTranslation } from '../i18n.ts';
+import { formatShortcut } from '../utils/platform.ts';
+import { clampMenuPosition } from '../utils/menuPosition.ts';
+import { getTerminalTheme } from '../utils/theme.ts';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
@@ -30,8 +30,8 @@ import { diff } from '@codemirror/legacy-modes/mode/diff';
 import { cmake } from '@codemirror/legacy-modes/mode/cmake';
 import { c, cpp, java, csharp } from '@codemirror/legacy-modes/mode/clike';
 import { X, Pencil, Save, SquarePen, Upload, ExternalLink, AppWindow } from 'lucide-react';
-import { Z } from '../constants/zIndex.js';
-import { getSessionUploadPanelState, getSessionWorkbenchState, setSessionWorkbenchState, subscribeSessionUploadPanelState, subscribeSessionWorkbenchState } from '../utils/fileWorkbench.js';
+import { Z } from '../constants/zIndex.ts';
+import { getSessionUploadPanelState, getSessionWorkbenchState, setSessionWorkbenchState, subscribeSessionUploadPanelState, subscribeSessionWorkbenchState } from '../utils/fileWorkbench.ts';
 import Tiptop from './Tiptop.jsx';
 
 const EXTERNAL_PREFERRED_APP_KEY = 'fileEditorPreferredApp';

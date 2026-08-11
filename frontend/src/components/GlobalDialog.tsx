@@ -1,6 +1,6 @@
 import { useState, useEffect, useId, useRef, useCallback } from 'react';
 import { Eye, EyeOff, Clipboard } from 'lucide-react';
-import { useTranslation, t } from '../i18n.js';
+import { useTranslation, t } from '../i18n.ts';
 import Tiptop from './Tiptop.jsx';
 import { Z } from '../constants/zIndex';
 

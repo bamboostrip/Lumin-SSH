@@ -1,13 +1,13 @@
 import { ChevronDown } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
-import { useTranslation } from '../../../i18n.js'
+import { useTranslation } from '../../../i18n.ts'
 import AIChatAssistantTurn from './AIChatAssistantTurn.jsx'
 import AIChatContextCondenseCard from './AIChatContextCondenseCard.jsx'
 import AIChatReasoningBlock from './AIChatReasoningBlock.jsx'
 import AIChatToolSessionPane, { type AIChatToolSessionItem } from './AIChatToolSessionPane.jsx'
 import AIChatUserMessage from './AIChatUserMessage.jsx'
-import { groupConversationMessages } from './aiChatMessageTopology.js'
+import { groupConversationMessages } from './aiChatMessageTopology.ts'
 
 /** 发送性能指标记录（宽松形状，来自 AIPanel） */
 interface SendPerfRecord {

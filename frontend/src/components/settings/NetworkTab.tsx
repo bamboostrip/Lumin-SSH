@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { t as $t } from '../../i18n.js';
+import { t as $t } from '../../i18n.ts';
 import { Lightbulb } from 'lucide-react';
 import { ToggleSwitch, RadioOption, SettingRow, SettingsPanel, SettingsSectionTitle, SettingsTabRoot, type SettingsDefinitionNode } from './SharedComponents';
 import { settings } from './settingDefinitions';
-import { getAIGlobalSettings, saveAIGlobalSettings } from '../ai/aiGlobalSettingsBridge.js';
-import { getProxyNodes, saveProxyNodes, normalizeProxyNode } from './proxyNodesBridge.js';
+import { getAIGlobalSettings, saveAIGlobalSettings } from '../ai/aiGlobalSettingsBridge.ts';
+import { getProxyNodes, saveProxyNodes, normalizeProxyNode } from './proxyNodesBridge.ts';
 
 const PROXY_NODES_CHANGED_EVENT = 'lumin:proxy-nodes-changed';
 

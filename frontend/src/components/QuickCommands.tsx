@@ -2,12 +2,12 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, for
 import { createPortal } from 'react-dom';
 import { Folder, FolderPlus, Zap, Save, Pencil, Trash2, Rocket, SquarePen, X, List } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
-import { useTranslation } from '../i18n.js';
+import { useTranslation } from '../i18n.ts';
 import Tiptop from './Tiptop.jsx';
-import { Z } from '../constants/zIndex.js';
-import { getThemeComponentTheme, type ThemeComponentStyle } from '../utils/theme.js';
-import { extractQuickCommandParams, fillQuickCommandParams } from '../utils/quickCommandParams.js';
-import { clampMenuPosition } from '../utils/menuPosition.js';
+import { Z } from '../constants/zIndex.ts';
+import { getThemeComponentTheme, type ThemeComponentStyle } from '../utils/theme.ts';
+import { extractQuickCommandParams, fillQuickCommandParams } from '../utils/quickCommandParams.ts';
+import { clampMenuPosition } from '../utils/menuPosition.ts';
 
 // ── 命令树节点 ───────────────────────────────────────────
 export interface QuickCommandItem {

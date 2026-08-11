@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Database, Upload, Download, FileDown, Eye, EyeOff, X } from 'lucide-react';
-import { useTranslation } from '../i18n.js';
+import { useTranslation } from '../i18n.ts';
 import Tiptop from './Tiptop.jsx';
 import { Z } from '../constants/zIndex';
 

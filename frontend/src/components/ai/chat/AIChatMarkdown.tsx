@@ -2,8 +2,8 @@ import { createContext, useCallback, useContext, useRef, type ReactNode } from '
 import ReactMarkdown, { type Components } from 'react-markdown'
 import rehypeSanitize from 'rehype-sanitize'
 import remarkGfm from 'remark-gfm'
-import { useTranslation } from '../../../i18n.js'
-import { openGlobalContextMenu } from '../../../utils/contextMenu.js'
+import { useTranslation } from '../../../i18n.ts'
+import { openGlobalContextMenu } from '../../../utils/contextMenu.ts'
 import * as runtime from '../../../../wailsjs/runtime/runtime.js'
 
 // 清理 GFM 自动链接中误吞的非 URL 字符

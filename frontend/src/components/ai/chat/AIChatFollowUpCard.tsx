@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import rehypeSanitize from 'rehype-sanitize'
 import remarkGfm from 'remark-gfm'
-import { useTranslation } from '../../../i18n.js'
+import { useTranslation } from '../../../i18n.ts'
 import AIChatMarkdown from './AIChatMarkdown.jsx'
 
 const FREEZE_AFTER_SUBMIT_MS = 1000

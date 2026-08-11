@@ -1,11 +1,11 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
-import { initializeI18n, t } from './i18n.js';
+import { initializeI18n, t } from './i18n.ts';
 import { AlertTriangle } from 'lucide-react';
 import './index.css';
-import { applyProgramFontPreferences } from './utils/programFonts.js';
-import { applyStoredThemePackage, loadThemePackages } from './utils/theme.js';
+import { applyProgramFontPreferences } from './utils/programFonts.ts';
+import { applyStoredThemePackage, loadThemePackages } from './utils/theme.ts';
 // favicon 与 UI logo 共用同一源，避免 public/favicon.png 再拷一份
 import logoFavicon from './assets/logo.webp';
 

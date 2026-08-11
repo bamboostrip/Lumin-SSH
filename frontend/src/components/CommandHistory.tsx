@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
-import { useTranslation } from '../i18n.js';
+import { useTranslation } from '../i18n.ts';
 import { ScrollText, Keyboard, Clipboard, Trash2, Rocket } from 'lucide-react';
 
 /** 历史指令条目 */

@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useReducer, type MouseEvent as ReactMouseEvent } from 'react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
-import { useTranslation } from '../i18n.js';
+import { useTranslation } from '../i18n.ts';
 import Tiptop from './Tiptop.jsx';
-import { clampMenuPosition } from '../utils/menuPosition.js';
+import { clampMenuPosition } from '../utils/menuPosition.ts';
 import { ClipboardList, Search, RefreshCw, XCircle, X, ArrowUpDown, ArrowUp, ArrowDown, Copy } from 'lucide-react';
 
 const PROCESS_MENU_W = 170;

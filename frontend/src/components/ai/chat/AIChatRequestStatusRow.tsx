@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { t as translate } from '../../../i18n.js'
+import { t as translate } from '../../../i18n.ts'
 
 function stripStreamingCursor(text: string) {
   const content = typeof text === 'string' ? text.trim() : ''

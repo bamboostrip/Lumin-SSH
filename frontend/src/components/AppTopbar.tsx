@@ -2,9 +2,9 @@ import { useRef } from 'react';
 import { House, Minus, Square, X, Bot, Settings, RefreshCw, Rocket, Sun, Moon, ChevronDown } from 'lucide-react';
 import Tiptop from './Tiptop.jsx';
 import { WindowMinimise } from '../../wailsjs/runtime/runtime.js';
-import { Z } from '../constants/zIndex.js';
-import type { SessionAuthPrompt, SshChannelUsage } from '../hooks/useSessionConnections.js';
-import type { SessionLike } from '../utils/sessionWorkspace.js';
+import { Z } from '../constants/zIndex.ts';
+import type { SessionAuthPrompt, SshChannelUsage } from '../hooks/useSessionConnections.ts';
+import type { SessionLike } from '../utils/sessionWorkspace.ts';
 
 /** 顶栏标签页的会话形状（来自 useSessionConnections 的宽松会话） */
 export interface TopbarSession extends SessionLike {

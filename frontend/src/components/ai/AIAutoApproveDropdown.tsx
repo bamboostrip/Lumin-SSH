@@ -1,6 +1,6 @@
 import { CheckCheck, Eye, SquarePen, Terminal, X, type LucideIcon } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useTranslation, type I18nKey } from '../../i18n.js'
+import { useTranslation, type I18nKey } from '../../i18n.ts'
 
 /** 自动批准设置（宽松结构） */
 export interface AutoApprovalSettings {

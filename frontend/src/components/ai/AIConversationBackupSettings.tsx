@@ -1,7 +1,7 @@
 import { ChevronLeft, History, MessagesSquare, RotateCcw, Trash2, type LucideIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useTranslation } from '../../i18n.js'
-import { deleteAIConversationBackup, getAIConversationBackupHistory, listAIConversationBackups, restoreAIConversationBackup } from './aiConversationBackupBridge.js'
+import { useTranslation } from '../../i18n.ts'
+import { deleteAIConversationBackup, getAIConversationBackupHistory, listAIConversationBackups, restoreAIConversationBackup } from './aiConversationBackupBridge.ts'
 import AIChatMarkdown from './chat/AIChatMarkdown.jsx'
 
 /** 备份条目（bridge 归一化后的宽松结构） */

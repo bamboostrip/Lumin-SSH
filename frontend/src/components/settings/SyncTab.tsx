@@ -1,5 +1,5 @@
 import React from 'react';
-import { t as $t, type I18nKey } from '../../i18n.js';
+import { t as $t, type I18nKey } from '../../i18n.ts';
 import * as AppGo from '../../../wailsjs/go/wailsapp/App.js';
 import { Save, Cloud, Database, Folder, FolderOpen, Lock, RefreshCw, Sparkles, Plug, type LucideIcon } from 'lucide-react';
 import { SettingsPanel, SettingsSectionTitle, SettingsTabRoot, type SettingsDefinitionNode } from './SharedComponents';

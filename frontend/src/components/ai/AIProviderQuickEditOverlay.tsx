@@ -1,16 +1,16 @@
 import { ArrowLeft, Check, CircleHelp, Clipboard, Globe, Save, Search, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { EventsOn } from '../../../wailsjs/runtime/runtime.js'
-import { useTranslation, t as translate, type I18nKey } from '../../i18n.js'
-import { getAIGlobalSettings } from './aiGlobalSettingsBridge.js'
-import { isBuiltinAIProvider, runAIProviderAPIKeyPasteHandler } from './aiProviderBridge.js'
-import { getRuntimeEnvironmentStatus } from '../settings/runtimeEnvironmentBridge.js'
+import { useTranslation, t as translate, type I18nKey } from '../../i18n.ts'
+import { getAIGlobalSettings } from './aiGlobalSettingsBridge.ts'
+import { isBuiltinAIProvider, runAIProviderAPIKeyPasteHandler } from './aiProviderBridge.ts'
+import { getRuntimeEnvironmentStatus } from '../settings/runtimeEnvironmentBridge.ts'
 import {
   availableAIProviders,
   canUseDedicatedWebSearchCandidate,
   getAIProviderDefinition,
-} from './providers/index.js'
-import { handleInputDragSelectAll } from './inputDragSelect.js'
+} from './providers/index.ts'
+import { handleInputDragSelectAll } from './inputDragSelect.ts'
 import type { AIProviderLike } from './AIProviderSelector.jsx'
 
 const defaultCacheOptions = [

@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, type ChangeEvent, type FormEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import { Eye, EyeOff, Plus, X, Monitor, Key, FolderOpen, SquarePen, KeyRound, Globe } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
-import { useTranslation } from '../i18n.js';
-import { TERMINAL_ENCODING_GROUPS } from '../constants/terminalEncodings.js';
+import { useTranslation } from '../i18n.ts';
+import { TERMINAL_ENCODING_GROUPS } from '../constants/terminalEncodings.ts';
 import SearchableGroupedSelect from './SearchableGroupedSelect.jsx';
-import { getAIGlobalSettings } from './ai/aiGlobalSettingsBridge.js';
-import type { ServerFormData } from '../hooks/useServerCatalog.js';
-import type { config } from '../../wailsjs/go/models.js';
+import { getAIGlobalSettings } from './ai/aiGlobalSettingsBridge.ts';
+import type { ServerFormData } from '../hooks/useServerCatalog.ts';
+import type { config } from '../../wailsjs/go/models.ts';
 
 const PROXY_NODES_CHANGED_EVENT = 'lumin:proxy-nodes-changed';
 

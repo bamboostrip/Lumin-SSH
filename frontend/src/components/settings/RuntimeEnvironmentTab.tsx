@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { CheckCircle2, CircleOff, Package } from 'lucide-react'
-import { t as $t } from '../../i18n.js'
-import { DEFAULT_RUNTIME_ENVIRONMENT_STATUS, getRuntimeEnvironmentStatus, installRuntimeEnvironment } from './runtimeEnvironmentBridge.js'
+import { t as $t } from '../../i18n.ts'
+import { DEFAULT_RUNTIME_ENVIRONMENT_STATUS, getRuntimeEnvironmentStatus, installRuntimeEnvironment } from './runtimeEnvironmentBridge.ts'
 import { SettingsPanel, SettingsSectionTitle, SettingsTabRoot, type SettingsDefinitionNode } from './SharedComponents.jsx'
 import { settings } from './settingDefinitions'
 

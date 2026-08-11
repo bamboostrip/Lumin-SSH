@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import * as AppGo from '../../../wailsjs/go/wailsapp/App.js';
-import { t as $t } from '../../i18n.js';
+import { t as $t } from '../../i18n.ts';
 import {
   APP_GITHUB_ANDROID_RELEASES_URL,
   APP_GITHUB_ANDROID_REPO_URL,
   APP_GITHUB_ISSUES_URL,
   APP_GITHUB_RELEASES_URL,
   APP_GITHUB_REPO_URL,
-} from '../../config.js';
+} from '../../config.ts';
 import logoImg from '../../assets/logo.webp';
 import logoLightImg from '../../assets/logo_q.webp';
 import logoDarkImg from '../../assets/logo_s.webp';

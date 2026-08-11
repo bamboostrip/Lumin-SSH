@@ -12,11 +12,11 @@ import SyncFailureToast, { type SyncFailureState } from './SyncFailureToast.jsx'
 import Tiptop from './Tiptop.jsx';
 import Toast from './Toast.jsx';
 import UpdateModal from './UpdateModal.jsx';
-import type { PortForwardInitialMapping } from '../hooks/usePortForwardDialog.js';
-import type { SessionAuthPrompt } from '../hooks/useSessionConnections.js';
-import type { ToastAction, ToastItem } from '../hooks/useToasts.js';
-import type { ExportOptions } from '../hooks/useImportExport.js';
-import type { SessionLike } from '../utils/sessionWorkspace.js';
+import type { PortForwardInitialMapping } from '../hooks/usePortForwardDialog.ts';
+import type { SessionAuthPrompt } from '../hooks/useSessionConnections.ts';
+import type { ToastAction, ToastItem } from '../hooks/useToasts.ts';
+import type { ExportOptions } from '../hooks/useImportExport.ts';
+import type { SessionLike } from '../utils/sessionWorkspace.ts';
 import type { TopbarSession } from './AppTopbar.jsx';
 
 /** 标签栏右键菜单 */

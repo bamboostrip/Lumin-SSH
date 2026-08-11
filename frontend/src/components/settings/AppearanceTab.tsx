@@ -1,11 +1,11 @@
 import React, { useMemo } from 'react';
-import { t as $t, type I18nKey } from '../../i18n.js';
+import { t as $t, type I18nKey } from '../../i18n.ts';
 import { Sun, Monitor, Moon, Trash2, Copy } from 'lucide-react';
 import { SettingRow, SettingsDivider, SettingsPanel, SettingsSectionTitle, SettingsTabRoot, ToggleSwitch, type SettingsDefinitionNode } from './SharedComponents';
 import { settings } from './settingDefinitions';
 import KeywordRulesPanel from './KeywordRulesPanel.jsx';
-import { type KeywordRule } from '../../utils/terminalKeywordHighlight.js';
-import type { ThemePackage, ThemePackagePreview } from '../../utils/theme.js';
+import { type KeywordRule } from '../../utils/terminalKeywordHighlight.ts';
+import type { ThemePackage, ThemePackagePreview } from '../../utils/theme.ts';
 
 /** 程序字体条目 */
 interface ProgramFont {

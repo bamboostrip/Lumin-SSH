@@ -1,7 +1,7 @@
 import { Columns2, FileText, LoaderCircle, RotateCcw, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import Tiptop from '../Tiptop.jsx'
-import { useTranslation, type I18nKey } from '../../i18n.js'
+import { useTranslation, type I18nKey } from '../../i18n.ts'
 
 /** 对话文件变更条目（宽松结构） */
 export interface ConversationDiffItem {

@@ -1,5 +1,5 @@
 import { Scissors } from 'lucide-react'
-import { useTranslation, type I18nKey } from '../../../i18n.js'
+import { useTranslation, type I18nKey } from '../../../i18n.ts'
 
 function formatTokenValue(value: unknown) {
   const parsed = Number(value)

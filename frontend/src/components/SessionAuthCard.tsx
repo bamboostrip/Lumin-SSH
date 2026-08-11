@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { ShieldAlert, ShieldQuestion, KeyRound, Eye, EyeOff, Clipboard, type LucideIcon } from 'lucide-react';
 import { Z } from '../constants/zIndex';
-import { getThemeComponentTheme } from '../utils/theme.js';
-import type { SessionAuthPrompt } from '../hooks/useSessionConnections.js';
+import { getThemeComponentTheme } from '../utils/theme.ts';
+import type { SessionAuthPrompt } from '../hooks/useSessionConnections.ts';
 
 interface AuthButton {
   label: string;

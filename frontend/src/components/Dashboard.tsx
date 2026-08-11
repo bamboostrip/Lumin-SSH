@@ -1,14 +1,14 @@
 import { BarChart3, Monitor, Search, LayoutGrid, List, Eye, EyeOff, RefreshCw, Database, CheckSquare, Folder, FolderOpen, Download, Trash2, X, Plus, History, Clock, Terminal } from 'lucide-react';
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { useTranslation } from '../i18n.js';
+import { useTranslation } from '../i18n.ts';
 import AddServerModal from './AddServerModal.jsx';
 import ServerList from './ServerList.jsx';
 import Tiptop from './Tiptop.jsx';
-import type { config } from '../../wailsjs/go/models.js';
-import type { PingCounts, ServerPingResult } from '../hooks/useServerPing.js';
-import type { DashboardHostPageMode, ServerListViewMode } from '../hooks/useDashboardPreferences.js';
-import type { ServerFormData } from '../hooks/useServerCatalog.js';
-import type { SessionLike } from '../utils/sessionWorkspace.js';
+import type { config } from '../../wailsjs/go/models.ts';
+import type { PingCounts, ServerPingResult } from '../hooks/useServerPing.ts';
+import type { DashboardHostPageMode, ServerListViewMode } from '../hooks/useDashboardPreferences.ts';
+import type { ServerFormData } from '../hooks/useServerCatalog.ts';
+import type { SessionLike } from '../utils/sessionWorkspace.ts';
 
 /** 最近连接会话（宽松形状，来自 useSessionConnections） */
 interface DashboardSessionLike {

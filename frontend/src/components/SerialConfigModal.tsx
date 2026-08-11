@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Cpu } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
-import { useTranslation } from '../i18n.js';
+import { useTranslation } from '../i18n.ts';
 
 /** 串口连接配置（与 App.ConnectSerial 的参数对应） */
 export interface SerialFormConfig {

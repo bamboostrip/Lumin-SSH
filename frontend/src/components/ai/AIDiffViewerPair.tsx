@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef } from 'react'
-import type { I18nKey } from '../../i18n.js'
+import type { I18nKey } from '../../i18n.ts'
 
 /** 字符级差异片段 */
 interface DiffSegment {

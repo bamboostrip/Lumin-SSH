@@ -1,7 +1,7 @@
 import { Check, ChevronDown, TerminalSquare, X } from 'lucide-react'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useStickToBottom } from 'use-stick-to-bottom'
-import { useTranslation, type I18nKey } from '../../../i18n.js'
+import { useTranslation, type I18nKey } from '../../../i18n.ts'
 
 const buildShellCommandPattern = (commandPattern: string) => new RegExp(`(^|[\\s|;&()])(${commandPattern})(?=\\s)`, 'gi')
 

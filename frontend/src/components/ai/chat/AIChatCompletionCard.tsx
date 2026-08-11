@@ -1,5 +1,5 @@
 import { CheckCircle2 } from 'lucide-react'
-import { useTranslation, type I18nKey } from '../../../i18n.js'
+import { useTranslation, type I18nKey } from '../../../i18n.ts'
 import AIChatMarkdown from './AIChatMarkdown.jsx'
 
 const completionTitleKey = '任务完成'

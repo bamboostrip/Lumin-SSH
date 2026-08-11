@@ -1,8 +1,8 @@
 import { RotateCcw, Save, Trash2, Eye, EyeOff } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { useTranslation } from '../../i18n.js'
+import { useTranslation } from '../../i18n.ts'
 import Tiptop from '../Tiptop.jsx'
-import { handleInputDragSelectAll } from './inputDragSelect.js'
+import { handleInputDragSelectAll } from './inputDragSelect.ts'
 
 const defaultConfigText = '{\n  "mcpServers": {}\n}'
 

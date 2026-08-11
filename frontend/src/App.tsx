@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useRef, useMemo, type MutableRefObject } from 'react';
 import { EventsOn, WindowMinimise, WindowShow } from '../wailsjs/runtime/runtime.js';
 import * as AppGo from '../wailsjs/go/wailsapp/App.js';
-import type { config } from '../wailsjs/go/models.js';
+import type { config } from '../wailsjs/go/models.ts';
 import ProbePanel, { type ProbeSnapshot } from './components/ProbePanel.jsx';
 import FileManager from './components/FileManager.jsx';
 import AIPanel from './components/AIPanel.jsx';
-import { isRecoveryPasswordError, syncWithRecoveryPassword } from './utils/recoveryPasswordSync.js';
+import { isRecoveryPasswordError, syncWithRecoveryPassword } from './utils/recoveryPasswordSync.ts';
 import {
   getAllSessionFileManagerWorkspaces,
   getSessionFileManagerWorkspace,
@@ -13,7 +13,7 @@ import {
   replaceAllSessionFileManagerWorkspaces,
   setSessionFileManagerWorkspace,
   type FileManagerWorkspaceState,
-} from './utils/fileWorkbench.js';
+} from './utils/fileWorkbench.ts';
 import AppTopbar, { type TopbarSession } from './components/AppTopbar.jsx';
 import SessionWorkspace from './components/SessionWorkspace.jsx';
 import type { QuickCommandsHandle } from './components/QuickCommands.jsx';
@@ -32,7 +32,7 @@ import {
   isTerminalPaneRectangular,
   normalizeTwoTerminalPaneLayout,
   type TerminalPaneLayout,
-} from './utils/terminalPaneLayout.js';
+} from './utils/terminalPaneLayout.ts';
 import {
   buildAIWorkspaceTerminalPanelKey,
   formatAIQuotedSelection,
@@ -45,32 +45,32 @@ import {
   remapSessionWorkspaceLayouts,
   type SessionLike,
   type WorkspaceContentTab,
-} from './utils/sessionWorkspace.js';
+} from './utils/sessionWorkspace.ts';
 
-import { useTranslation } from './i18n.js';
-import { getTerminalTheme } from './utils/theme.js';
-import { formatUpdateError, useUpdateChecker, type UpdateCheckResult } from './hooks/useUpdateChecker.js';
-import useServerPing, { type PingServerLike } from './hooks/useServerPing.js';
-import useToasts from './hooks/useToasts.js';
-import useDashboardPreferences from './hooks/useDashboardPreferences.js';
-import useWindowState from './hooks/useWindowState.js';
-import useImportExport from './hooks/useImportExport.js';
-import useServerCatalog, { type ServerFormData } from './hooks/useServerCatalog.js';
-import useWorkspacePersistence, { useWorkspaceSessionPersistence } from './hooks/useWorkspacePersistence.js';
-import usePanelLayout from './hooks/usePanelLayout.js';
-import useWorkspaceSettings from './hooks/useWorkspaceSettings.js';
-import useSessionWorkspaceModel from './hooks/useSessionWorkspaceModel.js';
-import useWorkspacePanelDocking from './hooks/useWorkspacePanelDocking.js';
-import usePortForwardDialog from './hooks/usePortForwardDialog.js';
-import useAIReview from './hooks/useAIReview.js';
+import { useTranslation } from './i18n.ts';
+import { getTerminalTheme } from './utils/theme.ts';
+import { formatUpdateError, useUpdateChecker, type UpdateCheckResult } from './hooks/useUpdateChecker.ts';
+import useServerPing, { type PingServerLike } from './hooks/useServerPing.ts';
+import useToasts from './hooks/useToasts.ts';
+import useDashboardPreferences from './hooks/useDashboardPreferences.ts';
+import useWindowState from './hooks/useWindowState.ts';
+import useImportExport from './hooks/useImportExport.ts';
+import useServerCatalog, { type ServerFormData } from './hooks/useServerCatalog.ts';
+import useWorkspacePersistence, { useWorkspaceSessionPersistence } from './hooks/useWorkspacePersistence.ts';
+import usePanelLayout from './hooks/usePanelLayout.ts';
+import useWorkspaceSettings from './hooks/useWorkspaceSettings.ts';
+import useSessionWorkspaceModel from './hooks/useSessionWorkspaceModel.ts';
+import useWorkspacePanelDocking from './hooks/useWorkspacePanelDocking.ts';
+import usePortForwardDialog from './hooks/usePortForwardDialog.ts';
+import useAIReview from './hooks/useAIReview.ts';
 import useSessionConnections, {
   type ConnectingServer,
   type SessionAuthPrompt,
   type SshChannelUsage,
-} from './hooks/useSessionConnections.js';
-import useTerminalDocking from './hooks/useTerminalDocking.js';
-import useTerminalSubTabs, { type SubTabSessionLike, type TerminalDockDragPreview } from './hooks/useTerminalSubTabs.js';
-import { restoreAIChatTool } from './components/ai/aiChatBridge.js';
+} from './hooks/useSessionConnections.ts';
+import useTerminalDocking from './hooks/useTerminalDocking.ts';
+import useTerminalSubTabs, { type SubTabSessionLike, type TerminalDockDragPreview } from './hooks/useTerminalSubTabs.ts';
+import { restoreAIChatTool } from './components/ai/aiChatBridge.ts';
 import type { SyncFailureState } from './components/SyncFailureToast.jsx';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 

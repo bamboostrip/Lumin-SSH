@@ -1,6 +1,6 @@
 import { Check, Pencil, Plus, X, type LucideIcon } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useTranslation } from '../../i18n.js'
+import { useTranslation } from '../../i18n.ts'
 
 /** 常用要求预设 */
 interface CollabPreset {

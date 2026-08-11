@@ -1,5 +1,5 @@
 import { AlertTriangle } from 'lucide-react'
-import { useTranslation } from '../../../i18n.js'
+import { useTranslation } from '../../../i18n.ts'
 
 interface AIChatErrorBlockProps {
   text?: string

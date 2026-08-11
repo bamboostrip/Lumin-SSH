@@ -1,8 +1,8 @@
 import React, { useState, useCallback } from 'react';
-import { t as $t } from '../../i18n.js';
+import { t as $t } from '../../i18n.ts';
 import { Plus, Trash2, RotateCcw, X } from 'lucide-react';
 import ColorPicker from './ColorPicker.jsx';
-import { DEFAULT_KEYWORD_RULES, type KeywordRule } from '../../utils/terminalKeywordHighlight.js';
+import { DEFAULT_KEYWORD_RULES, type KeywordRule } from '../../utils/terminalKeywordHighlight.ts';
 
 /**
  * 日志关键字高亮规则配置面板

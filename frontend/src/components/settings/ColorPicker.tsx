@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { t as $t } from '../../i18n.js';
+import { t as $t } from '../../i18n.ts';
 
 /**
  * 轻量色盘 Popover 组件

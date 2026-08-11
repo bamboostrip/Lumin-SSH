@@ -2,7 +2,7 @@ import { Check, ChevronUp, ChevronsUpDown, ImagePlus, ListEnd, Monitor, Play, Se
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as AppGo from '../../../wailsjs/go/wailsapp/App.js'
 import { ClipboardGetText } from '../../../wailsjs/runtime/runtime.js'
-import { useTranslation, t as translate, type I18nKey } from '../../i18n.js'
+import { useTranslation, t as translate, type I18nKey } from '../../i18n.ts'
 import AIAutoApproveDropdown from './AIAutoApproveDropdown.jsx'
 import AICollaborationPromptDropdown from './AICollaborationPromptDropdown.jsx'
 import AIProviderSelector from './AIProviderSelector.jsx'
@@ -18,15 +18,15 @@ import {
   mentionRegexGlobal,
   removeMention,
   searchRemoteMentionCandidates,
-} from './aiMentions.js'
+} from './aiMentions.ts'
 import {
   buildSlashCommandMenuItems,
   commandRegex,
   getSlashCommandMenuContext,
   insertSlashCommandToken,
   normalizeAISlashCommands,
-} from './aiSlashCommands.js'
-import { compressImage } from './aiImageCompression.js'
+} from './aiSlashCommands.ts'
+import { compressImage } from './aiImageCompression.ts'
 import AIChatReasoningBlock from './chat/AIChatReasoningBlock.jsx'
 import AIChatRequestStatusRow from './chat/AIChatRequestStatusRow.jsx'
 

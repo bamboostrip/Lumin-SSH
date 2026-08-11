@@ -1,6 +1,6 @@
 import { Columns2, House, MessagesSquare, Search, Settings } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useTranslation } from '../../i18n.js'
+import { useTranslation } from '../../i18n.ts'
 import Tiptop from '../Tiptop.jsx'
 import IconActionButton from './IconActionButton.jsx'
 

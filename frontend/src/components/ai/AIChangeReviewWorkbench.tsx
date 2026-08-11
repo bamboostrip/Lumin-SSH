@@ -1,4 +1,4 @@
-import { useTranslation, type I18nKey } from '../../i18n.js'
+import { useTranslation, type I18nKey } from '../../i18n.ts'
 import { DiffEditorPair } from './AIDiffViewerPair.jsx'
 
 interface AIChangeReviewWorkbenchProps {

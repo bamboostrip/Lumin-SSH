@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useTranslation } from '../i18n.js';
-import { formatShortcut } from '../utils/platform.js';
-import { clampMenuPosition } from '../utils/menuPosition.js';
-import { GLOBAL_CONTEXT_MENU_OPEN_EVENT, type GlobalContextMenuDetail } from '../utils/contextMenu.js';
+import { useTranslation } from '../i18n.ts';
+import { formatShortcut } from '../utils/platform.ts';
+import { clampMenuPosition } from '../utils/menuPosition.ts';
+import { GLOBAL_CONTEXT_MENU_OPEN_EVENT, type GlobalContextMenuDetail } from '../utils/contextMenu.ts';
 import * as runtime from '../../wailsjs/runtime/runtime.js';
 
 /** 菜单项输入（来自 .jsx 调用方，字段宽松） */

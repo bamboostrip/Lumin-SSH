@@ -1,5 +1,5 @@
 import React from 'react';
-import { t as $t, type I18nKey } from '../../i18n.js';
+import { t as $t, type I18nKey } from '../../i18n.ts';
 
 export const SETTINGS_TAB_GAP = 14;
 

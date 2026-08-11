@@ -1,9 +1,9 @@
 import { useState, useEffect, type ChangeEvent, type FocusEvent } from 'react';
 import { ExternalLink, X, ArrowRight, ArrowLeftRight, MonitorSmartphone, Server, Hash, Power, Play, Trash2 } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
-import { useTranslation } from '../i18n.js';
-import type { PortForwardInitialMapping } from '../hooks/usePortForwardDialog.js';
-import type { sshmanager } from '../../wailsjs/go/models.js';
+import { useTranslation } from '../i18n.ts';
+import type { PortForwardInitialMapping } from '../hooks/usePortForwardDialog.ts';
+import type { sshmanager } from '../../wailsjs/go/models.ts';
 
 export interface PortForwardDialogProps {
   sessionId: string;

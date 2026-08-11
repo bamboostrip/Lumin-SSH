@@ -6,9 +6,9 @@ import { SearchAddon } from '@xterm/addon-search';
 import { Copy, Clipboard, Trash2, CheckSquare, Play, Clock, X, Zap, MessageSquarePlus, ExternalLink, Search, ChevronUp, ChevronDown, CaseSensitive } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 import { EventsOn } from '../../wailsjs/runtime/runtime.js';
-import { getModKey, formatShortcut } from '../utils/platform.js';
-import { clampMenuPosition } from '../utils/menuPosition.js';
-import { extractQuickCommandParams, fillQuickCommandParams } from '../utils/quickCommandParams.js';
+import { getModKey, formatShortcut } from '../utils/platform.ts';
+import { clampMenuPosition } from '../utils/menuPosition.ts';
+import { extractQuickCommandParams, fillQuickCommandParams } from '../utils/quickCommandParams.ts';
 import {
   buildPathAutocompleteContext,
   buildStaticAutocompleteItems,
@@ -20,16 +20,16 @@ import {
   type AutocompleteItem,
   type AutocompleteSources,
   type FlattenedQuickCommand,
-} from '../utils/terminalCommandAutocomplete.js';
+} from '../utils/terminalCommandAutocomplete.ts';
 import Tiptop from './Tiptop.jsx';
 import type { QuickCommandsHandle } from './QuickCommands.jsx';
 import '@xterm/xterm/css/xterm.css';
-import { useTranslation, type I18nKey } from '../i18n.js';
+import { useTranslation, type I18nKey } from '../i18n.ts';
 import defaultTermBg from '../assets/term_bg.webp';
 import { Z } from '../constants/zIndex';
-import { getTerminalTheme, getAppThemeMode, isDarkTerminalSurface, getSolidTerminalBackground, type TerminalTheme } from '../utils/theme.js';
-import { getResolvedProgramFontPreferences } from '../utils/programFonts.js';
-import { highlightKeywords, loadKeywordRulesFromStorage, setKeywordRules, createHighlightState, type KeywordRule } from '../utils/terminalKeywordHighlight.js';
+import { getTerminalTheme, getAppThemeMode, isDarkTerminalSurface, getSolidTerminalBackground, type TerminalTheme } from '../utils/theme.ts';
+import { getResolvedProgramFontPreferences } from '../utils/programFonts.ts';
+import { highlightKeywords, loadKeywordRulesFromStorage, setKeywordRules, createHighlightState, type KeywordRule } from '../utils/terminalKeywordHighlight.ts';
 
 // 终端快照供 FileManager 等模块读取当前 buffer 文本（FileManager.jsx 亦写入同名键）
 declare global {

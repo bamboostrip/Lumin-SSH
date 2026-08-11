@@ -4,11 +4,11 @@ import { Virtuoso } from 'react-virtuoso';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 const FileEditor = React.lazy(() => import('./FileEditor.jsx'));
 import { CanResolveFilePaths, EventsOn, OnFileDrop, OnFileDropOff } from '../../wailsjs/runtime/runtime.js';
-import { useTranslation, t as tKey, getLanguage, type I18nKey } from '../i18n.js';
-import { Z } from '../constants/zIndex.js';
-import { clampMenuPosition } from '../utils/menuPosition.js';
-import { isArchive, isBinaryLike, isViewable } from '../utils/fileTypeClassify.js';
-import { suppressDragOutClick } from '../utils/dragOutClickGuard.js';
+import { useTranslation, t as tKey, getLanguage, type I18nKey } from '../i18n.ts';
+import { Z } from '../constants/zIndex.ts';
+import { clampMenuPosition } from '../utils/menuPosition.ts';
+import { isArchive, isBinaryLike, isViewable } from '../utils/fileTypeClassify.ts';
+import { suppressDragOutClick } from '../utils/dragOutClickGuard.ts';
 import FileUploadQueuePanel from './FileUploadQueuePanel.jsx';
 import Tiptop from './Tiptop.jsx';
 import {
@@ -29,8 +29,8 @@ import {
   subscribeSessionUploadQueue,
   subscribeSessionWorkbenchState,
   updateSessionUploadQueue,
-} from '../utils/fileWorkbench.js';
-import type { FileManagerTab, FileManagerTabLike, FileManagerPaneState, FileManagerWorkspaceState } from '../utils/fileWorkbench.js';
+} from '../utils/fileWorkbench.ts';
+import type { FileManagerTab, FileManagerTabLike, FileManagerPaneState, FileManagerWorkspaceState } from '../utils/fileWorkbench.ts';
 import {
   Folder, FolderOpen, FolderPlus, File, FileText, FilePlus, FileCode,
   FileArchive, Settings, ClipboardList, Wrench, Image, Code, Globe, House,

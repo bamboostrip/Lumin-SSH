@@ -1,7 +1,7 @@
 import { CheckCircle, Info, X, XCircle } from 'lucide-react';
 import type { ReactNode } from 'react';
 import Tiptop from './Tiptop.jsx';
-import type { ToastAction, ToastItem } from '../hooks/useToasts.js';
+import type { ToastAction, ToastItem } from '../hooks/useToasts.ts';
 
 const ICON_MAP: Record<string, ReactNode> = {
   success: <CheckCircle size={16} />,

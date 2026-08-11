@@ -1,8 +1,8 @@
 import { Pencil, Plus, Save, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { useTranslation, t as translate } from '../../i18n.js'
-import { normalizeAISlashCommands, normalizeSlashCommandName } from './aiSlashCommands.js'
-import { handleInputDragSelectAll } from './inputDragSelect.js'
+import { useTranslation, t as translate } from '../../i18n.ts'
+import { normalizeAISlashCommands, normalizeSlashCommandName } from './aiSlashCommands.ts'
+import { handleInputDragSelectAll } from './inputDragSelect.ts'
 
 /** 斜杠命令草稿（id 仅为本地编辑用，保存时由 normalizeAISlashCommands 重建） */
 interface SlashCommandDraft {

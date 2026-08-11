@@ -1,16 +1,16 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, type ReactNode, type CSSProperties } from 'react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
-import type { sshmanager } from '../../wailsjs/go/models.js';
+import type { sshmanager } from '../../wailsjs/go/models.ts';
 import {
   formatCapacity,
   formatPartitionCapacity,
   formatRate,
   formatTransferTotal,
-} from './probeFormatting.js';
+} from './probeFormatting.ts';
 import { BarChart3, Cpu, HardDrive, Globe, ClipboardList, Clipboard, Search, Check, Monitor, EyeOff, Eye, RefreshCw, MemoryStick, ArrowLeftRight, Gauge, GripVertical, Power, Play, Trash2, Plus, ArrowRight } from 'lucide-react';
 import Tiptop from './Tiptop.jsx';
-import { Z } from '../constants/zIndex.js';
-import { useTranslation, type I18nKey } from '../i18n.js';
+import { Z } from '../constants/zIndex.ts';
+import { useTranslation, type I18nKey } from '../i18n.ts';
 
 const HISTORY_SIZE = 30;
 // ponytail: 前端 fetch 超时兜底。后端 deployProbeScript(15s)+executeCmd(30s) 最坏约 45s,

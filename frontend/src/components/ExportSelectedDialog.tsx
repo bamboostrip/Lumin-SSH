@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Database, Download, Eye, EyeOff, X } from 'lucide-react';
-import { useTranslation } from '../i18n.js';
+import { useTranslation } from '../i18n.ts';
 import { Z } from '../constants/zIndex';
 
 interface ExportOptions {

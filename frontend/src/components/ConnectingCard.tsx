@@ -1,7 +1,7 @@
 import { Monitor, Radio, Loader2 } from 'lucide-react';
 import { Z } from '../constants/zIndex';
-import { getThemeComponentTheme } from '../utils/theme.js';
-import type { ConnectingServer } from '../hooks/useSessionConnections.js';
+import { getThemeComponentTheme } from '../utils/theme.ts';
+import type { ConnectingServer } from '../hooks/useSessionConnections.ts';
 
 interface ConnectingCardProps {
   connectingServer: ConnectingServer | null;

@@ -3,6 +3,58 @@ import { House, Minus, Square, X, Bot, Settings, RefreshCw, Rocket, Sun, Moon, C
 import Tiptop from './Tiptop.jsx';
 import { WindowMinimise } from '../../wailsjs/runtime/runtime.js';
 import { Z } from '../constants/zIndex.js';
+import type { SessionAuthPrompt, SshChannelUsage } from '../hooks/useSessionConnections.js';
+import type { SessionLike } from '../utils/sessionWorkspace.js';
+
+/** 顶栏标签页的会话形状（来自 useSessionConnections 的宽松会话） */
+export interface TopbarSession extends SessionLike {
+  id: string;
+  serverName?: string;
+  host?: string;
+  status: string;
+}
+
+export interface AppTopbarProps {
+  t: (key: string, vars?: Record<string, unknown>) => string;
+  handleTopbarDoubleClick: () => void;
+  markWorkspaceRestoreNavigationOverride: () => void;
+  setActiveSessionId: (id: string | null) => void;
+  setActiveTerminalId: (id: string | null) => void;
+  setShowSettings: (v: boolean) => void;
+  logoImg: string;
+  showTopbarRefreshedLogo: boolean;
+  topbarLogoTransitionImg: string;
+  sessions: TopbarSession[];
+  tabScrollRef: React.RefObject<HTMLDivElement>;
+  tabListRef: React.RefObject<HTMLDivElement>;
+  activeSessionId: string | null;
+  handleTabClick: (sessionId: string) => void;
+  closeSession: (sessionId: string, e?: React.MouseEvent) => Promise<void>;
+  setTabContextMenu: (menu: { sessionId: string; serverName: string; x: number; y: number } | null) => void;
+  sessionAuthPrompts: Record<string, SessionAuthPrompt>;
+  sshChannelUsage: Record<string, SshChannelUsage>;
+  tabsOverflow: boolean;
+  tabActionsRef: React.RefObject<HTMLDivElement>;
+  sessionListBtnRef: React.RefObject<HTMLButtonElement>;
+  toggleSessionList: () => void;
+  closeAllSessions: () => Promise<void>;
+  showThemeQuickEntry: boolean;
+  activeAIDevilMode: boolean;
+  resolvedQuickThemeMode: 'light' | 'dark';
+  handleQuickThemeToggle: () => void;
+  isActiveSessionConnected: boolean;
+  showAIPanel: boolean;
+  setAIPanelVisibility: (v: boolean) => void;
+  startupUpdateInfo: { version: string } | null;
+  showUpdateBubble: boolean;
+  isUpdateModalVisible: boolean;
+  setShowUpdateBubble: (v: boolean) => void;
+  setIsUpdateModalVisible: (v: boolean) => void;
+  setSettingsInitialTab: (tab: string) => void;
+  handleToggleMaximise: () => void;
+  handleCloseWindow: () => Promise<void>;
+  reconnectSession: (session: SessionLike) => Promise<unknown>;
+}
 
 export default function AppTopbar({
   t, handleTopbarDoubleClick, markWorkspaceRestoreNavigationOverride,
@@ -17,8 +69,8 @@ export default function AppTopbar({
   isUpdateModalVisible, setShowUpdateBubble,
   setIsUpdateModalVisible, setSettingsInitialTab, handleToggleMaximise,
   handleCloseWindow, reconnectSession,
-}) {
-  const topbarRef = useRef(null);
+}: AppTopbarProps) {
+  const topbarRef = useRef<HTMLDivElement | null>(null);
 
   return (
     <>
@@ -109,7 +161,7 @@ export default function AppTopbar({
                         const rect = e.currentTarget.getBoundingClientRect();
                         setTabContextMenu({
                           sessionId: s.id,
-                          serverName: s.serverName || s.host,
+                          serverName: s.serverName || s.host || '',
                           x: rect.left,
                           y: rect.bottom + 4,
                         });

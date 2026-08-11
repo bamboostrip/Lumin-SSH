@@ -1,18 +1,144 @@
 import { Copy, PenLine, Search, X } from 'lucide-react';
+import type { Dispatch, SetStateAction } from 'react';
 import CredentialsModal from './CredentialsModal.jsx';
 import ExportSelectedDialog from './ExportSelectedDialog.jsx';
 import GlobalContextMenu from './GlobalContextMenu.jsx';
 import GlobalDialog from './GlobalDialog.jsx';
 import ImportExportDialog from './ImportExportDialog.jsx';
 import PortForwardDialog from './PortForwardDialog.jsx';
-import SerialConfigModal from './SerialConfigModal.jsx';
+import SerialConfigModal, { type SerialFormConfig } from './SerialConfigModal.jsx';
 import SettingsModal from './SettingsModal.jsx';
-import SyncFailureToast from './SyncFailureToast.jsx';
+import SyncFailureToast, { type SyncFailureState } from './SyncFailureToast.jsx';
 import Tiptop from './Tiptop.jsx';
 import Toast from './Toast.jsx';
 import UpdateModal from './UpdateModal.jsx';
+import type { PortForwardInitialMapping } from '../hooks/usePortForwardDialog.js';
+import type { SessionAuthPrompt } from '../hooks/useSessionConnections.js';
+import type { ToastAction, ToastItem } from '../hooks/useToasts.js';
+import type { ExportOptions } from '../hooks/useImportExport.js';
+import type { SessionLike } from '../utils/sessionWorkspace.js';
+import type { TopbarSession } from './AppTopbar.jsx';
 
-export default function AppOverlays({ dialogs = {}, importExport = {}, notifications = {}, menus = {}, animation = {}, shared = {} }) {
+/** 标签栏右键菜单 */
+export interface TabContextMenuState {
+  sessionId: string;
+  x: number;
+  y: number;
+}
+
+/** 终端子标签右键菜单（type=group 时分屏组） */
+export interface TerminalTabContextMenuState {
+  sessionId: string;
+  terminalId: string;
+  x: number;
+  y: number;
+  type: 'terminal' | 'group';
+  terminalIds?: string[];
+}
+
+/** 编辑飞行动画元素（shape 来自 App.jsx 的组装；beam/capsule 为历史遗留分支无生产者，字段统一声明为必填以简化类型） */
+interface EditFlyItem {
+  id: string;
+  type: string;
+  field: string;
+  from: { x: number; y: number };
+  mid: { x: number; y: number };
+  to: { x: number; y: number };
+  at: { x: number; y: number };
+  length: number;
+  angle: number;
+  delay: number;
+  path: string;
+  size: number;
+  label: string;
+  value?: string;
+}
+
+export interface AppOverlaysProps {
+  dialogs: {
+    activeAIDevilMode: boolean;
+    closePortForwardDialog: () => void;
+    connectSerial: (config: SerialFormConfig) => void;
+    loadServers: () => Promise<void>;
+    portForwardDialogSessionId: string | null;
+    portForwardInitialMapping: PortForwardInitialMapping | null;
+    portForwardInitialTab: string | null;
+    probePanelPosition: 'left' | 'right';
+    setProbePanelPosition: (pos: 'left' | 'right') => void;
+    setSettingsInitialTab: (tab: string) => void;
+    setShowCredentials: (v: boolean) => void;
+    setShowSerialModal: (v: boolean) => void;
+    setShowSettings: (v: boolean) => void;
+    settingsInitialTab: string;
+    showCredentials: boolean;
+    showPortForwardDialog: boolean;
+    showSerialModal: boolean;
+    showSettings: boolean;
+  };
+  importExport: {
+    exportSelectedIds: string[];
+    handleDownloadTemplate: () => void;
+    handleExport: (opts: ExportOptions) => void;
+    handleExportSelected: (opts: ExportOptions) => void;
+    handleImport: () => void;
+    hasRecoveryPassword: boolean;
+    ieBusy: boolean;
+    setExportSelectedIds: (ids: string[]) => void;
+    setShowExportSelectedDialog: (v: boolean) => void;
+    setShowImportExportDialog: (v: boolean) => void;
+    showExportSelectedDialog: boolean;
+    showImportExportDialog: boolean;
+  };
+  notifications: {
+    downloadProgress: number;
+    handleApplyStartupUpdate: () => Promise<void>;
+    handleToastAction: (id: number, action: ToastAction) => void;
+    isUpdateModalVisible: boolean;
+    removeToast: (id: number) => void;
+    setIsUpdateModalVisible: (v: boolean) => void;
+    setSyncFailed: Dispatch<SetStateAction<SyncFailureState | null>>;
+    startupUpdateInfo: { version: string } | null;
+    syncFailed: SyncFailureState | null;
+    toasts: ToastItem[];
+  };
+  menus: {
+    activeSessionId: string | null;
+    canCopySessionPassword: (sessionId: string) => boolean;
+    canMoveTerminalToDockTarget: (session: SessionLike, terminalId: string, target: string) => boolean;
+    closeAllSessions: () => Promise<void>;
+    closeSession: (sessionId: string, e?: React.MouseEvent) => Promise<void>;
+    closeTerminal: (sessionId: string, terminalId: string, e?: React.MouseEvent) => void;
+    closeTerminalGroup: (sessionId: string, layoutId: string, terminalIds: string[], e?: React.MouseEvent) => void;
+    forceCloseSession: (sessionId: string) => void;
+    handleCopySessionPassword: (sessionId: string) => Promise<void>;
+    handleRenameTerminalTab: (sessionId: string, terminalId: string) => Promise<void>;
+    handleTabClick: (sessionId: string) => void;
+    isTerminalDockTargetOccupied: (session: SessionLike, terminalId: string, target: string) => boolean;
+    moveTerminalToDockTarget: (session: SessionLike, terminalId: string, target: string) => void;
+    sessionAuthPrompts: Record<string, SessionAuthPrompt>;
+    sessionListPos: { x: number; y: number };
+    sessionListQuery: string;
+    sessionListRef: React.RefObject<HTMLDivElement>;
+    sessions: TopbarSession[];
+    setSessionListQuery: (q: string) => void;
+    setShowSessionList: (v: boolean) => void;
+    setTabContextMenu: (menu: TabContextMenuState | null) => void;
+    setTerminalTabContextMenu: (menu: TerminalTabContextMenuState | null) => void;
+    showSessionList: boolean;
+    tabContextMenu: TabContextMenuState | null;
+    terminalTabContextMenu: TerminalTabContextMenuState | null;
+  };
+  animation: {
+    editFlyAnimation: { items: EditFlyItem[] } | null;
+    editorModeBanner: { id: string; text: string } | null;
+  };
+  shared: {
+    addToast: (message: string | Error, type?: string, duration?: number, actions?: unknown[]) => number;
+    t: (key: string, vars?: Record<string, unknown>) => string;
+  };
+}
+
+export default function AppOverlays({ dialogs, importExport, notifications, menus, animation, shared }: AppOverlaysProps) {
   const {
     activeAIDevilMode,
     activeSessionId,
@@ -161,7 +287,7 @@ export default function AppOverlays({ dialogs = {}, importExport = {}, notificat
                   '--beam-length': item.length,
                   '--beam-angle': item.angle,
                   '--beam-delay': `${item.delay}ms`,
-                }}
+                } as React.CSSProperties}
               />
             ) : item.type === 'add-core' ? (
               <div
@@ -170,7 +296,7 @@ export default function AppOverlays({ dialogs = {}, importExport = {}, notificat
                 style={{
                   '--add-path': item.path,
                   '--add-delay': `${item.delay}ms`,
-                }}
+                } as React.CSSProperties}
               />
             ) : item.type === 'add-particle' ? (
               <div
@@ -180,7 +306,7 @@ export default function AppOverlays({ dialogs = {}, importExport = {}, notificat
                   '--particle-path': item.path,
                   '--particle-size': `${item.size}px`,
                   '--particle-delay': `${item.delay}ms`,
-                }}
+                } as React.CSSProperties}
               />
             ) : item.type === 'add-ring' ? (
               <div
@@ -190,7 +316,7 @@ export default function AppOverlays({ dialogs = {}, importExport = {}, notificat
                   '--ring-x': `${item.at.x}px`,
                   '--ring-y': `${item.at.y}px`,
                   '--ring-delay': `${item.delay}ms`,
-                }}
+                } as React.CSSProperties}
               />
             ) : item.type === 'save-flow-capsule' ? (
               <div
@@ -204,7 +330,7 @@ export default function AppOverlays({ dialogs = {}, importExport = {}, notificat
                   '--save-flow-to-x': `${item.to.x}px`,
                   '--save-flow-to-y': `${item.to.y}px`,
                   '--save-flow-delay': `${item.delay}ms`,
-                }}
+                } as React.CSSProperties}
               >
                 <span className="edit-fly-label">{item.label}</span>
                 {item.value ? <span className="edit-fly-value">{item.value}</span> : null}
@@ -221,7 +347,7 @@ export default function AppOverlays({ dialogs = {}, importExport = {}, notificat
                   '--fly-to-x': `${item.to.x}px`,
                   '--fly-to-y': `${item.to.y}px`,
                   '--fly-delay': `${item.delay}ms`,
-                }}
+                } as React.CSSProperties}
               >
                 <span className="edit-fly-label">{item.label}</span>
                 {item.value ? <span className="edit-fly-value">{item.value}</span> : null}
@@ -309,7 +435,7 @@ export default function AppOverlays({ dialogs = {}, importExport = {}, notificat
               onClick={(e) => {
                 const { sessionId, terminalId, type, terminalIds } = terminalTabContextMenu;
                 setTerminalTabContextMenu(null);
-                if (type === 'group') {
+                if (type === 'group' && terminalIds) {
                   closeTerminalGroup(sessionId, terminalId, terminalIds, e);
                   return;
                 }

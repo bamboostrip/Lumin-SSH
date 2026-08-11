@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { Z } from '../constants/zIndex.js';
 
 /** 同步失败状态（源头在 useSessionConnections 中为 unknown，此处先本地定义，待后续收窄） */
-interface SyncFailureState {
+export interface SyncFailureState {
   category?: string;
   error?: unknown;
 }

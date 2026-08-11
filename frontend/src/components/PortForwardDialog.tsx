@@ -1,24 +1,33 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ChangeEvent, type FocusEvent } from 'react';
 import { ExternalLink, X, ArrowRight, ArrowLeftRight, MonitorSmartphone, Server, Hash, Power, Play, Trash2 } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 import { useTranslation } from '../i18n.js';
+import type { PortForwardInitialMapping } from '../hooks/usePortForwardDialog.js';
+import type { sshmanager } from '../../wailsjs/go/models.js';
+
+export interface PortForwardDialogProps {
+  sessionId: string;
+  onClose: () => void;
+  initialMapping: PortForwardInitialMapping | null;
+  initialTab: string | null;
+}
 
 export default function PortForwardDialog({
     sessionId,
     onClose,
     initialMapping = null,
     initialTab = null,
-}) {
+}: PortForwardDialogProps) {
     const { t } = useTranslation();
-    const [activeTab, setActiveTab] = useState(initialTab || (initialMapping ? 'new' : 'list'));
-    const [portForwards, setPortForwards] = useState([]);
+    const [activeTab, setActiveTab] = useState<string>(initialTab || (initialMapping ? 'new' : 'list'));
+    const [portForwards, setPortForwards] = useState<sshmanager.PortForwardInfo[]>([]);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
-    const [kind, setKind] = useState(initialMapping?.kind || 'local');
-    const [localHost, setLocalHost] = useState(initialMapping?.localHost || '127.0.0.1');
-    const [localPort, setLocalPort] = useState(initialMapping?.localPort || '');
-    const [remoteHost, setRemoteHost] = useState(initialMapping?.remoteHost || '127.0.0.1');
-    const [remotePort, setRemotePort] = useState(initialMapping?.remotePort || '');
+    const [kind, setKind] = useState<string>(initialMapping?.kind || 'local');
+    const [localHost, setLocalHost] = useState<string>(initialMapping?.localHost || '127.0.0.1');
+    const [localPort, setLocalPort] = useState<string>(initialMapping?.localPort || '');
+    const [remoteHost, setRemoteHost] = useState<string>(initialMapping?.remoteHost || '127.0.0.1');
+    const [remotePort, setRemotePort] = useState<string>(initialMapping?.remotePort || '');
     const [error, setError] = useState('');
 
     useEffect(() => {
@@ -52,11 +61,11 @@ export default function PortForwardDialog({
         }
     };
 
-    const normalizePort = (value) => {
+    const normalizePort = (value: string) => {
         return value.trim();
     };
 
-    const validatePort = (value) => {
+    const validatePort = (value: string) => {
         const port = normalizePort(value);
         if (!/^[0-9]+$/.test(port)) {
             return false;
@@ -109,7 +118,7 @@ export default function PortForwardDialog({
         }
     };
 
-    const handleStop = async (id) => {
+    const handleStop = async (id: string) => {
         try {
             await AppGo.StopPortForwardForSession(sessionId, id);
             notifyChanged();
@@ -119,7 +128,7 @@ export default function PortForwardDialog({
         }
     };
 
-    const handleRestart = async (id) => {
+    const handleRestart = async (id: string) => {
         try {
             await AppGo.RestartPortForwardForSession(sessionId, id);
             notifyChanged();
@@ -129,7 +138,7 @@ export default function PortForwardDialog({
         }
     };
 
-    const handleDelete = async (id) => {
+    const handleDelete = async (id: string) => {
         try {
             await AppGo.DeletePortForwardForSession(sessionId, id);
             setPortForwards((prev) => prev.filter((info) => info.ID !== id));
@@ -141,7 +150,7 @@ export default function PortForwardDialog({
     };
 
     // 列表方向文案对齐后端语义: local=SSH -L 本地监听→远程目标; remote=SSH -R 远程监听→本机目标
-    const renderMappingLabel = (info) => {
+    const renderMappingLabel = (info: sshmanager.PortForwardInfo) => {
         if (info.Kind === 'local') {
             return `${t('本地监听')} ${info.LocalAddr} → ${t('远程目标')} ${info.RemoteAddr}`;
         }
@@ -149,7 +158,7 @@ export default function PortForwardDialog({
     };
 
     // 地址字段块: 卡片化容器, 与上方方向卡片视觉统一; 输入框绑定固定(local*=本机, remote*=远程), 仅 label/图标/角色随 kind 变
-    const inputStyle = {
+    const inputStyle: React.CSSProperties = {
         width: '100%',
         padding: '8px 10px',
         fontSize: 13,
@@ -161,20 +170,32 @@ export default function PortForwardDialog({
         transition: 'var(--transition-fast)',
         boxSizing: 'border-box',
     };
-    const handleInputFocus = (event) => {
+    const handleInputFocus = (event: FocusEvent<HTMLInputElement>) => {
         event.target.style.borderColor = 'var(--accent)';
         event.target.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent)';
     };
-    const handleInputBlur = (event) => {
+    const handleInputBlur = (event: FocusEvent<HTMLInputElement>) => {
         event.target.style.borderColor = 'var(--border)';
         event.target.style.boxShadow = 'none';
     };
     // 监听地址安全判定: 仅回环地址视为安全; 空值或 0.0.0.0/:: 等非回环地址视为可能对外暴露
-    const isSafeListenHost = (host) => {
+    const isSafeListenHost = (host: string) => {
         const h = String(host || '').trim().toLowerCase().replace(/^\[|\]$/g, '');
         return h === '127.0.0.1' || h === 'localhost' || h === '::1';
     };
-    const addressFieldCard = (options) => {
+
+    interface AddressFieldCardOptions {
+        keyName: string;
+        roleText: string;
+        roleColor: string;
+        roleIcon: React.ReactNode;
+        hostValue: string;
+        onHostChange: (event: ChangeEvent<HTMLInputElement>) => void;
+        portValue: string;
+        onPortChange: (event: ChangeEvent<HTMLInputElement>) => void;
+        isListen: boolean;
+    }
+    const addressFieldCard = (options: AddressFieldCardOptions) => {
         const { keyName, roleText, roleColor, roleIcon, hostValue, onHostChange, portValue, onPortChange, isListen } = options;
         const showListenWarning = isListen && hostValue.trim() !== '' && !isSafeListenHost(hostValue);
         return (
@@ -254,7 +275,7 @@ export default function PortForwardDialog({
     };
     const localFieldBlock = addressFieldCard({
         keyName: 'local',
-        roleText: kind === 'local' ? t('本地监听地址') : t('本机目标地址'),
+        roleText: kind === 'local' ? t('本地监听地址') : t('本地目标地址'),
         roleColor: 'var(--accent)',
         roleIcon: <MonitorSmartphone size={14} />,
         hostValue: localHost,

@@ -50,34 +50,37 @@ npm run i18n:check    # ✅ 28 语言 × 1817 键，missing=0
 
 ## 3. 剩余工作（按优先级）
 
-### 🔴 1. 运行时冒烟测试（需 wails 环境，最高优先）
+> **更新（2026-08-11 收尾会话）**：🟡2 逃生审计与 🟡3 any 收敛均已完成（详见 FOLLOWUP 第 3/4 节）；NetworkTab 注释与 HANDOFF 文档已更正。
+
+### 🔴 1. 运行时冒烟测试（需 wails 环境，最高优先，唯一剩余的功能验证）
 静态验证无法覆盖，需真实桌面环境执行：
 - [ ] 服务器连接/保存/移动分组/重命名（验证 toast 修复：不应有 "Error: " 前缀）
 - [ ] 终端：连接、分屏、cwd 标签高亮（`isCwdSystemPinnedTab` 修复激活了此前从未渲染的 UI）、搜索、命令历史
 - [ ] 文件管理：上传/下载、FileEditor、系统固定 Tab
-- [ ] AI 面板：provider 快照轮询（`defaultTokenStoreTitle` 修复点）、对话、mention/斜杠菜单、MCP
-- [ ] 设置：搜索、各 Tab（含代理节点表单）、运行环境
-- [ ] 28 语言切换
+- [ ] AI 面板：provider 快照轮询（`defaultTokenStoreTitle` 修复点）、对话、mention/斜杠菜单、MCP、设置面板（备份恢复、协作模式、自动批准）
+- [ ] 设置：搜索、各 Tab（含代理节点表单）、运行环境、同步（WebDAV/R2/FTP/SFTP）
+- [ ] 28 语言切换（重点：本次新增的 9 个设置描述键在非中文语言下的显示，当前为中文占位待翻译）
 
-`cd frontend && npm run dev` 可测纯 UI；完整桌面需 `wails dev`。
+`cd frontend && npm run dev` 可测纯 UI（wails 桥调用会失败，适合布局/交互走查）；完整桌面需 `wails dev`。
 
-### 🟡 2. 52 处 `as I18nKey` 逃生审计
-阶段 3 声称 4 处，实际 52 处（21 文件）。键存在于 zh-CN 表者可直接去掉逃生；动态拼接键保留。优先复查 `useUpdateChecker.ts`、`terminalCommandAutocompleteProviders.ts`（阶段 3 原始 4 处）。
+### ✅ 2. `as I18nKey` 逃生审计（已完成）
+52 → 35 处：17 处静态定义字段治本（编译期校验），35 处动态值保留并注释。附带修复：9 个从未入表的设置键补齐 28 语言表 + check-i18n.mjs 对 TS 格式的解析修复（此前"28 语言全绿"从未成立）。
 
-### 🟡 3. `any` 收敛
-- `AIPanel.tsx` 的 `type BridgeData = any`（55 处使用）→ 定义最小接口或随组件重构消解
-- `SettingsModal.tsx` 的 `Record<string, any>` ×6
+### ✅ 3. `any` 收敛（已完成）
+AIPanel `BridgeData = any`（55 处）、SettingsModal `Record<string, any>` ×6 全部消除；全项目（除 wailsjs）显式 any 归零。
 
 ### 🟢 4. 收尾
-- `NetworkTab.tsx:21` 注释仍含 "@ts-nocheck 桥接" 字样（最后 1 处文本残留，已无真指令）——顺手清理
-- `docs/TSX-MIGRATION-HANDOFF.md` 仍有过期内容（逃生计数等），可按需更正
-- 合并回 main（PR 或 ff）
+- [x] `NetworkTab.tsx:21` 注释清理（本会话完成）
+- [x] `docs/TSX-MIGRATION-HANDOFF.md` 过期内容更正（本会话完成）
+- [ ] 运行时冒烟测试通过后合并回 main（PR 或 ff）
 
 ### 👀 5. 长期观察项
 - 主 bundle 4.4MB（28 语言表 eager 打入主包，预存权衡）
 - `App.tsx:325` `getEffectiveTerminals` 契约收紧（`term.id || ''`）
 - `AIProviderQuickEditOverlay.tsx:193` `draft.` 直取（当前 null 不可能）
 - `i18n:check` 的 `englishCandidates=3` 告警（base 时代即有）
+- 9 个新补语言键在 27 个非中文表为中文占位，待翻译（搜索设置 Tab 的描述文案）
+- `NetworkTab.tsx:326` / `AIPanel.tsx:229` 的 `String(undefined)` → `"undefined"` 风险位（非迁移回归）
 
 ---
 

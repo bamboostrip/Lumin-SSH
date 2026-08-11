@@ -18,7 +18,7 @@ interface ProxyFormState {
   password: string;
 }
 
-/** 代理节点（来自 proxyNodesBridge.ts（@ts-nocheck 桥接），字段按需取用） */
+/** 代理节点（来自 proxyNodesBridge.ts（已类型化桥接），字段按需取用） */
 interface ProxyNodeLike {
   id?: unknown;
   name?: unknown;

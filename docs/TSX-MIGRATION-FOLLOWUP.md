@@ -11,9 +11,9 @@
 | 指标 | 数值 |
 |---|---|
 | src 文件 | 170 个（78 .tsx + 89 .ts + 3 .d.ts），0 个 .js/.jsx |
-| `@ts-nocheck` | **3 个组件**（AIComposer/AIProviderSelector/NetworkTab，组件级遗留）；22 个桥接已全部类型化 |
-| 显式 any | `BridgeData = any`（AIPanel，55 处使用）、`Record<string, any>` ×6、`: any` ×3 已随桥接类型化清零 |
-| 逃生通道 | `as I18nKey` ×52（21 文件）、`@ts-ignore` ×0 |
+| `@ts-nocheck` | **0 个指令**（22 个桥接已全部类型化；此前"3 个组件遗留"为注释文本误判，已澄清） |
+| 显式 any | **全部清零**（`BridgeData = any`、`Record<string, any>` ×6、`: any` ×3 —— 2026-08-11 收尾会话消除，仅 wailsjs 生成代码保留宽泛类型） |
+| 逃生通道 | `as I18nKey` ×35（17 文件，均为运行时动态值且已注释）、`@ts-ignore` ×0 |
 
 ---
 
@@ -59,20 +59,23 @@
 
 ---
 
-## 3. 审计 52 处 `as I18nKey` 逃生 🟡
+## 3. `as I18nKey` 逃生审计 ✅（已完成 2026-08-11）
 
-阶段 3 声称 4 处、阶段 6 后实际 52 处。逐个检查：
-- 键在 zh-CN 表中存在 → 去掉逃生（直接 t() 调用）
-- 动态拼接键（如 `t(\`${prefix}...\` as I18nKey)`）→ 保留，但确认 t() 兜底行为可接受
-- 高价值目标：`useUpdateChecker.ts:316,320`、`terminalCommandAutocompleteProviders.ts:278,322`（阶段 3 原始 4 处，优先复查）
+阶段 3 声称 4 处、阶段 6 后实际 52 处（21 文件）。审计结论：**52 → 35 处（17 文件）**。
+
+- **治本 17 处**：设置树/提供方定义字段类型化（`settingDefinitions.ts` 的 `titleKey/descriptionKey/breadcrumbTitleKeys` 等改 `I18nKey | ''`、`SettingsModal` 的 `TAB_LABELS`/`ProviderDefinition`、AI 组件 label 映射表 `Record<string, I18nKey>`）——静态定义键从此编译期校验存在性，拼错即报错
+- **保留 35 处**：均为运行时动态值（AI/后端返回文案、主题包名、用户消息、动态拼接键），t() 对未知 key 原样兜底，逃生是设计意图；已逐处补注释说明
+- **额外发现与修复**：9 个设置描述键（探测方式/代理节点/同步服务等）从未进入任何语言表（非中文语言一直显示中文原文）——28 语言表补齐（非中文表暂用原文占位，行为不变，待翻译）；`check-i18n.mjs` 的 babel parse 从未适配 TS 语言表格式（缺 typescript 插件 + satisfies 包装未展开），27 个非 zh-CN 表全部解析失败——"28 语言全绿"实为从未成立，已修复（28 × 1826 键真全绿，exit 0）
+- 复查结果：`useUpdateChecker.ts`、`terminalCommandAutocompleteProviders.ts` 的动态 key 均为后端返回文案，保留合理
 
 ---
 
-## 4. `any` 收敛 🟡
+## 4. `any` 收敛 ✅（已完成 2026-08-11）
 
-- `AIPanel.tsx:32` `type BridgeData = any`（55 处使用）→ 定义最小 `BridgeData` 接口（字段来自 aiChatBridge 的运行时形状），或在桥接类型化后（事项 2）自然消解
-- `SettingsModal.tsx:59-66` `Record<string, any>` ×6 → 随 settingDefinitions 类型化消解
-- 注意：`String(...)` 包装 undefined 会得到 `"undefined"`。已知风险位（非迁移回归，但可顺手修）：`NetworkTab.tsx:326` `${String(node?.host)}:${String(node?.port)}`（node 来自桥接）、`AIPanel.tsx:229` `String(value).padStart(2,'0')`
+- `AIPanel.tsx` `type BridgeData = any`（55 处使用）→ **已消除**：按语义拆为局部接口（`AIEventPayloadShape`/`AIMetricsPayload`/`AIPanelSettings`/`AIAPIHistoryMessageLike`），复用已类型化形状（`AIConversationSnapshot`/`AIProviderLike`/`AIProviderState`/`AIGlobalSettings`/`AIConversationMessageSearchResult`/`AIMessage`），事件回调改 `unknown` + 守卫断言
+- `SettingsModal.tsx` `Record<string, any>` ×6 → **已消除**：`Record<string, unknown>` + 使用处守卫/断言
+- 结果：全项目（除 wailsjs 生成代码）显式 `any` **归零**（tsc strict 验证）
+- 遗留风险位（非迁移回归，可顺手修）：`NetworkTab.tsx:326` `${String(node?.host)}:${String(node?.port)}`、`AIPanel.tsx:229` `String(value).padStart(2,'0')`（`String(undefined)` → `"undefined"`）
 
 ---
 

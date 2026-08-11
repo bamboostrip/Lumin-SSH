@@ -1,7 +1,29 @@
 import { Check, Search, ChevronDown } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 
-function normalizeSearchText(value) {
+interface SelectOption {
+  value: string;
+  label?: string;
+}
+
+interface SelectGroup {
+  label?: string;
+  options: SelectOption[];
+}
+
+interface SearchableGroupedSelectProps {
+  id?: string;
+  value?: string;
+  onChange?: (value: string) => void;
+  groups?: SelectGroup[];
+  placeholder?: string;
+  searchPlaceholder?: string;
+  emptyText?: string;
+  disabled?: boolean;
+  renderOptionLabel?: (item: SelectOption) => string;
+}
+
+function normalizeSearchText(value: unknown) {
   return String(value || '').toLowerCase().replace(/[_\s]+/g, '-').trim();
 }
 
@@ -15,14 +37,14 @@ export default function SearchableGroupedSelect({
   emptyText = '',
   disabled = false,
   renderOptionLabel,
-}) {
-  const containerRef = useRef(null);
-  const searchInputRef = useRef(null);
+}: SearchableGroupedSelectProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const searchInputId = useId();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
 
-  const getOptionLabel = (item) => {
+  const getOptionLabel = (item: SelectOption) => {
     if (typeof renderOptionLabel === 'function') {
       return renderOptionLabel(item);
     }
@@ -69,13 +91,13 @@ export default function SearchableGroupedSelect({
       searchInputRef.current?.focus();
     });
 
-    const handlePointerDown = (event) => {
-      if (!containerRef.current?.contains(event.target)) {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) {
         setOpen(false);
       }
     };
 
-    const handleKeyDown = (event) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setOpen(false);
       }

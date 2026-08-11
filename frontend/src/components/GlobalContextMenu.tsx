@@ -3,37 +3,70 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from '../i18n.js';
 import { formatShortcut } from '../utils/platform.js';
 import { clampMenuPosition } from '../utils/menuPosition.js';
-import { GLOBAL_CONTEXT_MENU_OPEN_EVENT } from '../utils/contextMenu.js';
+import { GLOBAL_CONTEXT_MENU_OPEN_EVENT, type GlobalContextMenuDetail } from '../utils/contextMenu.js';
 import * as runtime from '../../wailsjs/runtime/runtime.js';
 
-function normalizeMenuItems(items) {
+/** 菜单项输入（来自 .jsx 调用方，字段宽松） */
+interface ContextMenuItemInput {
+  type?: string;
+  key?: string;
+  label?: string;
+  shortcut?: string;
+  danger?: boolean;
+  disabled?: boolean;
+  onSelect?: unknown;
+}
+
+type NormalizedMenuItem =
+  | { key: string; type: 'divider' }
+  | {
+      key: string;
+      type: 'item';
+      label: string;
+      shortcut: string;
+      danger: boolean;
+      disabled: boolean;
+      onSelect: ((item: NormalizedMenuItem) => void) | null;
+    };
+
+function normalizeMenuItems(items: unknown): NormalizedMenuItem[] {
   if (!Array.isArray(items)) {
     return [];
   }
-  return items.map((item, index) => {
-    if (item?.type === 'divider') {
+  return items
+    .map((item: ContextMenuItemInput, index: number): NormalizedMenuItem | null => {
+      if (item?.type === 'divider') {
+        return {
+          key: typeof item?.key === 'string' && item.key.trim() ? item.key.trim() : `divider-${index}`,
+          type: 'divider',
+        };
+      }
+      const label = typeof item?.label === 'string' ? item.label.trim() : '';
+      if (!label) {
+        return null;
+      }
+      const onSelect = item?.onSelect;
       return {
-        key: typeof item?.key === 'string' && item.key.trim() ? item.key.trim() : `divider-${index}`,
-        type: 'divider',
+        key: typeof item?.key === 'string' && item.key.trim() ? item.key.trim() : `item-${index}`,
+        type: 'item',
+        label,
+        shortcut: typeof item?.shortcut === 'string' ? item.shortcut.trim() : '',
+        danger: item?.danger === true,
+        disabled: item?.disabled === true,
+        onSelect: typeof onSelect === 'function' ? (onSelect as (item: NormalizedMenuItem) => void) : null,
       };
-    }
-    const label = typeof item?.label === 'string' ? item.label.trim() : '';
-    if (!label) {
-      return null;
-    }
-    return {
-      key: typeof item?.key === 'string' && item.key.trim() ? item.key.trim() : `item-${index}`,
-      type: 'item',
-      label,
-      shortcut: typeof item?.shortcut === 'string' ? item.shortcut.trim() : '',
-      danger: item?.danger === true,
-      disabled: item?.disabled === true,
-      onSelect: typeof item?.onSelect === 'function' ? item.onSelect : null,
-    };
-  }).filter(Boolean);
+    })
+    .filter((item): item is NormalizedMenuItem => item !== null);
 }
 
-function resolveMenuPosition(detail, itemCount) {
+interface ContextMenuPositionDetail {
+  x?: unknown;
+  y?: unknown;
+  estimatedWidth?: unknown;
+  estimatedHeight?: unknown;
+}
+
+function resolveMenuPosition(detail: ContextMenuPositionDetail, itemCount: number) {
   const x = Number(detail?.x);
   const y = Number(detail?.y);
   const estimatedWidth = Number(detail?.estimatedWidth);
@@ -43,7 +76,7 @@ function resolveMenuPosition(detail, itemCount) {
   return clampMenuPosition(Number.isFinite(x) ? x : 0, Number.isFinite(y) ? y : 0, width, height);
 }
 
-function resolveEditableTarget(target) {
+function resolveEditableTarget(target: EventTarget | null): HTMLInputElement | HTMLTextAreaElement | null {
   if (typeof window === 'undefined') {
     return null;
   }
@@ -53,40 +86,49 @@ function resolveEditableTarget(target) {
   return null;
 }
 
+type EditableAction = 'copy' | 'cut' | 'paste' | 'selectAll';
+
+interface MenuState {
+  x: number;
+  y: number;
+  items: NormalizedMenuItem[];
+}
+
 export default function GlobalContextMenu() {
   const { t } = useTranslation();
-  const [menu, setMenu] = useState(null);
-  const menuRef = useRef(null);
+  const [menu, setMenu] = useState<MenuState | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   const closeMenu = useCallback(() => {
     setMenu(null);
   }, []);
 
-  const handleInputAction = useCallback(async (targetInput, action) => {
+  const handleInputAction = useCallback(async (targetInput: HTMLInputElement | HTMLTextAreaElement, action: EditableAction) => {
     if (!targetInput) {
       return;
     }
     targetInput.focus();
     try {
       if (action === 'copy') {
-        const text = targetInput.value.substring(targetInput.selectionStart, targetInput.selectionEnd);
+        const text = targetInput.value.substring(Number(targetInput.selectionStart), Number(targetInput.selectionEnd));
         if (text) {
           await runtime.ClipboardSetText(text);
         }
         return;
       }
       if (action === 'cut') {
-        const text = targetInput.value.substring(targetInput.selectionStart, targetInput.selectionEnd);
+        const text = targetInput.value.substring(Number(targetInput.selectionStart), Number(targetInput.selectionEnd));
         if (!text) {
           return;
         }
         await runtime.ClipboardSetText(text);
-        const start = targetInput.selectionStart;
-        const end = targetInput.selectionEnd;
+        const start = Number(targetInput.selectionStart);
+        const end = Number(targetInput.selectionEnd);
         const proto = targetInput.tagName === 'TEXTAREA'
           ? window.HTMLTextAreaElement.prototype
           : window.HTMLInputElement.prototype;
-        const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+        // 输入元素原型上的 value setter 必然存在（老 WebView 无剪贴板 API 时才走此路径）
+        const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')!.set as (this: HTMLInputElement | HTMLTextAreaElement, value: string) => void;
         const nextValue = targetInput.value.substring(0, start) + targetInput.value.substring(end);
         nativeSetter.call(targetInput, nextValue);
         targetInput.setSelectionRange(start, start);
@@ -106,12 +148,12 @@ export default function GlobalContextMenu() {
         if (!text) {
           return;
         }
-        const start = targetInput.selectionStart;
-        const end = targetInput.selectionEnd;
+        const start = Number(targetInput.selectionStart);
+        const end = Number(targetInput.selectionEnd);
         const proto = targetInput.tagName === 'TEXTAREA'
           ? window.HTMLTextAreaElement.prototype
           : window.HTMLInputElement.prototype;
-        const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+        const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')!.set as (this: HTMLInputElement | HTMLTextAreaElement, value: string) => void;
         nativeSetter.call(
           targetInput,
           targetInput.value.substring(0, start) + text + targetInput.value.substring(end)
@@ -127,7 +169,7 @@ export default function GlobalContextMenu() {
     }
   }, []);
 
-  const buildInputMenuItems = useCallback((targetInput) => {
+  const buildInputMenuItems = useCallback((targetInput: HTMLInputElement | HTMLTextAreaElement): ContextMenuItemInput[] => {
     const start = Number(targetInput?.selectionStart);
     const end = Number(targetInput?.selectionEnd);
     const hasSelection = Number.isFinite(start) && Number.isFinite(end) && end > start;
@@ -162,7 +204,7 @@ export default function GlobalContextMenu() {
     ];
   }, [handleInputAction, t]);
 
-  const openMenu = useCallback((detail) => {
+  const openMenu = useCallback((detail: ContextMenuPositionDetail & { items?: unknown }) => {
     const items = normalizeMenuItems(detail?.items);
     if (items.length === 0) {
       closeMenu();
@@ -176,7 +218,7 @@ export default function GlobalContextMenu() {
     });
   }, [closeMenu]);
 
-  const handleMenuItemClick = useCallback((item) => {
+  const handleMenuItemClick = useCallback((item: NormalizedMenuItem) => {
     if (!item || item.type !== 'item' || item.disabled || typeof item.onSelect !== 'function') {
       return;
     }
@@ -190,7 +232,7 @@ export default function GlobalContextMenu() {
   }, [closeMenu]);
 
   useEffect(() => {
-    const handleContextMenu = (event) => {
+    const handleContextMenu = (event: MouseEvent) => {
       const targetInput = resolveEditableTarget(event.target);
       if (!targetInput) {
         return;
@@ -205,11 +247,11 @@ export default function GlobalContextMenu() {
       });
     };
 
-    const handleCustomOpen = (event) => {
+    const handleCustomOpen = (event: CustomEvent<GlobalContextMenuDetail>) => {
       openMenu(event?.detail);
     };
 
-    const handlePointerDown = (event) => {
+    const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (target instanceof Node && menuRef.current?.contains(target)) {
         return;
@@ -218,13 +260,14 @@ export default function GlobalContextMenu() {
     };
 
     document.addEventListener('contextmenu', handleContextMenu);
-    window.addEventListener(GLOBAL_CONTEXT_MENU_OPEN_EVENT, handleCustomOpen);
+    // 自定义事件监听器签名与 EventListener 不完全一致，此处按需断言
+    window.addEventListener(GLOBAL_CONTEXT_MENU_OPEN_EVENT, handleCustomOpen as EventListener);
     window.addEventListener('pointerdown', handlePointerDown, true);
     window.addEventListener('blur', closeMenu);
 
     return () => {
       document.removeEventListener('contextmenu', handleContextMenu);
-      window.removeEventListener(GLOBAL_CONTEXT_MENU_OPEN_EVENT, handleCustomOpen);
+      window.removeEventListener(GLOBAL_CONTEXT_MENU_OPEN_EVENT, handleCustomOpen as EventListener);
       window.removeEventListener('pointerdown', handlePointerDown, true);
       window.removeEventListener('blur', closeMenu);
     };

@@ -1,23 +1,37 @@
 import { useEffect, useRef, useState } from 'react';
-import { ShieldAlert, ShieldQuestion, KeyRound, Eye, EyeOff, Clipboard } from 'lucide-react';
+import { ShieldAlert, ShieldQuestion, KeyRound, Eye, EyeOff, Clipboard, type LucideIcon } from 'lucide-react';
 import { Z } from '../constants/zIndex';
 import { getThemeComponentTheme } from '../utils/theme.js';
+import type { SessionAuthPrompt } from '../hooks/useSessionConnections.js';
+
+interface AuthButton {
+  label: string;
+  value: string | number;
+  primary?: boolean;
+}
+
+interface SessionAuthCardProps {
+  prompt: SessionAuthPrompt;
+  isActive: boolean;
+  t: (key: string, vars?: Record<string, unknown>) => string;
+  onResolve: (result: { value: string; persist: boolean } | string | number | null) => void;
+}
 
 // 会话内的交互卡片：主机密钥确认 / 认证失败重输密码。
 // 与 ConnectingCard 同一挂载点、同一配色，每个会话各自渲染一张，
 // 因此批量连接时 N 个会话会得到 N 张卡片，互不干扰。
-export default function SessionAuthCard({ prompt, isActive, t, onResolve }) {
+export default function SessionAuthCard({ prompt, isActive, t, onResolve }: SessionAuthCardProps) {
   const C = getThemeComponentTheme('connectingCard');
   const isPassword = prompt.kind === 'password';
   const [value, setValue] = useState('');
   const [checked, setChecked] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [focusIdx, setFocusIdx] = useState(0);
-  const inputRef = useRef(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   // 卡片卸载前可能连收两次回车/双击，onResolve 会调后端，必须只生效一次
   const resolvedRef = useRef(false);
 
-  const buttons = isPassword
+  const buttons: AuthButton[] = isPassword
     ? [
         { label: t('确定'), value: 'ok', primary: true },
         { label: t('取消'), value: 'cancel' },
@@ -50,7 +64,7 @@ export default function SessionAuthCard({ prompt, isActive, t, onResolve }) {
 
   const canSubmit = !isPassword || value.length > 0;
 
-  const submit = (btnValue) => {
+  const submit = (btnValue: string | number) => {
     if (resolvedRef.current) return;
     if (!isPassword) {
       resolvedRef.current = true;
@@ -69,7 +83,7 @@ export default function SessionAuthCard({ prompt, isActive, t, onResolve }) {
 
   useEffect(() => {
     if (!isActive) return undefined;
-    const handleKeyDown = (e) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       // ponytail: 全局弹窗（GlobalDialog / 各类 Modal）打开时让位，避免 Esc/Enter 被双重处理
       if (document.querySelector('.modal-overlay')) return;
       if (e.key === 'Escape') {
@@ -115,7 +129,7 @@ export default function SessionAuthCard({ prompt, isActive, t, onResolve }) {
     } catch {}
   };
 
-  const Icon = isPassword ? KeyRound : prompt.danger ? ShieldAlert : ShieldQuestion;
+  const Icon: LucideIcon = isPassword ? KeyRound : prompt.danger ? ShieldAlert : ShieldQuestion;
   const iconBg = isPassword || !prompt.danger
     ? 'rgba(var(--warning-rgb), 0.85)'
     : 'rgba(var(--danger-rgb), 0.85)';

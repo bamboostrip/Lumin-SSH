@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { t as $t } from '../../i18n.js';
 import { Plus, Trash2, RotateCcw, X } from 'lucide-react';
 import ColorPicker from './ColorPicker.jsx';
-import { DEFAULT_KEYWORD_RULES } from '../../utils/terminalKeywordHighlight.js';
+import { DEFAULT_KEYWORD_RULES, type KeywordRule } from '../../utils/terminalKeywordHighlight.js';
 
 /**
  * 日志关键字高亮规则配置面板
@@ -20,23 +20,30 @@ function genRuleId() {
 }
 
 // ANSI 16 色 SGR 码对应的默认 hex（用于色块预览）
-const SGR_HEX_MAP = {
+const SGR_HEX_MAP: Record<number, string> = {
   30: '#484f58', 31: '#ff6b6b', 32: '#3dd68c', 33: '#ffcc33',
   34: '#6cb6ff', 35: '#d2a8ff', 36: '#39d0d6', 37: '#d0d7de',
 };
 
-function getPreviewHex(rule) {
+function getPreviewHex(rule: KeywordRule) {
   if (rule.colorMode === 'truecolor' && rule.hex) return rule.hex;
   return SGR_HEX_MAP[rule.sgr] || rule.hex || '#ff6b6b';
 }
 
-export default function KeywordRulesPanel({ rules, onRulesChange, onResetDefault, terminalBg }) {
-  const [editingId, setEditingId] = useState(null);
-  const [colorPickerId, setColorPickerId] = useState(null);
+interface KeywordRulesPanelProps {
+  rules: KeywordRule[];
+  onRulesChange: (rules: KeywordRule[]) => void;
+  onResetDefault: () => void;
+  terminalBg?: string;
+}
+
+export default function KeywordRulesPanel({ rules, onRulesChange, onResetDefault, terminalBg }: KeywordRulesPanelProps) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [colorPickerId, setColorPickerId] = useState<string | null>(null);
   const [keywordInput, setKeywordInput] = useState('');
 
   const handleAddRule = useCallback(() => {
-    const newRule = {
+    const newRule: KeywordRule = {
       id: genRuleId(),
       keywords: [],
       colorMode: 'truecolor',
@@ -49,21 +56,21 @@ export default function KeywordRulesPanel({ rules, onRulesChange, onResetDefault
     setKeywordInput('');
   }, [rules, onRulesChange]);
 
-  const handleDeleteRule = useCallback((id) => {
+  const handleDeleteRule = useCallback((id: string) => {
     const next = (rules || []).filter((r) => r.id !== id);
     onRulesChange?.(next);
     if (editingId === id) setEditingId(null);
     if (colorPickerId === id) setColorPickerId(null);
   }, [rules, onRulesChange, editingId, colorPickerId]);
 
-  const handleColorChange = useCallback((id, hex) => {
+  const handleColorChange = useCallback((id: string, hex: string) => {
     const next = (rules || []).map((r) => (
-      r.id === id ? { ...r, colorMode: 'truecolor', hex } : r
+      r.id === id ? { ...r, colorMode: 'truecolor' as const, hex } : r
     ));
     onRulesChange?.(next);
   }, [rules, onRulesChange]);
 
-  const handleAddKeyword = useCallback((id) => {
+  const handleAddKeyword = useCallback((id: string) => {
     const kw = keywordInput.trim().toLowerCase();
     if (!kw) return;
     const next = (rules || []).map((r) => {
@@ -75,14 +82,14 @@ export default function KeywordRulesPanel({ rules, onRulesChange, onResetDefault
     setKeywordInput('');
   }, [rules, onRulesChange, keywordInput]);
 
-  const handleRemoveKeyword = useCallback((id, kw) => {
+  const handleRemoveKeyword = useCallback((id: string, kw: string) => {
     const next = (rules || []).map((r) => (
       r.id === id ? { ...r, keywords: r.keywords.filter((k) => k !== kw) } : r
     ));
     onRulesChange?.(next);
   }, [rules, onRulesChange]);
 
-  const handleKeywordInputKeyDown = useCallback((e, id) => {
+  const handleKeywordInputKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>, id: string) => {
     if (e.key === 'Enter' || e.key === ',') {
       e.preventDefault();
       handleAddKeyword(id);

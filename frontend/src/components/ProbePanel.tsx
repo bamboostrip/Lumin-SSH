@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, type ReactNode, type CSSProperties } from 'react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
+import type { sshmanager } from '../../wailsjs/go/models.js';
 import {
   formatCapacity,
   formatPartitionCapacity,
@@ -8,28 +9,86 @@ import {
 } from './probeFormatting.js';
 import { BarChart3, Cpu, HardDrive, Globe, ClipboardList, Clipboard, Search, Check, Monitor, EyeOff, Eye, RefreshCw, MemoryStick, ArrowLeftRight, Gauge, GripVertical, Power, Play, Trash2, Plus, ArrowRight } from 'lucide-react';
 import Tiptop from './Tiptop.jsx';
-import { Z } from '../constants/zIndex';
-import { useTranslation } from '../i18n.js';
+import { Z } from '../constants/zIndex.js';
+import { useTranslation, type I18nKey } from '../i18n.js';
 
 const HISTORY_SIZE = 30;
 // ponytail: 前端 fetch 超时兜底。后端 deployProbeScript(15s)+executeCmd(30s) 最坏约 45s,
 // 设 50s 略余。超时保证递归 setTimeout 链不断裂,避免后端 hang 时面板永久停在旧数据。
 const PROBE_FETCH_TIMEOUT_MS = 50000;
-const clampPct = (value) => Math.min(Math.max(Number(value) || 0, 0), 100);
-const pctColor = (pct, warn = 60, danger = 85) => pct >= danger ? 'var(--danger)' : pct >= warn ? 'var(--warning)' : 'var(--success)';
-const createEmptyHist = () => ({ cpu: Array(HISTORY_SIZE).fill(0), up: Array(HISTORY_SIZE).fill(0), down: Array(HISTORY_SIZE).fill(0) });
+
+export interface ProbeHist {
+  cpu: number[];
+  up: number[];
+  down: number[];
+}
+
+export interface ProbeInfo {
+  os?: string;
+  timezone?: string;
+  cpuModel?: string;
+  ip?: string;
+  uptime?: string;
+  load1?: number;
+  load5?: number;
+  load15?: number;
+  cpuUsage?: number;
+  cpuCores?: number[];
+  memUsed?: number;
+  memTotal?: number;
+  memCache?: number;
+  memFree?: number;
+  swapTotal?: number;
+  swapUsed?: number;
+  diskDevice?: string;
+  diskTotal?: number;
+  diskUsed?: number;
+  diskPercent?: number;
+  diskReadSpeed?: number;
+  diskWriteSpeed?: number;
+  diskPartitions?: Array<{ mount?: string; size?: string; avail?: string; usedPct?: number }>;
+  netUp?: number;
+  netDown?: number;
+  netUpTotal?: number;
+  netDownTotal?: number;
+  networkInterfaces?: Array<{ name?: string; uploadSpeed?: number; downloadSpeed?: number }>;
+  processes?: Array<{ pid?: number | string; cpu?: number; mem?: number; cmd?: string }>;
+}
+
+export interface ProbeSnapshot {
+  info: ProbeInfo | null;
+  hist: ProbeHist;
+}
+
+export interface ProbePanelProps {
+  sessionId: string;
+  host: string;
+  addToast: (message: string | Error, type?: string, duration?: number, actions?: unknown[]) => number;
+  enabled: boolean;
+  active: boolean;
+  snapshot?: ProbeSnapshot;
+  onSnapshot: (snapshot: ProbeSnapshot) => void;
+  onEnable: () => void;
+  onShowAllProcesses: () => void;
+  onShowNetworkDetails: () => void;
+  onOpenPortForward: () => void;
+}
+
+const clampPct = (value: number) => Math.min(Math.max(Number(value) || 0, 0), 100);
+const pctColor = (pct: number, warn = 60, danger = 85) => pct >= danger ? 'var(--danger)' : pct >= warn ? 'var(--warning)' : 'var(--success)';
+const createEmptyHist = (): ProbeHist => ({ cpu: Array(HISTORY_SIZE).fill(0), up: Array(HISTORY_SIZE).fill(0), down: Array(HISTORY_SIZE).fill(0) });
 const PROBE_CARD_ORDER_KEY = 'probePanelCardOrder';
 const PROBE_CARD_ORDER_CHANGED_EVENT = 'probeCardOrderChanged';
 const DEFAULT_PROBE_CARD_ORDER = ['overview', 'cpu', 'memory', 'network', 'disk', 'process', 'portforward'];
 const PROBE_HIDE_IP_KEY = 'probeHideIP';
 const PROBE_HIDE_IP_CHANGED_EVENT = 'probeHideIPChanged';
 
-const normalizeProbeCardOrder = (value) => {
+const normalizeProbeCardOrder = (value: unknown): string[] => {
   const source = Array.isArray(value) ? value : [];
-  const seen = new Set();
-  const next = [];
+  const seen = new Set<string>();
+  const next: string[] = [];
   source.forEach((item) => {
-    if (DEFAULT_PROBE_CARD_ORDER.includes(item) && !seen.has(item)) {
+    if (typeof item === 'string' && DEFAULT_PROBE_CARD_ORDER.includes(item) && !seen.has(item)) {
       seen.add(item);
       next.push(item);
     }
@@ -40,7 +99,7 @@ const normalizeProbeCardOrder = (value) => {
   return next;
 };
 
-const readProbeCardOrder = () => {
+const readProbeCardOrder = (): string[] => {
   try {
     return normalizeProbeCardOrder(JSON.parse(localStorage.getItem(PROBE_CARD_ORDER_KEY) || '[]'));
   } catch (_) {
@@ -48,13 +107,13 @@ const readProbeCardOrder = () => {
   }
 };
 
-const persistProbeCardOrder = (order) => {
+const persistProbeCardOrder = (order: string[]) => {
   const next = normalizeProbeCardOrder(order);
   localStorage.setItem(PROBE_CARD_ORDER_KEY, JSON.stringify(next));
   window.dispatchEvent(new CustomEvent(PROBE_CARD_ORDER_CHANGED_EVENT, { detail: next }));
 };
 
-const reorderProbeCard = (order, activeId, targetId, position) => {
+const reorderProbeCard = (order: string[], activeId: string, targetId: string, position: 'before' | 'after') => {
   if (!activeId || !targetId || activeId === targetId) return order;
   const next = order.filter((item) => item !== activeId);
   const targetIndex = next.indexOf(targetId);
@@ -67,13 +126,19 @@ const readProbeHideIP = () => localStorage.getItem(PROBE_HIDE_IP_KEY) === 'true'
 
 // ponytail: 所有会话的面板同时挂载（非当前会话仅 display:none），
 // 故隐藏 IP 必须广播，否则只有点击的那个面板会变。
-const persistProbeHideIP = (hide) => {
+const persistProbeHideIP = (hide: boolean) => {
   localStorage.setItem(PROBE_HIDE_IP_KEY, String(hide));
   window.dispatchEvent(new CustomEvent(PROBE_HIDE_IP_CHANGED_EVENT, { detail: hide }));
 };
 
 // ── Sparkline SVG ──────────────────────────────────────────────────────────
-const Sparkline = React.memo(function Sparkline({ data, series, height = 42 }) {
+interface SparklineSeries {
+  data: number[];
+  color: string;
+  fill?: boolean;
+}
+
+const Sparkline = React.memo(function Sparkline({ data, series, height = 42 }: { data?: number[]; series?: SparklineSeries[]; height?: number }) {
   const lines = useMemo(() => {
     if (Array.isArray(series) && series.length > 0) return series;
     return [{ data: data || [], color: 'var(--success)', fill: true }];
@@ -100,7 +165,7 @@ const Sparkline = React.memo(function Sparkline({ data, series, height = 42 }) {
 });
 
 // ── Memory Donut ──────────────────────────────────────────────────────────
-const MemDonut = React.memo(function MemDonut({ used, free, total }) {
+const MemDonut = React.memo(function MemDonut({ used, free, total }: { used: number; free: number; total: number }) {
   const r = 27; const cx = 35; const cy = 35;
   const circ = 2 * Math.PI * r;
   // 用 available 分割，保证三段 = 100%
@@ -108,7 +173,7 @@ const MemDonut = React.memo(function MemDonut({ used, free, total }) {
   const reclaimable = Math.max(total - used - free, 0);
   const f2 = total > 0 ? Math.min(Math.max(reclaimable / total, 0), 1 - f1) : 0;
   const f3 = Math.max(1 - f1 - f2, 0);
-  const seg = (frac, color, start) => frac > 0.005 ? (
+  const seg = (frac: number, color: string, start: number) => frac > 0.005 ? (
     <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={8}
       strokeDasharray={`${frac * circ} ${circ}`}
       strokeLinecap="butt"
@@ -125,7 +190,7 @@ const MemDonut = React.memo(function MemDonut({ used, free, total }) {
 });
 
 // ── Common pieces ─────────────────────────────────────────────────────────
-const ProgressBar = React.memo(function ProgressBar({ value, color }) {
+const ProgressBar = React.memo(function ProgressBar({ value, color }: { value: number; color?: string }) {
   const pct = clampPct(value);
   return (
     <div className="probe-progress-track">
@@ -134,11 +199,22 @@ const ProgressBar = React.memo(function ProgressBar({ value, color }) {
   );
 });
 
-const Card = React.memo(function Card({ children, className = '', style }) {
+const Card = React.memo(function Card({ children, className = '', style }: { children: ReactNode; className?: string; style?: CSSProperties }) {
   return <div className={`probe-card ${className}`} style={style}>{children}</div>;
 });
 
-const SectionHeader = React.memo(function SectionHeader({ icon, title, badge, action, dragHandleProps = null }) {
+interface DragHandleProps {
+  draggable: boolean;
+  dragReady: boolean;
+  dragging: boolean;
+  onPointerDown: (event: React.PointerEvent<HTMLElement>) => void;
+  onPointerUp: () => void;
+  onPointerCancel: () => void;
+  onDragStart: (event: React.DragEvent<HTMLElement>) => void;
+  onDragEnd: () => void;
+}
+
+const SectionHeader = React.memo(function SectionHeader({ icon, title, badge, action, dragHandleProps = null }: { icon: ReactNode; title: ReactNode; badge?: ReactNode; action?: ReactNode; dragHandleProps?: DragHandleProps | null }) {
   return (
     <div className="probe-section-header">
       <div
@@ -161,7 +237,7 @@ const SectionHeader = React.memo(function SectionHeader({ icon, title, badge, ac
   );
 });
 
-const MetricCard = React.memo(function MetricCard({ label, value, sub, color, icon, progress = null }) {
+const MetricCard = React.memo(function MetricCard({ label, value, sub, color, icon, progress = null }: { label: string; value: ReactNode; sub?: string; color?: string; icon?: ReactNode; progress?: number | null }) {
   const hasProgress = progress !== null;
   return (
     <div className="probe-metric-card">
@@ -178,12 +254,12 @@ const MetricCard = React.memo(function MetricCard({ label, value, sub, color, ic
   );
 });
 
-const CpuBar = React.memo(function CpuBar({ val = 0 }) {
+const CpuBar = React.memo(function CpuBar({ val = 0 }: { val?: number }) {
   const pct = clampPct(val);
   return <ProgressBar value={pct} color={pctColor(pct, 50, 80)} />;
 });
 
-const CoreHeatGrid = React.memo(function CoreHeatGrid({ cores }) {
+const CoreHeatGrid = React.memo(function CoreHeatGrid({ cores }: { cores: number[] }) {
   return (
     <div className="probe-core-grid">
       {cores.map((val, i) => {
@@ -201,8 +277,8 @@ const CoreHeatGrid = React.memo(function CoreHeatGrid({ cores }) {
   );
 });
 
-const PartRow = React.memo(function PartRow({ mount, size, avail, usedPct }) {
-  const pct = clampPct(usedPct);
+const PartRow = React.memo(function PartRow({ mount, size, avail, usedPct }: { mount?: string; size?: string; avail?: string; usedPct?: number }) {
+  const pct = clampPct(usedPct || 0);
   const color = pctColor(pct, 60, 85);
   return (
     <div className="probe-partition-row">
@@ -217,7 +293,7 @@ const PartRow = React.memo(function PartRow({ mount, size, avail, usedPct }) {
   );
 });
 
-const ProcessHotRow = React.memo(function ProcessHotRow({ process }) {
+const ProcessHotRow = React.memo(function ProcessHotRow({ process }: { process: { cpu?: number; mem?: number; cmd?: string } }) {
   const pct = clampPct(process.cpu || 0);
   return (
     <div className="probe-process-row">
@@ -232,12 +308,12 @@ const ProcessHotRow = React.memo(function ProcessHotRow({ process }) {
 });
 
 // ── Format helpers ─────────────────────────────────────────────────────────
-const fmem = (mb) => formatCapacity(mb, 1);
-const fdisk = (gb) => formatCapacity((Number(gb) || 0) * 1024, 1);
-const fspeed = (kb) => formatRate(kb);
-const ftotal = (mb) => formatTransferTotal(mb);
+const fmem = (mb: number) => formatCapacity(mb, 1);
+const fdisk = (gb: number) => formatCapacity((Number(gb) || 0) * 1024, 1);
+const fspeed = (kb: number) => formatRate(kb);
+const ftotal = (mb: number) => formatTransferTotal(mb);
 
-function isInternalIP(ip) {
+function isInternalIP(ip: string): boolean {
   if (!ip) return true;
   const addr = ip.trim();
   // IPv6：回环 ::1、链路本地 fe80::/10、唯一本地 fc00::/7
@@ -263,14 +339,14 @@ function isInternalIP(ip) {
 }
 
 // ponytail: 掩码按地址形态走，否则 IPv6/主机名会被套上 IPv4 形状的 ***.***.***.***
-const maskAddress = (addr) => {
+const maskAddress = (addr: string) => {
   if (!addr) return '';
   if (addr.includes(':')) return '****:****:****:****';
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(addr)) return '***.***.***.***';
   return '*'.repeat(Math.min(addr.length, 16));
 };
 
-function ProbeHeader({ t, info, displayIP, hideIP, addToast }) {
+function ProbeHeader({ t, info, displayIP, hideIP, addToast }: { t: (key: I18nKey) => string; info: ProbeInfo; displayIP: string; hideIP: boolean; addToast?: (message: string | Error, type?: string, duration?: number, actions?: unknown[]) => number }) {
   const osParts = info.os?.split(' ') || ['Linux'];
   // ponytail: 隐藏时 toast 不回显 IP，否则点一下复制就把刚藏起来的地址暴露在屏幕上
   const handleCopyIP = () => {
@@ -309,7 +385,7 @@ function ProbeHeader({ t, info, displayIP, hideIP, addToast }) {
   );
 }
 
-function HealthOverview({ t, cpuAvg, memPct, diskPct, info, coreCount, dragHandleProps }) {
+function HealthOverview({ t, cpuAvg, memPct, diskPct, info, coreCount, dragHandleProps }: { t: (key: I18nKey) => string; cpuAvg: number; memPct: number; diskPct?: number; info: ProbeInfo; coreCount: number; dragHandleProps?: DragHandleProps | null }) {
   const netSpeed = (info.netUp || 0) + (info.netDown || 0);
   const loadPct = coreCount > 0 ? clampPct((info.load1 || 0) / coreCount * 100) : 0;
   return (
@@ -318,15 +394,15 @@ function HealthOverview({ t, cpuAvg, memPct, diskPct, info, coreCount, dragHandl
       <div className="probe-overview-grid">
         <MetricCard label={t('系统负载')} value={`${loadPct.toFixed(0)}%`} sub={`1m ${info.load1?.toFixed(2) || '0.00'} · 5m ${info.load5?.toFixed(2) || '0.00'} · 15m ${info.load15?.toFixed(2) || '0.00'}`} color={pctColor(loadPct, 70, 100)} icon={<Gauge size={13} />} progress={loadPct} />
         <MetricCard label="CPU" value={`${cpuAvg}%`} sub={t('平均占用')} color={pctColor(cpuAvg, 50, 80)} icon={<Cpu size={13} />} progress={cpuAvg} />
-        <MetricCard label={t('内存')} value={`${memPct}%`} sub={`${fmem(info.memUsed)} / ${fmem(info.memTotal)}`} color={pctColor(memPct, 60, 85)} icon={<MemoryStick size={13} />} progress={memPct} />
-        <MetricCard label={t('磁盘')} value={`${Math.round(diskPct)}%`} sub={`${fdisk(info.diskUsed)} / ${fdisk(info.diskTotal)}`} color={pctColor(diskPct, 70, 90)} icon={<HardDrive size={13} />} progress={diskPct} />
-        <MetricCard label={t('网络')} value={fspeed(netSpeed)} sub={`↑ ${fspeed(info.netUp)} · ↓ ${fspeed(info.netDown)}`} color="var(--accent)" icon={<Globe size={13} />} />
+        <MetricCard label={t('内存')} value={`${memPct}%`} sub={`${fmem(info.memUsed || 0)} / ${fmem(info.memTotal || 0)}`} color={pctColor(memPct, 60, 85)} icon={<MemoryStick size={13} />} progress={memPct} />
+        <MetricCard label={t('磁盘')} value={`${Math.round(diskPct || 0)}%`} sub={`${fdisk(info.diskUsed || 0)} / ${fdisk(info.diskTotal || 0)}`} color={pctColor(diskPct || 0, 70, 90)} icon={<HardDrive size={13} />} progress={diskPct || 0} />
+        <MetricCard label={t('网络')} value={fspeed(netSpeed)} sub={`↑ ${fspeed(info.netUp || 0)} · ↓ ${fspeed(info.netDown || 0)}`} color="var(--accent)" icon={<Globe size={13} />} />
       </div>
     </Card>
   );
 }
 
-function CpuSection({ t, info, hist, cores, cpuAvg, cpuExpanded, setCpuExpanded, dragHandleProps }) {
+function CpuSection({ t, info, hist, cores, cpuAvg, cpuExpanded, setCpuExpanded, dragHandleProps }: { t: (key: I18nKey) => string; info: ProbeInfo; hist: ProbeHist; cores: number[]; cpuAvg: number; cpuExpanded: boolean; setCpuExpanded: React.Dispatch<React.SetStateAction<boolean>>; dragHandleProps?: DragHandleProps | null }) {
   const showBars = cores.length <= 8 || cpuExpanded;
   return (
     <Card>
@@ -354,18 +430,18 @@ function CpuSection({ t, info, hist, cores, cpuAvg, cpuExpanded, setCpuExpanded,
   );
 }
 
-function MemorySection({ t, info, memPct, dragHandleProps }) {
+function MemorySection({ t, info, memPct, dragHandleProps }: { t: (key: I18nKey) => string; info: ProbeInfo; memPct: number; dragHandleProps?: DragHandleProps | null }) {
   const memItems = [
-    { dot: 'var(--danger)', label: t('已用'), val: fmem(info.memUsed) },
-    { dot: 'var(--warning)', label: t('缓存'), val: fmem(info.memCache) },
-    { dot: 'var(--success)', label: t('空闲'), val: fmem(info.memFree) },
+    { dot: 'var(--danger)', label: t('已用'), val: fmem(info.memUsed || 0) },
+    { dot: 'var(--warning)', label: t('缓存'), val: fmem(info.memCache || 0) },
+    { dot: 'var(--success)', label: t('空闲'), val: fmem(info.memFree || 0) },
   ];
-  const swapPct = info.swapTotal > 0 ? clampPct(info.swapUsed / info.swapTotal * 100) : 0;
+  const swapPct = (info.swapTotal || 0) > 0 ? clampPct((info.swapUsed || 0) / (info.swapTotal || 1) * 100) : 0;
   return (
     <Card>
-      <SectionHeader icon={<MemoryStick size={14} />} title={t('内存')} badge={fmem(info.memTotal)} dragHandleProps={dragHandleProps} />
+      <SectionHeader icon={<MemoryStick size={14} />} title={t('内存')} badge={fmem(info.memTotal || 0)} dragHandleProps={dragHandleProps} />
       <div className="probe-memory-layout">
-        <MemDonut used={info.memUsed} free={info.memFree} total={info.memTotal} />
+        <MemDonut used={info.memUsed || 0} free={info.memFree || 0} total={info.memTotal || 0} />
         <div className="probe-memory-main">
           <div className="probe-memory-total">
             <span>{t('使用率')}</span>
@@ -383,9 +459,9 @@ function MemorySection({ t, info, memPct, dragHandleProps }) {
           </div>
         </div>
       </div>
-      {info.swapTotal > 0 && (
+      {(info.swapTotal || 0) > 0 && (
         <div className="probe-swap-box">
-          <div className="probe-swap-head"><span><ArrowLeftRight size={12} /> SWAP</span><b>{fmem(info.swapUsed)} / {fmem(info.swapTotal)}</b></div>
+          <div className="probe-swap-head"><span><ArrowLeftRight size={12} /> SWAP</span><b>{fmem(info.swapUsed || 0)} / {fmem(info.swapTotal || 0)}</b></div>
           <ProgressBar value={swapPct} color="var(--info)" />
         </div>
       )}
@@ -393,7 +469,7 @@ function MemorySection({ t, info, memPct, dragHandleProps }) {
   );
 }
 
-function NetworkSection({ t, info, hist, onShowNetworkDetails, dragHandleProps }) {
+function NetworkSection({ t, info, hist, onShowNetworkDetails, dragHandleProps }: { t: (key: I18nKey) => string; info: ProbeInfo; hist: ProbeHist; onShowNetworkDetails: () => void; dragHandleProps?: DragHandleProps | null }) {
   const interfaces = Array.isArray(info.networkInterfaces) ? info.networkInterfaces : [];
   const topInterfaces = [...interfaces]
     .sort((a, b) => ((b.uploadSpeed || 0) + (b.downloadSpeed || 0)) - ((a.uploadSpeed || 0) + (a.downloadSpeed || 0)))
@@ -415,8 +491,8 @@ function NetworkSection({ t, info, hist, onShowNetworkDetails, dragHandleProps }
       />
       <div className="probe-network-grid">
         {[
-          { dot: 'var(--success)', label: t('上传'), speed: fspeed(info.netUp), total: ftotal(info.netUpTotal) },
-          { dot: 'var(--accent)', label: t('下载'), speed: fspeed(info.netDown), total: ftotal(info.netDownTotal) },
+          { dot: 'var(--success)', label: t('上传'), speed: fspeed(info.netUp || 0), total: ftotal(info.netUpTotal || 0) },
+          { dot: 'var(--accent)', label: t('下载'), speed: fspeed(info.netDown || 0), total: ftotal(info.netDownTotal || 0) },
         ].map(({ dot, label, speed, total }) => (
           <div key={label} className="probe-network-stat">
             <span><i style={{ background: dot }} />{label}</span>
@@ -430,7 +506,7 @@ function NetworkSection({ t, info, hist, onShowNetworkDetails, dragHandleProps }
           {topInterfaces.map((item) => (
             <div key={item.name} className="probe-interface-row">
               <span title={item.name}>{item.name}</span>
-              <b>↑ {fspeed(item.uploadSpeed)} · ↓ {fspeed(item.downloadSpeed)}</b>
+              <b>↑ {fspeed(item.uploadSpeed || 0)} · ↓ {fspeed(item.downloadSpeed || 0)}</b>
             </div>
           ))}
         </div>
@@ -439,11 +515,11 @@ function NetworkSection({ t, info, hist, onShowNetworkDetails, dragHandleProps }
   );
 }
 
-function DiskSection({ t, info, diskPartitions, visibleDiskPartitions, diskExpanded, setDiskExpanded, dragHandleProps }) {
-  const diskPct = clampPct(info.diskPercent);
+function DiskSection({ t, info, diskPartitions, visibleDiskPartitions, diskExpanded, setDiskExpanded, dragHandleProps }: { t: (key: I18nKey) => string; info: ProbeInfo; diskPartitions: Array<{ mount?: string; size?: string; avail?: string; usedPct?: number }>; visibleDiskPartitions: Array<{ mount?: string; size?: string; avail?: string; usedPct?: number }>; diskExpanded: boolean; setDiskExpanded: React.Dispatch<React.SetStateAction<boolean>>; dragHandleProps?: DragHandleProps | null }) {
+  const diskPct = clampPct(info.diskPercent || 0);
   return (
     <Card>
-      <SectionHeader icon={<HardDrive size={14} />} title={t('磁盘')} badge={`${fdisk(info.diskUsed)} / ${fdisk(info.diskTotal)}`} dragHandleProps={dragHandleProps} />
+      <SectionHeader icon={<HardDrive size={14} />} title={t('磁盘')} badge={`${fdisk(info.diskUsed || 0)} / ${fdisk(info.diskTotal || 0)}`} dragHandleProps={dragHandleProps} />
       <div className="probe-disk-main">
         <div className="probe-disk-head">
           <span title={info.diskDevice}>/ ({info.diskDevice})</span>
@@ -453,8 +529,8 @@ function DiskSection({ t, info, diskPartitions, visibleDiskPartitions, diskExpan
       </div>
       <div className="probe-io-grid">
         {[
-          { label: t('读/s'), val: fspeed(info.diskReadSpeed), color: 'var(--success)' },
-          { label: t('写/s'), val: fspeed(info.diskWriteSpeed), color: 'var(--warning)' },
+          { label: t('读/s'), val: fspeed(info.diskReadSpeed || 0), color: 'var(--success)' },
+          { label: t('写/s'), val: fspeed(info.diskWriteSpeed || 0), color: 'var(--warning)' },
         ].map(({ label, val, color }) => (
           <div key={label} className="probe-io-card">
             <span>{label}</span>
@@ -481,7 +557,7 @@ function DiskSection({ t, info, diskPartitions, visibleDiskPartitions, diskExpan
   );
 }
 
-function ProcessSection({ t, info, onShowAllProcesses, dragHandleProps }) {
+function ProcessSection({ t, info, onShowAllProcesses, dragHandleProps }: { t: (key: I18nKey) => string; info: ProbeInfo; onShowAllProcesses: () => void; dragHandleProps?: DragHandleProps | null }) {
   return (
     <Card className="probe-process-card">
       <SectionHeader
@@ -495,7 +571,7 @@ function ProcessSection({ t, info, onShowAllProcesses, dragHandleProps }) {
         <span>{t('内存')}</span>
         <span>{t('进程')}</span>
       </div>
-      {info.processes?.length > 0 ? info.processes.slice(0, 5).map((p, i) => (
+      {Array.isArray(info.processes) && info.processes.length > 0 ? info.processes.slice(0, 5).map((p, i) => (
         <ProcessHotRow key={`${p.pid || i}-${p.cmd || ''}`} process={p} />
       )) : (
         <div className="probe-empty-row">{t('暂无热点进程')}</div>
@@ -504,8 +580,8 @@ function ProcessSection({ t, info, onShowAllProcesses, dragHandleProps }) {
   );
 }
 
-function PortForwardSection({ t, sessionId, active, onOpenPortForward, dragHandleProps }) {
-  const [forwards, setForwards] = useState([]);
+function PortForwardSection({ t, sessionId, active, onOpenPortForward, dragHandleProps }: { t: (key: I18nKey) => string; sessionId: string; active: boolean; onOpenPortForward: () => void; dragHandleProps?: DragHandleProps | null }) {
+  const [forwards, setForwards] = useState<sshmanager.PortForwardInfo[]>([]);
   const activeRef = useRef(active);
   useEffect(() => { activeRef.current = active; }, [active]);
 
@@ -526,8 +602,9 @@ function PortForwardSection({ t, sessionId, active, onOpenPortForward, dragHandl
     const timer = setInterval(() => {
       if (activeRef.current) refresh();
     }, 5000);
-    const handleChanged = (event) => {
-      if (!event?.detail?.sessionId || event.detail.sessionId === sessionId) refresh();
+    const handleChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId?: unknown }>).detail || {};
+      if (!detail?.sessionId || detail.sessionId === sessionId) refresh();
     };
     window.addEventListener('port-forward-changed', handleChanged);
     return () => {
@@ -536,7 +613,7 @@ function PortForwardSection({ t, sessionId, active, onOpenPortForward, dragHandl
     };
   }, [sessionId, active, refresh]);
 
-  const handleStop = useCallback(async (id) => {
+  const handleStop = useCallback(async (id: string) => {
     try {
       await AppGo.StopPortForwardForSession(sessionId, id);
       refresh();
@@ -545,7 +622,7 @@ function PortForwardSection({ t, sessionId, active, onOpenPortForward, dragHandl
     }
   }, [sessionId, refresh]);
 
-  const handleRestart = useCallback(async (id) => {
+  const handleRestart = useCallback(async (id: string) => {
     try {
       await AppGo.RestartPortForwardForSession(sessionId, id);
       refresh();
@@ -554,7 +631,7 @@ function PortForwardSection({ t, sessionId, active, onOpenPortForward, dragHandl
     }
   }, [sessionId, refresh]);
 
-  const handleDelete = useCallback(async (id) => {
+  const handleDelete = useCallback(async (id: string) => {
     try {
       await AppGo.DeletePortForwardForSession(sessionId, id);
       setForwards((prev) => prev.filter((item) => item.ID !== id));
@@ -565,7 +642,7 @@ function PortForwardSection({ t, sessionId, active, onOpenPortForward, dragHandl
   }, [sessionId, refresh]);
 
   // 方向文案对齐后端语义: local=SSH -L 本地监听→远程目标; remote=SSH -R 远程监听→本机目标
-  const renderLabel = (info) => {
+  const renderLabel = (info: sshmanager.PortForwardInfo) => {
     if (info.Kind === 'local') {
       return `${t('本地监听')} ${info.LocalAddr} → ${t('远程目标')} ${info.RemoteAddr}`;
     }
@@ -573,14 +650,14 @@ function PortForwardSection({ t, sessionId, active, onOpenPortForward, dragHandl
   };
 
   // 本地回环地址(127.0.0.1 / localhost / ::1)只显示端口, 其余显示 host:port, 让常见场景标签更短
-  const isLoopbackHost = (host) => {
+  const isLoopbackHost = (host: string) => {
     const h = String(host || '').trim().toLowerCase().replace(/^\[|\]$/g, '');
     return h === '' || h === '127.0.0.1' || h === 'localhost' || h === '::1' || h === '0.0.0.0' || h === '::';
   };
-  const compactAddr = (host, port) => (isLoopbackHost(host) ? `:${port}` : `${host}:${port}`);
+  const compactAddr = (host: string, port: string) => (isLoopbackHost(host) ? `:${port}` : `${host}:${port}`);
 
   // 图标化方向: 监听端 → 目标端, 用箭头图标替代冗长中文方向词, 完整语义靠 Tiptop 承载
-  const renderCompactLabel = (info) => {
+  const renderCompactLabel = (info: sshmanager.PortForwardInfo) => {
     const listen = info.Kind === 'local'
       ? compactAddr(info.LocalHost, info.LocalPort)
       : compactAddr(info.RemoteHost, info.RemotePort);
@@ -596,7 +673,7 @@ function PortForwardSection({ t, sessionId, active, onOpenPortForward, dragHandl
     );
   };
 
-  const iconBtn = (onClick, title, color, node) => (
+  const iconBtn = (onClick: () => void, title: string, color: string, node: ReactNode) => (
     <Tiptop text={title}>
       <button
         type="button"
@@ -670,43 +747,43 @@ function PortForwardSection({ t, sessionId, active, onOpenPortForward, dragHandl
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-export default function ProbePanel({ sessionId, host, addToast, enabled, active, onEnable, onShowAllProcesses, onShowNetworkDetails, onOpenPortForward, snapshot, onSnapshot }) {
+export default function ProbePanel({ sessionId, host, addToast, enabled, active, onEnable, onShowAllProcesses, onShowNetworkDetails, onOpenPortForward, snapshot, onSnapshot }: ProbePanelProps) {
   const { t } = useTranslation();
-  const [info, setInfo] = useState(() => snapshot?.info || null);
+  const [info, setInfo] = useState<ProbeInfo | null>(() => snapshot?.info || null);
   // ponytail: 合并 3 个历史数组为 1 个状态更新，减少 3 次渲染为 1 次
-  const [hist, setHist] = useState(() => snapshot?.hist || createEmptyHist());
+  const [hist, setHist] = useState<ProbeHist>(() => snapshot?.hist || createEmptyHist());
   const histRef = useRef(hist);
   histRef.current = hist;
   const [showConfirm, setShowConfirm] = useState(false);
   const [hideIP, setHideIP] = useState(readProbeHideIP);
   const [cpuExpanded, setCpuExpanded] = useState(false);
   const [diskExpanded, setDiskExpanded] = useState(false);
-  const [probeError, setProbeError] = useState(null);
+  const [probeError, setProbeError] = useState(false);
   const [probeErrorDetail, setProbeErrorDetail] = useState('');
   const probeErrorCountRef = useRef(0);
-  const staticInfoRef = useRef(null);
+  const staticInfoRef = useRef<{ os?: string; timezone?: string; cpuModel?: string; ip?: string } | null>(null);
   const activeRef = useRef(active);
   useEffect(() => { activeRef.current = active; }, [active]);
   // ponytail: 跟踪当前 sessionId，用于丢弃切换服务器前在飞的异步响应（key remount 下冗余但安全）
   const activeSessionIdRef = useRef(sessionId);
   const onSnapshotRef = useRef(onSnapshot);
-  const [cardOrder, setCardOrder] = useState(readProbeCardOrder);
-  const [dragReadyId, setDragReadyId] = useState(null);
-  const [draggingCardId, setDraggingCardId] = useState(null);
-  const [dropIndicator, setDropIndicator] = useState(null);
-  const dragGhostRef = useRef(null);
+  const [cardOrder, setCardOrder] = useState<string[]>(readProbeCardOrder);
+  const [dragReadyId, setDragReadyId] = useState<string | null>(null);
+  const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
+  const [dropIndicator, setDropIndicator] = useState<{ targetId: string; position: 'before' | 'after' } | null>(null);
+  const dragGhostRef = useRef<HTMLElement | null>(null);
   useEffect(() => { activeSessionIdRef.current = sessionId; }, [sessionId]);
   useEffect(() => { onSnapshotRef.current = onSnapshot; }, [onSnapshot]);
   useEffect(() => {
-    const handleOrderChanged = (event) => {
-      setCardOrder(normalizeProbeCardOrder(event.detail));
+    const handleOrderChanged = (event: Event) => {
+      setCardOrder(normalizeProbeCardOrder((event as CustomEvent<unknown>).detail));
     };
     window.addEventListener(PROBE_CARD_ORDER_CHANGED_EVENT, handleOrderChanged);
     return () => window.removeEventListener(PROBE_CARD_ORDER_CHANGED_EVENT, handleOrderChanged);
   }, []);
 
   useEffect(() => {
-    const handleHideIPChanged = (event) => setHideIP(!!event.detail);
+    const handleHideIPChanged = (event: Event) => setHideIP(!!(event as CustomEvent<unknown>).detail);
     window.addEventListener(PROBE_HIDE_IP_CHANGED_EVENT, handleHideIPChanged);
     return () => window.removeEventListener(PROBE_HIDE_IP_CHANGED_EVENT, handleHideIPChanged);
   }, []);
@@ -740,17 +817,17 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, active,
   }, [dragReadyId, draggingCardId]);
 
   // ponytail: 按下即可拖，无长按延迟；松手由上面的 pointerup 兜底清理
-  const handleCardHandlePointerDown = useCallback((cardId, event) => {
+  const handleCardHandlePointerDown = useCallback((cardId: string, event: React.PointerEvent<HTMLElement>) => {
     if (event.button !== 0) return;
     setDragReadyId(cardId);
   }, []);
 
-  const handleCardHandlePointerUp = useCallback((cardId) => {
+  const handleCardHandlePointerUp = useCallback((cardId: string) => {
     if (draggingCardId === cardId) return;
     if (dragReadyId === cardId) setDragReadyId(null);
   }, [dragReadyId, draggingCardId]);
 
-  const handleCardDragStart = useCallback((cardId, event) => {
+  const handleCardDragStart = useCallback((cardId: string, event: React.DragEvent<HTMLElement>) => {
     if (dragReadyId !== cardId) {
       event.preventDefault();
       return;
@@ -762,7 +839,7 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, active,
     clearCardDragGhost();
     const sourceCard = event.currentTarget.closest('.probe-card-sortable');
     if (sourceCard) {
-      const ghost = sourceCard.cloneNode(true);
+      const ghost = sourceCard.cloneNode(true) as HTMLElement;
       ghost.classList.add('probe-card-drag-ghost');
       ghost.style.width = `${sourceCard.getBoundingClientRect().width}px`;
       document.body.appendChild(ghost);
@@ -776,7 +853,7 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, active,
     resetCardDragState();
   }, [resetCardDragState]);
 
-  const handleCardDragOver = useCallback((targetId, event) => {
+  const handleCardDragOver = useCallback((targetId: string, event: React.DragEvent<HTMLElement>) => {
     if (!draggingCardId || draggingCardId === targetId) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
@@ -785,7 +862,7 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, active,
     setDropIndicator((prev) => prev?.targetId === targetId && prev?.position === position ? prev : { targetId, position });
   }, [draggingCardId]);
 
-  const handleCardDrop = useCallback((targetId, event) => {
+  const handleCardDrop = useCallback((targetId: string, event: React.DragEvent<HTMLElement>) => {
     if (!draggingCardId) return;
     event.preventDefault();
     event.stopPropagation();
@@ -801,7 +878,7 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, active,
     resetCardDragState();
   }, [cardOrder, draggingCardId, dropIndicator, resetCardDragState]);
 
-  const getSectionDragHandleProps = useCallback((cardId) => ({
+  const getSectionDragHandleProps = useCallback((cardId: string): DragHandleProps => ({
     draggable: dragReadyId === cardId,
     dragReady: dragReadyId === cardId,
     dragging: draggingCardId === cardId,
@@ -821,7 +898,7 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, active,
     setHist(nextHist);
     setCpuExpanded(false);
     setDiskExpanded(false);
-    setProbeError(null);
+    setProbeError(false);
     setProbeErrorDetail('');
     probeErrorCountRef.current = 0;
   }, [sessionId]);
@@ -868,7 +945,7 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, active,
       // 面板不会停在最后一次数据。超时后后端 goroutine 仍独立跑完,不阻塞下次调用。
       const data = await Promise.race([
         AppGo.SystemInfo(sessionId),
-        new Promise((_, reject) => setTimeout(
+        new Promise<never>((_, reject) => setTimeout(
           () => reject(new Error('probe fetch timeout')),
           PROBE_FETCH_TIMEOUT_MS,
         )),
@@ -884,7 +961,7 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, active,
       } else {
         uptimeStr = `${uptimeData.mins || 0}${t('分钟')}`;
       }
-      const ni = {
+      const ni: ProbeInfo = {
         ...si,
         uptime: uptimeStr,
         load1: data.load?.load1 || 0,
@@ -914,10 +991,10 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, active,
       };
       // 用 histRef 算 nextHist，避免在 setState updater 里调父组件 onSnapshot（渲染期 setState 警告）
       const prevHist = histRef.current || createEmptyHist();
-      const nextHist = {
-        cpu: [...prevHist.cpu, ni.cpuUsage].slice(-HISTORY_SIZE),
-        up: [...prevHist.up, ni.netUp].slice(-HISTORY_SIZE),
-        down: [...prevHist.down, ni.netDown].slice(-HISTORY_SIZE),
+      const nextHist: ProbeHist = {
+        cpu: [...prevHist.cpu, ni.cpuUsage || 0].slice(-HISTORY_SIZE),
+        up: [...prevHist.up, ni.netUp || 0].slice(-HISTORY_SIZE),
+        down: [...prevHist.down, ni.netDown || 0].slice(-HISTORY_SIZE),
       };
       histRef.current = nextHist;
       setInfo(ni);
@@ -936,7 +1013,7 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, active,
     }
   }, [sessionId, enabled, t]);
 
-  const probeTimerRef = useRef(null);
+  const probeTimerRef = useRef<number | null>(null);
 
   // ── 读取探针刷新间隔（localStorage，默认 3s）────────────
   const getProbeInterval = () => {
@@ -996,7 +1073,7 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, active,
           </div>
           <div className="probe-welcome-list">
             {[[<Cpu size={14} />, t('CPU 每核心实时占用')], [<MemoryStick size={14} />, t('内存甜甜圈图分析')], [<Globe size={14} />, t('网络速率折线图')], [<HardDrive size={14} />, t('磁盘分区挂载表')], [<ClipboardList size={14} />, t('进程热点排行')]].map(([icon, text]) => (
-              <div key={text}><span>{icon}</span><span>{text}</span></div>
+              <div key={String(text)}><span>{icon}</span><span>{text}</span></div>
             ))}
           </div>
           <button onClick={() => setShowConfirm(true)} className="btn btn-primary">{t('开启监控')}</button>
@@ -1072,15 +1149,15 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, active,
     );
   }
 
-  const memPct = info.memTotal > 0 ? Math.round((info.memUsed / info.memTotal) * 100) : 0;
-  const cores = info.cpuCores?.length > 0 ? info.cpuCores : [info.cpuUsage];
+  const memPct = (info.memTotal || 0) > 0 ? Math.round(((info.memUsed || 0) / (info.memTotal || 1)) * 100) : 0;
+  const cores = info.cpuCores && info.cpuCores.length > 0 ? info.cpuCores : [info.cpuUsage || 0];
   const cpuAvg = Math.round(cores.reduce((a, b) => a + b, 0) / cores.length);
   const displayIP = info.ip && !isInternalIP(info.ip) ? info.ip : host;
-  const diskPartitions = info.diskPartitions?.length > 0
+  const diskPartitions = info.diskPartitions && info.diskPartitions.length > 0
     ? info.diskPartitions
-    : [{ mount: '/', size: `${info.diskTotal?.toFixed(0)}G`, avail: `${(info.diskTotal - info.diskUsed)?.toFixed(1)}G`, usedPct: Math.round(info.diskPercent) }];
+    : [{ mount: '/', size: `${(info.diskTotal || 0).toFixed(0)}G`, avail: `${((info.diskTotal || 0) - (info.diskUsed || 0)).toFixed(1)}G`, usedPct: Math.round(info.diskPercent || 0) }];
   const visibleDiskPartitions = diskPartitions.length > 4 && !diskExpanded ? diskPartitions.slice(0, 4) : diskPartitions;
-  const orderedSections = {
+  const orderedSections: Record<string, ReactNode> = {
     overview: <HealthOverview t={t} cpuAvg={cpuAvg} memPct={memPct} diskPct={info.diskPercent} info={info} coreCount={cores.length} dragHandleProps={getSectionDragHandleProps('overview')} />,
     cpu: <CpuSection t={t} info={info} hist={hist} cores={cores} cpuAvg={cpuAvg} cpuExpanded={cpuExpanded} setCpuExpanded={setCpuExpanded} dragHandleProps={getSectionDragHandleProps('cpu')} />,
     memory: <MemorySection t={t} info={info} memPct={memPct} dragHandleProps={getSectionDragHandleProps('memory')} />,
@@ -1090,13 +1167,13 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, active,
     portforward: <PortForwardSection t={t} sessionId={sessionId} active={active} onOpenPortForward={onOpenPortForward} dragHandleProps={getSectionDragHandleProps('portforward')} />,
   };
 
-  const handlePanelDragOver = (event) => {
+  const handlePanelDragOver = (event: React.DragEvent) => {
     if (!draggingCardId) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
   };
 
-  const handlePanelDrop = (event) => {
+  const handlePanelDrop = (event: React.DragEvent) => {
     if (!draggingCardId || !dropIndicator) {
       resetCardDragState();
       return;

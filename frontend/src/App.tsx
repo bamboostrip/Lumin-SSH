@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, type MutableRefObjec
 import { EventsOn, WindowMinimise, WindowShow } from '../wailsjs/runtime/runtime.js';
 import * as AppGo from '../wailsjs/go/wailsapp/App.js';
 import type { config } from '../wailsjs/go/models.js';
-import ProbePanel from './components/ProbePanel.jsx';
+import ProbePanel, { type ProbeSnapshot } from './components/ProbePanel.jsx';
 import FileManager from './components/FileManager.jsx';
 import AIPanel from './components/AIPanel.jsx';
 import { isRecoveryPasswordError, syncWithRecoveryPassword } from './utils/recoveryPasswordSync.js';
@@ -234,7 +234,7 @@ export default function App() {
     handleSelectConversationDiffItem,
   } = useAIReview({ sessionsRef, addToast: looseAddToast, t: looseT });
   const [monitoringEnabled, setMonitoringEnabled] = useState<Record<string, boolean>>({});
-  const [probeSnapshots, setProbeSnapshots] = useState<Record<string, unknown>>({});
+  const [probeSnapshots, setProbeSnapshots] = useState<Record<string, ProbeSnapshot>>({});
   const {
     searchQuery,
     setSearchQuery,
@@ -1223,13 +1223,13 @@ export default function App() {
             }}
           >
             <ProbePanel
-              sessionId={s.id}
-              host={s.host}
-              addToast={addToast}
+              sessionId={s.id || ''}
+              host={String(s.host || '')}
+              addToast={looseAddToast}
               enabled={!!monitoringEnabled[s.id || '']}
               active={isPanelActive && s.status === 'connected'}
               snapshot={probeSnapshots[s.id || '']}
-              onSnapshot={(snapshot: unknown) => setProbeSnapshots(prev => ({ ...prev, [s.id || '']: snapshot }))}
+              onSnapshot={(snapshot: ProbeSnapshot) => setProbeSnapshots(prev => ({ ...prev, [s.id || '']: snapshot }))}
               onEnable={() => setMonitoringEnabled(prev => ({ ...prev, [s.id || '']: true }))}
               onShowAllProcesses={() => setContentTab('process')}
               onShowNetworkDetails={() => setContentTab('network')}

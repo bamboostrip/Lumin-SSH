@@ -10,7 +10,7 @@ import { applyStoredThemePackage, loadThemePackages } from './utils/theme.js';
 import logoFavicon from './assets/logo.webp';
 
 (() => {
-  let link = document.querySelector("link[rel='icon']");
+  let link = document.querySelector<HTMLLinkElement>("link[rel='icon']");
   if (!link) {
     link = document.createElement('link');
     link.rel = 'icon';
@@ -21,15 +21,20 @@ import logoFavicon from './assets/logo.webp';
 })();
 
 // 全局错误边界，防止渲染错误导致白屏
-class ErrorBoundary extends React.Component {
-  constructor(props) {
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends React.Component<{ children?: React.ReactNode }, ErrorBoundaryState> {
+  constructor(props: { children?: React.ReactNode }) {
     super(props);
     this.state = { hasError: false, error: null };
   }
-  static getDerivedStateFromError(error) {
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
   }
-  componentDidCatch(error, info) {
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('[ErrorBoundary]', error, info.componentStack);
   }
   render() {
@@ -77,7 +82,11 @@ async function bootstrap() {
   await initializeI18n();
   await loadThemePackages().catch(() => {});
   await applyProgramFontPreferences().catch(() => {});
-  ReactDOM.createRoot(document.getElementById('root')).render(
+  const rootElement = document.getElementById('root');
+  if (!rootElement) {
+    throw new Error('Root element #root not found');
+  }
+  ReactDOM.createRoot(rootElement).render(
     <ErrorBoundary>
       <React.StrictMode>
         <App />

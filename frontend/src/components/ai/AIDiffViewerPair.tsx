@@ -1,469 +1,356 @@
-import { useCallback, useMemo, useRef } from 'react'
+import { DiffEditor, loader } from '@monaco-editor/react'
+import * as monaco from 'monaco-editor'
+import cssWorker from '../../../node_modules/monaco-editor/esm/vs/language/css/css.worker.js?worker'
+import htmlWorker from '../../../node_modules/monaco-editor/esm/vs/language/html/html.worker.js?worker'
+import jsonWorker from '../../../node_modules/monaco-editor/esm/vs/language/json/json.worker.js?worker'
+import tsWorker from '../../../node_modules/monaco-editor/esm/vs/language/typescript/ts.worker.js?worker'
+import editorWorker from '../../../node_modules/monaco-editor/esm/vs/editor/editor.worker.js?worker'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { I18nKey } from '../../i18n.ts'
+import { getAppThemeMode } from '../../utils/theme.ts'
 
-/** 字符级差异片段 */
-interface DiffSegment {
-  kind: 'equal' | 'remove' | 'add'
-  text: string
+let monacoConfigured = false
+
+// monaco 0.56 将 tabSize 移入 IGlobalEditorOptions（构造 options 类型不再包含），
+// 但运行时 DiffEditor 仍读取该属性，故以交叉类型保留缩进宽度配置
+const DIFF_EDITOR_BASE_OPTIONS: monaco.editor.IDiffEditorConstructionOptions & { tabSize?: number } = {
+  automaticLayout: true,
+  readOnly: true,
+  domReadOnly: true,
+  originalEditable: false,
+  renderSideBySide: true,
+  useInlineViewWhenSpaceIsLimited: false,
+  enableSplitViewResizing: true,
+  renderIndicators: true,
+  renderOverviewRuler: true,
+  renderMarginRevertIcon: false,
+  diffAlgorithm: 'advanced',
+  ignoreTrimWhitespace: false,
+  minimap: { enabled: false },
+  glyphMargin: false,
+  folding: false,
+  lineNumbers: 'on',
+  lineNumbersMinChars: 4,
+  lineDecorationsWidth: 10,
+  scrollBeyondLastLine: false,
+  roundedSelection: false,
+  overviewRulerBorder: false,
+  wordWrap: 'off',
+  renderWhitespace: 'selection',
+  fontFamily: 'var(--font-mono)',
+  fontSize: 12,
+  lineHeight: 20,
+  tabSize: 2,
+  padding: { top: 8, bottom: 8 },
+  smoothScrolling: true,
+  stickyScroll: { enabled: false },
+  guides: { indentation: false, bracketPairs: false },
+  bracketPairColorization: { enabled: false },
+  hideUnchangedRegions: {
+    enabled: false,
+    contextLineCount: 4,
+    minimumLineCount: 2,
+    revealLineCount: 4,
+  },
 }
 
-/** 对齐后的左右行对 */
-interface AlignedLinePair {
-  left: string | null
-  right: string | null
-  equal: boolean
+const LANGUAGE_BY_EXTENSION: Record<string, string> = {
+  bat: 'bat',
+  c: 'c',
+  cc: 'cpp',
+  conf: 'plaintext',
+  cpp: 'cpp',
+  cs: 'csharp',
+  css: 'css',
+  cxx: 'cpp',
+  dockerfile: 'dockerfile',
+  go: 'go',
+  h: 'c',
+  hpp: 'cpp',
+  htm: 'html',
+  html: 'html',
+  ini: 'ini',
+  java: 'java',
+  js: 'javascript',
+  json: 'json',
+  jsx: 'javascript',
+  kt: 'kotlin',
+  kts: 'kotlin',
+  less: 'less',
+  md: 'markdown',
+  mjs: 'javascript',
+  php: 'php',
+  ps1: 'powershell',
+  py: 'python',
+  rb: 'ruby',
+  rs: 'rust',
+  scss: 'scss',
+  sh: 'shell',
+  sql: 'sql',
+  svg: 'xml',
+  swift: 'swift',
+  toml: 'ini',
+  ts: 'typescript',
+  tsx: 'typescript',
+  txt: 'plaintext',
+  xml: 'xml',
+  yaml: 'yaml',
+  yml: 'yaml',
+  zsh: 'shell',
 }
 
-/** 差异编辑器行 */
-interface DiffEditorRow {
-  lineNumber: number | null
-  text: string | null
-  segments: DiffSegment[]
-  rowKind: string
+function ensureMonacoConfigured() {
+  if (monacoConfigured || typeof globalThis === 'undefined') {
+    return
+  }
+  globalThis.MonacoEnvironment = {
+    getWorker(_workerId: string, label: string): Worker {
+      if (label === 'json') {
+        return new jsonWorker()
+      }
+      if (label === 'css' || label === 'scss' || label === 'less') {
+        return new cssWorker()
+      }
+      if (label === 'html' || label === 'handlebars' || label === 'razor') {
+        return new htmlWorker()
+      }
+      if (label === 'typescript' || label === 'javascript') {
+        return new tsWorker()
+      }
+      return new editorWorker()
+    },
+  }
+  loader.config({ monaco })
+  monacoConfigured = true
 }
 
 function normalizeText(value: unknown) {
   return String(value || '').replace(/\r\n/g, '\n')
 }
 
-function splitLines(value: unknown) {
-  const normalized = normalizeText(value)
-  if (normalized === '') {
-    return ['']
-  }
-  return normalized.split('\n')
+function resolveMonacoThemeName() {
+  return getAppThemeMode() === 'light' ? 'vs' : 'vs-dark'
 }
 
-function groupSegments(segments: DiffSegment[]): DiffSegment[] {
-  if (!Array.isArray(segments) || segments.length === 0) {
-    return []
+function resolveLanguageFromPath(path: unknown) {
+  const normalizedPath = String(path || '').trim().replace(/\\/g, '/')
+  const fileName = normalizedPath.split('/').pop() || ''
+  const lowerFileName = fileName.toLowerCase()
+  if (!lowerFileName) {
+    return 'plaintext'
   }
-  const grouped: DiffSegment[] = []
-  for (const segment of segments) {
-    const text = typeof segment?.text === 'string' ? segment.text : ''
-    const kind = segment?.kind || 'equal'
-    if (!text) {
-      continue
-    }
-    const previous = grouped[grouped.length - 1]
-    if (previous && previous.kind === kind) {
-      previous.text += text
-    } else {
-      grouped.push({ kind, text })
-    }
+  if (lowerFileName === 'dockerfile') {
+    return 'dockerfile'
   }
-  return grouped
+  if (lowerFileName.endsWith('.d.ts')) {
+    return 'typescript'
+  }
+  const matched = lowerFileName.match(/\.([a-z0-9_-]+)$/)
+  if (!matched) {
+    return 'plaintext'
+  }
+  return LANGUAGE_BY_EXTENSION[matched[1]] || 'plaintext'
 }
 
-function buildPrefixSuffixCharDiff(leftText: string, rightText: string): { leftSegments: DiffSegment[]; rightSegments: DiffSegment[] } {
-  const left = Array.from(leftText)
-  const right = Array.from(rightText)
-  let prefix = 0
-  while (prefix < left.length && prefix < right.length && left[prefix] === right[prefix]) {
-    prefix += 1
-  }
-  let leftSuffix = left.length - 1
-  let rightSuffix = right.length - 1
-  while (leftSuffix >= prefix && rightSuffix >= prefix && left[leftSuffix] === right[rightSuffix]) {
-    leftSuffix -= 1
-    rightSuffix -= 1
-  }
-  const leftSegments: DiffSegment[] = []
-  const rightSegments: DiffSegment[] = []
-  if (prefix > 0) {
-    const sharedPrefix = left.slice(0, prefix).join('')
-    leftSegments.push({ kind: 'equal', text: sharedPrefix })
-    rightSegments.push({ kind: 'equal', text: sharedPrefix })
-  }
-  const leftChanged = left.slice(prefix, leftSuffix + 1).join('')
-  const rightChanged = right.slice(prefix, rightSuffix + 1).join('')
-  if (leftChanged) {
-    leftSegments.push({ kind: 'remove', text: leftChanged })
-  }
-  if (rightChanged) {
-    rightSegments.push({ kind: 'add', text: rightChanged })
-  }
-  if (leftSuffix + 1 < left.length && rightSuffix + 1 < right.length) {
-    const sharedSuffix = left.slice(leftSuffix + 1).join('')
-    leftSegments.push({ kind: 'equal', text: sharedSuffix })
-    rightSegments.push({ kind: 'equal', text: sharedSuffix })
-  }
-  return {
-    leftSegments: groupSegments(leftSegments),
-    rightSegments: groupSegments(rightSegments),
-  }
+function buildModelPath(path: string, reviewId: string, index: number, side: string) {
+  const normalizedPath = String(path || '').trim().replace(/\\/g, '/').replace(/^\/+/, '')
+  const fallbackPath = `review-${reviewId || 'current'}-${index || 0}.txt`
+  const relativePath = normalizedPath || fallbackPath
+  const encodedPath = relativePath.split('/').filter(Boolean).map((segment) => encodeURIComponent(segment)).join('/')
+  return `file:///ai-change-review/${encodeURIComponent(String(reviewId || 'current'))}/${index || 0}/${side}/${encodedPath}`
 }
 
-function buildLCSCharDiff(leftText: string, rightText: string): { leftSegments: DiffSegment[]; rightSegments: DiffSegment[] } {
-  const left = Array.from(leftText)
-  const right = Array.from(rightText)
-  const maxProduct = 24000
-  if (left.length * right.length > maxProduct) {
-    return buildPrefixSuffixCharDiff(leftText, rightText)
-  }
-  const dp = Array.from({ length: left.length + 1 }, () => new Array(right.length + 1).fill(0))
-  for (let i = left.length - 1; i >= 0; i -= 1) {
-    for (let j = right.length - 1; j >= 0; j -= 1) {
-      if (left[i] === right[j]) {
-        dp[i][j] = dp[i + 1][j + 1] + 1
-      } else {
-        dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1])
-      }
-    }
-  }
-  const leftSegments: DiffSegment[] = []
-  const rightSegments: DiffSegment[] = []
-  let i = 0
-  let j = 0
-  while (i < left.length && j < right.length) {
-    if (left[i] === right[j]) {
-      leftSegments.push({ kind: 'equal', text: left[i] })
-      rightSegments.push({ kind: 'equal', text: right[j] })
-      i += 1
-      j += 1
-      continue
-    }
-    if (dp[i + 1][j] >= dp[i][j + 1]) {
-      leftSegments.push({ kind: 'remove', text: left[i] })
-      i += 1
-    } else {
-      rightSegments.push({ kind: 'add', text: right[j] })
-      j += 1
-    }
-  }
-  while (i < left.length) {
-    leftSegments.push({ kind: 'remove', text: left[i] })
-    i += 1
-  }
-  while (j < right.length) {
-    rightSegments.push({ kind: 'add', text: right[j] })
-    j += 1
-  }
-  return {
-    leftSegments: groupSegments(leftSegments),
-    rightSegments: groupSegments(rightSegments),
-  }
-}
-
-function buildAlignedLinePairs(leftLines: string[], rightLines: string[]): AlignedLinePair[] {
-  const maxProduct = 32000
-  if (leftLines.length * rightLines.length > maxProduct) {
-    const prefixPairs: AlignedLinePair[] = []
-    let prefix = 0
-    while (prefix < leftLines.length && prefix < rightLines.length && leftLines[prefix] === rightLines[prefix]) {
-      prefixPairs.push({ left: leftLines[prefix], right: rightLines[prefix], equal: true })
-      prefix += 1
-    }
-    let leftSuffix = leftLines.length - 1
-    let rightSuffix = rightLines.length - 1
-    const suffixPairs: AlignedLinePair[] = []
-    while (leftSuffix >= prefix && rightSuffix >= prefix && leftLines[leftSuffix] === rightLines[rightSuffix]) {
-      suffixPairs.unshift({ left: leftLines[leftSuffix], right: rightLines[rightSuffix], equal: true })
-      leftSuffix -= 1
-      rightSuffix -= 1
-    }
-    const middleLeft = leftLines.slice(prefix, leftSuffix + 1)
-    const middleRight = rightLines.slice(prefix, rightSuffix + 1)
-    const middlePairs: AlignedLinePair[] = []
-    const maxLength = Math.max(middleLeft.length, middleRight.length)
-    for (let index = 0; index < maxLength; index += 1) {
-      middlePairs.push({
-        left: index < middleLeft.length ? middleLeft[index] : null,
-        right: index < middleRight.length ? middleRight[index] : null,
-        equal: false,
-      })
-    }
-    return [...prefixPairs, ...middlePairs, ...suffixPairs]
-  }
-  const dp = Array.from({ length: leftLines.length + 1 }, () => new Array(rightLines.length + 1).fill(0))
-  for (let i = leftLines.length - 1; i >= 0; i -= 1) {
-    for (let j = rightLines.length - 1; j >= 0; j -= 1) {
-      if (leftLines[i] === rightLines[j]) {
-        dp[i][j] = dp[i + 1][j + 1] + 1
-      } else {
-        dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1])
-      }
-    }
-  }
-  const rawPairs: AlignedLinePair[] = []
-  let i = 0
-  let j = 0
-  while (i < leftLines.length && j < rightLines.length) {
-    if (leftLines[i] === rightLines[j]) {
-      rawPairs.push({ left: leftLines[i], right: rightLines[j], equal: true })
-      i += 1
-      j += 1
-      continue
-    }
-    if (dp[i + 1][j] >= dp[i][j + 1]) {
-      rawPairs.push({ left: leftLines[i], right: null, equal: false })
-      i += 1
-    } else {
-      rawPairs.push({ left: null, right: rightLines[j], equal: false })
-      j += 1
-    }
-  }
-  while (i < leftLines.length) {
-    rawPairs.push({ left: leftLines[i], right: null, equal: false })
-    i += 1
-  }
-  while (j < rightLines.length) {
-    rawPairs.push({ left: null, right: rightLines[j], equal: false })
-    j += 1
-  }
-  const aligned: AlignedLinePair[] = []
-  let cursor = 0
-  while (cursor < rawPairs.length) {
-    if (rawPairs[cursor].equal) {
-      aligned.push(rawPairs[cursor])
-      cursor += 1
-      continue
-    }
-    const removed: string[] = []
-    const added: string[] = []
-    while (cursor < rawPairs.length && !rawPairs[cursor].equal) {
-      const leftValue = rawPairs[cursor].left
-      if (leftValue !== null) {
-        removed.push(leftValue)
-      }
-      const rightValue = rawPairs[cursor].right
-      if (rightValue !== null) {
-        added.push(rightValue)
-      }
-      cursor += 1
-    }
-    const maxLength = Math.max(removed.length, added.length)
-    for (let index = 0; index < maxLength; index += 1) {
-      aligned.push({
-        left: index < removed.length ? removed[index] : null,
-        right: index < added.length ? added[index] : null,
-        equal: false,
-      })
-    }
-  }
-  return aligned
-}
-
-function renderSegments(segments: DiffSegment[], side: 'left' | 'right') {
-  return segments.map((segment, index) => {
-    let background = 'transparent'
-    let color = 'var(--text-primary)'
-    if (segment.kind === 'remove' && side === 'left') {
-      background = 'rgba(var(--danger-rgb), 0.18)'
-      color = 'var(--danger)'
-    } else if (segment.kind === 'add' && side === 'right') {
-      background = 'rgba(var(--success-rgb), 0.18)'
-      color = 'var(--success)'
-    }
-    return (
-      <span
-        key={`${side}-segment-${index}`}
-        style={{
-          background,
-          color,
-          borderRadius: background === 'transparent' ? 0 : 4,
-        }}>
-        {segment.text || ' '}
-      </span>
-    )
-  })
-}
-
-function useSyncedScroll() {
-  const leftRef = useRef<HTMLDivElement | null>(null)
-  const rightRef = useRef<HTMLDivElement | null>(null)
-  const syncLockRef = useRef(false)
-  const createScrollHandler = useCallback((source: 'left' | 'right') => {
-    return (event: React.UIEvent<HTMLDivElement>) => {
-      if (syncLockRef.current) {
-        return
-      }
-      const target = source === 'left' ? rightRef.current : leftRef.current
-      if (!target) {
-        return
-      }
-      syncLockRef.current = true
-      target.scrollTop = event.currentTarget.scrollTop
-      requestAnimationFrame(() => {
-        syncLockRef.current = false
-      })
-    }
-  }, [])
-  return {
-    leftRef,
-    rightRef,
-    onLeftScroll: createScrollHandler('left'),
-    onRightScroll: createScrollHandler('right'),
-  }
-}
-
-interface DiffEditorPaneProps {
-  rows: DiffEditorRow[]
-  side: 'left' | 'right'
-  scrollRef: React.RefObject<HTMLDivElement>
-  onScroll: (event: React.UIEvent<HTMLDivElement>) => void
-}
-
-function DiffEditorPane({ rows, side, scrollRef, onScroll }: DiffEditorPaneProps) {
+function buildLoadingNode(text: string) {
   return (
     <div
       style={{
-        minWidth: 0,
-        minHeight: 0,
-        border: '1px solid var(--border)',
-        borderRadius: 12,
-        overflow: 'hidden',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
         background: 'var(--surface-base)',
+        color: 'var(--text-secondary)',
+        fontSize: 12,
       }}>
-      <div
-        ref={scrollRef}
-        onScroll={onScroll}
-        style={{
-          overflow: 'auto',
-          minHeight: 0,
-          height: '100%',
-          fontFamily: 'var(--font-mono)',
-          fontSize: 12,
-          lineHeight: '20px',
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-word',
-          overflowWrap: 'anywhere',
-        }}>
-        {rows.map((row, index) => (
-          <div
-            key={`${side}-row-${index}`}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '56px minmax(0, 1fr)',
-              minWidth: '100%',
-              background: row.rowKind === 'modify'
-                ? 'rgba(var(--accent-rgb), 0.04)'
-                : row.rowKind === 'remove'
-                  ? 'rgba(var(--danger-rgb), 0.06)'
-                  : row.rowKind === 'add'
-                    ? 'rgba(var(--success-rgb), 0.06)'
-                    : 'transparent',
-            }}>
-            <div
-              style={{
-                padding: '0 10px 0 12px',
-                color: row.lineNumber !== null ? 'var(--text-tertiary)' : 'transparent',
-                textAlign: 'right',
-                borderRight: '1px solid var(--border-subtle)',
-                userSelect: 'none',
-              }}>
-              {row.lineNumber !== null ? row.lineNumber : '·'}
-            </div>
-            <div
-              style={{
-                padding: '0 12px',
-                color: row.text === null ? 'transparent' : 'var(--text-primary)',
-                minWidth: 0,
-              }}>
-              {row.text === null ? ' ' : renderSegments(row.segments, side)}
-            </div>
-          </div>
-        ))}
-      </div>
+      {text}
     </div>
   )
 }
 
+ensureMonacoConfigured()
+
+/** AI 审阅返回的差异块（字段来自 AI 响应，可能缺失，访问处均有防御） */
+export interface ReviewBlock {
+  before?: string
+  after?: string
+  startLine?: number
+  matchedStartLine?: number
+  label?: string
+  labelParams?: Record<string, unknown>
+}
+
+/** 变更导航目标（monaco 0.56 goToDiff 支持 next/previous） */
+export type DiffNavigateTarget = 'next' | 'previous'
+
+/** 导航函数句柄（可被置空以释放） */
+type DiffNavigateHandler = (target: DiffNavigateTarget) => void
+
 export interface DiffEditorPairProps {
   block?: unknown
   index?: number
+  path?: string
+  reviewId?: string
   showBlockBadge?: boolean
   t: (key: I18nKey, vars?: Record<string, unknown>) => string
+  /** 首个差异块就绪时把导航函数上抛给 Workbench 头部按钮 */
+  onNavigateReady?: ((navigate: DiffNavigateHandler | null) => void) | null
 }
 
-export function DiffEditorPair({ block, index, showBlockBadge = false, t }: DiffEditorPairProps) {
-  const rawBlock = block as Record<string, unknown> | null | undefined
-  const leftText = typeof rawBlock?.before === 'string' ? normalizeText(rawBlock.before) : ''
-  const rightText = typeof rawBlock?.after === 'string' ? normalizeText(rawBlock.after) : ''
+export function DiffEditorPair({ block, index = 0, path = '', reviewId = '', showBlockBadge = false, t, onNavigateReady = null }: DiffEditorPairProps) {
+  const [themeName, setThemeName] = useState(resolveMonacoThemeName())
+  const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null)
+  const diffUpdateDisposableRef = useRef<monaco.IDisposable | null>(null)
+  const firstDiffRevealedRef = useRef(false)
+  const rawBlock = block as ReviewBlock | null | undefined
+  const original = typeof rawBlock?.before === 'string' ? normalizeText(rawBlock.before) : ''
+  const modified = typeof rawBlock?.after === 'string' ? normalizeText(rawBlock.after) : ''
   const declaredStartLine = Number(rawBlock?.startLine)
   const matchedStartLine = Number(rawBlock?.matchedStartLine)
   const labelKey = typeof rawBlock?.label === 'string' && rawBlock.label.trim() ? rawBlock.label.trim() : '变更块 #{count}'
   const labelParams = rawBlock?.labelParams && typeof rawBlock.labelParams === 'object'
-    ? rawBlock.labelParams as Record<string, unknown>
-    : { count: (index ?? 0) + 1 }
+    ? rawBlock.labelParams
+    : { count: index + 1 }
   // labelKey 为 AI diff 返回的动态键（可能不在翻译表），t() 内部有兜底
   const label = t(labelKey as I18nKey, labelParams)
-  const alignedRows = useMemo(() => {
-    const leftLines = splitLines(leftText)
-    const rightLines = splitLines(rightText)
-    const pairs = buildAlignedLinePairs(leftLines, rightLines)
-    let leftLineNumber = Number.isFinite(matchedStartLine) && matchedStartLine > 0
-      ? matchedStartLine
-      : Number.isFinite(declaredStartLine) && declaredStartLine > 0
-        ? declaredStartLine
-        : 1
-    let rightLineNumber = Number.isFinite(matchedStartLine) && matchedStartLine > 0
-      ? matchedStartLine
-      : Number.isFinite(declaredStartLine) && declaredStartLine > 0
-        ? declaredStartLine
-        : 1
-    return pairs.map((pair): { leftRow: DiffEditorRow; rightRow: DiffEditorRow } => {
-      const leftLine = pair.left
-      const rightLine = pair.right
-      const leftSegments: DiffSegment[] = pair.equal
-        ? [{ kind: 'equal', text: leftLine ?? '' }]
-        : buildLCSCharDiff(leftLine ?? '', rightLine ?? '').leftSegments
-      const rightSegments: DiffSegment[] = pair.equal
-        ? [{ kind: 'equal', text: rightLine ?? '' }]
-        : buildLCSCharDiff(leftLine ?? '', rightLine ?? '').rightSegments
-      const leftRow: DiffEditorRow = {
-        lineNumber: leftLine !== null ? leftLineNumber++ : null,
-        text: leftLine,
-        segments: leftLine !== null ? leftSegments : [],
-        rowKind: pair.equal ? 'equal' : leftLine === null ? 'empty' : rightLine === null ? 'remove' : 'modify',
-      }
-      const rightRow: DiffEditorRow = {
-        lineNumber: rightLine !== null ? rightLineNumber++ : null,
-        text: rightLine,
-        segments: rightLine !== null ? rightSegments : [],
-        rowKind: pair.equal ? 'equal' : rightLine === null ? 'empty' : leftLine === null ? 'add' : 'modify',
-      }
-      return { leftRow, rightRow }
-    })
-  }, [declaredStartLine, leftText, matchedStartLine, rightText])
-  const leftRows = alignedRows.map((row) => row.leftRow)
-  const rightRows = alignedRows.map((row) => row.rightRow)
-  const { leftRef, rightRef, onLeftScroll, onRightScroll } = useSyncedScroll()
+  const language = useMemo(() => resolveLanguageFromPath(path), [path])
+  const originalModelPath = useMemo(() => buildModelPath(path, reviewId, index, 'original'), [index, path, reviewId])
+  const modifiedModelPath = useMemo(() => buildModelPath(path, reviewId, index, 'modified'), [index, path, reviewId])
+  const focusLine = Number.isFinite(matchedStartLine) && matchedStartLine > 0
+    ? matchedStartLine
+    : Number.isFinite(declaredStartLine) && declaredStartLine > 0
+      ? declaredStartLine
+      : 1
+  const showMetaBar = showBlockBadge || (Number.isFinite(matchedStartLine) && matchedStartLine > 0)
+  const editorOptions = useMemo(() => ({
+    ...DIFF_EDITOR_BASE_OPTIONS,
+    ariaLabel: String(path || label || 'diff editor'),
+  }), [label, path])
+  const goToDiff = useCallback((target: DiffNavigateTarget) => {
+    editorRef.current?.goToDiff(target)
+  }, [])
+  const revealFirstDiff = useCallback(() => {
+    const editor = editorRef.current
+    if (!editor || firstDiffRevealedRef.current) {
+      return
+    }
+    const lineChanges = editor.getLineChanges()
+    if (!Array.isArray(lineChanges) || lineChanges.length === 0) {
+      return
+    }
+    firstDiffRevealedRef.current = true
+    editor.goToDiff('next')
+  }, [])
+  useEffect(() => {
+    if (typeof onNavigateReady !== 'function') {
+      return undefined
+    }
+    onNavigateReady(goToDiff)
+    return () => onNavigateReady(null)
+  }, [goToDiff, onNavigateReady])
+  useEffect(() => {
+    firstDiffRevealedRef.current = false
+  }, [original, modified])
+  useEffect(() => () => {
+    diffUpdateDisposableRef.current?.dispose()
+    diffUpdateDisposableRef.current = null
+    editorRef.current = null
+  }, [])
+  useEffect(() => {
+    const refreshTheme = () => setThemeName(resolveMonacoThemeName())
+    refreshTheme()
+    window.addEventListener('theme-mode-changed', refreshTheme)
+    window.addEventListener('theme-package-changed', refreshTheme)
+    window.addEventListener('theme-preview-changed', refreshTheme)
+    window.addEventListener('terminal-theme-changed', refreshTheme)
+    return () => {
+      window.removeEventListener('theme-mode-changed', refreshTheme)
+      window.removeEventListener('theme-package-changed', refreshTheme)
+      window.removeEventListener('theme-preview-changed', refreshTheme)
+      window.removeEventListener('terminal-theme-changed', refreshTheme)
+    }
+  }, [])
+
   return (
     <div
       style={{
         display: 'grid',
-        gridTemplateRows: showBlockBadge ? 'auto 1fr' : '1fr',
-        gap: showBlockBadge ? 8 : 0,
+        gridTemplateRows: showMetaBar ? '34px minmax(0, 1fr)' : 'minmax(0, 1fr)',
         minHeight: 0,
+        border: '1px solid var(--border)',
+        borderRadius: 10,
+        overflow: 'hidden',
+        background: 'var(--surface-base)',
       }}>
-      {showBlockBadge ? (
-        <div style={{ display: 'inline-flex', width: 'fit-content', alignItems: 'center', gap: 8, padding: '4px 8px', borderRadius: 999, border: '1px solid var(--border)', background: 'var(--surface-base)', color: 'var(--text-secondary)', fontSize: 11, fontWeight: 700 }}>
-          <span>{label}</span>
+      {showMetaBar ? (
+        <div
+          style={{
+            minWidth: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            padding: '0 10px',
+            borderBottom: '1px solid var(--border-subtle)',
+            background: 'var(--surface-raised)',
+          }}>
+          <div
+            style={{
+              minWidth: 0,
+              color: 'var(--text-secondary)',
+              fontSize: 12,
+              fontWeight: 600,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}>
+            {label}
+          </div>
           {Number.isFinite(matchedStartLine) && matchedStartLine > 0 ? (
-            <span style={{ color: 'var(--success)' }}>{`L${matchedStartLine}`}</span>
+            <div
+              style={{
+                flexShrink: 0,
+                color: 'var(--text-tertiary)',
+                fontSize: 11,
+                fontFamily: 'var(--font-mono)',
+              }}>
+              {`L${matchedStartLine}`}
+            </div>
           ) : null}
         </div>
       ) : null}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
-          gap: 8,
-          minHeight: 0,
-          height: '100%',
-        }}>
-        <DiffEditorPane
-          rows={leftRows}
-          side="left"
-          scrollRef={leftRef}
-          onScroll={onLeftScroll}
-        />
-        <DiffEditorPane
-          rows={rightRows}
-          side="right"
-          scrollRef={rightRef}
-          onScroll={onRightScroll}
+      <div style={{ minHeight: 0 }}>
+        <DiffEditor
+          height="100%"
+          width="100%"
+          original={original}
+          modified={modified}
+          language={language}
+          originalModelPath={originalModelPath}
+          modifiedModelPath={modifiedModelPath}
+          keepCurrentOriginalModel={false}
+          keepCurrentModifiedModel={false}
+          theme={themeName}
+          loading={buildLoadingNode(t('加载中...'))}
+          options={editorOptions}
+          onMount={(editor) => {
+            editorRef.current = editor
+            diffUpdateDisposableRef.current?.dispose()
+            diffUpdateDisposableRef.current = editor.onDidUpdateDiff(revealFirstDiff)
+            revealFirstDiff()
+            if (focusLine > 0 && !firstDiffRevealedRef.current) {
+              editor.revealLineInCenter(focusLine)
+            }
+          }}
         />
       </div>
     </div>

@@ -1,6 +1,7 @@
 package sshmanager
 
 import (
+	"fmt"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -291,6 +292,269 @@ func TestRemoteFeatureProbeCmdExitsZeroUnderPOSIXShell(t *testing.T) {
 		if k != featureBusybox && k != featureOpenWrt {
 			t.Fatalf("探测输出含意外标记 %q: %s", k, out)
 		}
+	}
+}
+
+// runFeatureProbeWithStubs 在受限 PATH(仅含给定 stub)下经真实 sh 执行探测命令,
+// 用于验证探测命令对 ps/busybox 存在性组合的判定。stub 为文件名→脚本内容。
+func runFeatureProbeWithStubs(t *testing.T, stubs map[string]string) string {
+	t.Helper()
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no POSIX sh available")
+	}
+	dir := "/tmp/lumin-probe-stub-" + strings.ReplaceAll(t.Name(), "/", "_")
+	parts := []string{"mkdir -p " + dir}
+	for name, body := range stubs {
+		parts = append(parts, fmt.Sprintf("printf '%s' > %s/%s && chmod 755 %s/%s", body, dir, name, dir, name))
+	}
+	if out, err := exec.Command(sh, "-c", strings.Join(parts, " && ")).CombinedOutput(); err != nil {
+		t.Fatalf("stub 创建失败: %v, 输出: %s", err, out)
+	}
+	t.Cleanup(func() { exec.Command(sh, "-c", "rm -rf "+dir).Run() })
+	out, err := exec.Command(sh, "-c", "PATH="+dir+"; export PATH; "+remoteFeatureProbeCmd).CombinedOutput()
+	if err != nil {
+		t.Fatalf("探测命令应以 0 退出, 得到 %v, 输出: %s", err, out)
+	}
+	return string(out)
+}
+
+// 常规 Linux 装了 busybox-static(rescue shell 常见)时,ps 仍是 procps,
+// 不得因存在 busybox 二进制就误判为 BusyBox——否则永久走 /proc 慢路径,
+// 违反「常规 Linux 保持 ps 路径不变」的设计约束。
+func TestRemoteFeatureProbeCmdNoBusyboxFalsePositiveWhenProcpsPresent(t *testing.T) {
+	out := runFeatureProbeWithStubs(t, map[string]string{
+		"ps":      "#!/bin/sh\necho \"Usage: ps [options]\"\n",
+		"busybox": "#!/bin/sh\necho \"BusyBox v1.36.0 multi-call binary\"\n",
+		"grep":    "#!/bin/sh\nexec /bin/grep \"$@\"\n",
+	})
+	if parseRemoteFeatureProbeOutput(out)[featureBusybox] == 1 {
+		t.Fatalf("procps ps + busybox 共存时不得判为 BusyBox, 输出: %s", out)
+	}
+}
+
+// 个别精简固件没编入 ps applet:此时才允许用裸 busybox 自述头回退检测。
+func TestRemoteFeatureProbeCmdFallsBackToBareBusyboxWhenPsAbsent(t *testing.T) {
+	out := runFeatureProbeWithStubs(t, map[string]string{
+		"busybox": "#!/bin/sh\necho \"BusyBox v1.36.0 multi-call binary\"\n",
+		"grep":    "#!/bin/sh\nexec /bin/grep \"$@\"\n",
+	})
+	if parseRemoteFeatureProbeOutput(out)[featureBusybox] != 1 {
+		t.Fatalf("ps 缺失时应回退 busybox 自述头检测, 输出: %s", out)
+	}
+}
+
+// BusyBox 自带的 ps --help 含 "BusyBox v" 字样,仍必须走首行命中。
+func TestRemoteFeatureProbeCmdDetectsBusyboxPs(t *testing.T) {
+	out := runFeatureProbeWithStubs(t, map[string]string{
+		"ps":   "#!/bin/sh\necho \"BusyBox v1.36.0 ps usage\"\n",
+		"grep": "#!/bin/sh\nexec /bin/grep \"$@\"\n",
+	})
+	if parseRemoteFeatureProbeOutput(out)[featureBusybox] != 1 {
+		t.Fatalf("BusyBox ps 应命中, 输出: %s", out)
+	}
+}
+
+// 探针 PROC 段必须「单条批量 cat + /proc/uptime 浮点时间戳」:
+// 逐 PID fork cat 在低配路由器上一次采样要 fork 数百次;date +%s 整秒截断
+// 会让被 fork 拖长的采样窗口把 CPU% 放大近一倍。非 Linux(无 /proc/uptime)
+// 回退 date +%s 保持旧行为。
+func TestDynamicProbeScriptProcSamplingForkLean(t *testing.T) {
+	for _, marker := range []string{"---PROC1---", "---PROC2---"} {
+		want := marker + "\ncut -d' ' -f1 /proc/uptime 2>/dev/null || date +%s\ncat /proc/[0-9]*/stat 2>/dev/null\n"
+		if !strings.Contains(dynamicProbeScript, want) {
+			t.Fatalf("%s 段应为 uptime 时间戳 + 单条批量 cat, 实际:\n%s", marker, dynamicProbeScript)
+		}
+	}
+	if strings.Contains(dynamicProbeScript, "for f in /proc/[0-9]*/stat") {
+		t.Fatal("PROC 段不得逐 PID fork cat")
+	}
+}
+
+// sample() 的 stat/status 读取必须是纯 shell 内建(read),不得逐 PID fork
+// awk/cat——低配路由器上 150 进程 × 2 采样 ≈ 1200 次 fork/exec,逼近超时。
+// cmdline 的 NUL→空格转换保留一次 tr(read 无法处理 NUL)。
+func TestFullProcListScriptForkLean(t *testing.T) {
+	if strings.Contains(fullProcListScript, "awk") {
+		t.Fatal("sample() 不得调用 awk:每 PID 2 次 fork 在低配路由器上不可接受")
+	}
+	if strings.Contains(fullProcListScript, "$(cat ") {
+		t.Fatal("stat 读取应用 read 内建, 不得用 $(cat)")
+	}
+	for _, want := range []string{
+		"IFS= read -r s",
+		"while read -r k v rest",
+		"tr '\\0\\n' '  '",
+		"cut -d' ' -f1 /proc/uptime",
+	} {
+		if !strings.Contains(fullProcListScript, want) {
+			t.Fatalf("sample() 缺少 %q, 实际:\n%s", want, fullProcListScript)
+		}
+	}
+	if strings.Contains(fullProcListScript, "date +%s") {
+		t.Fatal("时间戳应用 /proc/uptime 浮点, 避免整秒截断放大 CPU%")
+	}
+}
+
+// 在真实 POSIX sh 下端到端执行 sample() 脚本并解析输出,验证语法与管线
+// (本机为 MSYS/Cygwin 布局的 /proc,stat 行可解析;status 缺失时 threads/uid
+// 为空是预期降级)。生产环境的 BusyBox ash 同为 POSIX 子集。
+func TestFullProcListScriptRunsUnderPOSIXSh(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no POSIX sh available")
+	}
+	out, err := exec.Command(sh, "-c", wrapShCmd(fullProcListScript)).CombinedOutput()
+	if err != nil {
+		t.Fatalf("脚本执行失败: %v, 输出: %s", err, out)
+	}
+	procs, err := parseFullProcListOutput(string(out))
+	if err != nil {
+		t.Fatalf("输出解析失败: %v, 输出: %s", err, out)
+	}
+	if len(procs) < 1 {
+		t.Skipf("本机 /proc 无可解析进程: %s", out)
+	}
+	for _, k := range []string{"pid", "cpu", "mem", "user", "name", "cmd", "loc", "stat", "nlwp", "etime"} {
+		if _, ok := procs[0][k]; !ok {
+			t.Fatalf("进程缺字段 %q: %#v", k, procs[0])
+		}
+	}
+}
+
+// PID 复用:采样窗口内旧进程退出、号码被新进程复用(starttime 不同),
+// tick delta 无意义,必须丢弃;starttime 一致的正常进程保留。
+func TestParseProbeProcSectionsDropsRecycledPids(t *testing.T) {
+	proc1 := []string{
+		"1000",
+		statLine(7, "keep", 10, 0, 100, 64),
+		statLine(8, "old", 90, 0, 100, 64),
+	}
+	proc2 := []string{
+		"1001",
+		statLine(7, "keep", 20, 0, 100, 64),
+		statLine(8, "new", 5, 0, 9900, 64),
+	}
+	procs, err := parseProbeProcSections(proc1, proc2)
+	if err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	if len(procs) != 1 || procs[0]["pid"] != "7" {
+		t.Fatalf("复用 PID 应丢弃, 只留 pid 7: %#v", procs)
+	}
+}
+
+func TestParseFullProcListOutputDropsRecycledPids(t *testing.T) {
+	out := strings.Join([]string{
+		"10000",
+		"---PASSWD---",
+		"root:0",
+		"---PROCS1---",
+		"1000",
+		procFullLine(7, "keep", 10, 0, 100, 64, 1, "0", "/keep"),
+		procFullLine(8, "old", 90, 0, 100, 64, 1, "0", "/old"),
+		"---PROCS2---",
+		"1001",
+		procFullLine(7, "keep", 20, 0, 100, 64, 1, "0", "/keep"),
+		procFullLine(8, "new", 5, 0, 9900, 64, 1, "0", "/new"),
+		"---DONE---",
+	}, "\n")
+	procs, err := parseFullProcListOutput(out)
+	if err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	if len(procs) != 1 || procs[0]["pid"] != "7" {
+		t.Fatalf("复用 PID 应丢弃, 只留 pid 7: %#v", procs)
+	}
+}
+
+// 运行命令不得用 &&/|| 串联双路径:tee 双写后 home 与 /tmp 两份都常在,
+// home 份非零退出会再跑一遍 /tmp 份——探针双跑、输出拼接、延迟翻倍。
+func TestBuildProbeScriptRunCommandNoDoubleRun(t *testing.T) {
+	cmd := buildProbeScriptRunCommand(" network")
+	if strings.Contains(cmd, "&&") || strings.Contains(cmd, "||") {
+		t.Fatalf("不得用 &&/|| 串联双路径: %s", cmd)
+	}
+	for _, want := range []string{`if [ -f "$f" ]; then`, `sh "$f" network`, `sh /tmp/.lumin/probe.sh network`, "fi"} {
+		if !strings.Contains(cmd, want) {
+			t.Fatalf("缺少 %q: %s", want, cmd)
+		}
+	}
+}
+
+// GetSFTPClient 等待初始化后对 entry 字段的读取必须发生在 RLock 内:
+// 等待超时路径与 initSFTPClient 的写入并发时,锁外读 entry.SFTP 是数据
+// 竞态(go test -race 检出)。
+func TestGetSFTPClientEntryFieldsReadUnderLock(t *testing.T) {
+	m := NewSSHManager()
+	entry := &sshClientEntry{SFTPReady: make(chan struct{})}
+	close(entry.SFTPReady)
+	m.sessions["race-sess"] = &SessionData{ConnKey: "race-key"}
+	m.clients["race-key"] = entry
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 500; i++ {
+			m.mu.Lock()
+			entry.SFTP = nil
+			m.mu.Unlock()
+		}
+	}()
+	for i := 0; i < 500; i++ {
+		if _, err := m.GetSFTPClient("race-sess"); err == nil {
+			t.Fatal("SFTP 为 nil 时应返回错误")
+		}
+	}
+	<-done
+}
+
+// cmdline 可能包含换行与 marker 子串(最典型:运行本脚本的 sh,其 argv 就是
+// 整段脚本)。脚本端须把换行一并转空格保证记录单行;解析端 marker 必须整行
+// 精确匹配,否则 section 被 cmdline 内嵌的 "---PROCS2---" 等子串提前截断。
+func TestParseFullProcListOutputToleratesMarkersInCmdline(t *testing.T) {
+	// cmd 含 marker 子串但为单行(与修复后的脚本行为一致)
+	cmdWithMarker := `sh -c echo ---PROCS2---; echo ---DONE---`
+	out := strings.Join([]string{
+		"10000",
+		"---PASSWD---",
+		"root:0",
+		"---PROCS1---",
+		"1000",
+		procFullLine(1, "sh", 10, 0, 100, 64, 1, "0", cmdWithMarker),
+		"---PROCS2---",
+		"1001",
+		procFullLine(1, "sh", 20, 0, 100, 64, 1, "0", cmdWithMarker),
+		"---DONE---",
+	}, "\n")
+	procs, err := parseFullProcListOutput(out)
+	if err != nil {
+		t.Fatalf("cmdline 含 marker 子串时不应解析失败: %v", err)
+	}
+	if len(procs) != 1 || procs[0]["pid"] != "1" {
+		t.Fatalf("应保留 pid 1, 得到: %#v", procs)
+	}
+	if procs[0]["cmd"] != cmdWithMarker {
+		t.Fatalf("cmd 应原样保留: %#v", procs[0])
+	}
+}
+
+// BusyBox 路径必须经 wrapShCmd 包 POSIX sh(脚本含函数/参数展开语法,
+// fish/csh 登录 shell 下裸发会语法报错);常规 Linux 路径保持原 ps 命令
+// 不变(设计 §4.7 的分支路由测试)。
+func TestFullProcListCmdRouting(t *testing.T) {
+	busy := fullProcListCmdFor(true)
+	if !strings.HasPrefix(busy, "sh -c '") || !strings.HasSuffix(busy, "'") {
+		t.Fatalf("BusyBox 路径必须包 POSIX sh: %s", busy)
+	}
+	inner := strings.TrimSuffix(strings.TrimPrefix(busy, "sh -c '"), "'")
+	if got := strings.ReplaceAll(inner, `'\''`, "'"); got != fullProcListScript {
+		t.Fatal("包裹内容应可完整还原为 fullProcListScript")
+	}
+
+	regular := fullProcListCmdFor(false)
+	if !strings.Contains(regular, "ps -eo") || strings.Contains(regular, "sh -c") {
+		t.Fatalf("常规 Linux 路径应保持原 ps 命令: %s", regular)
 	}
 }
 

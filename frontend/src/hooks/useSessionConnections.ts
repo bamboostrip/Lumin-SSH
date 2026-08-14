@@ -1128,7 +1128,7 @@ export default function useSessionConnections(deps: UseSessionConnectionsDeps): 
       }
     });
     return () => { if (unbind) unbind(); };
-  }, [t]);
+  }, [addToast, t]);
 
   // ── 监听同步状态事件 ──────────────────────────────────────
   useEffect(() => {

@@ -20,8 +20,8 @@ type procStatSample struct {
 	State   string
 	Utime   uint64
 	Stime   uint64
-	Start   uint64 // starttime(ticks since boot),完整进程列表的 etime 换算用
-	Rss     uint64 // 内存页数(×4KiB 得 KB)
+	Start   uint64 // starttime(ticks since boot),完整进程列表的 etime 换算用;两次采样比对可识别 PID 复用
+	Rss     uint64 // 内存页数(×4KiB 得 KB;按 OpenWrt 目标平台 4KiB 页内核计,16KiB 页内核需另行适配)
 	Threads uint64
 	Uid     string
 	Cmd     string
@@ -113,8 +113,8 @@ func parseProbeProcSections(proc1Lines, proc2Lines []string) ([]map[string]inter
 	procs := make([]map[string]interface{}, 0, len(sec2.samples))
 	for _, p2 := range sec2.samples {
 		p1, ok := first[p2.Pid]
-		if !ok {
-			continue
+		if !ok || p1.Start != p2.Start {
+			continue // 单侧缺失(窗口内创建/退出)或 PID 复用(starttime 变化),delta 无意义
 		}
 		ticks := int64(p2.Utime+p2.Stime) - int64(p1.Utime+p1.Stime)
 		cpu := float64(ticks) / elapsed
@@ -146,13 +146,15 @@ const (
 
 // remoteFeatureProbeCmd 探测远端是否为 BusyBox / OpenWrt。
 // busybox 的 `ps --help` 输出含 "BusyBox v..." 字样,与 procps 区分;
-// 个别精简版没编入 ps applet,回退到 busybox 二进制自述头检测;
+// 裸 busybox 自述头回退仅在 ps 缺失时启用(个别精简固件没编入 ps applet)——
+// 常规 Linux 常见 busybox-static 救援安装,若 ps 是 procps 却因存在 busybox
+// 二进制误判,会把进程列表永久切到 /proc 慢路径,违反「常规 Linux 不变」;
 // /etc/openwrt_release 是 OpenWrt 专属文件,比解析 os-release 更可靠。
 // 末尾 true 保证命令总以 0 退出:「未匹配」是合法的探测结果(记为否),
 // 必须缓存——否则常规 Linux 上每次轮询都会重跑探测,而且 BUSYBOX=1 的
 // 输出会随最后一个测试的非零退出码被当作失败丢弃。
 const remoteFeatureProbeCmd = `ps --help 2>&1 | grep -qi busybox && echo BUSYBOX=1
-command -v busybox >/dev/null 2>&1 && busybox 2>&1 | grep -qi busybox && echo BUSYBOX=1
+command -v ps >/dev/null 2>&1 || { command -v busybox >/dev/null 2>&1 && busybox 2>&1 | grep -qi busybox && echo BUSYBOX=1; }
 [ -f /etc/openwrt_release ] && echo OPENWRT=1
 true`
 
@@ -223,26 +225,35 @@ func (m *SSHManager) remoteFeatureIs(client *ssh.Client, connKey, feature string
 // 每个进程一行,以 \x1f 分隔:pid|stat原始行|线程数|uid|cmdline。
 // stat 原始行透传给 Go 解析(comm 可能含空格/括号,shell 解析不可靠);
 // uid→用户名映射由 Go 端用 ---PASSWD--- 段完成。
+// 性能:stat/status 用 read 内建读取,不逐 PID fork awk/cat(低配路由器上
+// 1200 次 fork/exec 会把一次刷新拖到数秒);cmdline 保留一次 tr(read 处理
+// 不了 NUL),且把换行一并转空格——运行本脚本的 sh 自身会被采样,其 argv
+// 含整段脚本(多行+内嵌 marker),多行记录会破坏「一行一进程」的解析契约。
+// 时间戳用 /proc/uptime 浮点值:date +%s 整秒截断会让被拖长的采样窗口
+// 把 CPU% 放大近一倍。
 const fullProcListScript = `cat /proc/uptime
 echo ---PASSWD---
 cut -d: -f1,3 /etc/passwd 2>/dev/null
 echo ---PROCS1---
-date +%s
+cut -d' ' -f1 /proc/uptime
 sample() {
   for f in /proc/[0-9]*/stat; do
     [ -r "$f" ] || continue
     pid=${f#/proc/}; pid=${pid%/stat}
-    s=$(cat "$f") || continue
-    threads=$(awk '/^Threads:/{print $2}' /proc/$pid/status 2>/dev/null)
-    uid=$(awk '/^Uid:/{print $2}' /proc/$pid/status 2>/dev/null)
-    cmd=$(tr '\0' ' ' < /proc/$pid/cmdline 2>/dev/null)
+    IFS= read -r s < "$f" || continue
+    threads=; uid=
+    while read -r k v rest; do
+      [ "$k" = "Threads:" ] && threads=$v
+      [ "$k" = "Uid:" ] && uid=$v
+    done < /proc/$pid/status
+    cmd=$(tr '\0\n' '  ' < /proc/$pid/cmdline 2>/dev/null)
     printf '%s\037%s\037%s\037%s\037%s\n' "$pid" "$s" "$threads" "$uid" "$cmd"
   done
 }
 sample
 sleep 1
 echo ---PROCS2---
-date +%s
+cut -d' ' -f1 /proc/uptime
 sample
 echo ---DONE---
 `
@@ -290,15 +301,16 @@ func parseFullProcListOutput(out string) ([]map[string]interface{}, error) {
 	}
 
 	passwd := map[string]string{}
-	for _, l := range extractSection(lines, "---PASSWD---", "---PROCS1---") {
+	for _, l := range extractSectionExact(lines, "---PASSWD---", "---PROCS1---") {
 		parts := strings.SplitN(l, ":", 2)
 		if len(parts) == 2 {
 			passwd[parts[1]] = parts[0]
 		}
 	}
 
-	sec1, ok1 := parseFullProcSection(extractSection(lines, "---PROCS1---", "---PROCS2---"))
-	sec2, ok2 := parseFullProcSection(extractSection(lines, "---PROCS2---", "---DONE---"))
+	// 记录行携带任意 cmdline,可能内嵌 marker 子串,必须整行精确匹配提取
+	sec1, ok1 := parseFullProcSection(extractSectionExact(lines, "---PROCS1---", "---PROCS2---"))
+	sec2, ok2 := parseFullProcSection(extractSectionExact(lines, "---PROCS2---", "---DONE---"))
 	if !ok1 || !ok2 {
 		return nil, fmt.Errorf("invalid PROC sections")
 	}
@@ -314,8 +326,8 @@ func parseFullProcListOutput(out string) ([]map[string]interface{}, error) {
 	procs := make([]map[string]interface{}, 0, len(sec2.samples))
 	for _, p2 := range sec2.samples {
 		p1, ok := first[p2.Pid]
-		if !ok {
-			continue // 采样窗口内创建/退出的进程,无 CPU delta,丢弃
+		if !ok || p1.Start != p2.Start {
+			continue // 采样窗口内创建/退出,或 PID 已被复用(starttime 变化),无 CPU delta,丢弃
 		}
 		ticks := int64(p2.Utime+p2.Stime) - int64(p1.Utime+p1.Stime)
 		cpu := float64(ticks) / elapsed

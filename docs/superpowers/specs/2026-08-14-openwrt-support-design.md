@@ -158,3 +158,19 @@ cmd := "mkdir -p ~/.lumin /tmp/.lumin && cat > ~/.lumin/probe.sh <<'LUMIN_EOF'\n
 - 非 SFTP 的文件传输实现（issue 已认可继续依赖 openssh-sftp-server）。
 - 非 Linux 平台（FreeBSD 等）的 ps 兼容；本地连接（localsysinfo）不动。
 - 进程树/父子关系展示（现有 UI 无此需求）。
+
+## 7. 审查修订（2026-08-14，第二轮 code review 后）
+
+第二轮 review 发现并修正以下问题（除注明外均附单测，见 procstat_test.go）：
+
+1. **[Critical] cmdline 内嵌 marker 破坏 section 提取**：运行脚本的 sh 自身会被采样，其 argv 含整段脚本（多行 + `---PROCS2---` 等 marker 子串），`extractSection` 的子串匹配被 cmdline 内的 marker 提前截断——真实设备上 `GetFullProcessList` 每次都会报 `invalid PROC sections`（本机真实 sh 冒烟测试即复现）。修复：`sample()` 把 cmdline 的换行随 NUL 一并转空格（保证记录单行），完整列表解析改用整行精确匹配的 `extractSectionExact`。
+2. **BusyBox 误判**：裸 busybox 自述头回退检测改为仅在 `ps` 缺失时启用；装了 busybox-static 的常规 Linux（procps ps）不再被永久切到 /proc 慢路径（对应 §3 Part A「常规 Linux 不变」约束）。
+3. **fish/csh 兼容**：`GetFullProcessList` 的 BusyBox 路径经 `wrapShCmd` 包 POSIX sh（与部署/运行命令一致）；路由决策提取为纯函数 `fullProcListCmdFor` 并补分支单测——即 §4.7 的分轨测试，以纯函数 seam 替代 mock executeCmd。
+4. **数据竞态**：`GetSFTPClient` 等待初始化后的二次读取（`entry.SFTP`/`entry.Client`）挪回 RLock 内（原锁外读与 `initSFTPClient` 写入并发，`-race` 可检出）。
+5. **fork 风暴**：探针 PROC 段改单条 `cat /proc/[0-9]*/stat`（整段一次 fork）；`sample()` 的 stat/status 读取改纯 shell `read` 内建（不 fork awk/cat），每 PID 仅剩 cmdline 的一次 `tr`。
+6. **时间戳精度**：采样时间戳改 `cut -d' ' -f1 /proc/uptime`（浮点秒）；探针段在非 Linux（无 /proc/uptime）回退 `date +%s` 保持旧行为。
+7. **PID 复用防护**：两次采样 `starttime` 不一致的 PID 视为复用，剔除（tick delta 无意义）。
+8. **探针双跑**：`buildProbeScriptRunCommand` 的 `&&/||` 双路径串联改 if/else——tee 双写后两份脚本常在，`&&/||` 会在 home 份非零退出时重跑 /tmp 份。
+9. **杂项**：修正过期注释（探针部署已非 SFTP）；标注 CLK_TCK=100 与 4KiB 页为 OpenWrt 目标平台假设（16KiB 页 ARM64 内核需另行适配）；`.gitignore` 增加 `*.tmp`（`internal/config` 原子写测试残留）。
+
+§4.5 的「或顶部提示条」按文档允许的 toast 方案实现，不再另做横幅。

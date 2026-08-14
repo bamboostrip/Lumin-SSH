@@ -1410,27 +1410,33 @@ func (m *SSHManager) GetSFTPClient(sessionId string) (*sftp.Client, error) {
 		return nil, fmt.Errorf("SFTP initialization timed out")
 	}
 
+	// 等待后的二次读取同样必须在 RLock 内:等待超时路径与 initSFTPClient
+	// 对 entry.SFTP 的写入并发时,锁外读属于数据竞态(-race 检出)。
 	m.mu.RLock()
 	entry, ok = m.clients[s.ConnKey]
 	var initErr error
+	var sftpClient *sftp.Client
+	var client *ssh.Client
 	if ok {
 		initErr = entry.SFTPInitErr
+		sftpClient = entry.SFTP
+		client = entry.Client
 	}
 	connKey := s.ConnKey
 	m.mu.RUnlock()
 
-	if !ok || entry.SFTP == nil {
+	if !ok || sftpClient == nil {
 		if initErr != nil {
 			// OpenWrt/Dropbear 缺省无 SFTP 子系统,给出可执行的安装提示;
 			// 探测在锁外进行,失败时按非 OpenWrt 处理,保持原错误透传。
-			if m.remoteFeatureIs(entry.Client, connKey, featureOpenWrt) {
+			if m.remoteFeatureIs(client, connKey, featureOpenWrt) {
 				return nil, fmt.Errorf("OpenWrt device detected: file manager requires the SFTP subsystem. Install with: %s (original error: %w)", sftpInstallCmd, initErr)
 			}
 			return nil, fmt.Errorf("SFTP not available: %w", initErr)
 		}
 		return nil, fmt.Errorf("SFTP not available")
 	}
-	return entry.SFTP, nil
+	return sftpClient, nil
 }
 
 // DisconnectConnection 关闭 sessionId 所属共享连接的全部终端。
@@ -2183,11 +2189,8 @@ if [ "$1" = "network" ]; then if command -v ss >/dev/null 2>&1; then out=$(ss -H
 echo ---DISKIO1---
 cat /proc/diskstats
 echo ---PROC1---
-date +%s
-for f in /proc/[0-9]*/stat; do
-  [ -r "$f" ] || continue
-  cat "$f"
-done
+cut -d' ' -f1 /proc/uptime 2>/dev/null || date +%s
+cat /proc/[0-9]*/stat 2>/dev/null
 sleep 1
 echo ---CPU2---
 grep '^cpu' /proc/stat
@@ -2198,11 +2201,8 @@ if [ "$1" = "network" ]; then if command -v ss >/dev/null 2>&1; then out=$(ss -H
 echo ---DISKIO2---
 cat /proc/diskstats
 echo ---PROC2---
-date +%s
-for f in /proc/[0-9]*/stat; do
-  [ -r "$f" ] || continue
-  cat "$f"
-done
+cut -d' ' -f1 /proc/uptime 2>/dev/null || date +%s
+cat /proc/[0-9]*/stat 2>/dev/null
 echo ---DONE---
 `
 
@@ -2285,7 +2285,9 @@ func wrapShCmd(cmd string) string {
 // startMarker 为空时从开头开始收集；endMarker 为空时收集到末尾。
 // GetSystemInfo 与 GetServerStaticInfo 共用此实现，避免重复定义。
 func buildProbeScriptRunCommand(probeArg string) string {
-	return fmt.Sprintf(`sh -c 'f=~/.lumin/probe.sh; [ -f "$f" ] && sh "$f"%s || sh /tmp/.lumin/probe.sh%s'`, probeArg, probeArg)
+	// if/else 而非 &&/||:tee 双写后 home 与 /tmp 两份都常在,&&/|| 会在
+	// home 份非零退出时再跑一遍 /tmp 份——探针双跑、输出拼接、延迟翻倍。
+	return fmt.Sprintf(`sh -c 'f=~/.lumin/probe.sh; if [ -f "$f" ]; then sh "$f"%s; else sh /tmp/.lumin/probe.sh%s; fi'`, probeArg, probeArg)
 }
 
 func (m *SSHManager) diagnoseProbeScriptFailure(client *ssh.Client, probeArg string) string {
@@ -2315,6 +2317,29 @@ func extractSection(lines []string, startMarker, endMarker string) []string {
 			continue
 		}
 		if endMarker != "" && strings.Contains(l, endMarker) {
+			break
+		}
+		if inside {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// extractSectionExact 与 extractSection 相同,但 marker 必须整行精确匹配。
+// 完整进程列表的记录行携带任意 cmdline,cmdline 中可能出现 "---PROCS2---"
+// 等 marker 子串(典型:运行脚本的 sh,其 argv 就是整段脚本),子串匹配会把
+// section 提前截断。要求脚本端保证记录单行(fullProcListScript 已把 cmdline
+// 的换行转为空格)。
+func extractSectionExact(lines []string, startMarker, endMarker string) []string {
+	var out []string
+	inside := startMarker == ""
+	for _, l := range lines {
+		if startMarker != "" && l == startMarker {
+			inside = true
+			continue
+		}
+		if endMarker != "" && l == endMarker {
 			break
 		}
 		if inside {
@@ -2371,8 +2396,8 @@ func (m *SSHManager) getSystemInfo(sessionId string, includeNetworkConnections b
 	}
 	out, err := m.executeCmdWithClient(client, buildProbeScriptRunCommand(probeArg))
 	if err != nil || len(strings.TrimSpace(out)) == 0 {
-		// ponytail: 偶发失败(服务器慢/30s 超时)不立即删 probeDeployed 重走 SFTP 部署,
-		// 避免每次重试都触发 SFTP 往返。连续失败 3 次才怀疑脚本损坏,强制重新部署。
+		// ponytail: 偶发失败(服务器慢/30s 超时)不立即删 probeDeployed 重走部署,
+		// 避免每次重试都重新 heredoc 传输探针脚本。连续失败 3 次才怀疑脚本损坏,强制重新部署。
 		m.mu.Lock()
 		m.probeRunFailed[connKey]++
 		if m.probeRunFailed[connKey] >= 3 {
@@ -3090,20 +3115,30 @@ func (m *SSHManager) GetFullProcessList(sessionId string) ([]map[string]interfac
 	}
 	connKey := s.ConnKey
 	m.mu.RUnlock()
-	if m.remoteFeatureIs(client, connKey, featureBusybox) {
-		out, err := m.executeCmdWithClient(client, fullProcListScript)
-		if err != nil {
-			return nil, err
-		}
-		return parseFullProcListOutput(out)
-	}
-
-	out, err := m.executeCmdWithClient(client, `ps -eo pid,pcpu,rss,user,comm,stat,nlwp,etime,args --sort=-pcpu 2>/dev/null`)
+	isBusybox := m.remoteFeatureIs(client, connKey, featureBusybox)
+	out, err := m.executeCmdWithClient(client, fullProcListCmdFor(isBusybox))
 	if err != nil {
 		return nil, err
 	}
-
+	if isBusybox {
+		return parseFullProcListOutput(out)
+	}
 	return parseFullProcessListOutput(out)
+}
+
+// fullProcListCmdFor 按远端能力选择完整进程列表命令。BusyBox 脚本含 POSIX
+// 函数与参数展开语法,必须经 wrapShCmd 强制 sh 执行——远端登录 shell 可能
+// 是 fish/csh,裸发脚本会语法报错、进程列表整页失败。独立成纯函数便于
+// 分支路由单测。
+// fullProcListCmdFor 按远端能力选择完整进程列表命令。BusyBox 脚本含 POSIX
+// 函数与参数展开语法,必须经 wrapShCmd 强制 sh 执行——远端登录 shell 可能
+// 是 fish/csh,裸发脚本会语法报错、进程列表整页失败。独立成纯函数便于
+// 分支路由单测。
+func fullProcListCmdFor(isBusybox bool) string {
+	if isBusybox {
+		return wrapShCmd(fullProcListScript)
+	}
+	return `ps -eo pid,pcpu,rss,user,comm,stat,nlwp,etime,args --sort=-pcpu 2>/dev/null`
 }
 
 // parseFullProcessListOutput parses ps output into structured process maps.

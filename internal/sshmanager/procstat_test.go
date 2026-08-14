@@ -230,3 +230,23 @@ func procFullLine(pid int, comm string, utime, stime, starttime, rss, threads ui
 		cmd,
 	}, "\x1f")
 }
+
+func TestProbeDeployCmdHeredocStructure(t *testing.T) {
+	cmd := probeDeployCmd()
+	for _, want := range []string{
+		"tee ~/.lumin/probe.sh /tmp/.lumin/probe.sh >/dev/null <<'LUMIN_EOF'",
+		"---PROC1---",
+		"---PROC2---",
+		"[ -f ~/.lumin/probe.sh ] || [ -f /tmp/.lumin/probe.sh ]",
+	} {
+		if !strings.Contains(cmd, want) {
+			t.Fatalf("部署命令缺少 %q", want)
+		}
+	}
+	if strings.Contains(cmd, "---PROC---\n") {
+		t.Fatal("部署命令不应再包含旧 ps 进程段")
+	}
+	if strings.Contains(dynamicProbeScript, "LUMIN_EOF") {
+		t.Fatal("探针脚本内容不能包含 heredoc 定界符 LUMIN_EOF,否则部署截断")
+	}
+}

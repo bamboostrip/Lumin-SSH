@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"golang.org/x/crypto/ssh"
 )
 
 // procStatSample 单个进程一次采样的解析结果。
@@ -133,4 +135,226 @@ func parseProbeProcSections(proc1Lines, proc2Lines []string) ([]map[string]inter
 		procs = procs[:6]
 	}
 	return procs, nil
+}
+
+// ─── 远端能力探测(BusyBox / OpenWrt) ─────────────────────────────
+
+const (
+	featureBusybox = "busybox"
+	featureOpenWrt = "openwrt"
+)
+
+// remoteFeatureProbeCmd 探测远端是否为 BusyBox / OpenWrt。
+// busybox 的 `ps --help` 输出含 "BusyBox v..." 字样,与 procps 区分;
+// /etc/openwrt_release 是 OpenWrt 专属文件,比解析 os-release 更可靠。
+const remoteFeatureProbeCmd = `ps --help 2>&1 | grep -qi busybox && echo BUSYBOX=1
+[ -f /etc/openwrt_release ] && echo OPENWRT=1`
+
+// ensureRemoteFeatures 探测并缓存远端能力(connKey -> feature -> 1 是 / -1 否)。
+// 探测命令成功执行后未输出的特性记为「否」;命令失败则不缓存,下次调用重试,
+// 且不阻塞主流程(调用方拿到「否」也只影响是否走兼容路径)。
+func (m *SSHManager) ensureRemoteFeatures(client *ssh.Client, connKey string) {
+	m.mu.RLock()
+	flags, ok := m.remoteFeatures[connKey]
+	needProbe := !ok || flags[featureBusybox] == 0 || flags[featureOpenWrt] == 0
+	m.mu.RUnlock()
+	if !needProbe {
+		return
+	}
+
+	out, err := m.executeCmdWithClient(client, remoteFeatureProbeCmd)
+	parsed := map[string]int{}
+	if err == nil {
+		for _, l := range strings.Split(out, "\n") {
+			l = strings.TrimSpace(l)
+			switch l {
+			case "BUSYBOX=1":
+				parsed[featureBusybox] = 1
+			case "OPENWRT=1":
+				parsed[featureOpenWrt] = 1
+			}
+		}
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	flags = m.remoteFeatures[connKey]
+	if flags == nil {
+		flags = map[string]int{}
+		m.remoteFeatures[connKey] = flags
+	}
+	if err != nil {
+		return // 探测失败:保持未知,下次重试
+	}
+	for _, f := range []string{featureBusybox, featureOpenWrt} {
+		if _, has := parsed[f]; !has {
+			parsed[f] = -1
+		}
+	}
+	for k, v := range parsed {
+		flags[k] = v
+	}
+}
+
+// remoteFeatureIs 返回 connKey 连接的某能力是否为真;未探测时先探测。
+func (m *SSHManager) remoteFeatureIs(client *ssh.Client, connKey, feature string) bool {
+	m.ensureRemoteFeatures(client, connKey)
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.remoteFeatures[connKey][feature] == 1
+}
+
+// ─── 完整进程列表的 /proc 路径(BusyBox 无 procps ps 时使用) ────────
+
+// fullProcListScript 双采样 /proc 生成完整进程列表。
+// 每个进程一行,以 \x1f 分隔:pid|stat原始行|线程数|uid|cmdline。
+// stat 原始行透传给 Go 解析(comm 可能含空格/括号,shell 解析不可靠);
+// uid→用户名映射由 Go 端用 ---PASSWD--- 段完成。
+const fullProcListScript = `cat /proc/uptime
+echo ---PASSWD---
+cut -d: -f1,3 /etc/passwd 2>/dev/null
+echo ---PROCS1---
+date +%s
+sample() {
+  for f in /proc/[0-9]*/stat; do
+    [ -r "$f" ] || continue
+    pid=${f#/proc/}; pid=${pid%/stat}
+    s=$(cat "$f") || continue
+    threads=$(awk '/^Threads:/{print $2}' /proc/$pid/status 2>/dev/null)
+    uid=$(awk '/^Uid:/{print $2}' /proc/$pid/status 2>/dev/null)
+    cmd=$(tr '\0' ' ' < /proc/$pid/cmdline 2>/dev/null)
+    printf '%s\037%s\037%s\037%s\037%s\n' "$pid" "$s" "$threads" "$uid" "$cmd"
+  done
+}
+sample
+sleep 1
+echo ---PROCS2---
+date +%s
+sample
+echo ---DONE---
+`
+
+// parseFullProcSection 解析完整进程列表的一个采样 section(首行为时间戳)。
+func parseFullProcSection(lines []string) (procSection, bool) {
+	if len(lines) < 1 {
+		return procSection{}, false
+	}
+	ts, err := strconv.ParseFloat(strings.TrimSpace(lines[0]), 64)
+	if err != nil {
+		return procSection{}, false
+	}
+	sec := procSection{ts: ts}
+	for _, l := range lines[1:] {
+		l = strings.TrimSpace(l)
+		if l == "" {
+			continue
+		}
+		parts := strings.Split(l, "\x1f")
+		if len(parts) != 5 {
+			continue
+		}
+		stat, ok := parseProcStatLine(parts[1])
+		if !ok {
+			continue
+		}
+		stat.Pid = parts[0]
+		stat.Threads, _ = strconv.ParseUint(parts[2], 10, 64)
+		stat.Uid = parts[3]
+		stat.Cmd = strings.TrimSpace(parts[4])
+		sec.samples = append(sec.samples, stat)
+	}
+	return sec, true
+}
+
+// parseFullProcListOutput 解析 fullProcListScript 输出,字段结构与
+// parseFullProcessListOutput(procps ps 路径)保持一致,前端无需区分来源。
+func parseFullProcListOutput(out string) ([]map[string]interface{}, error) {
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+
+	uptime := 0.0
+	if len(lines) > 0 {
+		fmt.Sscanf(strings.TrimSpace(lines[0]), "%f", &uptime)
+	}
+
+	passwd := map[string]string{}
+	for _, l := range extractSection(lines, "---PASSWD---", "---PROCS1---") {
+		parts := strings.SplitN(l, ":", 2)
+		if len(parts) == 2 {
+			passwd[parts[1]] = parts[0]
+		}
+	}
+
+	sec1, ok1 := parseFullProcSection(extractSection(lines, "---PROCS1---", "---PROCS2---"))
+	sec2, ok2 := parseFullProcSection(extractSection(lines, "---PROCS2---", "---DONE---"))
+	if !ok1 || !ok2 {
+		return nil, fmt.Errorf("invalid PROC sections")
+	}
+	elapsed := sec2.ts - sec1.ts
+	if elapsed <= 0 {
+		elapsed = 1
+	}
+
+	first := make(map[string]procStatSample, len(sec1.samples))
+	for _, p := range sec1.samples {
+		first[p.Pid] = p
+	}
+	procs := make([]map[string]interface{}, 0, len(sec2.samples))
+	for _, p2 := range sec2.samples {
+		p1, ok := first[p2.Pid]
+		if !ok {
+			continue // 采样窗口内创建/退出的进程,无 CPU delta,丢弃
+		}
+		ticks := int64(p2.Utime+p2.Stime) - int64(p1.Utime+p1.Stime)
+		cpu := float64(ticks) / elapsed
+		if cpu < 0 {
+			cpu = 0
+		}
+		cmd := p2.Cmd
+		if cmd == "" {
+			cmd = p2.Comm // 内核线程无 cmdline,回退 comm
+		}
+		user := p2.Uid
+		if name, ok := passwd[p2.Uid]; ok && name != "" {
+			user = name
+		}
+		loc := cmd
+		if idx := strings.Index(cmd, " "); idx > 0 {
+			loc = cmd[:idx]
+		}
+		procs = append(procs, map[string]interface{}{
+			"pid":   p2.Pid,
+			"cpu":   cpu,
+			"mem":   float64(p2.Rss) * 4.0 / 1024.0, // 页→MB
+			"user":  user,
+			"name":  p2.Comm,
+			"cmd":   cmd,
+			"loc":   loc,
+			"stat":  p2.State,
+			"nlwp":  p2.Threads,
+			"etime": formatProcEtime(uptime - float64(p2.Start)/100.0),
+		})
+	}
+	sort.Slice(procs, func(i, j int) bool {
+		return procs[i]["cpu"].(float64) > procs[j]["cpu"].(float64)
+	})
+	return procs, nil
+}
+
+// formatProcEtime 把秒数格式化为 procps 风格的 etime("MM:SS"/"H:MM:SS"/"D-HH:MM:SS")。
+func formatProcEtime(seconds float64) string {
+	if seconds < 0 {
+		seconds = 0
+	}
+	s := int(seconds)
+	days := s / 86400
+	hours := (s % 86400) / 3600
+	mins := (s % 3600) / 60
+	secs := s % 60
+	if days > 0 {
+		return fmt.Sprintf("%d-%02d:%02d:%02d", days, hours, mins, secs)
+	}
+	if hours > 0 {
+		return fmt.Sprintf("%d:%02d:%02d", hours, mins, secs)
+	}
+	return fmt.Sprintf("%02d:%02d", mins, secs)
 }

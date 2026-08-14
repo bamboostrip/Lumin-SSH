@@ -241,6 +241,7 @@ type SSHManager struct {
 	probeDeployed    map[string]bool               // connKey -> probe.sh deployed
 	probeFailed      map[string]int                // connKey -> probe.sh deploy fail count (max 3)
 	probeRunFailed   map[string]int                // connKey -> probe script run fail count (reset on success)
+	remoteFeatures   map[string]map[string]int     // connKey -> 远端能力探测结果: 1 是 / -1 否（busybox/openwrt）
 	pendingHostKeys  map[string]*PendingHostKey    // sessionId -> pending host key info
 	tempAcceptedKeys map[string]string             // sessionId -> fingerprint (accept this time only)
 	pendingCancels   map[string]context.CancelFunc // sessionId -> cancel func for in-progress Connect
@@ -292,6 +293,7 @@ func NewSSHManager() *SSHManager {
 		probeDeployed:    make(map[string]bool),
 		probeFailed:      make(map[string]int),
 		probeRunFailed:   make(map[string]int),
+		remoteFeatures:   make(map[string]map[string]int),
 		pendingHostKeys:  make(map[string]*PendingHostKey),
 		tempAcceptedKeys: make(map[string]string),
 		pendingCancels:   make(map[string]context.CancelFunc),
@@ -3044,6 +3046,19 @@ func (m *SSHManager) GetFullProcessList(sessionId string) ([]map[string]interfac
 	client, _, err := m.GetClientEntry(sessionId)
 	if err != nil {
 		return nil, err
+	}
+
+	// OpenWrt/BusyBox 的 ps 不支持 -eo/--sort/nlwp 等 procps 语法,走 /proc 直读;
+	// 常规 Linux 保持 ps 路径不变。
+	m.mu.RLock()
+	connKey := m.sessions[sessionId].ConnKey
+	m.mu.RUnlock()
+	if m.remoteFeatureIs(client, connKey, featureBusybox) {
+		out, err := m.executeCmdWithClient(client, fullProcListScript)
+		if err != nil {
+			return nil, err
+		}
+		return parseFullProcListOutput(out)
 	}
 
 	out, err := m.executeCmdWithClient(client, `ps -eo pid,pcpu,rss,user,comm,stat,nlwp,etime,args --sort=-pcpu 2>/dev/null`)

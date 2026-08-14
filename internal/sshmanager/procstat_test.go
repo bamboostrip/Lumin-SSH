@@ -120,3 +120,113 @@ func TestParseProcSectionInvalid(t *testing.T) {
 		t.Fatal("空 section 应失败")
 	}
 }
+
+func TestFormatProcEtime(t *testing.T) {
+	cases := []struct {
+		sec  float64
+		want string
+	}{
+		{0, "00:00"},
+		{59, "00:59"},
+		{60, "01:00"},
+		{3661, "1:01:01"},
+		{90061, "1-01:01:01"},
+		{-5, "00:00"}, // 负数(时钟回拨)钳制为 0
+	}
+	for _, c := range cases {
+		if got := formatProcEtime(c.sec); got != c.want {
+			t.Fatalf("formatProcEtime(%v) = %q, want %q", c.sec, got, c.want)
+		}
+	}
+}
+
+func TestParseFullProcListOutput(t *testing.T) {
+	// uptime=10000s;进程 1(sshd, uid 0→root)与 2(内核线程 kworker,无 cmdline)
+	out := strings.Join([]string{
+		"10000.5 20000",
+		"---PASSWD---",
+		"root:0",
+		"daemon:1",
+		"---PROCS1---",
+		"1000",
+		procFullLine(1, "sshd", 100, 50, 9000, 256, 2, "0", "/usr/sbin/sshd -D"),
+		procFullLine(2, "kworker/0:0", 50, 0, 100, 64, 1, "0", ""),
+		"---PROCS2---",
+		"1001",
+		procFullLine(1, "sshd", 160, 70, 9000, 256, 2, "0", "/usr/sbin/sshd -D"),
+		procFullLine(2, "kworker/0:0", 55, 0, 100, 64, 1, "0", ""),
+		"---DONE---",
+	}, "\n")
+
+	procs, err := parseFullProcListOutput(out)
+	if err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	if len(procs) != 2 {
+		t.Fatalf("应有 2 个进程, 得到 %d", len(procs))
+	}
+	p1 := procs[0]
+	if p1["pid"] != "1" || p1["cpu"].(float64) != 80.0 {
+		t.Fatalf("sshd cpu=80 且排首位: %#v", p1)
+	}
+	if p1["user"] != "root" || p1["name"] != "sshd" || p1["stat"] != "S" {
+		t.Fatalf("user/name/stat 错误: %#v", p1)
+	}
+	if p1["nlwp"].(uint64) != 2 || p1["mem"].(float64) != 1.0 {
+		t.Fatalf("nlwp/mem 错误: %#v", p1)
+	}
+	if p1["cmd"] != "/usr/sbin/sshd -D" || p1["loc"] != "/usr/sbin/sshd" {
+		t.Fatalf("cmd/loc 错误: %#v", p1)
+	}
+	// etime = 10000 - 9000/100 = 9910s = 2:45:10
+	if p1["etime"] != "2:45:10" {
+		t.Fatalf("etime 换算错误: %v", p1["etime"])
+	}
+	// 内核线程:cmd 回退 comm
+	p2 := procs[1]
+	if p2["cmd"] != "kworker/0:0" || p2["loc"] != "kworker/0:0" {
+		t.Fatalf("内核线程 cmd 应回退 comm: %#v", p2)
+	}
+	if p2["user"] != "root" {
+		t.Fatalf("kworker 用户应为 root: %#v", p2)
+	}
+	// cpu = (55-50)/1 = 5,排在 sshd 之后
+	if procs[1]["pid"] != "2" || procs[1]["cpu"].(float64) != 5.0 {
+		t.Fatalf("排序错误: %#v", procs)
+	}
+}
+
+func TestParseFullProcListOutputMalformedLines(t *testing.T) {
+	out := strings.Join([]string{
+		"10000",
+		"---PASSWD---",
+		"bad-line-without-colon",
+		"root:0",
+		"---PROCS1---",
+		"1000",
+		"1\x1fnot-a-stat-line\x1f1\x1f0\x1f/cmd",   // stat 行非法 → 跳过
+		"2\x1fwrong-field-count",                    // 字段数不足 → 跳过
+		"---PROCS2---",
+		"1001",
+		"1\x1fnot-a-stat-line\x1f1\x1f0\x1f/cmd",
+		"---DONE---",
+	}, "\n")
+	procs, err := parseFullProcListOutput(out)
+	if err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	if len(procs) != 0 {
+		t.Fatalf("非法行应全部跳过: %#v", procs)
+	}
+}
+
+// procFullLine 构造完整进程列表的一行记录(pid|stat|threads|uid|cmd)。
+func procFullLine(pid int, comm string, utime, stime, starttime, rss, threads uint64, uid, cmd string) string {
+	return strings.Join([]string{
+		strconv.Itoa(pid),
+		statLine(pid, comm, utime, stime, starttime, rss),
+		strconv.FormatUint(threads, 10),
+		uid,
+		cmd,
+	}, "\x1f")
+}

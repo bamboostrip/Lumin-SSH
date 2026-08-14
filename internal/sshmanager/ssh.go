@@ -2172,13 +2172,15 @@ ps -eo pid,pcpu,rss,comm --sort=-pcpu 2>/dev/null | head -6
 echo ---DONE---
 `
 
-// deployProbeScript writes probe.sh to ~/.lumin/ on the remote server via SFTP.
-// ponytail: SFTP 操作无 per-op deadline,用 select+timer 兜底 probeDeployTimeout,
-// 避免 SFTP subsystem 慢时永久阻塞 getSystemInfo 致前端定时器链断裂(数据不刷新)。
+// deployProbeScript writes probe.sh to ~/.lumin and /tmp/.lumin on the remote
+// server via an exec-channel heredoc. 不依赖 SFTP：OpenWrt/Dropbear 未装
+// openssh-sftp-server 时系统监控也必须可用。
+// ponytail: 远程命令可能慢,用 select+timer 兜底 probeDeployTimeout,
+// 避免服务器慢时永久阻塞 getSystemInfo 致前端定时器链断裂(数据不刷新)。
 // 超时后 goroutine 仍在后台等待 IO,随 keepalive 关连时退出(可接受临时泄漏)。
-func (m *SSHManager) deployProbeScript(sftpClient *sftp.Client, connKey string) error {
-	if sftpClient == nil {
-		return fmt.Errorf("SFTP not available")
+func (m *SSHManager) deployProbeScript(client *ssh.Client, connKey string) error {
+	if client == nil {
+		return fmt.Errorf("client not available")
 	}
 	m.mu.RLock()
 	already := m.probeDeployed[connKey]
@@ -2192,7 +2194,7 @@ func (m *SSHManager) deployProbeScript(sftpClient *sftp.Client, connKey string) 
 	}
 
 	done := make(chan error, 1)
-	go func() { done <- m.deployProbeScriptIO(sftpClient) }()
+	go func() { done <- m.deployProbeScriptIO(client) }()
 
 	timer := time.NewTimer(probeDeployTimeout)
 	defer timer.Stop()
@@ -2217,32 +2219,23 @@ func (m *SSHManager) deployProbeScript(sftpClient *sftp.Client, connKey string) 
 	}
 }
 
-// deployProbeScriptIO 执行 probe.sh 的 SFTP 写入,无超时(由调用方 deployProbeScript 兜底)。
-func (m *SSHManager) deployProbeScriptIO(sftpClient *sftp.Client) error {
-	if err := sftpClient.MkdirAll(".lumin"); err != nil {
-		_ = sftpClient.MkdirAll("/tmp/.lumin")
-	}
+// probeDeployCmd 构造把探针脚本写入 ~/.lumin 与 /tmp/.lumin 的 heredoc 命令。
+// 引号定界符（<<'LUMIN_EOF'）确保脚本内容中的 $、反引号等不被远端 shell 展开；
+// tee 双写两个位置,任一写入成功即可（运行端 buildProbeScriptRunCommand 有双路径回退）。
+// 末尾 [ -f ... ] 作为部署成功的最终校验,避免 tee 半成功时误判。
+func probeDeployCmd() string {
+	return fmt.Sprintf(`mkdir -p ~/.lumin /tmp/.lumin 2>/dev/null
+tee ~/.lumin/probe.sh /tmp/.lumin/probe.sh >/dev/null <<'LUMIN_EOF'
+%s
+LUMIN_EOF
+chmod 755 ~/.lumin/probe.sh /tmp/.lumin/probe.sh 2>/dev/null
+[ -f ~/.lumin/probe.sh ] || [ -f /tmp/.lumin/probe.sh ]`, dynamicProbeScript)
+}
 
-	scriptPath := ".lumin/probe.sh"
-	f, err := sftpClient.Create(scriptPath)
-	if err != nil {
-		scriptPath = "/tmp/.lumin/probe.sh"
-		f, err = sftpClient.Create(scriptPath)
-		if err != nil {
-			return fmt.Errorf("cannot write probe script: %w", err)
-		}
-	}
-	_, err = f.Write([]byte(dynamicProbeScript))
-	// Close 错误也要检查：SFTP 写缓冲刷新失败会导致脚本不完整
-	if closeErr := f.Close(); err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		return err
-	}
-
-	_ = sftpClient.Chmod(scriptPath, 0755)
-	return nil
+// deployProbeScriptIO 通过 exec 通道写入 probe.sh,无超时(由调用方 deployProbeScript 兜底)。
+func (m *SSHManager) deployProbeScriptIO(client *ssh.Client) error {
+	_, err := m.executeCmdWithClient(client, probeDeployCmd())
+	return err
 }
 
 // extractSection 从 lines 中提取 startMarker（不含）到 endMarker（不含）之间的内容。
@@ -2315,10 +2308,6 @@ func (m *SSHManager) getSystemInfo(sessionId string, includeNetworkConnections b
 	if err != nil {
 		return nil, err
 	}
-	sftpClient, err := m.GetSFTPClient(sessionId)
-	if err != nil {
-		return nil, err
-	}
 
 	m.mu.RLock()
 	s, ok := m.sessions[sessionId]
@@ -2329,7 +2318,7 @@ func (m *SSHManager) getSystemInfo(sessionId string, includeNetworkConnections b
 	connKey := s.ConnKey
 	m.mu.RUnlock()
 
-	if err := m.deployProbeScript(sftpClient, connKey); err != nil {
+	if err := m.deployProbeScript(client, connKey); err != nil {
 		return nil, fmt.Errorf("probe script deploy failed: %w", err)
 	}
 

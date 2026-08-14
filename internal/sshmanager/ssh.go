@@ -921,16 +921,25 @@ func (m *SSHManager) initSFTPClient(sessionId string, connKey string, conn Conne
 	}
 
 	if err != nil && m.ctx != nil {
-		runtime.EventsEmit(m.ctx, "ssh-status", map[string]interface{}{
+		event := map[string]interface{}{
 			"sessionId": sessionId,
 			"status":    "sftp-unavailable",
 			"host":      conn.Host,
 			"port":      conn.Port,
 			"username":  conn.Username,
 			"error":     err.Error(),
-		})
+		}
+		// OpenWrt/Dropbear 缺省无 SFTP 子系统,附上可复制的安装命令
+		if m.remoteFeatureIs(client, connKey, featureOpenWrt) {
+			event["openwrt"] = true
+			event["installCmd"] = sftpInstallCmd
+		}
+		runtime.EventsEmit(m.ctx, "ssh-status", event)
 	}
 }
+
+// sftpInstallCmd OpenWrt 上安装 SFTP 子系统的命令(Dropbear 需 openssh-sftp-server)。
+const sftpInstallCmd = "opkg update && opkg install openssh-sftp-server"
 
 func (m *SSHManager) watchClient(connKey string, client *ssh.Client) {
 	ticker := time.NewTicker(sshKeepaliveInterval)
@@ -1401,11 +1410,22 @@ func (m *SSHManager) GetSFTPClient(sessionId string) (*sftp.Client, error) {
 	}
 
 	m.mu.RLock()
-	defer m.mu.RUnlock()
 	entry, ok = m.clients[s.ConnKey]
+	var initErr error
+	if ok {
+		initErr = entry.SFTPInitErr
+	}
+	connKey := s.ConnKey
+	m.mu.RUnlock()
+
 	if !ok || entry.SFTP == nil {
-		if ok && entry.SFTPInitErr != nil {
-			return nil, fmt.Errorf("SFTP not available: %w", entry.SFTPInitErr)
+		if initErr != nil {
+			// OpenWrt/Dropbear 缺省无 SFTP 子系统,给出可执行的安装提示;
+			// 探测在锁外进行,失败时按非 OpenWrt 处理,保持原错误透传。
+			if m.remoteFeatureIs(entry.Client, connKey, featureOpenWrt) {
+				return nil, fmt.Errorf("OpenWrt device detected: file manager requires the SFTP subsystem. Install with: %s (original error: %w)", sftpInstallCmd, initErr)
+			}
+			return nil, fmt.Errorf("SFTP not available: %w", initErr)
 		}
 		return nil, fmt.Errorf("SFTP not available")
 	}

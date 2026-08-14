@@ -1832,4 +1832,5 @@ export default {
   "检测到 OpenWrt 设备，文件管理器需要 SFTP 子系统，请执行以下命令安装": "Wykryto urządzenie OpenWrt. Menedżer plików wymaga podsystemu SFTP. Uruchom to polecenie, aby go zainstalować",
   "复制安装命令": "Kopiuj polecenie instalacji",
   "安装命令已复制": "Polecenie instalacji skopiowane",
+  "安装完成后请重新连接会话": "Po instalacji ponownie połącz sesję",
 } satisfies I18nDict;

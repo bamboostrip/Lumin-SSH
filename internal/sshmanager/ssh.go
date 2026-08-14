@@ -1073,6 +1073,7 @@ func (m *SSHManager) cleanupClientTransport(connKey string, client *ssh.Client, 
 	delete(m.probeDeployed, connKey)
 	delete(m.probeFailed, connKey)
 	delete(m.probeRunFailed, connKey)
+	delete(m.remoteFeatures, connKey)
 	m.mu.Unlock()
 	globalSSHChannelUsage.forget(connKey)
 	if netConn != nil {
@@ -1529,6 +1530,7 @@ func (m *SSHManager) disconnect(sessionId string, expected *SessionData) bool {
 		delete(m.probeDeployed, connKey)
 		delete(m.probeFailed, connKey)
 		delete(m.probeRunFailed, connKey)
+		delete(m.remoteFeatures, connKey)
 		// 即使 transport 清理已先删掉 client，也要回收连接索引和转发。
 		// stopPortForwardsForConnKey 幂等，和 cleanupClientTransport 重复调用无害。
 		stopForwardsConnKey = connKey
@@ -2265,9 +2267,18 @@ chmod 755 ~/.lumin/probe.sh /tmp/.lumin/probe.sh 2>/dev/null
 }
 
 // deployProbeScriptIO 通过 exec 通道写入 probe.sh,无超时(由调用方 deployProbeScript 兜底)。
+// 命令包在 sh -c 中执行:远端登录 shell 可能是 fish/csh 等不支持 heredoc 的
+// shell,强制走 POSIX sh 保证部署命令语义一致(与运行端 buildProbeScriptRunCommand 同理)。
 func (m *SSHManager) deployProbeScriptIO(client *ssh.Client) error {
-	_, err := m.executeCmdWithClient(client, probeDeployCmd())
+	_, err := m.executeCmdWithClient(client, wrapShCmd(probeDeployCmd()))
 	return err
+}
+
+// wrapShCmd 把命令包进 POSIX sh 执行。命令中的单引号用 '\'' 转义:该序列在
+// bash/sh/fish/csh 下都会被原样透传给内层 sh(外层 shell 只把单引号当字面
+// 量处理),内层 sh 再把它还原为引号语法,因此命令内容可含任意单引号。
+func wrapShCmd(cmd string) string {
+	return "sh -c '" + strings.ReplaceAll(cmd, "'", `'\''`) + "'"
 }
 
 // extractSection 从 lines 中提取 startMarker（不含）到 endMarker（不含）之间的内容。
@@ -3069,9 +3080,15 @@ func (m *SSHManager) GetFullProcessList(sessionId string) ([]map[string]interfac
 	}
 
 	// OpenWrt/BusyBox 的 ps 不支持 -eo/--sort/nlwp 等 procps 语法,走 /proc 直读;
-	// 常规 Linux 保持 ps 路径不变。
+	// 常规 Linux 保持 ps 路径不变。GetClientEntry 返回后会话可能已被断开,
+	// 与 getSystemInfo 同样做 ok 检查,避免对 nil 条目取 ConnKey。
 	m.mu.RLock()
-	connKey := m.sessions[sessionId].ConnKey
+	s, ok := m.sessions[sessionId]
+	if !ok {
+		m.mu.RUnlock()
+		return nil, fmt.Errorf("session not found")
+	}
+	connKey := s.ConnKey
 	m.mu.RUnlock()
 	if m.remoteFeatureIs(client, connKey, featureBusybox) {
 		out, err := m.executeCmdWithClient(client, fullProcListScript)

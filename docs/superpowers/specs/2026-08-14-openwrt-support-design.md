@@ -73,10 +73,12 @@
 probeFlags      map[string]int // 如 "busybox"、"openwrt"
 probeFlagsMu    sync.Mutex
 ```
-探测命令（幂等、无副作用）：
+探测命令（幂等、无副作用；末尾 `true` 保证 exit 0——「未匹配」是合法的探测结果，必须能缓存为「否」，否则非 OpenWrt 机器上每次轮询都会重跑探测，且 BUSYBOX=1 的输出会随最后一个测试的非零退出码被当作失败丢弃）：
 ```sh
 ps --help 2>&1 | grep -qi busybox && echo BUSYBOX=1
+command -v busybox >/dev/null 2>&1 && busybox 2>&1 | grep -qi busybox && echo BUSYBOX=1
 [ -f /etc/openwrt_release ] && echo OPENWRT=1
+true
 ```
 触发点：`initSFTPClient` 失败分支（此时只跑一次，缓存结果）；`GetFullProcessList` 首次调用时若 flags 未知也探测。
 
@@ -112,13 +114,13 @@ Go 端解析 `---PROC1---`/`---PROC2---` 两个 section，按 pid 配对：`cpu%
 cmd := "mkdir -p ~/.lumin /tmp/.lumin && cat > ~/.lumin/probe.sh <<'LUMIN_EOF'\n" +
     dynamicProbeScript + "\nLUMIN_EOF\nchmod 755 ~/.lumin/probe.sh"
 ```
-经 `executeCmdWithClient` 执行（exec 通道，无 SFTP 依赖）。`deployProbeScript` 签名去掉 `sftpClient` 参数；`getSystemInfo` 不再调用 `GetSFTPClient`。`deployProbeScript` 的超时保护（probeDeployTimeout select）保留，改为对 exec 命令同样兜底。
+经 `executeCmdWithClient` 执行（exec 通道，无 SFTP 依赖）。`deployProbeScript` 签名去掉 `sftpClient` 参数；`getSystemInfo` 不再调用 `GetSFTPClient`。`deployProbeScript` 的超时保护（probeDeployTimeout select）保留，改为对 exec 命令同样兜底。实现补充：部署命令经 `wrapShCmd` 包在 `sh -c` 中执行（单引号按 `'\''` 转义），远端登录 shell 为 fish/csh 等不支持 heredoc 的 shell 时语义仍一致。
 
 ### 4.5 OpenWrt SFTP 提示
 
 - `initSFTPClient` 失败分支：探测 OpenWrt → 若命中，emit 的 `ssh-status` 事件追加字段 `openwrt: true`、`installCmd: "opkg update && opkg install openssh-sftp-server"`。
 - `GetSFTPClient` 的 `SFTP not available: %w` 包装处：OpenWrt 命中时返回友好消息（含原错误、安装命令）。
-- 前端 `useSessionConnections.ts` `ssh-status` 监听新增 `sftp-unavailable` 分支：`addToast(..., 'warning', 15000, [{label: t('复制安装命令'), onClick: () => navigator.clipboard.writeText(installCmd)}])`。
+- 前端 `useSessionConnections.ts` `ssh-status` 监听新增 `sftp-unavailable` 分支：`addToast(..., 'warning', 15000, [{label: t('复制安装命令'), onClick: () => navigator.clipboard.writeText(installCmd)}])`；toast 文案同时提示「安装完成后请重新连接会话」（SFTP client 仅在连接时初始化，装包后需重连才会重试）。
 - FileManager 错误分支（FileManager.tsx:3274）：错误串含「OpenWrt」时同样显示带复制 action 的 toast（或顶部提示条）。
 - 非 OpenWrt 的 SFTP 失败保持原错误透传（不误伤其他平台）。
 

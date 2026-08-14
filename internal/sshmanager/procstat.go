@@ -146,13 +146,34 @@ const (
 
 // remoteFeatureProbeCmd 探测远端是否为 BusyBox / OpenWrt。
 // busybox 的 `ps --help` 输出含 "BusyBox v..." 字样,与 procps 区分;
+// 个别精简版没编入 ps applet,回退到 busybox 二进制自述头检测;
 // /etc/openwrt_release 是 OpenWrt 专属文件,比解析 os-release 更可靠。
+// 末尾 true 保证命令总以 0 退出:「未匹配」是合法的探测结果(记为否),
+// 必须缓存——否则常规 Linux 上每次轮询都会重跑探测,而且 BUSYBOX=1 的
+// 输出会随最后一个测试的非零退出码被当作失败丢弃。
 const remoteFeatureProbeCmd = `ps --help 2>&1 | grep -qi busybox && echo BUSYBOX=1
-[ -f /etc/openwrt_release ] && echo OPENWRT=1`
+command -v busybox >/dev/null 2>&1 && busybox 2>&1 | grep -qi busybox && echo BUSYBOX=1
+[ -f /etc/openwrt_release ] && echo OPENWRT=1
+true`
+
+// parseRemoteFeatureProbeOutput 解析探测输出,出现的特性记 1,未出现的不记
+// (由 ensureRemoteFeatures 对未出现项补记为「否」)。独立成函数便于单测。
+func parseRemoteFeatureProbeOutput(out string) map[string]int {
+	parsed := map[string]int{}
+	for _, l := range strings.Split(out, "\n") {
+		switch strings.TrimSpace(l) {
+		case "BUSYBOX=1":
+			parsed[featureBusybox] = 1
+		case "OPENWRT=1":
+			parsed[featureOpenWrt] = 1
+		}
+	}
+	return parsed
+}
 
 // ensureRemoteFeatures 探测并缓存远端能力(connKey -> feature -> 1 是 / -1 否)。
-// 探测命令成功执行后未输出的特性记为「否」;命令失败则不缓存,下次调用重试,
-// 且不阻塞主流程(调用方拿到「否」也只影响是否走兼容路径)。
+// 探测命令成功执行(exit 0)后未输出的特性记为「否」并缓存;传输层失败才不
+// 缓存、下次调用重试,且不阻塞主流程(调用方拿到「否」也只影响是否走兼容路径)。
 func (m *SSHManager) ensureRemoteFeatures(client *ssh.Client, connKey string) {
 	m.mu.RLock()
 	flags, ok := m.remoteFeatures[connKey]
@@ -165,15 +186,7 @@ func (m *SSHManager) ensureRemoteFeatures(client *ssh.Client, connKey string) {
 	out, err := m.executeCmdWithClient(client, remoteFeatureProbeCmd)
 	parsed := map[string]int{}
 	if err == nil {
-		for _, l := range strings.Split(out, "\n") {
-			l = strings.TrimSpace(l)
-			switch l {
-			case "BUSYBOX=1":
-				parsed[featureBusybox] = 1
-			case "OPENWRT=1":
-				parsed[featureOpenWrt] = 1
-			}
-		}
+		parsed = parseRemoteFeatureProbeOutput(out)
 	}
 
 	m.mu.Lock()

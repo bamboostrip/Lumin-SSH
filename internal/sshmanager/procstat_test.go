@@ -1,6 +1,7 @@
 package sshmanager
 
 import (
+	"os/exec"
 	"strconv"
 	"strings"
 	"testing"
@@ -248,5 +249,70 @@ func TestProbeDeployCmdHeredocStructure(t *testing.T) {
 	}
 	if strings.Contains(dynamicProbeScript, "LUMIN_EOF") {
 		t.Fatal("探针脚本内容不能包含 heredoc 定界符 LUMIN_EOF,否则部署截断")
+	}
+}
+
+func TestParseRemoteFeatureProbeOutput(t *testing.T) {
+	got := parseRemoteFeatureProbeOutput("BUSYBOX=1\nOPENWRT=1\n")
+	if got[featureBusybox] != 1 || got[featureOpenWrt] != 1 {
+		t.Fatalf("双命中解析错误: %#v", got)
+	}
+	if len(got) != 2 {
+		t.Fatalf("不应有额外字段: %#v", got)
+	}
+
+	got = parseRemoteFeatureProbeOutput("  BUSYBOX=1  \ngarbage line\nBUSYBOX=1\n")
+	if got[featureBusybox] != 1 {
+		t.Fatalf("BUSYBOX 命中解析错误: %#v", got)
+	}
+	if _, has := got[featureOpenWrt]; has {
+		t.Fatalf("未命中特性不应出现: %#v", got)
+	}
+
+	if got := parseRemoteFeatureProbeOutput(""); len(got) != 0 {
+		t.Fatalf("空输出应为空 map: %#v", got)
+	}
+}
+
+// 探测命令必须以 0 退出:常规 Linux 上「未匹配」是合法结果,必须能被
+// ensureRemoteFeatures 缓存为「否」——历史上探测命令最后一行测试失败会
+// 以非零退出,导致每次轮询都重跑探测,且 BUSYBOX=1 输出被当作失败丢弃。
+func TestRemoteFeatureProbeCmdExitsZeroUnderPOSIXShell(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no POSIX sh available")
+	}
+	out, err := exec.Command(sh, "-c", remoteFeatureProbeCmd).CombinedOutput()
+	if err != nil {
+		t.Fatalf("探测命令应以 0 退出, 得到 %v, 输出: %s", err, out)
+	}
+	parsed := parseRemoteFeatureProbeOutput(string(out))
+	for k := range parsed {
+		if k != featureBusybox && k != featureOpenWrt {
+			t.Fatalf("探测输出含意外标记 %q: %s", k, out)
+		}
+	}
+}
+
+func TestWrapShCmd(t *testing.T) {
+	wrapped := wrapShCmd("echo 'a b'")
+	want := `sh -c 'echo '\''a b'\'''`
+	if wrapped != want {
+		t.Fatalf("转义结果: %q, want %q", wrapped, want)
+	}
+
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no POSIX sh available")
+	}
+	// 回环验证:内容含单引号/双引号/多行,经 sh 执行后行为与原命令一致。
+	// 这保证 wrapShCmd 的 '\'' 转义不会被外层登录 shell(即使非 bash)误解。
+	script := "echo 'quoted' \"double\"\nprintf '%s\\n' 'line2'"
+	out, err := exec.Command(sh, "-c", wrapShCmd(script)).CombinedOutput()
+	if err != nil {
+		t.Fatalf("wrapShCmd 命令执行失败: %v, 输出: %s", err, out)
+	}
+	if got := string(out); got != "quoted double\nline2\n" {
+		t.Fatalf("回环输出不符: %q", got)
 	}
 }

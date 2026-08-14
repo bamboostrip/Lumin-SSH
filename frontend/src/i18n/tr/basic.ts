@@ -1832,4 +1832,5 @@ export default {
   "检测到 OpenWrt 设备，文件管理器需要 SFTP 子系统，请执行以下命令安装": "OpenWrt cihazı algılandı. Dosya yöneticisi SFTP alt sistemini gerektiriyor. Kurmak için bu komutu çalıştırın",
   "复制安装命令": "Kurulum komutunu kopyala",
   "安装命令已复制": "Kurulum komutu kopyalandı",
+  "安装完成后请重新连接会话": "Kurulumdan sonra oturumu yeniden bağlayın",
 } satisfies I18nDict;

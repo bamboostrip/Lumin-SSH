@@ -1114,7 +1114,7 @@ export default function useSessionConnections(deps: UseSessionConnectionsDeps): 
         // 避免只显示 cryptic 的 "unexpected EOF"。
         const installCmd = data.installCmd;
         addToast(
-          `${t('检测到 OpenWrt 设备，文件管理器需要 SFTP 子系统，请执行以下命令安装')}：${installCmd}`,
+          `${t('检测到 OpenWrt 设备，文件管理器需要 SFTP 子系统，请执行以下命令安装')}：${installCmd}。${t('安装完成后请重新连接会话')}`,
           'warning',
           20000,
           [{

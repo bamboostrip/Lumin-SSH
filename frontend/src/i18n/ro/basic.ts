@@ -1832,4 +1832,5 @@ export default {
   "检测到 OpenWrt 设备，文件管理器需要 SFTP 子系统，请执行以下命令安装": "Dispozitiv OpenWrt detectat. Managerul de fișiere necesită subsistemul SFTP. Rulați această comandă pentru a-l instala",
   "复制安装命令": "Copiază comanda de instalare",
   "安装命令已复制": "Comanda de instalare a fost copiată",
+  "安装完成后请重新连接会话": "Reconectați sesiunea după instalare",
 } satisfies I18nDict;

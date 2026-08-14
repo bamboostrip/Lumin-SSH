@@ -2158,6 +2158,12 @@ echo ---NETCONN1---
 if [ "$1" = "network" ]; then if command -v ss >/dev/null 2>&1; then out=$(ss -H -tnapni 2>/dev/null); if [ -n "$out" ]; then printf '%s\n' "$out"; elif command -v netstat >/dev/null 2>&1; then netstat -tnapn 2>/dev/null | tail -n +3; fi; elif command -v netstat >/dev/null 2>&1; then netstat -tnapn 2>/dev/null | tail -n +3; fi; fi
 echo ---DISKIO1---
 cat /proc/diskstats
+echo ---PROC1---
+date +%s
+for f in /proc/[0-9]*/stat; do
+  [ -r "$f" ] || continue
+  cat "$f"
+done
 sleep 1
 echo ---CPU2---
 grep '^cpu' /proc/stat
@@ -2167,8 +2173,12 @@ echo ---NETCONN2---
 if [ "$1" = "network" ]; then if command -v ss >/dev/null 2>&1; then out=$(ss -H -tnapni 2>/dev/null); if [ -n "$out" ]; then printf '%s\n' "$out"; elif command -v netstat >/dev/null 2>&1; then netstat -tnapn 2>/dev/null | tail -n +3; fi; elif command -v netstat >/dev/null 2>&1; then netstat -tnapn 2>/dev/null | tail -n +3; fi; fi
 echo ---DISKIO2---
 cat /proc/diskstats
-echo ---PROC---
-ps -eo pid,pcpu,rss,comm --sort=-pcpu 2>/dev/null | head -6
+echo ---PROC2---
+date +%s
+for f in /proc/[0-9]*/stat; do
+  [ -r "$f" ] || continue
+  cat "$f"
+done
 echo ---DONE---
 `
 
@@ -2709,8 +2719,8 @@ func parseProbeOutput(out string, includeNetworkConnections bool) (map[string]in
 		return res
 	}
 
-	diskIO1 := parseDiskIO(extractSection(lines1, "---DISKIO1---", "---CPU2---"))
-	diskIO2 := parseDiskIO(extractSection(lines2, "---DISKIO2---", "---PROC---"))
+	diskIO1 := parseDiskIO(extractSection(lines1, "---DISKIO1---", "---PROC1---"))
+	diskIO2 := parseDiskIO(extractSection(lines2, "---DISKIO2---", "---PROC2---"))
 
 	var diskReadSpeed, diskWriteSpeed float64
 	for dName, v2 := range diskIO2 {
@@ -2979,27 +2989,10 @@ func parseProbeOutput(out string, includeNetworkConnections bool) (map[string]in
 		networkConnections = networkConnections[:200]
 	}
 
-	// ── Parse Processes ───────────────────────────────────────────────
-	procLines := extractSection(lines2, "---PROC---", "---DONE---")
-	var processes []map[string]interface{}
-	for _, l := range procLines {
-		fields := strings.Fields(l)
-		if len(fields) < 4 {
-			continue
-		}
-		// skip header line
-		if fields[0] == "PID" {
-			continue
-		}
-		cpu, _ := strconv.ParseFloat(fields[1], 64)
-		rss, _ := strconv.ParseUint(fields[2], 10, 64)
-		processes = append(processes, map[string]interface{}{
-			"pid": fields[0],
-			"cpu": cpu,
-			"mem": float64(rss) / 1024.0, // MB
-			"cmd": fields[3],
-		})
-	}
+	// ── Parse Processes (PROC1/PROC2 双采样, /proc 直读, 不依赖 ps/procps) ──
+	proc1Lines := extractSection(lines1, "---PROC1---", "---CPU2---")
+	proc2Lines := extractSection(lines2, "---PROC2---", "---DONE---")
+	processes, _ := parseProbeProcSections(proc1Lines, proc2Lines)
 
 	return map[string]interface{}{
 		"uptime": map[string]int{"days": uptimeDays, "hours": uptimeHours, "mins": uptimeMins},

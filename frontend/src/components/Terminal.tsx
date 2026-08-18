@@ -652,6 +652,7 @@ export default function Terminal({
   const terminalLeftClickCopyOnSelectionRef = useRef(localStorage.getItem('terminalLeftClickCopyOnSelection') === 'true');
   const terminalLeftClickCopyOnSelectionModeRef = useRef(localStorage.getItem('terminalLeftClickCopyOnSelectionMode') === 'mouseup' ? 'mouseup' : 'click');
   const terminalMouseDownSelectionRef = useRef<{ mode: 'mouseup' | 'click'; startClientX: number; startClientY: number; text?: string } | null>(null);
+  const isTerminalPointerDownRef = useRef(false);
   const [timestampsVisible, setTimestampsVisible] = useState(localStorage.getItem('terminalTimestamps') === 'true');
   // 命令块：左侧折叠钮 + 树线，可收起输出
   const commandBlocksEnabledRef = useRef(localStorage.getItem('terminalCommandBlocks') === 'true');
@@ -1523,6 +1524,21 @@ export default function Terminal({
       syncTuiState(buffer.type === 'alternate' || screenScrollbackRef.current.active);
     });
     const wheelHandler = (e: WheelEvent) => {
+      // 触控板双指滚动打断选区状态防呆：
+      // 当双指滚动开始时，若由于单指先行接触残留了 isTerminalPointerDownRef 状态，
+      // 且当前无物理按键按下，主动释放状态并闭合选区，防止滚动后单指滑动意外划选文字
+      if (isTerminalPointerDownRef.current && (e.buttons === 0 || !(e.buttons & 1))) {
+        isTerminalPointerDownRef.current = false;
+        document.dispatchEvent(new MouseEvent('mouseup', {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          clientX: e.clientX,
+          clientY: e.clientY,
+          buttons: 0,
+          button: 0,
+        }));
+      }
       // 无论向上还是向下滚动，都检查当前位置并更新锁定状态
       requestAnimationFrame(() => {
         const buf = term.buffer.active;
@@ -2450,6 +2466,9 @@ export default function Terminal({
   }, [t]);
 
   const handleTerminalMouseDownCapture = useCallback((event: React.MouseEvent) => {
+    if (event.button === 0) {
+      isTerminalPointerDownRef.current = true;
+    }
     if (event.button !== 0 || !terminalLeftClickCopyOnSelectionRef.current) {
       terminalMouseDownSelectionRef.current = null;
       return;
@@ -2480,6 +2499,9 @@ export default function Terminal({
   }, [getTerminalBufferCellPositionFromMouseEvent, isTerminalBufferCellWithinRange]);
 
   const handleTerminalMouseUpCapture = useCallback((event: React.MouseEvent) => {
+    if (event.button === 0) {
+      isTerminalPointerDownRef.current = false;
+    }
     const snapshot = terminalMouseDownSelectionRef.current;
     terminalMouseDownSelectionRef.current = null;
     if (event.button !== 0 || !terminalLeftClickCopyOnSelectionRef.current || !snapshot) {
@@ -2509,7 +2531,28 @@ export default function Terminal({
   }, [copyTerminalSelectionText]);
 
   useEffect(() => {
+    const handleWindowMouseMove = (event: MouseEvent) => {
+      // macOS WKWebView / 触控板手势丢失 mouseup 防呆：
+      // 当物理上没有按键处于按下状态（buttons === 0 或未按左键），但终端仍记录着按下状态时，
+      // 说明上一次 mousedown 对应的 mouseup 已丢失。主动派发合成 mouseup 闭合 xterm 拖拽选区状态机。
+      if (isTerminalPointerDownRef.current && (event.buttons === 0 || !(event.buttons & 1))) {
+        isTerminalPointerDownRef.current = false;
+        document.dispatchEvent(new MouseEvent('mouseup', {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          clientX: event.clientX,
+          clientY: event.clientY,
+          buttons: 0,
+          button: 0,
+        }));
+      }
+    };
+
     const handleWindowMouseUp = (event: MouseEvent) => {
+      if (event.button === 0) {
+        isTerminalPointerDownRef.current = false;
+      }
       const snapshot = terminalMouseDownSelectionRef.current;
       if (event.button !== 0 || !terminalLeftClickCopyOnSelectionRef.current || !snapshot || snapshot.mode !== 'mouseup') {
         return;
@@ -2529,14 +2572,34 @@ export default function Terminal({
       });
     };
 
+    const handleWindowPointerCancel = () => {
+      if (isTerminalPointerDownRef.current) {
+        isTerminalPointerDownRef.current = false;
+        document.dispatchEvent(new MouseEvent('mouseup', {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          buttons: 0,
+          button: 0,
+        }));
+      }
+    };
+
     const handleWindowBlur = () => {
+      isTerminalPointerDownRef.current = false;
       terminalMouseDownSelectionRef.current = null;
     };
 
+    window.addEventListener('mousemove', handleWindowMouseMove, { capture: true, passive: true });
     window.addEventListener('mouseup', handleWindowMouseUp);
+    window.addEventListener('pointercancel', handleWindowPointerCancel);
+    window.addEventListener('dragend', handleWindowPointerCancel);
     window.addEventListener('blur', handleWindowBlur);
     return () => {
+      window.removeEventListener('mousemove', handleWindowMouseMove, true);
       window.removeEventListener('mouseup', handleWindowMouseUp);
+      window.removeEventListener('pointercancel', handleWindowPointerCancel);
+      window.removeEventListener('dragend', handleWindowPointerCancel);
       window.removeEventListener('blur', handleWindowBlur);
     };
   }, [copyTerminalSelectionText]);

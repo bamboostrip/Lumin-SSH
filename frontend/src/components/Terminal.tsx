@@ -653,6 +653,20 @@ export default function Terminal({
   const terminalLeftClickCopyOnSelectionModeRef = useRef(localStorage.getItem('terminalLeftClickCopyOnSelectionMode') === 'mouseup' ? 'mouseup' : 'click');
   const terminalMouseDownSelectionRef = useRef<{ mode: 'mouseup' | 'click'; startClientX: number; startClientY: number; text?: string } | null>(null);
   const isTerminalPointerDownRef = useRef(false);
+  // macOS WKWebView / 系统手势可能吞掉 mouseup，导致 xterm 拖选状态机卡死（此后划动指针 = 持续划选）。
+  // 主动向 document 派发合成 mouseup 闭合状态机：xterm 的选区收尾监听挂在 document 上且不校验 isTrusted；
+  // 事件坐标仅 altClickMovesCursor 分支使用（合成事件 altKey=false 不会进入），无指针信息时传 0 即可。
+  const dispatchSyntheticTerminalMouseUp = useCallback((clientX = 0, clientY = 0) => {
+    document.dispatchEvent(new MouseEvent('mouseup', {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      clientX,
+      clientY,
+      buttons: 0,
+      button: 0,
+    }));
+  }, []);
   const [timestampsVisible, setTimestampsVisible] = useState(localStorage.getItem('terminalTimestamps') === 'true');
   // 命令块：左侧折叠钮 + 树线，可收起输出
   const commandBlocksEnabledRef = useRef(localStorage.getItem('terminalCommandBlocks') === 'true');
@@ -1529,15 +1543,7 @@ export default function Terminal({
       // 且当前无物理按键按下，主动释放状态并闭合选区，防止滚动后单指滑动意外划选文字
       if (isTerminalPointerDownRef.current && (e.buttons === 0 || !(e.buttons & 1))) {
         isTerminalPointerDownRef.current = false;
-        document.dispatchEvent(new MouseEvent('mouseup', {
-          bubbles: true,
-          cancelable: true,
-          view: window,
-          clientX: e.clientX,
-          clientY: e.clientY,
-          buttons: 0,
-          button: 0,
-        }));
+        dispatchSyntheticTerminalMouseUp(e.clientX, e.clientY);
       }
       // 无论向上还是向下滚动，都检查当前位置并更新锁定状态
       requestAnimationFrame(() => {
@@ -2537,15 +2543,7 @@ export default function Terminal({
       // 说明上一次 mousedown 对应的 mouseup 已丢失。主动派发合成 mouseup 闭合 xterm 拖拽选区状态机。
       if (isTerminalPointerDownRef.current && (event.buttons === 0 || !(event.buttons & 1))) {
         isTerminalPointerDownRef.current = false;
-        document.dispatchEvent(new MouseEvent('mouseup', {
-          bubbles: true,
-          cancelable: true,
-          view: window,
-          clientX: event.clientX,
-          clientY: event.clientY,
-          buttons: 0,
-          button: 0,
-        }));
+        dispatchSyntheticTerminalMouseUp(event.clientX, event.clientY);
       }
     };
 
@@ -2575,19 +2573,20 @@ export default function Terminal({
     const handleWindowPointerCancel = () => {
       if (isTerminalPointerDownRef.current) {
         isTerminalPointerDownRef.current = false;
-        document.dispatchEvent(new MouseEvent('mouseup', {
-          bubbles: true,
-          cancelable: true,
-          view: window,
-          buttons: 0,
-          button: 0,
-        }));
+        dispatchSyntheticTerminalMouseUp();
       }
     };
 
     const handleWindowBlur = () => {
+      // 失焦常意味着按键最终在 WebView 之外释放（mouseup 不会送达），xterm 仍卡在拖选态。
+      // 若只清 isTerminalPointerDownRef，检测基准被清空后这个卡死态将永远无法被发现，划动又会拖选；
+      // 因此失焦时同样派发合成 mouseup 闭合它。快照需先清，避免合成 mouseup 冒泡触发 mouseup 模式的复制。
+      const wasPointerDown = isTerminalPointerDownRef.current;
       isTerminalPointerDownRef.current = false;
       terminalMouseDownSelectionRef.current = null;
+      if (wasPointerDown) {
+        dispatchSyntheticTerminalMouseUp();
+      }
     };
 
     window.addEventListener('mousemove', handleWindowMouseMove, { capture: true, passive: true });

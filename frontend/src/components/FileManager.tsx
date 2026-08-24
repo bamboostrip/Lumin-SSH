@@ -6015,6 +6015,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   };
 
   const scrollSyncTimerRef = useRef<number>(0);
+  const syncCurrentTabToWorkspaceRef = useRef(syncCurrentTabToWorkspace);
   const handleFileListScroll = useCallback(() => {
     if (!isActive) return;
     captureFileListViewAnchor();
@@ -6029,13 +6030,14 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
 
   handleFileListScrollRef.current = handleFileListScroll;
   handleFileListKeyDownRef.current = handleFileListKeyDown;
+  syncCurrentTabToWorkspaceRef.current = syncCurrentTabToWorkspace;
 
   useEffect(() => () => {
     if (scrollSyncTimerRef.current) {
       window.clearTimeout(scrollSyncTimerRef.current);
       scrollSyncTimerRef.current = 0;
       if (fileListRef.current) {
-        syncCurrentTabToWorkspace({ scrollTop: fileListRef.current.scrollTop, reason: 'unmount-flush' });
+        syncCurrentTabToWorkspaceRef.current({ scrollTop: fileListRef.current.scrollTop, reason: 'unmount-flush' });
       }
     }
     Object.values(paneScrollerCleanupRef.current).forEach((cleanup) => {
@@ -6043,7 +6045,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         cleanup();
       }
     });
-  }, [syncCurrentTabToWorkspace]);
+  }, []);
 
   useEffect(() => {
     if (!isActive) return undefined;

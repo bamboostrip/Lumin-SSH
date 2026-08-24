@@ -4,7 +4,7 @@ import { Terminal as XTerm } from '@xterm/xterm';
 import type { IBufferLine, IBufferRange, IMarker, ITerminalInitOnlyOptions, ITerminalOptions } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
-import { Copy, Clipboard, Trash2, CheckSquare, Play, Clock, X, Zap, MessageSquarePlus, ExternalLink, Search, ChevronUp, ChevronDown, CaseSensitive } from 'lucide-react';
+import { Copy, Clipboard, Trash2, Play, Clock, X, Zap, Search, ChevronUp, ChevronDown, CaseSensitive } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 import { EventsOn } from '../../wailsjs/runtime/runtime.js';
 import { getModKey, formatShortcut, isMac, buildCombo } from '../utils/platform.ts';
@@ -24,6 +24,11 @@ import {
 } from '../utils/terminalCommandAutocomplete.ts';
 import { parseCommandInputContext } from '../utils/terminalCommandAutocompleteParser.ts';
 import Tiptop from './Tiptop.tsx';
+import { TerminalAutocompletePopup } from './terminal/TerminalAutocompletePopup.tsx';
+import { TerminalHistoryPopup } from './terminal/TerminalHistoryPopup.tsx';
+import { TerminalQuickCmdConfirm } from './terminal/TerminalQuickCmdConfirm.tsx';
+import { TerminalContextMenu, TerminalLinkMenu, TerminalLinkToast } from './terminal/TerminalMenus.tsx';
+import { TerminalSearchBar } from './terminal/TerminalSearchBar.tsx';
 import { ToggleSwitch } from './settings/SharedComponents.tsx';
 import type { QuickCommandsHandle } from './QuickCommands.tsx';
 import '@xterm/xterm/css/xterm.css';
@@ -3292,127 +3297,19 @@ export default function Terminal({
 
       {/* ── 终端内容查找栏 ── */}
       {showTermSearch && (
-        <div
-          className="term-search-bar"
-          onMouseDown={(e) => e.stopPropagation()}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '6px 10px',
-            borderBottom: '1px solid var(--term-separator)',
-            background: 'var(--term-status-bg)',
-            flexShrink: 0,
-            zIndex: Z.SEARCH_PANEL,
-          }}
-        >
-          <Search size={13} style={{ color: 'var(--term-muted)', flexShrink: 0 }} />
-          <input
-            name="terminal-search"
-            autoComplete="off"
-            aria-label={t('终端输出搜索')}
-            ref={termSearchInputRef}
-            value={termSearchQuery}
-            onChange={(e) => setTermSearchQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                e.stopPropagation();
-                closeTermSearch();
-                return;
-              }
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                e.stopPropagation();
-                if (e.shiftKey) findTermPrevious();
-                else findTermNext(false);
-              }
-            }}
-            placeholder={t('查找...')}
-            className="term-search-input"
-            style={{
-              flex: 1,
-              minWidth: 0,
-              padding: '4px 8px',
-              background: 'var(--term-input-bg)',
-              border: '1px solid var(--term-btn-border)',
-              borderRadius: 4,
-              color: 'var(--term-input-color)',
-              fontSize: 12,
-              outline: 'none',
-              fontFamily: 'var(--font-ui)',
-            }}
-          />
-          <span
-            style={{
-              fontSize: 11,
-              color: termSearchQuery && termSearchResult.resultCount === 0
-                ? 'var(--danger, #ff7b72)'
-                : 'var(--term-muted)',
-              fontFamily: 'var(--font-mono)',
-              minWidth: 52,
-              textAlign: 'center',
-              flexShrink: 0,
-            }}
-          >
-            {!termSearchQuery
-              ? ''
-              : termSearchResult.resultCount <= 0
-                ? t('无匹配')
-                : termSearchResult.resultIndex < 0
-                  ? `${termSearchResult.resultCount}`
-                  : `${termSearchResult.resultIndex + 1}/${termSearchResult.resultCount}`}
-          </span>
-          <Tiptop text={t('区分大小写')}>
-            <button
-              type="button"
-              onClick={() => setTermSearchCaseSensitive((v) => !v)}
-              aria-label={t('区分大小写')}
-              aria-pressed={termSearchCaseSensitive}
-              className={`term-btn${termSearchCaseSensitive ? ' active' : ''}`}
-              style={{ padding: '4px 6px', minWidth: 28, height: 26 }}
-            >
-              <CaseSensitive size={13} />
-            </button>
-          </Tiptop>
-          <Tiptop text={t('上一个')}>
-            <button
-              type="button"
-              onClick={() => findTermPrevious()}
-              aria-label={t('上一个')}
-              className="term-btn"
-              style={{ padding: '4px 6px', minWidth: 28, height: 26 }}
-              disabled={!termSearchQuery}
-            >
-              <ChevronUp size={13} />
-            </button>
-          </Tiptop>
-          <Tiptop text={t('下一个')}>
-            <button
-              type="button"
-              onClick={() => findTermNext(false)}
-              aria-label={t('下一个')}
-              className="term-btn"
-              style={{ padding: '4px 6px', minWidth: 28, height: 26 }}
-              disabled={!termSearchQuery}
-            >
-              <ChevronDown size={13} />
-            </button>
-          </Tiptop>
-          <Tiptop text={t('关闭')}>
-            <button
-              type="button"
-              onClick={closeTermSearch}
-              aria-label={t('关闭')}
-              className="term-btn"
-              style={{ padding: '4px 6px', minWidth: 28, height: 26 }}
-            >
-              <X size={13} />
-            </button>
-          </Tiptop>
-        </div>
+        <TerminalSearchBar
+          termSearchInputRef={termSearchInputRef}
+          termSearchQuery={termSearchQuery}
+          setTermSearchQuery={setTermSearchQuery}
+          termSearchResult={termSearchResult}
+          termSearchCaseSensitive={termSearchCaseSensitive}
+          setTermSearchCaseSensitive={setTermSearchCaseSensitive}
+          closeTermSearch={closeTermSearch}
+          findTermNext={findTermNext}
+          findTermPrevious={findTermPrevious}
+          t={t}
+        />
       )}
-
       {/* ── xterm 渲染层 + 时间轴 / 命令块边框 ── */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         <div ref={gutterRef} style={{
@@ -3805,676 +3702,91 @@ export default function Terminal({
       </div>
 
       {(commandAutocomplete.open || commandAutocomplete.loading) && !showHistory && !showCommands && commandAutocompletePopupPos && (
-        <div
-          className="term-popup"
-          onMouseDown={(e) => e.preventDefault()}
-          style={{
-            position: 'fixed',
-            left: commandAutocompletePopupPos.left,
-            top: commandAutocompletePopupPos.top,
-            width: commandAutocompletePopupPos.width,
-            maxHeight: commandAutocompletePopupPos.maxHeight ?? 260,
-            display: 'flex',
-            flexDirection: 'column',
-            zIndex: Z.POPUP,
-            overflow: 'hidden',
-          }}
-        >
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 10,
-            padding: '7px 10px',
-            borderBottom: '1px solid var(--term-separator)',
-            fontSize: 11,
-            color: 'var(--term-status-color)',
-          }}>
-            <span>{t('命令')}</span>
-            <span style={{ color: 'var(--term-muted)', fontFamily: 'var(--font-mono)' }}>Tab</span>
-          </div>
-          <div ref={commandAutocompleteListRef} style={{ maxHeight: 220, overflowY: 'auto', overflowX: 'hidden' }}>
-            {commandAutocomplete.loading && commandAutocomplete.items.length === 0 ? (
-              <div style={{ padding: '10px 12px', fontSize: 12, color: 'var(--term-muted)' }}>
-                {t('正在搜索...')}
-              </div>
-            ) : commandAutocomplete.items.map((item, index) => {
-              const isSelected = index === commandAutocomplete.selectedIndex;
-              return (
-                <button
-                  key={`${item.source}-${item.value}-${index}`}
-                  data-command-autocomplete-selected={isSelected ? 'true' : 'false'}
-                  type="button"
-                  onMouseEnter={() => {
-                    setCommandAutocomplete((previous) => ({
-                      ...previous,
-                      selectedIndex: index,
-                    }));
-                  }}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    applyCommandAutocompleteItem(item);
-                  }}
-                  style={{
-                    width: '100%',
-                    minWidth: 0,
-                    display: 'grid',
-                    gap: 4,
-                    padding: '9px 12px',
-                    textAlign: 'left',
-                    border: 'none',
-                    borderBottom: index === commandAutocomplete.items.length - 1 && !commandAutocomplete.loading ? 'none' : '1px solid var(--term-separator)',
-                    background: isSelected ? 'rgba(59,130,246,0.12)' : 'transparent',
-                    color: 'var(--term-input-color)',
-                    cursor: 'pointer',
-                    overflow: 'hidden',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{
-                      flex: 1,
-                      minWidth: 0,
-                      fontSize: 12,
-                      fontFamily: 'var(--font-terminal)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}>
-                      {item.label}
-                    </span>
-                    <span style={{
-                      flexShrink: 0,
-                      padding: '2px 6px',
-                      borderRadius: 999,
-                      border: '1px solid var(--term-btn-border)',
-                      color: 'var(--term-status-color)',
-                      fontSize: 10,
-                      lineHeight: 1.2,
-                    }}>
-                      {item.badge}
-                    </span>
-                  </div>
-                  {item.description ? (
-                    <span style={{
-                      fontSize: 11,
-                      color: 'var(--term-muted)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}>
-                      {item.description}
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
-            {commandAutocomplete.loading && commandAutocomplete.items.length > 0 ? (
-              <div style={{
-                padding: '8px 12px',
-                fontSize: 11,
-                color: 'var(--term-muted)',
-                borderTop: '1px solid var(--term-separator)',
-              }}>
-                {t('正在刷新结果...')}
-              </div>
-            ) : null}
-          </div>
-        </div>
+        <TerminalAutocompletePopup
+          commandAutocomplete={commandAutocomplete}
+          setCommandAutocomplete={setCommandAutocomplete}
+          commandAutocompletePopupPos={commandAutocompletePopupPos}
+          commandAutocompleteListRef={commandAutocompleteListRef}
+          applyCommandAutocompleteItem={applyCommandAutocompleteItem}
+          t={t}
+        />
       )}
 
       {/* ── 历史指令弹窗（fixed 定位，不受 overflow:hidden 裁剪） ── */}
       {showHistory && historyPopupPos && (
-        <div ref={historyPopupRef} className="term-popup" style={{
-            left: historyPopupPos.left,
-            bottom: historyPopupPos.bottom,
-            width: 480,
-            maxWidth: 'calc(100vw - 16px)',
-            maxHeight: 280,
-            boxSizing: 'border-box',
-            display: 'flex', flexDirection: 'column',
-            zIndex: Z.POPUP,
-            fontFamily: 'var(--font-terminal)',
-            fontSize: 12,
-          }}>
-            {/* 弹窗头部（标题 + 操作按钮） */}
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '8px 10px',
-              borderBottom: '1px solid var(--term-separator)',
-              flexShrink: 0,
-            }}>
-              <span style={{ color: 'var(--term-status-color)', fontSize: 11 }}>{t('历史命令')}</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span style={{ color: 'var(--term-muted)', fontSize: 11 }}>{t('Alt 打开历史指令')}</span>
-                  <ToggleSwitch checked={altOpenHistoryEnabled} onChange={() => {
-                    const enabled = !altOpenHistoryEnabled;
-                    setAltOpenHistoryEnabled(enabled);
-                    localStorage.setItem('altOpenHistory', String(enabled));
-                    window.dispatchEvent(new CustomEvent('alt-open-history-changed', { detail: enabled }));
-                  }} />
-                </div>
-                <button
-                  onClick={async () => {
-                    const scope = historyMode;
-                    // 二次确认，与历史页清空行为一致；按作用域给出不同提示
-                    const msg = scope === 'global'
-                      ? t('确定要清空全部服务器的历史指令吗？')
-                      : t('确定要清空该服务器的历史指令吗？');
-                    const result = await window.luminDialog?.confirm(msg);
-                    const confirmed = typeof result === 'object' ? result?.confirmed : result === true;
-                    if (!confirmed) return;
-                    try {
-                      if (scope === 'global') {
-                        await AppGo.SaveGlobalCommandHistory('[]');
-                      } else {
-                        await AppGo.SaveCommandHistory(historyServerId, '[]');
-                      }
-                      setHistoryList([]);
-                      // 通知历史页 / 自动补全按作用域刷新（全局清空不触碰服务器历史）
-                      window.dispatchEvent(new CustomEvent('ssh-history-cleared', {
-                        detail: { sessionId: serverId, historyServerId, scope }
-                      }));
-                    } catch (error) {
-                      console.error('[Terminal] 清空历史失败:', error);
-                    }
-                  }}
-                  style={{ ...btnStyle('red'), fontSize: 11, padding: '2px 8px' }}
-                >
-                  {t('清空列表')}
-                </button>
-                <button
-                  onClick={() => { setShowHistory(false); setHistoryPopupPos(null); }}
-                  aria-label={t('关闭')}
-                  style={btnStyle('red')}
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            </div>
-
-            {/* 历史列表（可滚动） */}
-            <div ref={historyScrollRef} style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-            {filteredHistory.length === 0 ? (
-              <div style={{ padding: 20, textAlign: 'center', color: 'var(--term-muted)', fontSize: 12 }}>
-                {searchQuery ? t('无匹配结果') : t('暂无历史记录')}
-              </div>
-            ) : displayHistory.map((item, index) => (
-              <div
-                key={item.id}
-                className="history-item"
-                data-history-index={index}
-                role="option"
-                aria-selected={historySelectedIndex === index}
-                onClick={() => selectHistoryCmd(item.command)}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '6px 10px',
-                  cursor: 'pointer',
-                  borderBottom: '1px solid var(--term-separator)',
-                  transition: 'background 0.1s',
-                  background: historySelectedIndex === index ? 'var(--surface-active)' : undefined,
-                }}
-              >
-                <span
-                  style={{
-                    flex: 1,
-                    color: 'var(--term-input-color)',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    paddingRight: 8,
-                  }}
-                  title={item.command}
-                >
-                  {item.command}
-                </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
-                  {/* 执行（绿色） */}
-                  <Tiptop text={t('执行')}>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); executeCommand(item.command); }}
-                      aria-label={t('执行')}
-                      style={{ ...iconBtnStyle('var(--text-secondary)') }}
-                    >
-                      <Play size={12} />
-                    </button>
-                  </Tiptop>
-                  {/* 复制（蓝色） */}
-                  <Tiptop text={t('复制')}>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(item.command).catch(() => {}); }}
-                      aria-label={t('复制')}
-                      style={{ ...iconBtnStyle('var(--text-secondary)') }}>
-                      <Clipboard size={12} />
-                    </button>
-                  </Tiptop>
-                  {/* 删除（红色） */}
-                  <Tiptop text={t('删除')}>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); deleteHistoryItem(item.id); }}
-                      aria-label={t('删除')}
-                      style={{ ...iconBtnStyle('var(--danger)', 'rgba(255,123,114,0.15)') }}
-                    >
-                      <X size={12} />
-                    </button>
-                  </Tiptop>
-                </div>
-              </div>
-            ))}
-            </div>
-
-            {/* 搜索 + 模式切换 */}
-            <div style={{
-              display: 'flex', gap: 6, alignItems: 'center',
-              padding: '6px 10px',
-              borderTop: '1px solid var(--term-separator)',
-              flexShrink: 0,
-            }}>
-              <input
-                ref={historySearchInputRef}
-                name="terminal-history-search"
-                autoComplete="off"
-                aria-label={t('搜索命令历史')}
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                onKeyDown={handleHistorySearchKeyDown}
-                placeholder={t('搜索命令...')}
-                style={{
-                  flex: 1,
-                  padding: '4px 8px',
-                  background: 'var(--term-input-bg)',
-                  border: '1px solid var(--term-btn-border)',
-                  borderRadius: 4,
-                  color: 'var(--term-input-color)',
-                  fontSize: 12,
-                  outline: 'none',
-                }}
-              />
-              <div className="segment-control">
-                <button className={historyMode === 'server' ? 'active' : ''} onClick={() => setHistoryMode('server')}>
-                  {t('当前服务器')}
-                </button>
-                <button className={historyMode === 'global' ? 'active' : ''} onClick={() => setHistoryMode('global')}>
-                  {t('全部服务器')}
-                </button>
-              </div>
-            </div>
-          </div>
+        <TerminalHistoryPopup
+          historyPopupPos={historyPopupPos}
+          historyPopupRef={historyPopupRef}
+          historyScrollRef={historyScrollRef}
+          historySearchInputRef={historySearchInputRef}
+          altOpenHistoryEnabled={altOpenHistoryEnabled}
+          setAltOpenHistoryEnabled={setAltOpenHistoryEnabled}
+          historyMode={historyMode}
+          setHistoryMode={setHistoryMode}
+          setHistoryList={setHistoryList}
+          setShowHistory={setShowHistory}
+          setHistoryPopupPos={setHistoryPopupPos}
+          filteredHistory={filteredHistory}
+          displayHistory={displayHistory}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          historySelectedIndex={historySelectedIndex}
+          handleHistorySearchKeyDown={handleHistorySearchKeyDown}
+          selectHistoryCmd={selectHistoryCmd}
+          executeCommand={executeCommand}
+          deleteHistoryItem={deleteHistoryItem}
+          serverId={serverId}
+          historyServerId={historyServerId}
+          t={t}
+        />
       )}
 
       {/* ── 快捷命令二次确认框（复用 PC 既有 .modal 结构，仅 z 层降到 Z.DIALOG） ── */}
-      {pendingQuickCmd && (() => {
-        const params = extractQuickCommandParams(pendingQuickCmd.item.command);
-        const filled = fillQuickCommandParams(pendingQuickCmd.item.command, pendingQuickCmd.values);
-        return (
-          // 遮罩不响应点击：只能用「取消」/ 右上 X / Esc 关闭，避免误点丢失已填参数
-          <div
-            className="modal-overlay"
-            style={{ zIndex: Z.DIALOG_BACKDROP }}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div className="modal modal-sm" style={{ zIndex: Z.DIALOG }}>
-              <div className="modal-header">
-                <div className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                  <Zap size={16} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {pendingQuickCmd.item.name || t('发送快捷命令')}
-                  </span>
-                </div>
-                <button
-                  className="btn btn-ghost btn-icon"
-                  onClick={() => setPendingQuickCmd(null)}
-                  aria-label={t('取消')}
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              <div className="modal-body">
-                {params.map((p, i) => (
-                  <div key={p.num} className="form-group">
-                    <label className="form-label" htmlFor={`quick-cmd-param-${p.num}`}>
-                      {p.label || `${t('参数')}${p.num}`}
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <input
-                      name={`terminal-quick-cmd-param-${p.num}`}
-                      autoComplete="off"
-                      aria-label={p.label || `${t('参数')}${p.num}`}
-                      id={`quick-cmd-param-${p.num}`}
-                      type="text"
-                      className="input"
-                      value={pendingQuickCmd.values[p.num] || ''}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setPendingQuickCmd((prev) => (prev
-                          ? { ...prev, values: { ...prev.values, [p.num]: value } }
-                          : prev));
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-                          e.preventDefault();
-                          sendQuickCmdConfirmed();
-                        }
-                      }}
-                      autoFocus={i === 0}
-                      placeholder={p.label || `p#${p.num}`}
-                      style={{ flex: 1, minWidth: 0, fontFamily: 'var(--font-mono)' }}
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      data-terminal-quick-cmd-history="true"
-                      aria-expanded={quickCmdHistoryParam === p.num}
-                      onClick={(event) => {
-                        setQuickCmdHistorySearch('');
-                        if (quickCmdHistoryParam === p.num) {
-                          setQuickCmdHistoryParam(null);
-                          return;
-                        }
-                        const rect = event.currentTarget.getBoundingClientRect();
-                        setQuickCmdHistoryPosition({
-                          left: Math.max(8, Math.min(rect.left, window.innerWidth - 228)),
-                          top: Math.min(rect.bottom + 4, window.innerHeight - 228),
-                        });
-                        setQuickCmdHistoryParam(p.num);
-                      }}
-                    >
-                      {t('历史')}
-                    </button>
-                    </div>
-                    {quickCmdHistoryParam === p.num && createPortal((() => {
-                      const history = quickCmdParamHistory[pendingQuickCmd.item.command]?.[p.num] || [];
-                      const filteredHistory = quickCmdHistorySearch
-                        ? history.filter((value) => value.toLowerCase().includes(quickCmdHistorySearch.toLowerCase()))
-                        : history;
-                      const saveHistory = (values: string[]) => {
-                        const command = pendingQuickCmd.item.command;
-                        const nextHistory = {
-                          ...quickCmdParamHistoryRef.current,
-                          [command]: { ...(quickCmdParamHistoryRef.current[command] || {}), [p.num]: values },
-                        };
-                        quickCmdParamHistoryRef.current = nextHistory;
-                        setQuickCmdParamHistory(nextHistory);
-                        AppGo.SaveParamHistory(JSON.stringify(nextHistory)).catch(() => {});
-                      };
-                      return (
-                        <div
-                          data-terminal-quick-cmd-history="true"
-                          onMouseDown={(event) => event.stopPropagation()}
-                          onClick={(event) => event.stopPropagation()}
-                          style={{
-                            position: 'fixed',
-                            left: quickCmdHistoryPosition.left,
-                            top: quickCmdHistoryPosition.top,
-                            zIndex: Z.SUBMENU,
-                            width: 220,
-                            maxHeight: 220,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            overflow: 'hidden',
-                            background: 'var(--surface-raised)',
-                            border: '1px solid var(--border)',
-                            borderRadius: 6,
-                            boxShadow: 'var(--shadow-md)',
-                          }}
-                        >
-                          <div style={{ padding: 6, flexShrink: 0, borderBottom: '1px solid var(--border-subtle)' }}>
-                            <input
-                              type="text"
-                              className="input"
-                              name={`terminal-quick-cmd-history-search-${p.num}`}
-                              autoComplete="off"
-                              autoFocus
-                              value={quickCmdHistorySearch}
-                              onChange={(event) => setQuickCmdHistorySearch(event.target.value)}
-                              onKeyDown={(event) => {
-                                if (event.key === 'Escape') {
-                                  setQuickCmdHistoryParam(null);
-                                  setQuickCmdHistorySearch('');
-                                }
-                              }}
-                              placeholder={t('搜索历史...')}
-                              aria-label={t('搜索历史...')}
-                              style={{ width: '100%' }}
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            onClick={() => {
-                              saveHistory([]);
-                              setQuickCmdHistoryParam(null);
-                              setQuickCmdHistorySearch('');
-                            }}
-                            style={{ width: '100%', flexShrink: 0, justifyContent: 'flex-start', color: 'var(--danger)', borderBottom: '1px solid var(--border-subtle)', borderRadius: 0 }}
-                          >
-                            {t('清空列表')}
-                          </button>
-                          <div style={{ flex: 1, overflowY: 'auto' }}>
-                            {filteredHistory.length === 0 ? (
-                              <div style={{ padding: '8px 12px', color: 'var(--text-muted)', fontSize: 12 }}>
-                                {quickCmdHistorySearch ? t('无匹配结果') : t('暂无历史')}
-                              </div>
-                            ) : filteredHistory.map((value) => (
-                              <div
-                                key={value}
-                                style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)' }}
-                              >
-                                <button
-                                  type="button"
-                                  className="btn btn-ghost"
-                                  title={value}
-                                  onClick={() => {
-                                    setPendingQuickCmd((prev) => prev ? { ...prev, values: { ...prev.values, [p.num]: value } } : prev);
-                                    setQuickCmdHistoryParam(null);
-                                    setQuickCmdHistorySearch('');
-                                  }}
-                                  style={{ flex: 1, minWidth: 0, justifyContent: 'flex-start', borderRadius: 0, fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                                >
-                                  {value}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn btn-ghost btn-icon"
-                                  title={t('删除')}
-                                  aria-label={t('删除')}
-                                  onClick={() => saveHistory(history.filter((entry) => entry !== value))}
-                                  style={{ flexShrink: 0, color: 'var(--danger)', borderRadius: 0 }}
-                                >
-                                  <Trash2 size={12} />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })(), document.body)}
-                  </div>
-                ))}
-
-                <div className="form-group">
-                  <div className="form-label">{t('将要发送')}</div>
-                  <div className="term-quick-cmd-preview">{filled}</div>
-                </div>
-              </div>
-
-              <div className="modal-footer">
-                <button className="btn btn-secondary" onClick={() => setPendingQuickCmd(null)}>
-                  {t('取消')}
-                </button>
-                <button
-                  className="btn btn-primary"
-                  onClick={sendQuickCmdConfirmed}
-                  disabled={!isConnected || !filled.trim()}
-                  autoFocus={params.length === 0}
-                  style={{ minWidth: 80 }}
-                >
-                  <Play size={14} style={{ marginRight: 6 }} />{t('发送')}
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {/* ── 快捷命令二次确认框（复用 PC 既有 .modal 结构，仅 z 层降到 Z.DIALOG） ── */}
+      {pendingQuickCmd && (
+        <TerminalQuickCmdConfirm
+          pendingQuickCmd={pendingQuickCmd}
+          setPendingQuickCmd={setPendingQuickCmd}
+          sendQuickCmdConfirmed={sendQuickCmdConfirmed}
+          isConnected={isConnected}
+          quickCmdHistoryParam={quickCmdHistoryParam}
+          setQuickCmdHistoryParam={setQuickCmdHistoryParam}
+          quickCmdHistoryPosition={quickCmdHistoryPosition}
+          setQuickCmdHistoryPosition={setQuickCmdHistoryPosition}
+          quickCmdHistorySearch={quickCmdHistorySearch}
+          setQuickCmdHistorySearch={setQuickCmdHistorySearch}
+          quickCmdParamHistory={quickCmdParamHistory}
+          setQuickCmdParamHistory={setQuickCmdParamHistory}
+          quickCmdParamHistoryRef={quickCmdParamHistoryRef}
+          t={t}
+        />
+      )}
 
       {/* ── 右键上下文菜单（增强版：图标 + 边界检测 + disabled 状态） ── */}
       {contextMenu && (
-        <div
-          className="context-menu"
-          onMouseDown={(e) => e.stopPropagation()}
-          style={{
-            position: 'fixed',
-            left: contextMenu.x,
-            top: contextMenu.y,
-            backgroundColor: 'var(--term-context-bg)',
-            border: 'var(--term-context-border)',
-            borderRadius: '8px',
-            boxShadow: 'var(--term-context-shadow)',
-            zIndex: Z.MENU,
-            padding: '4px 0',
-            minWidth: '190px',
-            fontFamily: 'var(--font-ui)',
-          }}
-        >
-          {(contextMenu?.source === 'input'
-            ? ([
-                { type: 'action', icon: <Trash2 size={13} />, label: t('剪切'), action: 'cut', shortcut: formatShortcut('Ctrl+X'), disabled: !contextHasSelection },
-                { type: 'action', icon: <Copy size={13} />, label: t('复制'), action: 'copy', shortcut: formatShortcut('Ctrl+C'), disabled: !contextHasSelection },
-                { type: 'action', icon: <Clipboard size={13} />, label: t('粘贴'), action: 'paste', shortcut: formatShortcut('Ctrl+V') },
-                { type: 'separator' },
-                { type: 'action', icon: <CheckSquare size={13} />, label: t('全选'), action: 'selectAll', shortcut: formatShortcut('Ctrl+A') },
-              ] as TerminalContextMenuItem[])
-            : ([
-                { type: 'action', icon: <Copy size={13} />, label: t('复制'), action: 'copy', shortcut: formatShortcut('Ctrl+C'), disabled: !contextHasSelection },
-                { type: 'action', icon: <Clipboard size={13} />, label: t('粘贴'), action: 'paste', shortcut: formatShortcut('Ctrl+V') },
-                { type: 'action', icon: <Clipboard size={13} />, label: t('粘贴所选项'), action: 'pasteSelection', shortcut: formatShortcut(shortcutsRef.current?.pasteSelection || DEFAULT_TERMINAL_SHORTCUTS.pasteSelection), disabled: !contextHasSelection },
-                { type: 'separator' },
-                { type: 'action', icon: <CheckSquare size={13} />, label: t('全选'), action: 'selectAll' },
-                { type: 'action', icon: <Search size={13} />, label: t('查找'), action: 'find', shortcut: formatShortcut(shortcutsRef.current?.find || 'Ctrl+F') },
-                { type: 'action', icon: <MessageSquarePlus size={13} />, label: t('添加到 AI助手'), action: 'sendToAssistant', disabled: !contextHasSelection },
-                { type: 'action', icon: <Trash2 size={13} />, label: t('清空屏幕'), action: 'clear', shortcut: formatShortcut('Ctrl+L') },
-              ] as TerminalContextMenuItem[])).map((item, idx) =>
-            item.type === 'separator' ? (
-              <div key={idx} className="context-menu-separator" />
-            ) : (
-              <div
-                key={idx}
-                className={`context-menu-item${item.disabled ? ' disabled' : ''}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (!item.disabled) handleMenuAction(item.action);
-                }}
-              >
-                <span className="item-icon">{item.icon}</span>
-                <span className="item-label">{item.label}</span>
-                {item.shortcut && <span className="item-shortcut">{item.shortcut}</span>}
-              </div>
-            )
-          )}
-        </div>
+        <TerminalContextMenu
+          contextMenu={contextMenu}
+          contextHasSelection={contextHasSelection}
+          handleMenuAction={handleMenuAction}
+          shortcutsRef={shortcutsRef}
+          t={t}
+        />
       )}
 
       {/* ── 终端链接菜单：复制 / 打开（对齐安卓） ── */}
+      {/* ── 终端链接菜单：复制 / 打开（对齐安卓） ── */}
       {linkMenu && (
-        <>
-          {/* 透明遮罩：挡住终端拖选，点击空白关闭 */}
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: Z.MENU_BACKDROP,
-              background: 'transparent',
-              cursor: 'default',
-            }}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              try { termRef.current?.clearSelection(); } catch (_) {}
-              setLinkMenu(null);
-            }}
-            onMouseMove={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-          />
-          <div
-            className="context-menu"
-            onMouseDown={(e) => e.stopPropagation()}
-            style={{
-              position: 'fixed',
-              left: linkMenu.x,
-              top: linkMenu.y,
-              backgroundColor: 'var(--term-context-bg)',
-              border: 'var(--term-context-border)',
-              borderRadius: '8px',
-              boxShadow: 'var(--term-context-shadow)',
-              zIndex: Z.MENU,
-              padding: '4px 0',
-              minWidth: '200px',
-              maxWidth: '360px',
-              fontFamily: 'var(--font-ui)',
-            }}
-          >
-            <div
-              style={{
-                padding: '6px 12px 4px',
-                fontSize: 11,
-                color: 'var(--text-muted, #8899aa)',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-              title={linkMenu.url}
-            >
-              {linkMenu.url}
-            </div>
-            <div className="context-menu-separator" />
-            <div
-              className="context-menu-item"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleLinkMenuAction('copy');
-              }}
-            >
-              <span className="item-icon"><Copy size={13} /></span>
-              <span className="item-label">{t('复制')}</span>
-            </div>
-            <div
-              className="context-menu-item"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleLinkMenuAction('open');
-              }}
-            >
-              <span className="item-icon"><ExternalLink size={13} /></span>
-              <span className="item-label">{t('打开')}</span>
-            </div>
-          </div>
-        </>
+        <TerminalLinkMenu
+          linkMenu={linkMenu}
+          setLinkMenu={setLinkMenu}
+          termRef={termRef}
+          handleLinkMenuAction={handleLinkMenuAction}
+          t={t}
+        />
       )}
 
       {linkToast && (
-        <div
-          style={{
-            position: 'absolute',
-            left: '50%',
-            bottom: 56,
-            transform: 'translateX(-50%)',
-            background: 'var(--term-context-bg, rgba(20,24,32,0.92))',
-            border: 'var(--term-context-border, 1px solid rgba(255,255,255,0.08))',
-            color: 'var(--text-primary, #eaf0f7)',
-            borderRadius: 8,
-            padding: '6px 12px',
-            fontSize: 12,
-            zIndex: Z.POPUP,
-            pointerEvents: 'none',
-            boxShadow: 'var(--term-context-shadow)',
-          }}
-        >
-          {linkToast}
-        </div>
+        <TerminalLinkToast linkToast={linkToast} />
       )}
     </div>
   );

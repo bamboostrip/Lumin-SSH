@@ -6,14 +6,19 @@ const FileEditor = React.lazy(() => import('./FileEditor.tsx'));
 import { CanResolveFilePaths, EventsOn, OnFileDrop, OnFileDropOff } from '../../wailsjs/runtime/runtime.js';
 import { useTranslation, t as tKey, getLanguage, type I18nKey } from '../i18n.ts';
 import { Z } from '../constants/zIndex.ts';
-import { clampMenuPosition } from '../utils/menuPosition.ts';
 import { isArchive, isBinaryLike, isViewable } from '../utils/fileTypeClassify.ts';
-import { suppressDragOutClick } from '../utils/dragOutClickGuard.ts';
 import FileUploadQueuePanel from './FileUploadQueuePanel.tsx';
 import { type TransferChunk, type TransferQueueItem } from '../utils/fileWorkbench.ts';
 import { ChmodPerms, DownloadConflictSettings, FileManagerDownloadConflictSettings, FileManagerVirtualRange, FileManagerVirtualRow, IdentityOption, IdentityPresetOption, uploadChunkWithRetry, RowEffectState, FileListViewAnchor, FileManagerPaneEffectState, FileManagerPaneViewState, addOpeningFile, areFileManagerTabStatesEqual, buildDirectoryItemFromPath, buildDownloadConflictOptionsPayload, buildFileManagerVirtualRows, buildIdentityOptionList, calcChmodOctal, CHMOD_GROUP_PRESET_OPTIONS, CHMOD_OWNER_PRESET_OPTIONS, clampFileListColumnWidth, cloneFileManagerItemsForCache, computeCompressedOverallProgress, createFileManagerPaneEffectState, createFileManagerPaneViewState, createFileManagerTab, createLimiter, createLocalItemShell, DEFAULT_FILE_MANAGER_DOWNLOAD_DIR, DEFAULT_MAX_EDIT_SIZE_MB, DOWNLOAD_CONFLICT_STRATEGY_AUTO_RENAME, DOWNLOAD_CONFLICT_STRATEGY_DIFF_OVERWRITE, DOWNLOAD_CONFLICT_STRATEGY_FORCE_OVERWRITE, DOWNLOAD_CONFLICT_STRATEGY_PROMPT, DOWNLOAD_RENAME_SUFFIX_RANDOM, DOWNLOAD_RENAME_SUFFIX_SEQUENCE, DOWNLOAD_RENAME_SUFFIX_TIMESTAMP, downloadConflictKindLabel, extractManualPinnedTabsFromWorkspace, FILE_LIST_ACTIONS_COLUMN_WIDTH, FILE_LIST_MODIFIED_MAX_WIDTH, FILE_LIST_MODIFIED_MIN_WIDTH, FILE_LIST_NAME_MIN_WIDTH, FILE_LIST_PERMISSION_MAX_WIDTH, FILE_LIST_PERMISSION_MIN_WIDTH, FILE_LIST_SIZE_MAX_WIDTH, FILE_LIST_SIZE_MIN_WIDTH, FILE_MANAGER_INTERNAL_DRAG_MIME, FILE_MANAGER_LAYOUT_MODE_CLASSIC, FILE_MANAGER_LAYOUT_MODE_SIDEBAR_DUAL, FILE_MANAGER_NEW_TAB_PATH_MODE_INHERIT_CURRENT, FILE_MANAGER_NEW_TAB_PATH_MODE_ROOT, FILE_MANAGER_NEW_TAB_PATH_MODE_SESSION_INITIAL_PATH, FILE_MANAGER_NEW_TAB_PATH_MODE_TERMINAL_CWD, FILE_MANAGER_SYSTEM_TAB_KIND_CWD, FILE_MANAGER_SYSTEM_TAB_KIND_HOME, FILE_MANAGER_VIRTUAL_ROW_ITEM, FILE_MANAGER_VIRTUAL_ROW_PARENT, fileIcon, fileListMeasureCanvas, findFileManagerVirtualRowIndex, fmtDate, fmtSize, formatIdentityDisplay, formatPermissionDisplay, getDownloadConflictSettingsFromStorage, getFileManagerInitialPathMode, getFileManagerLayoutMode, getFileManagerNewTabPathMode, getFileManagerSystemTabType, getFileManagerTabLabel, getParentPath, globalOpeningFiles, globalOpeningListeners, globalOpeningTimers, ICON_SIZE, isCompressedTransferEnabled, isEditable, isFileManagerDualPaneDragTransferEnabled, isFileManagerSharedPinnedTabsEnabled, isFileManagerVirtualRangeVisible, isHiddenFile, isMissingUnzipError, MAX_CHUNK_UPLOAD_RETRIES, measureFileListTextWidth, mergeSharedPinnedTabsIntoWorkspaceTabs, normalizeChmodMode, normalizeFileManagerPaneKey, normalizeIdentityId, notifyOpeningListeners, parsePositiveInt, permsFromChmodMode, readBlobAsBase64, removeOpeningFile, renderFileManagerTabTitle, resolveIdentityCompareKey, resolveIdentityInputSpec, resolveIdentityInputValue, runWithLimit, runWithLimitSettled, shouldAutoOpenTransferQueue, shouldHideFileManagerTabCloseButton, shouldInvertFileManagerDualPaneDragModifier, shouldPromptFileManagerDualPaneDragDirectory, shouldShowFileManagerTabIcons, sortFileManagerItems, traverseEntry, UPLOAD_ABORT_SENTINEL, UPLOAD_PANEL_CLOSE_ANIMATION_MS, upsertLocalItem } from '../utils/fileManagerHelpers.tsx';
 import type { FileEditorFile } from './FileEditor.tsx';
 import Tiptop from './Tiptop.tsx';
+import { ChmodDialog } from './filemanager/ChmodDialog.tsx';
+import { RenameInput } from './filemanager/RenameInput.tsx';
+import { ContextMenu } from './filemanager/ContextMenu.tsx';
+import { FileManagerTabBar } from './filemanager/FileManagerTabBar.tsx';
+import { FileManagerToolbar } from './filemanager/FileManagerToolbar.tsx';
+import { FileManagerSidebar } from './filemanager/FileManagerSidebar.tsx';
+import type { ContextMenuState, FileManagerChmodTarget, FileManagerFileItem, FileManagerTabDropIndicator, LoadDirOptions, LooseT } from './filemanager/fileManagerTypes.ts';
 import {
   getSessionCachedFileManagerPathItems,
   getSessionFileManagerWorkspace,
@@ -36,11 +41,11 @@ import {
 import type { FileManagerTab, FileManagerTabLike, FileManagerPaneState, FileManagerWorkspaceState } from '../utils/fileWorkbench.ts';
 import {
   Folder, FolderOpen, FolderPlus, File, FileText, FilePlus, FileCode,
-  FileArchive, Settings, ClipboardList, Wrench, Image, Code, Globe, House,
-  Palette, Database, Terminal, Film, Music, Archive, HardDrive, BookOpen,
-  Pencil, PenLine, Download, Upload, Trash2, RefreshCw, Lock, FolderUp, SquarePen, Copy,
-  Pin, X, ClipboardPaste, Plus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Scissors,
-  MonitorSmartphone, PencilLine, FolderSymlink, FileSymlink,
+  Settings, ClipboardList, Wrench, Image, Code, Globe, House,
+  Palette, Database, Terminal, Film, Music, HardDrive, BookOpen,
+  Pencil, PenLine, Download, Upload, Trash2, RefreshCw, FolderUp, SquarePen,
+  Pin, X, ClipboardPaste, Plus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
+  FolderSymlink, FileSymlink,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -121,25 +126,9 @@ interface FileManagerDualPaneDragPayload {
   [key: string]: unknown
 }
 
-/** 标签拖放指示器（setFileManagerTabDropIndicator 状态） */
-interface FileManagerTabDropIndicator {
-  tabId?: unknown
-  [key: string]: unknown
-}
+/** 标签拖放指示器 — 见 filemanager/fileManagerTypes.ts */
 
-/** chmod 目标（setChmodTarget 状态，{ item, path, mode, includeSubdirectories, showIncludeSubdirectories }） */
-interface FileManagerChmodTarget {
-  item: FileManagerFileItem | null
-  path: string
-  mode: string
-  includeSubdirectories?: boolean
-  showIncludeSubdirectories?: boolean
-  rememberedMode?: string
-  autoApplyLastSettings?: boolean
-  ownerCandidates?: IdentityPresetOption[]
-  groupCandidates?: IdentityPresetOption[]
-  [key: string]: unknown
-}
+/** chmod 目标（setChmodTarget 状态，{ item, path, mode, includeSubdirectories, showIncludeSubdirectories }）— 见 filemanager/fileManagerTypes.ts */
 
 interface FileManagerProps {
   sessionId: string
@@ -149,28 +138,12 @@ interface FileManagerProps {
   initialPath?: string
 }
 
-// 远端/本地文件条目（ListDir 返回项 + 本地传输占位项的统一形状）
-interface FileManagerFileItem {
-  name: string
-  isDirectory: boolean
-  size?: number
-  permission?: string
-  mode?: string
-  modifyTime?: number
-  uid?: string
-  gid?: string
-  isSymlink?: boolean
-  __rowKey?: string
-  __luminDeletedPlaceholder?: boolean
-  [key: string]: unknown
-}
+// 远端/本地文件条目（ListDir 返回项 + 本地传输占位项的统一形状）— 见 filemanager/fileManagerTypes.ts
 
 
 
 
 
-
-type LooseT = (key: I18nKey, vars?: Record<string, unknown>) => string
 
 // 面板选中态恢复（FileManagerPaneState + 最后点击路径）
 interface PaneSelectionRestore extends FileManagerPaneState {
@@ -187,36 +160,9 @@ interface SyncTabOverrides {
   reason?: string
 }
 
-// 右键菜单状态（contextMenu state）
-interface ContextMenuState {
-  pos: { x: number; y: number }
-  item: FileManagerFileItem | null
-  mode?: string
-  itemBasePath?: string
-  createBasePath?: string
-  showCreateActions?: boolean
-  deleteItemCount?: number
-  clipboardItemCount?: number
-  deleteUsesSelectedPaths?: boolean
-  clipboardUsesSelectedPaths?: boolean
-  tabId?: string
-  tabPath?: string
-  tabPinned?: boolean
-  tabSystemPinned?: boolean
-}
+// 右键菜单状态（contextMenu state）— 见 filemanager/fileManagerTypes.ts
 
-// loadDir 的选项
-interface LoadDirOptions {
-  silent?: boolean
-  tabId?: string
-  staleWhileRevalidate?: boolean
-  staleItems?: FileManagerFileItem[]
-  preferPathCache?: boolean
-  preserveWorkspacePathOnSuccess?: boolean
-  preserveView?: boolean
-  trackDiff?: boolean
-  showLoading?: boolean
-}
+// loadDir 的选项 — 见 filemanager/fileManagerTypes.ts
 
 // 跨实例共享的剪贴板/编辑器状态（挂在 window 上，形状以运行时为准）
 declare global {
@@ -224,461 +170,6 @@ declare global {
     __luminClipboards?: Record<string, unknown>
     __luminEditorStates?: Record<string, unknown>
   }
-}
-
-interface ChmodDialogProps {
-  path: string
-  permission: string
-  mode: string
-  rememberedMode?: string
-  autoApplyLastSettings?: boolean
-  uid: string
-  gid: string
-  ownerCandidates?: IdentityPresetOption[]
-  groupCandidates?: IdentityPresetOption[]
-  includeSubdirectories?: boolean
-  showIncludeSubdirectories?: boolean
-  onSave: (mode: string, includeChildren: boolean, ownerInput: string, groupInput: string) => void
-  onClose: () => void
-  t: LooseT
-}
-
-interface RenameInputProps {
-  initialValue: string
-  isDirectory: boolean
-  onConfirm: (value: string, refocus: boolean) => void
-  onCancel: () => void
-  mountedRef?: React.MutableRefObject<HTMLInputElement | null>
-}
-
-interface ContextMenuProps {
-  pos: { x: number; y: number }
-  item: FileManagerFileItem | null
-  mode?: string
-  isPinned?: boolean
-  isSystemPinned?: boolean
-  canTogglePinned?: boolean
-  canCloseTab?: boolean
-  showCreateActions?: boolean
-  deleteItemCount?: number
-  clipboardItemCount?: number
-  canPaste?: boolean
-  clipboardActionArrow?: string
-  onClose: () => void
-  onDownload: () => void
-  onEdit: () => void
-  onOpenSystemEditor: () => void
-  onOpenWithEditor: () => void
-  onRename: () => void
-  onDelete: () => void
-  onDeleteShell: () => void
-  onMkdir: () => void
-  onNewFile: () => void
-  onCompress: () => void
-  onUncompress: () => void
-  onChmod: () => void
-  onCopyPath: () => void
-  onCopyItem: () => void
-  onCutItem: () => void
-  onPaste: () => void
-  onOpenInNewTab: () => void
-  onTogglePinned: () => void
-  onCloseTab: () => void
-  t: LooseT
-}
-
-// 格式化文件大小
-// ── Chmod Dialog ──────────────────────────────────────────────
-function ChmodDialog({ path, permission, mode, rememberedMode = '', autoApplyLastSettings = false, uid, gid, ownerCandidates = [], groupCandidates = [], includeSubdirectories = false, showIncludeSubdirectories = false, onSave, onClose, t }: ChmodDialogProps) {
-  const parsePerms = (permStr: unknown) => {
-    const normalizedPermStr = String(permStr || '');
-    const p = normalizedPermStr.length >= 10 ? normalizedPermStr.slice(1) : '---------';
-    return {
-      user: { r: p[0] === 'r', w: p[1] === 'w', x: p[2] === 'x' },
-      group: { r: p[3] === 'r', w: p[4] === 'w', x: p[5] === 'x' },
-      other: { r: p[6] === 'r', w: p[7] === 'w', x: p[8] === 'x' },
-    };
-  };
-
-  const currentMode = normalizeChmodMode(mode);
-  const lastMode = normalizeChmodMode(rememberedMode);
-  const initialMode = autoApplyLastSettings && lastMode ? lastMode : currentMode;
-  const fallbackPerms = parsePerms(permission || '');
-  const [perms, setPerms] = useState(initialMode ? permsFromChmodMode(initialMode) : fallbackPerms);
-  const [octal, setOctal] = useState(initialMode || calcChmodOctal(fallbackPerms));
-  const [includeChildren, setIncludeChildren] = useState(autoApplyLastSettings ? Boolean(includeSubdirectories) : false);
-  const ownerOptions = useMemo(() => buildIdentityOptionList(uid, ownerCandidates), [uid, ownerCandidates]);
-  const groupOptions = useMemo(() => buildIdentityOptionList(gid, groupCandidates), [gid, groupCandidates]);
-  const ownerDefaultValue = useMemo(() => resolveIdentityInputValue(uid, ownerCandidates), [uid, ownerCandidates]);
-  const groupDefaultValue = useMemo(() => resolveIdentityInputValue(gid, groupCandidates), [gid, groupCandidates]);
-  const [ownerInput, setOwnerInput] = useState(ownerDefaultValue);
-  const [groupInput, setGroupInput] = useState(groupDefaultValue);
-  const [ownerTouched, setOwnerTouched] = useState(false);
-  const [groupTouched, setGroupTouched] = useState(false);
-
-  useEffect(() => {
-    setOwnerTouched(false);
-  }, [path, uid]);
-
-  useEffect(() => {
-    setGroupTouched(false);
-  }, [path, gid]);
-
-  useEffect(() => {
-    if (!ownerTouched) {
-      setOwnerInput(ownerDefaultValue);
-    }
-  }, [ownerDefaultValue, ownerTouched]);
-
-  useEffect(() => {
-    if (!groupTouched) {
-      setGroupInput(groupDefaultValue);
-    }
-  }, [groupDefaultValue, groupTouched]);
-
-  const filteredOwnerOptions = useMemo(() => {
-    const query = String(ownerInput || '').trim().toLowerCase();
-    const candidates = query
-      ? ownerOptions.filter((option) => option.searchText.includes(query))
-      : ownerOptions;
-    return candidates.slice(0, 80);
-  }, [ownerInput, ownerOptions]);
-
-  const filteredGroupOptions = useMemo(() => {
-    const query = String(groupInput || '').trim().toLowerCase();
-    const candidates = query
-      ? groupOptions.filter((option) => option.searchText.includes(query))
-      : groupOptions;
-    return candidates.slice(0, 80);
-  }, [groupInput, groupOptions]);
-
-  const togglePerm = (cat: 'user' | 'group' | 'other', key: 'r' | 'w' | 'x') => {
-    setPerms(prev => {
-      const next = { ...prev, [cat]: { ...prev[cat], [key]: !prev[cat][key] } };
-      setOctal(calcChmodOctal(next));
-      return next;
-    });
-  };
-
-  const handleOctalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = normalizeChmodMode(e.target.value);
-    setOctal(val);
-    if (val.length === 3) {
-      setPerms(permsFromChmodMode(val));
-    }
-  };
-
-  const canApplyLastSettings = Boolean(lastMode);
-  const handleApplyLastSettings = () => {
-    if (!lastMode) {
-      return;
-    }
-    setOctal(lastMode);
-    setPerms(permsFromChmodMode(lastMode));
-    setIncludeChildren(Boolean(includeSubdirectories));
-  };
-
-  if (typeof document === 'undefined') {
-    return null;
-  }
-  return createPortal(
-    <div className="modal-overlay" style={{ zIndex: Z.MODAL }}>
-      <div className="modal modal-sm">
-        <div className="modal-header">
-          <div className="modal-title"><Lock size={14} /> {t('修改权限')}</div>
-        </div>
-        <div className="modal-body">
-          <div className="chmod-dialog-body">
-            <div className="chmod-dialog-path">{path}</div>
-            <div style={{ display: 'grid', gap: 10, marginTop: 12, marginBottom: 12 }}>
-              <div style={{ display: 'grid', gap: 6 }}>
-                <label htmlFor="chmod-owner-input" style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{t('属主')}</label>
-                <input
-                  id="chmod-owner-input"
-                  name="chmod-owner"
-                  className="input"
-                  list="chmod-owner-options"
-                  autoComplete="off"
-                  value={ownerInput}
-                  onChange={(e) => {
-                    setOwnerTouched(true);
-                    setOwnerInput(e.target.value);
-                  }}
-                  placeholder={t('搜索或输入属主...')}
-                />
-              </div>
-              <datalist id="chmod-owner-options">
-                {filteredOwnerOptions.map((option) => (
-                  <option key={option.label} value={option.label} />
-                ))}
-              </datalist>
-              <div style={{ display: 'grid', gap: 6 }}>
-                <label htmlFor="chmod-group-input" style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{t('属组')}</label>
-                <input
-                  id="chmod-group-input"
-                  name="chmod-group"
-                  className="input"
-                  list="chmod-group-options"
-                  autoComplete="off"
-                  value={groupInput}
-                  onChange={(e) => {
-                    setGroupTouched(true);
-                    setGroupInput(e.target.value);
-                  }}
-                  placeholder={t('搜索或输入属组...')}
-                />
-              </div>
-              <datalist id="chmod-group-options">
-                {filteredGroupOptions.map((option) => (
-                  <option key={option.label} value={option.label} />
-                ))}
-              </datalist>
-            </div>
-            <div className="chmod-grid">
-              <div className="chmod-row">
-                <span></span>
-                <span style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-tertiary)' }}>{t('读取')}</span>
-                <span style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-tertiary)' }}>{t('写入')}</span>
-                <span style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-tertiary)' }}>{t('执行')}</span>
-              </div>
-              <div className="chmod-row">
-                <span className="chmod-row-label">{t('用户')}</span>
-                {(['r','w','x'] as const).map(k => (
-                  <label key={k} htmlFor={`fm-chmod-user-${k}`} className="chmod-checkbox" style={{ justifyContent: 'center' }}>
-                    <input type="checkbox" id={`fm-chmod-user-${k}`} name={`fm-chmod-user-${k}`} autoComplete="off" checked={perms.user[k]} onChange={() => togglePerm('user', k)} />
-                  </label>
-                ))}
-              </div>
-              <div className="chmod-row">
-                <span className="chmod-row-label">{t('组')}</span>
-                {(['r','w','x'] as const).map(k => (
-                  <label key={k} htmlFor={`fm-chmod-group-${k}`} className="chmod-checkbox" style={{ justifyContent: 'center' }}>
-                    <input type="checkbox" id={`fm-chmod-group-${k}`} name={`fm-chmod-group-${k}`} autoComplete="off" checked={perms.group[k]} onChange={() => togglePerm('group', k)} />
-                  </label>
-                ))}
-              </div>
-              <div className="chmod-row">
-                <span className="chmod-row-label">{t('其他')}</span>
-                {(['r','w','x'] as const).map(k => (
-                  <label key={k} htmlFor={`fm-chmod-other-${k}`} className="chmod-checkbox" style={{ justifyContent: 'center' }}>
-                    <input type="checkbox" id={`fm-chmod-other-${k}`} name={`fm-chmod-other-${k}`} autoComplete="off" checked={perms.other[k]} onChange={() => togglePerm('other', k)} />
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <label htmlFor="chmod-octal-input" style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{t('八进制:')}</label>
-              <input id="chmod-octal-input" name="chmod-octal" className="chmod-octal-input" autoComplete="off" value={octal} onChange={handleOctalChange} />
-              <button className="btn btn-ghost btn-sm" type="button" onClick={handleApplyLastSettings} disabled={!canApplyLastSettings}>
-                {t('应用上次')}
-              </button>
-            </div>
-            {showIncludeSubdirectories && (
-              <label htmlFor="fm-chmod-include-children" className="chmod-checkbox" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
-                <input type="checkbox" id="fm-chmod-include-children" name="fm-chmod-include-children" autoComplete="off" checked={includeChildren} onChange={(e) => setIncludeChildren(e.target.checked)} />
-                <span>{t('包含子目录')}</span>
-              </label>
-            )}
-          </div>
-        </div>
-        <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onClose}>{t('取消')}</button>
-          <button className="btn btn-primary" onClick={() => onSave(octal.length === 3 ? octal : calcChmodOctal(perms), includeChildren, ownerInput, groupInput)}>{t('确定')}</button>
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-}
-
-// 行内重命名输入框。
-//
-// 设计要点：
-//   - 非受控（defaultValue + ref 读值），避免受控渲染竞态丢字符。
-//   - suppressDragOutClick 抑制"框内 mousedown 拖出 mouseup"派生的 click，
-//     防止冒泡到行级 onClick 抢焦点、触发 onBlur 误提交。
-//   - committedRef 保证 onBlur / Enter / 外部取消 三条提交路径只生效一次。
-//   - 虚拟化卸载（Virtuoso 把该行滚出视口）时 React 不触发 onBlur，renamingItem
-//     会残留——卸载后 cleanup 故意保留已脱离 DOM 的元素引用，
-//     由 F2 入口（handleFileListKeyDown）与行级点击路径检测“input 已脱离 DOM”
-//     并读取 .value 兜底提交。之所以不用 useEffect cleanup 提交：
-//     StrictMode 下会 mount→unmount→remount，cleanup 会在用户什么都没做时就误触发提交。
-function RenameInput({ initialValue, isDirectory, onConfirm, onCancel, mountedRef }: RenameInputProps) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const committedRef = useRef(false);
-
-  const commit = useCallback((refocus: boolean) => {
-    if (committedRef.current) return;
-    committedRef.current = true;
-    const el = inputRef.current;
-    const value = el ? el.value : '';
-    onConfirm(value, refocus);
-  }, [onConfirm]);
-
-  useEffect(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    if (mountedRef) mountedRef.current = el; // 登记：供残留检测路径判断 input 是否还在 DOM
-    const name = el.value;
-    const extensionIndex = isDirectory ? -1 : name.lastIndexOf('.');
-    const selectionEnd = extensionIndex > 0 && extensionIndex < name.length - 1 ? extensionIndex : name.length;
-    el.setSelectionRange(0, selectionEnd);
-    // 卸载时不清空 mountedRef：保留已脱离 DOM 的元素引用，
-    // 让残留清理路径（F2 / 行级点击）能读到 .value 提交用户最后输入；
-    // 读取方都必须先做 document.body.contains 判断。绝不在 cleanup 做业务提交。
-  }, [isDirectory, mountedRef]);
-
-  return (
-    <input
-      ref={inputRef}
-      id="fm-rename-input"
-      name="fm-rename-input"
-      className="rename-input"
-      autoComplete="off"
-      defaultValue={initialValue}
-      onMouseDown={(event) => suppressDragOutClick(event.nativeEvent)}
-      onBlur={() => commit(false)}
-      onKeyDown={(event) => {
-        event.stopPropagation();
-        if (event.key === 'Enter') commit(true);
-        if (event.key === 'Escape') {
-          if (committedRef.current) return;
-          committedRef.current = true;
-          onCancel();
-        }
-      }}
-      onClick={(event) => event.stopPropagation()}
-      autoFocus
-    />
-  );
-}
-
-// Context menu component
-function ContextMenu({ pos, item, mode = 'item', isPinned = false, isSystemPinned = false, canTogglePinned = false, canCloseTab = false, showCreateActions = false, deleteItemCount = 1, clipboardItemCount = 1, canPaste = false, clipboardActionArrow = '', onClose, onDownload, onEdit, onOpenSystemEditor, onOpenWithEditor, onRename, onDelete, onDeleteShell, onMkdir, onNewFile, onCompress, onUncompress, onChmod, onCopyPath, onCopyItem, onCutItem, onPaste, onOpenInNewTab, onTogglePinned, onCloseTab, t }: ContextMenuProps) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [adjusted, setAdjusted] = useState({ left: pos.x, top: pos.y });
-  const isTabMenu = mode === 'tab';
-  const shouldShowCreateActions = showCreateActions || !item;
-  const shouldShowDividerBeforeCreate = Boolean(item && shouldShowCreateActions);
-  const shouldShowDeleteActions = Boolean(item) && !isTabMenu;
-  const shouldShowDividerBeforeDelete = shouldShowDeleteActions;
-
-  React.useLayoutEffect(() => {
-    if (!ref.current) return;
-    // 使用 offsetWidth/offsetHeight 测量：菜单带有 scale(0.94) 入场动画，
-    // getBoundingClientRect 会拿到变换后的缩小尺寸，导致底部 clamp 不足、末尾项被裁剪
-    const clamped = clampMenuPosition(pos.x, pos.y, ref.current.offsetWidth, ref.current.offsetHeight);
-    setAdjusted({ left: clamped.x, top: clamped.y });
-  }, [pos.x, pos.y]);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [onClose]);
-
-  return (
-    <div
-      ref={ref}
-      className="context-menu"
-      style={{ left: adjusted.left, top: adjusted.top, zIndex: Z.MENU }}
-    >
-      {item && item.isDirectory && (
-        <div className="context-menu-item" onClick={onOpenInNewTab}>
-          <FolderOpen size={14} /> {t('在新标签页打开')}
-        </div>
-      )}
-      {isTabMenu && canTogglePinned && !isSystemPinned && (
-        <div className="context-menu-item" onClick={onTogglePinned}>
-          <Pin size={14} /> {isPinned ? t('取消固定') : t('固定')}
-        </div>
-      )}
-      {canCloseTab && (
-        <div className="context-menu-item" onClick={onCloseTab}>
-          <X size={14} /> {t('关闭标签')}
-        </div>
-      )}
-      {item && (
-        <div className="context-menu-item" onClick={onCopyPath}>
-          <Copy size={14} /> {t('复制路径')}
-        </div>
-      )}
-      {item && !isTabMenu && (
-        <div className="context-menu-item" onClick={onCopyItem}>
-          <Copy size={14} /> {clipboardActionArrow === '<-' ? `${clipboardActionArrow} ${t('复制')}` : `${t('复制')}${clipboardActionArrow ? ` ${clipboardActionArrow}` : ''}`}{clipboardItemCount > 1 ? ` (${clipboardItemCount}${t('项')})` : ''}
-        </div>
-      )}
-      {item && !isTabMenu && (
-        <div className="context-menu-item" onClick={onCutItem}>
-          <Scissors size={14} /> {clipboardActionArrow === '<-' ? `${clipboardActionArrow} ${t('剪切')}` : `${t('剪切')}${clipboardActionArrow ? ` ${clipboardActionArrow}` : ''}`}{clipboardItemCount > 1 ? ` (${clipboardItemCount}${t('项')})` : ''}
-        </div>
-      )}
-      {!isTabMenu && canPaste && (
-        <div className="context-menu-item" onClick={onPaste}>
-          <ClipboardPaste size={14} /> {t('粘贴')}
-        </div>
-      )}
-      {item && !item.isDirectory && isEditable(item.name) && (
-        <div className="context-menu-item" onClick={onEdit}>
-          <SquarePen size={14} /> {t('编辑')}
-        </div>
-      )}
-      {item && !item.isDirectory && (
-        <div className="context-menu-item" onClick={onOpenSystemEditor}>
-          <MonitorSmartphone size={14} /> {t('系统编辑器打开')}
-        </div>
-      )}
-      {item && !item.isDirectory && (
-        <div className="context-menu-item" onClick={onOpenWithEditor}>
-          <PencilLine size={14} /> {t('指定编辑器打开')}
-        </div>
-      )}
-      {item && (
-        <div className="context-menu-item" onClick={onDownload}>
-          <Download size={14} /> {item.isDirectory ? t('下载文件夹到本地') : t('下载到本地')}
-        </div>
-      )}
-      {item && (
-        <div className="context-menu-item" onClick={onCompress}>
-          <Archive size={14} /> {t('压缩 (tar.gz)')}
-        </div>
-      )}
-      {item && !item.isDirectory && isArchive(item.name) && (
-        <div className="context-menu-item" onClick={onUncompress}>
-          <FileArchive size={14} /> {t('解压')}
-        </div>
-      )}
-      {item && (!isTabMenu || !isSystemPinned) && (
-        <div className="context-menu-item" onClick={onRename}>
-          <PenLine size={14} /> {isTabMenu ? t('重命名标签标题') : t('重命名')}
-        </div>
-      )}
-      {item && (
-        <div className="context-menu-item" onClick={onChmod}>
-          <Lock size={14} /> {t('修改权限')}
-        </div>
-      )}
-      {shouldShowDividerBeforeCreate && <div className="context-menu-divider" />}
-      {shouldShowCreateActions && (
-        <div className="context-menu-item" onClick={onNewFile}>
-          <FilePlus size={14} /> {t('新建文件')}
-        </div>
-      )}
-      {shouldShowCreateActions && (
-        <div className="context-menu-item" onClick={onMkdir}>
-          <FolderPlus size={14} /> {t('新建文件夹')}
-        </div>
-      )}
-      {shouldShowDividerBeforeDelete && <div className="context-menu-divider" />}
-      {shouldShowDeleteActions && (
-        <div className="context-menu-item danger" onClick={onDelete}>
-          <Trash2 size={14} /> {t('删除')}{deleteItemCount > 1 ? ` (${deleteItemCount}${t('项')})` : ''}
-        </div>
-      )}
-    </div>
-  );
 }
 
 export default function FileManager({ sessionId, sessionGroupId = sessionId, addToast, isActive = true, initialPath = '' }: FileManagerProps) {
@@ -6217,607 +5708,86 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         onChange={(e) => { void handleSelectedFiles(e); }}
       />
       {/* Toolbar */}
-      <div className="file-toolbar">
-        {/* Editable path input */}
-        <input
-          className="path-input"
-          type="text"
-          name="directoryPath"
-          aria-label={t('当前目录路径')}
-          value={editingPath !== null ? editingPath : currentPath}
-          onChange={(e) => setEditingPath(e.target.value)}
-          onFocus={() => setEditingPath(currentPath)}
-          onBlur={async () => {
-            if (editingPath !== null) {
-              const p = editingPath.trim();
-              const normalizedTargetPath = normalizePath(p);
-              if (normalizedTargetPath && normalizedTargetPath !== currentPath) {
-                const resolveDirectoryPath = window?.go?.wailsapp?.App?.ResolveDirectoryPath;
-                let resolvedDirectoryPath = normalizedTargetPath;
-                if (typeof resolveDirectoryPath === 'function') {
-                  try {
-                    resolvedDirectoryPath = normalizePath(await resolveDirectoryPath(sessionId, normalizedTargetPath)) || normalizedTargetPath;
-                  } catch (_) {}
-                }
-                if (resolvedDirectoryPath) {
-                  void loadDir(resolvedDirectoryPath, {
-                    preserveView: false,
-                    trackDiff: false,
-                    showLoading: true,
-                  });
-                }
-              }
-              setEditingPath(null);
-            }
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              (e.target as HTMLInputElement).blur();
-            } else if (e.key === 'Escape') {
-              setEditingPath(null);
-              (e.target as HTMLInputElement).blur();
-            }
-          }}
-          style={{ flex: 1, minWidth: 0 }}
-        />
-
-        {clipboard && (
-          <>
-            <Tiptop text={t('粘贴')} placement="bottom">
-              <button
-                className={`btn file-toolbar-outline-btn has-count ${clipboard.mode === 'cut' ? 'clipboard-cut' : 'clipboard-copy'}`}
-                aria-label={t('粘贴')}
-                onClick={() => {
-                  if (operationInProgressRef.current) {
-                    addToast?.(t('有操作正在进行，请稍候'), 'warning');
-                  } else {
-                    void handlePaste();
-                  }
-                }}
-              >
-                <ClipboardPaste size={14} />
-                <span className={`clipboard-count-badge ${clipboard.mode === 'cut' ? 'clipboard-cut' : 'clipboard-copy'}`}>{clipboard.paths.length}</span>
-              </button>
-            </Tiptop>
-            <Tiptop text={t('取消')} placement="bottom">
-              <button
-                className="btn file-toolbar-outline-btn"
-                aria-label={t('取消')}
-                onClick={() => updateClipboard(null)}
-              >
-                <X size={14} />
-              </button>
-            </Tiptop>
-          </>
-        )}
-
-        <div className="file-toolbar-locator">
-          <div className="file-locator-input-wrap">
-            <input
-              ref={fileLocatorInputRef}
-              className="file-locator-input"
-              type="text"
-              name="fileLocator"
-              value={fileLocatorQuery}
-              onFocus={() => {
-                clearFileListTypeahead();
-              }}
-              onChange={(e) => {
-                clearFileListTypeahead();
-                setFileLocatorQuery(e.target.value);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'ArrowDown') {
-                  e.preventDefault();
-                  navigateFileLocatorMatch(1);
-                  return;
-                }
-                if (e.key === 'ArrowUp') {
-                  e.preventDefault();
-                  navigateFileLocatorMatch(-1);
-                  return;
-                }
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  navigateFileLocatorMatch(e.shiftKey ? -1 : 1);
-                  return;
-                }
-                if (e.key === 'Escape') {
-                  setFileLocatorQuery('');
-                  setFileLocatorActiveIndex(0);
-                  setFileLocatorActiveRowKey('');
-                  fileListRef.current?.focus();
-                }
-              }}
-              placeholder={t('定位文件')}
-              aria-label={t('定位文件')}
-              spellCheck={false}
-            />
-            {fileLocatorQuery.trim() ? (
-              <button
-                type="button"
-                className="file-locator-clear-btn"
-                aria-label={t('清空输入')}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => {
-                  setFileLocatorQuery('');
-                  setFileLocatorActiveIndex(0);
-                  setFileLocatorActiveRowKey('');
-                  fileLocatorInputRef.current?.focus();
-                }}
-              >
-                <X size={12} />
-              </button>
-            ) : null}
-          </div>
-          {fileLocatorQuery.trim() ? (
-            <span className="file-locator-status">
-              {fileLocatorMatches.length > 0 ? `${fileLocatorActiveIndex + 1}/${fileLocatorMatches.length}` : '0'}
-            </span>
-          ) : null}
-          {fileLocatorQuery.trim() ? (
-            <>
-              <Tiptop text={t('上一个命中')} placement="bottom">
-                <button
-                  className="btn file-toolbar-outline-btn"
-                  aria-label={t('上一个命中')}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => navigateFileLocatorMatch(-1)}
-                  disabled={fileLocatorMatches.length === 0}
-                >
-                  <ChevronUp size={14} />
-                </button>
-              </Tiptop>
-              <Tiptop text={t('下一个命中')} placement="bottom">
-                <button
-                  className="btn file-toolbar-outline-btn"
-                  aria-label={t('下一个命中')}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => navigateFileLocatorMatch(1)}
-                  disabled={fileLocatorMatches.length === 0}
-                >
-                  <ChevronDown size={14} />
-                </button>
-              </Tiptop>
-            </>
-          ) : null}
-        </div>
-
-        <div className="file-toolbar-actions">
-          <Tiptop text={t('新建文件')} placement="bottom">
-            <button
-              className="btn file-toolbar-outline-btn"
-              aria-label={t('新建文件')}
-              onClick={() => { void handleNewFile(); }}
-            >
-              <FilePlus size={14} />
-            </button>
-          </Tiptop>
-          <Tiptop text={t('新建文件夹')} placement="bottom">
-            <button
-              className="btn file-toolbar-outline-btn"
-              aria-label={t('新建文件夹')}
-              onClick={() => { void handleMkdir(); }}
-            >
-              <FolderPlus size={14} />
-            </button>
-          </Tiptop>
-          <Tiptop text={t('上传文件或右键上传文件夹')} placement="bottom">
-            <button
-              className="btn file-toolbar-outline-btn"
-              aria-label={t('上传文件或右键上传文件夹')}
-              onClick={handleUpload}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                void handleUploadFolder();
-              }}
-            >
-              <Upload size={14} />
-            </button>
-          </Tiptop>
-          <Tiptop text={t('传输队列')} placement="bottom">
-            <button
-              className={`btn btn-ghost btn-sm btn-icon${uploadPanelState.uploadOpen ? ' active' : ''}`}
-              aria-label={t('传输队列')}
-              onClick={toggleUploadPanel}
-              style={{ position: 'relative' }}
-            >
-              <ClipboardList size={14} />
-              {activeUploadCount > 0 && (
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: -4,
-                    right: -4,
-                    minWidth: 15,
-                    height: 15,
-                    padding: '0 4px',
-                    borderRadius: 999,
-                    background: 'var(--accent)',
-                    color: '#fff',
-                    fontSize: 10,
-                    fontWeight: 700,
-                    lineHeight: '15px',
-                    textAlign: 'center',
-                  }}
-                >
-                  {activeUploadCount > 99 ? '99+' : activeUploadCount}
-                </span>
-              )}
-            </button>
-          </Tiptop>
-          {currentPath !== '/' && (
-            <Tiptop text={tKey('返回上级')} placement="bottom">
-              <button
-                className="btn btn-ghost btn-sm btn-icon"
-                aria-label={tKey('返回上级')}
-                onClick={() => {
-                  const parent = currentPath.substring(0, currentPath.lastIndexOf('/')) || '/';
-                  void loadDir(parent, {
-                    preserveView: false,
-                    trackDiff: false,
-                    showLoading: true,
-                  });
-                }}
-              >
-                <FolderUp size={14} />
-              </button>
-            </Tiptop>
-          )}
-          <Tiptop text={t('刷新')} placement="bottom">
-            <button
-              className="btn btn-ghost btn-sm btn-icon"
-              aria-label={t('刷新')}
-              onClick={() => { void loadDir(currentPath); }}
-            >
-              <RefreshCw size={14} />
-            </button>
-          </Tiptop>
-        </div>
-      </div>
+      <FileManagerToolbar
+        editingPath={editingPath}
+        setEditingPath={setEditingPath}
+        currentPath={currentPath}
+        sessionId={sessionId}
+        normalizePath={normalizePath}
+        loadDir={loadDir}
+        clipboard={clipboard}
+        operationInProgressRef={operationInProgressRef}
+        addToast={addToast}
+        handlePaste={handlePaste}
+        updateClipboard={updateClipboard}
+        fileLocatorInputRef={fileLocatorInputRef}
+        fileLocatorQuery={fileLocatorQuery}
+        setFileLocatorQuery={setFileLocatorQuery}
+        fileLocatorActiveIndex={fileLocatorActiveIndex}
+        setFileLocatorActiveIndex={setFileLocatorActiveIndex}
+        setFileLocatorActiveRowKey={setFileLocatorActiveRowKey}
+        fileListRef={fileListRef}
+        clearFileListTypeahead={clearFileListTypeahead}
+        navigateFileLocatorMatch={navigateFileLocatorMatch}
+        fileLocatorMatches={fileLocatorMatches}
+        handleNewFile={handleNewFile}
+        handleMkdir={handleMkdir}
+        handleUpload={handleUpload}
+        handleUploadFolder={handleUploadFolder}
+        uploadPanelState={uploadPanelState}
+        toggleUploadPanel={toggleUploadPanel}
+        activeUploadCount={activeUploadCount}
+        t={t}
+      />
 
       {!isDualPaneLayout && (
-      <div className="terminal-sub-tab-bar">
-        {fileManagerTabOverflow && (
-          <button
-            type="button"
-            className={`terminal-sub-tab-nav terminal-sub-tab-nav-left${fileManagerTabCanScrollLeft ? '' : ' disabled'}`}
-            onClick={() => scrollFileManagerTabs(-1)}
-            aria-label={t('向左滚动标签')}
-            title={t('向左滚动标签')}
-            disabled={!fileManagerTabCanScrollLeft}
-          >
-            <ChevronLeft size={14} />
-          </button>
-        )}
-        <div
-          ref={fileManagerTabScrollRef}
-          className="terminal-sub-tab-scroll"
-          onWheel={handleFileManagerTabWheel}
-          onScroll={handleFileManagerTabScroll}
-          onDragOver={(event) => {
-            const draggedTabId = draggingFileManagerTabIdRef.current || draggingFileManagerTabId;
-            if (!draggedTabId) {
-              return;
-            }
-            if ((event.target as HTMLElement | null)?.closest?.('.terminal-sub-tab')) {
-              return;
-            }
-            const appendTarget = resolveFileManagerTabAppendTarget();
-            if (!appendTarget || appendTarget.id === draggedTabId) {
-              return;
-            }
-            event.preventDefault();
-            event.stopPropagation();
-            setFileManagerTabDropIndicator((current: FileManagerTabDropIndicator | null) => (
-              current?.tabId === appendTarget.id && current?.side === 'after'
-                ? current
-                : { tabId: appendTarget.id, side: 'after' }
-            ));
-          }}
-          onDragLeave={(event) => {
-            if (event.currentTarget.contains(event.relatedTarget as Node)) {
-              return;
-            }
-            setFileManagerTabDropIndicator((current: FileManagerTabDropIndicator | null) => (
-              current?.side === 'after' ? null : current
-            ));
-          }}
-          onDrop={(event) => {
-            const draggedTabId = event.dataTransfer.getData('text/plain') || draggingFileManagerTabIdRef.current || draggingFileManagerTabId;
-            if (!draggedTabId) {
-              clearFileManagerTabDragState();
-              return;
-            }
-            if ((event.target as HTMLElement | null)?.closest?.('.terminal-sub-tab')) {
-              return;
-            }
-            const appendTarget = resolveFileManagerTabAppendTarget();
-            if (!appendTarget || appendTarget.id === draggedTabId) {
-              clearFileManagerTabDragState();
-              return;
-            }
-            event.preventDefault();
-            event.stopPropagation();
-            reorderFileManagerTabs(draggedTabId, appendTarget.id, 'after');
-            clearFileManagerTabDragState();
-          }}
-        >
-          {fileManagerWorkspace.tabs.map((tab) => {
-            const isActiveTab = activeFileManagerTab?.id === tab.id;
-            const isPinnedTab = tab.pinned === true;
-            const isSystemPinnedTab = tab.systemPinned === true;
-            const isCwdSystemPinnedTab = String(tab.systemPinnedType || '').trim() === FILE_MANAGER_SYSTEM_TAB_KIND_CWD;
-            const isCwdSystemTabHighlightVisible = isCwdSystemPinnedTab && cwdSystemTabHighlight.tabId === tab.id;
-            const isDraggingTab = draggingFileManagerTabId === tab.id;
-            const showDropIndicator = fileManagerTabDropIndicator?.tabId === tab.id;
-            const dropIndicatorSide = typeof fileManagerTabDropIndicator?.side === 'string' ? fileManagerTabDropIndicator.side : 'after';
-            const tabDropPreviewText = showDropIndicator
-              ? getFileManagerTabDropPreviewText(draggingFileManagerTabIdRef.current || draggingFileManagerTabId, tab, dropIndicatorSide)
-              : '';
-            const tabDefaultTiptopText = draggingFileManagerTabId
-              ? null
-              : (
-                <>
-                  <div>{tab.path || '/'}</div>
-                  <div style={{ marginTop: 2, opacity: 0.78, fontSize: 11 }}>{t('双击关闭标签,长按拖拽调整')}</div>
-                </>
-              );
-            return (
-              <div
-                key={tab.id}
-                className={`terminal-sub-tab ${isActiveTab ? 'active' : ''}${isCwdSystemPinnedTab ? ' terminal-sub-tab-cwd' : ''}`}
-                draggable={!isSystemPinnedTab}
-                onDragStart={(event) => {
-                  if (isSystemPinnedTab) {
-                    return;
-                  }
-                  event.stopPropagation();
-                  event.dataTransfer.effectAllowed = 'move';
-                  event.dataTransfer.setData('text/plain', tab.id);
-                  draggingFileManagerTabIdRef.current = tab.id;
-                  setDraggingFileManagerTabId(tab.id);
-                  setFileManagerTabDropIndicator(null);
-                }}
-                onDragOver={(event) => {
-                  const draggedTabId = draggingFileManagerTabIdRef.current || draggingFileManagerTabId;
-                  if (!draggedTabId || draggedTabId === tab.id) {
-                    return;
-                  }
-                  event.preventDefault();
-                  event.stopPropagation();
-                  const side = resolveFileManagerTabDropSide(event, tab);
-                  setFileManagerTabDropIndicator((current: FileManagerTabDropIndicator | null) => (
-                    current?.tabId === tab.id && current?.side === side
-                      ? current
-                      : { tabId: tab.id, side }
-                  ));
-                }}
-                onDragLeave={(event) => {
-                  event.stopPropagation();
-                  setFileManagerTabDropIndicator((current: FileManagerTabDropIndicator | null) => (current?.tabId === tab.id ? null : current));
-                }}
-                onDrop={(event) => {
-                  const draggedTabId = event.dataTransfer.getData('text/plain') || draggingFileManagerTabIdRef.current || draggingFileManagerTabId;
-                  if (!draggedTabId || draggedTabId === tab.id) {
-                    clearFileManagerTabDragState();
-                    return;
-                  }
-                  event.preventDefault();
-                  event.stopPropagation();
-                  const side = resolveFileManagerTabDropSide(event, tab);
-                  reorderFileManagerTabs(draggedTabId, tab.id, side);
-                  clearFileManagerTabDragState();
-                }}
-                onDragEnd={() => {
-                  clearFileManagerTabDragState();
-                }}
-                onClick={() => { void activateFileManagerTab(tab.id); }}
-                onDoubleClick={(event) => { void handleCloseFileManagerTab(tab.id, event); }}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  const tabPath = normalizePath(tab.path) || '/';
-                  setContextMenu({
-                    pos: { x: event.clientX, y: event.clientY },
-                    item: buildDirectoryItemFromPath(tabPath),
-                    mode: 'tab',
-                    tabId: tab.id,
-                    tabPath,
-                    tabPinned: isPinnedTab,
-                    tabSystemPinned: isSystemPinnedTab,
-                    itemBasePath: getParentPath(tabPath),
-                    createBasePath: tabPath,
-                    showCreateActions: true,
-                  });
-                }}
-                style={{
-                  position: 'relative',
-                  opacity: isDraggingTab ? 0.45 : 1,
-                  gap: isPinnedTab ? 4 : undefined,
-                  paddingLeft: isPinnedTab ? 9 : undefined,
-                  paddingRight: isPinnedTab ? 10 : undefined,
-                }}
-              >
-                {isCwdSystemTabHighlightVisible && (
-                  <span
-                    key={`cwd-system-tab-highlight-${cwdSystemTabHighlight.token}`}
-                    className="terminal-sub-tab-change-ring"
-                    aria-hidden="true"
-                  />
-                )}
-                {showDropIndicator && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: 4,
-                      bottom: 4,
-                      [dropIndicatorSide === 'before' ? 'left' : 'right']: -1,
-                      width: 2,
-                      borderRadius: 999,
-                      background: 'var(--accent)',
-                      pointerEvents: 'none',
-                    }}
-                  />
-                )}
-                {showFileManagerTabIcons && !isSystemPinnedTab && <Folder size={11} />}
-                {isPinnedTab && !isSystemPinnedTab && <Pin size={9} style={{ opacity: 0.78, marginLeft: -1, marginRight: -2 }} />}
-                <Tiptop
-                  text={tabDropPreviewText || tabDefaultTiptopText}
-                  placement="bottom"
-                  forceVisible={showDropIndicator && Boolean(tabDropPreviewText)}
-                >
-                  {renderFileManagerTabTitle(tab, t)}
-                </Tiptop>
-                {!hideFileManagerTabCloseButton && fileManagerWorkspace.tabs.length > 1 && !isPinnedTab && (
-                  <span
-                    className="terminal-sub-tab-close"
-                    onClick={(event) => { void handleCloseFileManagerTab(tab.id, event); }}
-                  >
-                    <X size={10} />
-                  </span>
-                )}
-              </div>
-            );
-          })}
-          {draggingFileManagerTabId && (
-            <div
-              onDragOver={(event) => {
-                const draggedTabId = draggingFileManagerTabIdRef.current || draggingFileManagerTabId;
-                const appendTarget = resolveFileManagerTabAppendTarget();
-                if (!draggedTabId || !appendTarget || appendTarget.id === draggedTabId) {
-                  return;
-                }
-                event.preventDefault();
-                event.stopPropagation();
-                setFileManagerTabDropIndicator((current: FileManagerTabDropIndicator | null) => (
-                  current?.tabId === appendTarget.id && current?.side === 'after'
-                    ? current
-                    : { tabId: appendTarget.id, side: 'after' }
-                ));
-              }}
-              onDrop={(event) => {
-                const draggedTabId = event.dataTransfer.getData('text/plain') || draggingFileManagerTabIdRef.current || draggingFileManagerTabId;
-                const appendTarget = resolveFileManagerTabAppendTarget();
-                if (!draggedTabId || !appendTarget || appendTarget.id === draggedTabId) {
-                  clearFileManagerTabDragState();
-                  return;
-                }
-                event.preventDefault();
-                event.stopPropagation();
-                reorderFileManagerTabs(draggedTabId, appendTarget.id, 'after');
-                clearFileManagerTabDragState();
-              }}
-              style={{ flex: '1 0 24px', minWidth: 24, alignSelf: 'stretch' }}
-            />
-          )}
-        </div>
-        {fileManagerTabOverflow && (
-          <button
-            type="button"
-            className={`terminal-sub-tab-nav terminal-sub-tab-nav-right${fileManagerTabCanScrollRight ? '' : ' disabled'}`}
-            onClick={() => scrollFileManagerTabs(1)}
-            aria-label={t('向右滚动标签')}
-            title={t('向右滚动标签')}
-            disabled={!fileManagerTabCanScrollRight}
-          >
-            <ChevronRight size={14} />
-          </button>
-        )}
-        <div className="terminal-sub-tab-actions">
-          <button
-            className="btn btn-ghost btn-sm terminal-create-btn"
-            onClick={() => { void handleCreateFileManagerTab(); }}
-            aria-label={t('新建标签')}
-            title={t('新建标签')}
-          >
-            <Plus size={14} />
-            {t('新建标签')}
-          </button>
-        </div>
-      </div>
+      <FileManagerTabBar
+        fileManagerWorkspace={fileManagerWorkspace}
+        activeFileManagerTab={activeFileManagerTab}
+        cwdSystemTabHighlight={cwdSystemTabHighlight}
+        fileManagerTabOverflow={fileManagerTabOverflow}
+        fileManagerTabCanScrollLeft={fileManagerTabCanScrollLeft}
+        fileManagerTabCanScrollRight={fileManagerTabCanScrollRight}
+        showFileManagerTabIcons={showFileManagerTabIcons}
+        hideFileManagerTabCloseButton={hideFileManagerTabCloseButton}
+        draggingFileManagerTabId={draggingFileManagerTabId}
+        setDraggingFileManagerTabId={setDraggingFileManagerTabId}
+        draggingFileManagerTabIdRef={draggingFileManagerTabIdRef}
+        fileManagerTabScrollRef={fileManagerTabScrollRef}
+        fileManagerTabDropIndicator={fileManagerTabDropIndicator}
+        setFileManagerTabDropIndicator={setFileManagerTabDropIndicator}
+        setContextMenu={setContextMenu}
+        scrollFileManagerTabs={scrollFileManagerTabs}
+        handleFileManagerTabWheel={handleFileManagerTabWheel}
+        handleFileManagerTabScroll={handleFileManagerTabScroll}
+        resolveFileManagerTabAppendTarget={resolveFileManagerTabAppendTarget}
+        resolveFileManagerTabDropSide={resolveFileManagerTabDropSide}
+        getFileManagerTabDropPreviewText={getFileManagerTabDropPreviewText}
+        clearFileManagerTabDragState={clearFileManagerTabDragState}
+        reorderFileManagerTabs={reorderFileManagerTabs}
+        activateFileManagerTab={activateFileManagerTab}
+        handleCloseFileManagerTab={handleCloseFileManagerTab}
+        handleCreateFileManagerTab={handleCreateFileManagerTab}
+        normalizePath={normalizePath}
+        t={t}
+      />
       )}
 
       {/* Content area: file list + optional split editor */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', gap: 0 }}>
         {isDualPaneLayout && (
-          <div style={{ display: 'flex', flexShrink: 0, alignItems: 'stretch', gap: 8 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm btn-icon"
-                aria-label={fileManagerSidebarOpen ? t('收起标签侧栏') : t('展开标签侧栏')}
-                title={fileManagerSidebarOpen ? t('收起标签侧栏') : t('展开标签侧栏')}
-                onClick={() => setFileManagerSidebarOpen((current) => !current)}
-              >
-                {fileManagerSidebarOpen ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm btn-icon"
-                aria-label={t('新建标签')}
-                title={t('新建标签')}
-                onClick={() => { void handleCreateFileManagerTab(); }}
-              >
-                <Plus size={14} />
-              </button>
-            </div>
-            {fileManagerSidebarOpen && (
-              <div style={{ width: 220, minWidth: 220, border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--surface-raised)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{t('历史标签')}</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, overflowY: 'auto' }}>
-                  {fileManagerWorkspace.tabs.map((tab) => {
-                    const isSidebarActive = tab.id === currentPaneTabId;
-                    const isPinnedTab = tab.pinned === true;
-                    const isSystemPinnedTab = tab.systemPinned === true;
-                    return (
-                      <button
-                        key={`sidebar-tab-${tab.id}`}
-                        type="button"
-                        onClick={() => { void activateFileManagerTab(tab.id); }}
-                        onDoubleClick={(event) => { void handleCloseFileManagerTab(tab.id, event); }}
-                        onContextMenu={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          void activateFileManagerTab(tab.id);
-                        }}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: isPinnedTab ? 6 : 8,
-                          width: '100%',
-                          padding: isPinnedTab ? '8px 10px 8px 8px' : '8px 10px',
-                          borderRadius: 'var(--radius-sm)',
-                          border: '1px solid',
-                          borderColor: isSidebarActive ? 'var(--accent)' : 'var(--border)',
-                          background: isSidebarActive ? 'var(--surface-overlay)' : 'transparent',
-                          color: isSidebarActive ? 'var(--text-primary)' : 'var(--text-secondary)',
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                        }}
-                      >
-                        {showFileManagerTabIcons && !isSystemPinnedTab && <Folder size={12} />}
-                        {isPinnedTab && !isSystemPinnedTab && <Pin size={10} style={{ opacity: 0.78, marginLeft: -1, marginRight: -2 }} />}
-                        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{renderFileManagerTabTitle(tab, t)}</span>
-                        {!hideFileManagerTabCloseButton && fileManagerWorkspace.tabs.length > 1 && !isPinnedTab && (
-                          <span
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void handleCloseFileManagerTab(tab.id, event);
-                            }}
-                            style={{ display: 'inline-flex', alignItems: 'center' }}
-                          >
-                            <X size={11} />
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
+          <FileManagerSidebar
+            fileManagerWorkspace={fileManagerWorkspace}
+            currentPaneTabId={currentPaneTabId}
+            fileManagerSidebarOpen={fileManagerSidebarOpen}
+            setFileManagerSidebarOpen={setFileManagerSidebarOpen}
+            showFileManagerTabIcons={showFileManagerTabIcons}
+            hideFileManagerTabCloseButton={hideFileManagerTabCloseButton}
+            activateFileManagerTab={activateFileManagerTab}
+            handleCloseFileManagerTab={handleCloseFileManagerTab}
+            handleCreateFileManagerTab={handleCreateFileManagerTab}
+            t={t}
+          />
         )}
         {isDualPaneLayout && activePaneKey === 'right' && renderInactiveFileManagerPane(leftFileManagerPane)}
         <div

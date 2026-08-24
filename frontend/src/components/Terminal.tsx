@@ -7,7 +7,7 @@ import { SearchAddon } from '@xterm/addon-search';
 import { Copy, Clipboard, Trash2, CheckSquare, Play, Clock, X, Zap, MessageSquarePlus, ExternalLink, Search, ChevronUp, ChevronDown, CaseSensitive } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 import { EventsOn } from '../../wailsjs/runtime/runtime.js';
-import { getModKey, formatShortcut } from '../utils/platform.ts';
+import { getModKey, formatShortcut, isMac } from '../utils/platform.ts';
 import { clampMenuPosition } from '../utils/menuPosition.ts';
 import { extractQuickCommandParams, fillQuickCommandParams, normalizeQuickCommandParamHistory, type QuickCommandParamHistory } from '../utils/quickCommandParams.ts';
 import {
@@ -1674,7 +1674,7 @@ export default function Terminal({
       // 1. 获取用户自定义的快捷键配置（从 ref 缓存读取，避免热路径访问 localStorage）
       const customShortcuts: Record<string, string> = shortcutsRef.current || DEFAULT_TERMINAL_SHORTCUTS;
 
-      // 2. 解析当前按下的组合键字符串（如 "Ctrl+C", "Ctrl+Shift+V"）
+      // 2. 解析当前按下的组合键字符串（macOS 下主快捷键使用 ⌘ Meta，Win/Linux 下使用 Ctrl）
       const keys = [];
       if (getModKey(e))  keys.push('Ctrl');
       if (e.shiftKey) keys.push('Shift');
@@ -1686,7 +1686,15 @@ export default function Terminal({
       keys.push(keyName);
       const pressedStr = keys.join('+');
 
-      // ── 自定义复制键（默认 Ctrl+C）：智能处理 ────────
+      // 3. 构建基于物理 Ctrl 键的组合键（用于终端控制信号 SIGINT/EOF 等，跨平台始终绑定物理 Ctrl）
+      const physicalCtrlKeys = [];
+      if (e.ctrlKey)  physicalCtrlKeys.push('Ctrl');
+      if (e.shiftKey) physicalCtrlKeys.push('Shift');
+      if (e.altKey)   physicalCtrlKeys.push('Alt');
+      physicalCtrlKeys.push(keyName);
+      const physicalCtrlStr = physicalCtrlKeys.join('+');
+
+      // ── 自定义复制键（默认 ⌘C 或 Ctrl+C）：智能处理 ────────
       if (pressedStr === customShortcuts.copy) {
         const selection = term.getSelection();
         if (selection) {
@@ -1696,12 +1704,12 @@ export default function Terminal({
           return false; // 已复制，阻止 xterm 把按键发给服务器
         }
         // 【关键】如果没有选区，则直接放行 (return true)
-        // 这样如果你用的是 Ctrl+C，它就能变成标准的终端中断符 (\x03) 发给服务器
+        // 这样在 Win/Linux 上按 Ctrl+C 能变成标准的终端中断符 (\x03) 发给服务器
         return true; 
       }
 
       // ── Ctrl+Shift+C：强制系统级复制，作为备用方案 ────────
-      if (e.ctrlKey && e.shiftKey && !e.altKey && e.key === 'C') {
+      if (e.ctrlKey && e.shiftKey && !e.altKey && (e.key === 'c' || e.key === 'C')) {
         e.preventDefault();
         const selection = term.getSelection();
         if (selection) navigator.clipboard.writeText(selection);
@@ -1710,6 +1718,11 @@ export default function Terminal({
 
       // ── 自定义粘贴键 ───────────────────────────
       if (pressedStr === customShortcuts.paste) {
+        // 在 macOS 上按下 ⌘V 且使用默认粘贴配置时，放行给系统原生 paste 事件处理，避免触发 WebKit 异步剪贴板 "Paste" 提示气泡
+        if (isMac && e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && (e.key === 'v' || e.key === 'V') && customShortcuts.paste === 'Ctrl+V') {
+          return true;
+        }
+
         e.preventDefault();
         navigator.clipboard.readText().then((text) => {
           const payload = normalizeTerminalPasteText(text);
@@ -1725,7 +1738,7 @@ export default function Terminal({
       }
 
       // ── 自定义清屏键 ───────────────────────────
-      if (pressedStr === customShortcuts.clear) {
+      if (pressedStr === customShortcuts.clear || physicalCtrlStr === customShortcuts.clear) {
         e.preventDefault();
         term.clear();
         return false;
@@ -1736,7 +1749,7 @@ export default function Terminal({
         return true;
       }
 
-      // ── 查找终端缓冲区（默认 Ctrl+F） ────────────────
+      // ── 查找终端缓冲区（默认 ⌘F 或 Ctrl+F） ────────────────
       const findShortcut = customShortcuts.find || 'Ctrl+F';
       if (pressedStr === findShortcut) {
         e.preventDefault();
@@ -1752,7 +1765,7 @@ export default function Terminal({
         return false;
       }
 
-      // ── 自定义控制信号（向服务器发送对应的控制字符） ────────────────
+      // ── 自定义控制信号（向服务器发送对应的控制字符，始终基于物理 Ctrl 键） ────────────────
       const signalMap = {
         sigint: new Uint8Array([0x03]),     // Ctrl+C (ETX)
         eof: new Uint8Array([0x04]),        // Ctrl+D (EOT)
@@ -1761,7 +1774,7 @@ export default function Terminal({
       };
 
       for (const [key, bytes] of Object.entries(signalMap)) {
-        if (customShortcuts[key] && pressedStr === customShortcuts[key]) {
+        if (customShortcuts[key] && (physicalCtrlStr === customShortcuts[key] || pressedStr === customShortcuts[key])) {
           e.preventDefault();
           if (wsRef.current?.readyState === WebSocket.OPEN) {
             wsRef.current.send(bytes);
@@ -1771,7 +1784,7 @@ export default function Terminal({
       }
 
       // 已有动作优先，避免重复绑定时一次按键执行两个动作
-      if (pressedStr === customShortcuts.pasteSelection) {
+      if (pressedStr === customShortcuts.pasteSelection || physicalCtrlStr === customShortcuts.pasteSelection) {
         e.preventDefault();
         void pasteTerminalSelectionToTerminal();
         return false;
@@ -2976,13 +2989,13 @@ export default function Terminal({
   const syncCommandInputHeight = useCallback(() => {
     const element = cmdInputRef.current
     if (!element) return
-    element.style.height = '32px'
+    element.style.height = '36px'
     element.style.overflowY = 'hidden'
     element.scrollTop = 0
     if (!element.value) {
       return
     }
-    const scrollHeight = Math.max(element.scrollHeight, 32)
+    const scrollHeight = Math.max(element.scrollHeight, 36)
     const nextHeight = Math.min(scrollHeight, 132)
     element.style.height = `${nextHeight}px`
     if (scrollHeight > 132) {
@@ -4177,9 +4190,9 @@ export default function Terminal({
               width: '100%',
               fontSize: 12,
               fontFamily: 'var(--font-terminal)',
-              padding: '7px 10px',
-              height: 32,
-              minHeight: 32,
+              padding: '8px 11px',
+              height: 36,
+              minHeight: 36,
               background: 'var(--term-input-bg)',
               color: 'var(--term-input-color)',
               borderColor: cmdInput ? 'var(--border-focus)' : 'var(--term-btn-border)',
@@ -4252,7 +4265,7 @@ export default function Terminal({
             onClick={toggleMultiLineWrap}
             aria-label={multiLineWrapEnabled ? t('函数/变量作用域:命令内部') : t('函数/变量作用域:终端会话')}
             className={`term-btn${multiLineWrapEnabled ? ' active' : ''}`}
-            style={{ padding: 0, width: 32, minWidth: 32, justifyContent: 'center' }}
+            style={{ padding: 0, width: 36, minWidth: 36, height: 36, minHeight: 36, justifyContent: 'center' }}
           >
             <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700 }}>
               &gt;_

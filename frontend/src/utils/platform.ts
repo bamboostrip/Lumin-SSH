@@ -1,5 +1,5 @@
 // 平台检测工具
-const _isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+export const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
 /** 修饰键事件（键盘/鼠标事件共有的 ctrlKey、metaKey 字段） */
 interface ModifierKeyEvent {
@@ -8,11 +8,11 @@ interface ModifierKeyEvent {
 }
 
 /**
- * 获取修饰键状态（macOS 上将 Meta/⌘ 映射为 Ctrl）
+ * 获取修饰键状态（macOS 上将 Meta/⌘ 映射为主快捷键 Ctrl）
  * 用于快捷键检测：const mod = getModKey(e);
  */
 export function getModKey(e: ModifierKeyEvent): boolean {
-  return _isMac ? (e.ctrlKey || e.metaKey) : e.ctrlKey;
+  return isMac ? e.metaKey : e.ctrlKey;
 }
 
 /**
@@ -21,6 +21,7 @@ export function getModKey(e: ModifierKeyEvent): boolean {
  */
 export function formatShortcut(str: string): string {
   if (!str) return str;
-  if (_isMac) return str.replace(/Ctrl/g, '⌘').replace(/Alt/g, '⌥').replace(/Shift/g, '⇧');
+  if (isMac) return str.replace(/Ctrl/g, '⌘').replace(/Alt/g, '⌥').replace(/Shift/g, '⇧');
   return str;
 }
+

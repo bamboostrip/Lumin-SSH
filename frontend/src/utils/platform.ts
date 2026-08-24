@@ -25,3 +25,25 @@ export function formatShortcut(str: string): string {
   return str;
 }
 
+/** 组合键构建事件（键盘事件共有的 key 与修饰键字段） */
+interface ComboKeyEvent extends ModifierKeyEvent {
+  shiftKey: boolean;
+  altKey: boolean;
+  key: string;
+}
+
+/**
+ * 构建组合键字符串（如 "Ctrl+Shift+V"），与快捷键录制/匹配三处共用同一实现，避免漂移。
+ * ctrl 参数决定是否计入 Ctrl 位：主快捷键传 getModKey(e)，物理 Ctrl 语义传 e.ctrlKey。
+ */
+export function buildCombo(e: ComboKeyEvent, ctrl: boolean): string {
+  const keys: string[] = [];
+  if (ctrl) keys.push('Ctrl');
+  if (e.shiftKey) keys.push('Shift');
+  if (e.altKey) keys.push('Alt');
+  let keyName = e.key;
+  if (keyName === ' ') keyName = 'Space';
+  else if (keyName.length === 1) keyName = keyName.toUpperCase();
+  keys.push(keyName);
+  return keys.join('+');
+}

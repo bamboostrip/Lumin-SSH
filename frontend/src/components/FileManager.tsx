@@ -188,9 +188,6 @@ interface FileManagerVirtualRow {
 
 interface FileManagerPaneEffectState {
   pendingVisualEffects: Map<string, RowEffectState>
-  pendingAutoRevealRowKeys: string[]
-  suppressUserScrollTrackingUntil: number
-  userHasScrolled: boolean
 }
 
 interface FileManagerPaneViewState {
@@ -286,8 +283,6 @@ interface LoadDirOptions {
   staleWhileRevalidate?: boolean
   staleItems?: FileManagerFileItem[]
   preferPathCache?: boolean
-  transitionMode?: string
-  transitionDirection?: string
   preserveWorkspacePathOnSuccess?: boolean
   preserveView?: boolean
   trackDiff?: boolean
@@ -866,9 +861,6 @@ function normalizeFileManagerPaneKey(paneKey: unknown): 'left' | 'right' {
 function createFileManagerPaneEffectState(): FileManagerPaneEffectState {
   return {
     pendingVisualEffects: new Map(),
-    pendingAutoRevealRowKeys: [],
-    suppressUserScrollTrackingUntil: 0,
-    userHasScrolled: false,
   };
 }
 
@@ -2303,8 +2295,6 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   const tombstoneSequenceRef = useRef(0);
   const [activeRowEffects, setActiveRowEffects] = useState<Record<string, RowEffectState>>({});
   const activeRowEffectsRef = useRef<Record<string, RowEffectState>>({});
-  const [paneTransientRemovedPlaceholders, setPaneTransientRemovedPlaceholders] = useState<{ left: PanePlaceholderEntry[]; right: PanePlaceholderEntry[] }>({ left: [], right: [] });
-  const paneTransientRemovedPlaceholdersRef = useRef<{ left: PanePlaceholderEntry[]; right: PanePlaceholderEntry[] }>({ left: [], right: [] });
 
   const captureFileListViewAnchor = useCallback((paneKey = activePaneKey, listElement: HTMLElement | null = null) => {
     const normalizedPaneKey = normalizeFileManagerPaneKey(paneKey);
@@ -2381,38 +2371,6 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     }
     return false;
   }, [activePaneKey, captureFileListViewAnchor, getPaneViewState]);
-
-  const mergePaneTransientRemovedPlaceholders = useCallback((paneKey: string, placeholders: PanePlaceholderEntry | PanePlaceholderEntry[], panePath: unknown) => {
-    const normalizedPaneKey = normalizeFileManagerPaneKey(paneKey);
-    const normalizedPanePath = normalizePath(panePath) || '/';
-    const placeholderList = (Array.isArray(placeholders) ? placeholders : [placeholders])
-      .filter(Boolean)
-      .map((entry) => ({
-        ...entry,
-        __transientPanePath: normalizedPanePath,
-        __logicalPath: entry.__logicalPath || (normalizedPanePath === '/' ? `/${entry.name}` : `${normalizedPanePath}/${entry.name}`),
-      }));
-    if (placeholderList.length === 0) {
-      return;
-    }
-    setPaneTransientRemovedPlaceholders((current) => {
-      const currentItems = Array.isArray(current[normalizedPaneKey]) ? current[normalizedPaneKey] : [];
-      const nextItems = [...currentItems];
-      placeholderList.forEach((placeholder) => {
-        const identity = placeholder.__logicalPath || placeholder.__rowKey;
-        const existingIndex = nextItems.findIndex((entry) => (entry.__logicalPath || entry.__rowKey) === identity);
-        if (existingIndex >= 0) {
-          nextItems[existingIndex] = placeholder;
-        } else {
-          nextItems.push(placeholder);
-        }
-      });
-      return {
-        ...current,
-        [normalizedPaneKey]: nextItems,
-      };
-    });
-  }, [normalizePath]);
 
   const confirmCreatedItem = useCallback(async (targetDirPath: unknown, name: unknown, isDirectory: boolean) => {
     const normalizedTargetDirPath = normalizePath(targetDirPath) || '/';
@@ -2549,11 +2507,9 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     const paneRows = Array.isArray(options.paneRows)
       ? options.paneRows
       : (paneKey === activePaneKey ? activeVirtualRows : []);
-    const paneEffectState = getPaneEffectState(paneKey);
     const rowIndex = findFileManagerVirtualRowIndex(paneRows, rowKey);
     const virtuosoHandle = paneVirtuosoRefs.current[paneKey] as { scrollToIndex?: (opts: { index: number; align?: string; behavior?: string }) => void } | null | undefined;
     if (rowIndex >= 0 && virtuosoHandle) {
-      paneEffectState.suppressUserScrollTrackingUntil = Date.now() + 800;
       const paneViewState = getPaneViewState(paneKey);
       paneViewState.pendingRestore = null;
       if (virtuosoHandle.scrollToIndex) {
@@ -2585,7 +2541,6 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           0,
           list.scrollTop + (rowRect.top - viewportTop) - Math.max(12, (viewportHeight - rowRect.height) / 2),
         );
-        paneEffectState.suppressUserScrollTrackingUntil = Date.now() + 400;
         list.scrollTop = targetScrollTop;
         if (paneKey === activePaneKey) {
           captureFileListViewAnchor();
@@ -2594,7 +2549,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       }
     }
     return false;
-  }, [activePaneKey, activeVirtualRows, captureFileListViewAnchor, getPaneEffectState, getPaneViewState]);
+  }, [activePaneKey, activeVirtualRows, captureFileListViewAnchor, getPaneViewState]);
 
   const flushPendingRowEffects = useCallback((paneKey = activePaneKey, paneRows: FileManagerVirtualRow[] = activeVirtualRows, listElement: HTMLElement | null = null) => {
     if (!isFileManagerActuallyVisible()) return;
@@ -2606,14 +2561,6 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       startRowEffect(entry);
     });
   }, [activePaneKey, activeVirtualRows, getPaneEffectState, isFileManagerActuallyVisible, isRowVisibleInViewport, startRowEffect]);
-
-  const createDeletedPlaceholder = useCallback((item: FileManagerFileItem | null, logicalPath: unknown, rowHeight = captureRowHeight(logicalPath)): PanePlaceholderEntry => ({
-    ...(item || { name: '', isDirectory: false }),
-    __luminDeletedPlaceholder: true,
-    __logicalPath: String(logicalPath || ''),
-    __rowKey: `__deleted__:${logicalPath}:${Date.now()}:${tombstoneSequenceRef.current++}`,
-    __rowHeight: Math.max(28, rowHeight || 36),
-  }), [captureRowHeight]);
 
   const didItemMetadataChange = useCallback((prevItem: FileManagerFileItem, nextItem: FileManagerFileItem) => (
     prevItem?.isDirectory !== nextItem?.isDirectory
@@ -2653,9 +2600,6 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       rowEffectTimersRef.current.clear();
       Object.values(paneEffectStateRef.current).forEach((paneEffectState) => {
         paneEffectState.pendingVisualEffects.clear();
-        paneEffectState.pendingAutoRevealRowKeys = [];
-        paneEffectState.suppressUserScrollTrackingUntil = 0;
-        paneEffectState.userHasScrolled = false;
       });
     };
   }, []);
@@ -2666,9 +2610,6 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     paneViewState.lastVisibleAnchor = null;
     paneViewState.pendingRestore = null;
     paneEffectState.pendingVisualEffects.clear();
-    paneEffectState.pendingAutoRevealRowKeys = [];
-    paneEffectState.userHasScrolled = false;
-    paneEffectState.suppressUserScrollTrackingUntil = 0;
     rowEffectTimersRef.current.forEach((currentTimer) => window.clearTimeout(currentTimer));
     rowEffectTimersRef.current.clear();
     setActiveRowEffects({});
@@ -2676,26 +2617,6 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
 
   useEffect(() => {
     activeRowEffectsRef.current = activeRowEffects;
-  }, [activeRowEffects]);
-
-  useEffect(() => {
-    paneTransientRemovedPlaceholdersRef.current = paneTransientRemovedPlaceholders;
-  }, [paneTransientRemovedPlaceholders]);
-
-  useEffect(() => {
-    setPaneTransientRemovedPlaceholders((current) => {
-      const nextState = {
-        left: (Array.isArray(current.left) ? current.left : []).filter((entry) => (entry.__rowKey ? activeRowEffects[entry.__rowKey]?.effect : undefined) === 'removed'),
-        right: (Array.isArray(current.right) ? current.right : []).filter((entry) => (entry.__rowKey ? activeRowEffects[entry.__rowKey]?.effect : undefined) === 'removed'),
-      };
-      if (
-        nextState.left.length === (Array.isArray(current.left) ? current.left.length : 0)
-        && nextState.right.length === (Array.isArray(current.right) ? current.right.length : 0)
-      ) {
-        return current;
-      }
-      return nextState;
-    });
   }, [activeRowEffects]);
 
   const [clipboard, setClipboard] = useState<{ paths: string[]; mode: 'copy' | 'cut'; srcDir: string } | null>(null); // { paths, mode, srcDir }
@@ -3134,7 +3055,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         setLoading(false);
       }
     }
-  }, [sessionId, addToast, normalizePath, t, queueFileListViewRestore, updateItemsPreservingView, isDeletedPlaceholderItem, didItemMetadataChange, queueRowEffect, createDeletedPlaceholder, getCachedPathItems]);
+  }, [sessionId, addToast, normalizePath, t, queueFileListViewRestore, updateItemsPreservingView, isDeletedPlaceholderItem, didItemMetadataChange, queueRowEffect, getCachedPathItems]);
 
   const applyAnimatedFileListSnapshot = useCallback((path: unknown, nextItems: FileManagerFileItem[], options: Record<string, unknown> = {}) => {
     const normalizedPath = normalizePath(path) || '/';
@@ -3349,7 +3270,6 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       preserveView: false,
       trackDiff: false,
       showLoading: options.showLoading === true,
-      transitionMode: typeof options.transitionMode === 'string' ? options.transitionMode : 'directory',
     });
   }, [activePaneKey, commitFileManagerWorkspace, loadDir, resolveTerminalCwdFollowTarget, syncCurrentTabToWorkspace]);
 
@@ -4371,20 +4291,13 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     return Array.from(new Set(keys.map((paneKey) => normalizeFileManagerPaneKey(paneKey))));
   }, [activePaneKey, normalizePath]);
 
-  const queueRowEffectForMatchingPanes = useCallback((directoryPath: unknown, logicalKey: string, rowKey: string, effect: string, placeholderItem: PanePlaceholderEntry | null = null) => {
+  const queueRowEffectForMatchingPanes = useCallback((directoryPath: unknown, logicalKey: string, rowKey: string, effect: string) => {
     const matchingPaneKeys = resolveFileManagerPaneKeysForPath(directoryPath);
     const targetPaneKeys = matchingPaneKeys.length > 0 ? matchingPaneKeys : [activePaneKey];
     targetPaneKeys.forEach((paneKey) => {
       queueRowEffect(logicalKey, rowKey, effect, paneKey);
-      if (
-        effect === 'removed'
-        && placeholderItem
-        && normalizeFileManagerPaneKey(paneKey) !== normalizeFileManagerPaneKey(activePaneKey)
-      ) {
-        mergePaneTransientRemovedPlaceholders(paneKey, placeholderItem, directoryPath);
-      }
     });
-  }, [activePaneKey, mergePaneTransientRemovedPlaceholders, queueRowEffect, resolveFileManagerPaneKeysForPath]);
+  }, [activePaneKey, queueRowEffect, resolveFileManagerPaneKeysForPath]);
 
   const transferFileManagerItems = useCallback(async ({
     paths,
@@ -5814,7 +5727,6 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           preserveView: false,
           trackDiff: false,
           showLoading: false,
-          transitionMode: 'directory',
         });
       }
     } catch (err) {
@@ -5946,7 +5858,6 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       }
       Object.values(paneEffectStateRef.current).forEach((paneEffectState) => {
         paneEffectState.pendingVisualEffects.delete(oldPath);
-        paneEffectState.pendingAutoRevealRowKeys = paneEffectState.pendingAutoRevealRowKeys.filter((rowKey) => rowKey !== oldPath);
       });
       clearActiveRowEffect(oldPath);
       queueRowEffectForMatchingPanes(currentPathRef.current || currentPath, newPath, newPath, 'changed');
@@ -6106,16 +6017,15 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
   const scrollSyncTimerRef = useRef<number>(0);
   const handleFileListScroll = useCallback(() => {
     if (!isActive) return;
-    const paneEffectState = getPaneEffectState(activePaneKey);
-    paneEffectState.userHasScrolled = true;
     captureFileListViewAnchor();
+    const currentScrollTop = fileListRef.current?.scrollTop || 0;
     if (scrollSyncTimerRef.current) {
       window.clearTimeout(scrollSyncTimerRef.current);
     }
     scrollSyncTimerRef.current = window.setTimeout(() => {
-      syncCurrentTabToWorkspace({ scrollTop: fileListRef.current?.scrollTop || 0, reason: 'scroll-effect' });
+      syncCurrentTabToWorkspace({ scrollTop: currentScrollTop, reason: 'scroll-effect' });
     }, 150);
-  }, [activePaneKey, captureFileListViewAnchor, getPaneEffectState, isActive, syncCurrentTabToWorkspace]);
+  }, [captureFileListViewAnchor, isActive, syncCurrentTabToWorkspace]);
 
   handleFileListScrollRef.current = handleFileListScroll;
   handleFileListKeyDownRef.current = handleFileListKeyDown;
@@ -6124,13 +6034,16 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     if (scrollSyncTimerRef.current) {
       window.clearTimeout(scrollSyncTimerRef.current);
       scrollSyncTimerRef.current = 0;
+      if (fileListRef.current) {
+        syncCurrentTabToWorkspace({ scrollTop: fileListRef.current.scrollTop, reason: 'unmount-flush' });
+      }
     }
     Object.values(paneScrollerCleanupRef.current).forEach((cleanup) => {
       if (typeof cleanup === 'function') {
         cleanup();
       }
     });
-  }, []);
+  }, [syncCurrentTabToWorkspace]);
 
   useEffect(() => {
     if (!isActive) return undefined;
@@ -6419,17 +6332,9 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     const paneSortDir = normalizedPaneKey === activePaneKey
       ? sortDir
       : (paneSnapshot.sortDir === 'desc' ? 'desc' : 'asc');
-    const basePaneItems = normalizedPaneKey === activePaneKey
+    const paneItems = normalizedPaneKey === activePaneKey
       ? items
       : (getCachedTabItems(paneTabId, panePath) || getCachedPathItems(panePath) || []);
-    const transientRemovedPlaceholders = (Array.isArray(paneTransientRemovedPlaceholdersRef.current[normalizedPaneKey])
-      ? paneTransientRemovedPlaceholdersRef.current[normalizedPaneKey]
-      : [])
-      .filter((entry) => (normalizePath(entry?.__transientPanePath) || '/') === (panePath || '/'))
-      .filter((entry) => !basePaneItems.some((item) => item?.name === entry?.name));
-    const paneItems = transientRemovedPlaceholders.length > 0
-      ? [...basePaneItems, ...transientRemovedPlaceholders]
-      : basePaneItems;
     const sortedPaneItems = sortFileManagerItems(paneItems, paneSortField, paneSortDir);
     return {
       key: normalizedPaneKey,
@@ -6448,8 +6353,8 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       rows: buildFileManagerVirtualRows(sortedPaneItems, panePath || '/'),
     };
   }, [activeFileManagerTab, activePaneKey, currentPath, fileManagerWorkspace, getCachedPathItems, getCachedTabItems, items, normalizePath, selectedPaths, sortDir, sortField, t]);
-  const leftFileManagerPane = useMemo(() => buildFileManagerPaneState('left'), [buildFileManagerPaneState, paneTransientRemovedPlaceholders]);
-  const rightFileManagerPane = useMemo(() => buildFileManagerPaneState('right'), [buildFileManagerPaneState, paneTransientRemovedPlaceholders]);
+  const leftFileManagerPane = useMemo(() => buildFileManagerPaneState('left'), [buildFileManagerPaneState]);
+  const rightFileManagerPane = useMemo(() => buildFileManagerPaneState('right'), [buildFileManagerPaneState]);
   const currentFileManagerPane = activePaneKey === 'right' ? rightFileManagerPane : leftFileManagerPane;
   const activePaneLocatorRows = useMemo(() => (
     Array.isArray(currentFileManagerPane?.rows)
@@ -7082,40 +6987,39 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
 
     return (
       <div className="file-list-viewport">
-        {options.loading === true ? (
-          <div className="file-list-loading">
+        <div className="file-list-body" style={{ height: '100%' }}>
+          <Virtuoso
+            ref={getPaneVirtuosoRefCallback(normalizedPaneKey)}
+            style={{ height: '100%' }}
+            data={paneRows}
+            computeItemKey={(index, row) => row?.rowKey || `${normalizedPaneKey}-${index}`}
+            scrollerRef={getPaneScrollerRefCallback(normalizedPaneKey)}
+            rangeChanged={(range) => {
+              paneVisibleRangesRef.current[normalizedPaneKey] = range;
+              const listElement = normalizedPaneKey === activePaneKey
+                ? fileListRef.current
+                : (inactivePaneListRefs.current[normalizedPaneKey] || paneScrollerElementsRef.current[normalizedPaneKey]);
+              if (listElement) {
+                captureFileListViewAnchor(normalizedPaneKey, listElement);
+                if (options.active !== true) {
+                  syncFileManagerPaneScrollTop(normalizedPaneKey, listElement);
+                }
+              }
+              flushPendingRowEffects(normalizedPaneKey, paneRows, listElement);
+            }}
+            itemContent={(index, row) => renderFileManagerVirtualRow(row, paneState, {
+              interactive: options.active === true,
+              oppositePanePath: options.oppositePanePath || '',
+            })}
+            components={emptyPlaceholderComponent ? { EmptyPlaceholder: emptyPlaceholderComponent } : {}}
+          />
+        </div>
+        {options.loading === true && (
+          <div className="file-list-loading" role="status" aria-live="polite">
             <div className="file-list-loading-spinner">
               <RefreshCw className="spin" size={28} />
             </div>
             <div className="file-list-loading-text">{t('加载中...')}</div>
-          </div>
-        ) : (
-          <div className={`file-list-body${options.active === true ? ' file-list-body-live' : ''}`} style={{ height: '100%' }}>
-            <Virtuoso
-              ref={getPaneVirtuosoRefCallback(normalizedPaneKey)}
-              style={{ height: '100%' }}
-              data={paneRows}
-              computeItemKey={(index, row) => row?.rowKey || `${normalizedPaneKey}-${index}`}
-              scrollerRef={getPaneScrollerRefCallback(normalizedPaneKey)}
-              rangeChanged={(range) => {
-                paneVisibleRangesRef.current[normalizedPaneKey] = range;
-                const listElement = normalizedPaneKey === activePaneKey
-                  ? fileListRef.current
-                  : (inactivePaneListRefs.current[normalizedPaneKey] || paneScrollerElementsRef.current[normalizedPaneKey]);
-                if (listElement) {
-                  captureFileListViewAnchor(normalizedPaneKey, listElement);
-                  if (options.active !== true) {
-                    syncFileManagerPaneScrollTop(normalizedPaneKey, listElement);
-                  }
-                }
-                flushPendingRowEffects(normalizedPaneKey, paneRows, listElement);
-              }}
-              itemContent={(index, row) => renderFileManagerVirtualRow(row, paneState, {
-                interactive: options.active === true,
-                oppositePanePath: options.oppositePanePath || '',
-              })}
-              components={emptyPlaceholderComponent ? { EmptyPlaceholder: emptyPlaceholderComponent } : {}}
-            />
           </div>
         )}
       </div>

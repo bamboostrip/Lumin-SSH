@@ -70,3 +70,15 @@ export interface LoadDirOptions {
   trackDiff?: boolean
   showLoading?: boolean
 }
+
+/** 下载冲突（PreviewDownloadConflicts 返回项 / buildDownloadConflictMessage 输入） */
+export interface FileManagerDownloadConflict {
+  relativePath?: unknown
+  localSize?: unknown
+  remoteSize?: unknown
+  localModifyTime?: unknown
+  remoteModifyTime?: unknown
+  localPath?: unknown
+  remotePath?: unknown
+  [key: string]: unknown
+}

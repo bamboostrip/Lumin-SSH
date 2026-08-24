@@ -2729,10 +2729,6 @@ body.theme-light .batch-operation-bar {
   --file-list-header-height: 30px;
 }
 
-.file-list.is-switching {
-  overflow: hidden;
-}
-
 .file-list-viewport {
   position: relative;
   flex: 1 1 auto;
@@ -2762,10 +2758,10 @@ body.theme-light .batch-operation-bar {
   gap: var(--space-3);
   text-align: center;
   pointer-events: none;
-  animation: fileListLoadingFadeIn 180ms ease 120ms both;
+  animation: file-list-loading-fade-in 180ms ease 120ms both;
 }
 
-@keyframes fileListLoadingFadeIn {
+@keyframes file-list-loading-fade-in {
   from {
     opacity: 0;
   }

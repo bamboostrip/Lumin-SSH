@@ -270,12 +270,6 @@ interface FileListViewAnchor {
   scrollTop: number
 }
 
-// 面板瞬态删除占位条目
-interface PanePlaceholderEntry extends FileManagerFileItem {
-  __transientPanePath?: string
-  __logicalPath?: string
-}
-
 // loadDir 的选项
 interface LoadDirOptions {
   silent?: boolean
@@ -2292,7 +2286,6 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     paneEffectStateRef.current[normalizeFileManagerPaneKey(paneKey)]
   ), []);
   const rowEffectTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-  const tombstoneSequenceRef = useRef(0);
   const [activeRowEffects, setActiveRowEffects] = useState<Record<string, RowEffectState>>({});
   const activeRowEffectsRef = useRef<Record<string, RowEffectState>>({});
 
@@ -2399,13 +2392,6 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
 
   const isDeletedPlaceholderItem = useCallback((item: FileManagerFileItem | null) => Boolean(item?.__luminDeletedPlaceholder), []);
 
-  const captureRowHeight = useCallback((rowKey: unknown) => {
-    if (!rowKey || !fileListRef.current) return 36;
-    const rows = Array.from(fileListRef.current.querySelectorAll('[data-file-row-key]'));
-    const row = rows.find((entry) => (entry as HTMLElement).dataset?.fileRowKey === rowKey) as HTMLElement | undefined;
-    return Math.max(28, Math.round(row?.getBoundingClientRect?.().height || row?.offsetHeight || 36));
-  }, []);
-
   const queueRowEffect = useCallback((logicalKey: string, rowKey: string, effect: string, paneKey = activePaneKey) => {
     if (!logicalKey || !rowKey || !effect) return;
     const paneEffectState = getPaneEffectState(paneKey);
@@ -2431,11 +2417,6 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
     });
   }, [clearRowEffectTimer]);
 
-  const finalizeDeletedPlaceholder = useCallback((rowKey: string) => {
-    clearActiveRowEffect(rowKey);
-    setItems((current) => current.filter((entry) => entry.__rowKey !== rowKey));
-  }, [clearActiveRowEffect]);
-
   const startRowEffect = useCallback((entry: RowEffectState) => {
     if (!entry?.rowKey || !entry?.effect) return;
     const durationMs = 1200;
@@ -2455,14 +2436,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       return next;
     });
     const timer = window.setTimeout(() => {
-      if (entry.effect === 'removed') {
-        finalizeDeletedPlaceholder(entry.rowKey);
-      } else {
-        clearActiveRowEffect(entry.rowKey);
-      }
+      clearActiveRowEffect(entry.rowKey);
     }, durationMs);
     rowEffectTimersRef.current.set(entry.rowKey, timer);
-  }, [clearActiveRowEffect, clearRowEffectTimer, finalizeDeletedPlaceholder]);
+  }, [clearActiveRowEffect, clearRowEffectTimer]);
 
   const isFileManagerActuallyVisible = useCallback(() => {
     if (!isActive || document.hidden) return false;

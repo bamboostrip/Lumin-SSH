@@ -11,6 +11,8 @@ import { BarChart3, Cpu, HardDrive, Globe, ClipboardList, Clipboard, Search, Che
 import Tiptop from './Tiptop.tsx';
 import { Z } from '../constants/zIndex.ts';
 import { useTranslation, t, type I18nKey } from '../i18n.ts';
+import { Button } from './ui';
+import { cn } from '../utils/cn.ts';
 
 const HISTORY_SIZE = 30;
 // ponytail: 前端 fetch 超时兜底。后端 deployProbeScript(15s)+executeCmd(30s) 最坏约 45s,
@@ -200,7 +202,7 @@ const ProgressBar = React.memo(function ProgressBar({ value, color }: { value: n
 });
 
 const Card = React.memo(function Card({ children, className = '', style }: { children: ReactNode; className?: string; style?: CSSProperties }) {
-  return <div className={`probe-card ${className}`} style={style}>{children}</div>;
+  return <div className={cn('probe-card', className)} style={style}>{children}</div>;
 });
 
 interface DragHandleProps {
@@ -284,7 +286,7 @@ const PartRow = React.memo(function PartRow({ mount, size, avail, usedPct }: { m
     <div className="probe-partition-row">
       <span className="probe-partition-mount" title={mount}>{mount}</span>
       <div className="probe-partition-bar">
-        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 2 }} />
+        <div className="h-full rounded-[2px]" style={{ width: `${pct}%`, background: color }} />
       </div>
       <span className="probe-partition-value" title={String(size)}>{formatPartitionCapacity(size)}</span>
       <span className="probe-partition-value" title={String(avail)}>{formatPartitionCapacity(avail)}</span>
@@ -665,10 +667,10 @@ function PortForwardSection({ t, sessionId, active, onOpenPortForward, dragHandl
       ? compactAddr(info.RemoteHost, info.RemotePort)
       : compactAddr(info.LocalHost, info.LocalPort);
     return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, fontSize: 12, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{listen}</span>
-        <ArrowRight size={12} style={{ flexShrink: 0, color: 'var(--accent)' }} />
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{target}</span>
+      <span className="inline-flex items-center gap-1.5 min-w-0 text-sm text-secondary font-mono">
+        <span className="overflow-hidden text-ellipsis whitespace-nowrap">{listen}</span>
+        <ArrowRight size={12} className="shrink-0 text-accent" />
+        <span className="overflow-hidden text-ellipsis whitespace-nowrap">{target}</span>
       </span>
     );
   };
@@ -679,7 +681,8 @@ function PortForwardSection({ t, sessionId, active, onOpenPortForward, dragHandl
         type="button"
         onClick={onClick}
         aria-label={title}
-        style={{ flexShrink: 0, width: 26, height: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)', borderRadius: 'var(--radius-xs, 4px)', background: 'var(--surface)', color, cursor: 'pointer', transition: 'var(--transition-fast)' }}
+        className="shrink-0 w-[26px] h-[26px] inline-flex items-center justify-center border border-line rounded-xs bg-sunken cursor-pointer transition-colors duration-100"
+        style={{ color }}
       >
         {node}
       </button>
@@ -704,7 +707,7 @@ function PortForwardSection({ t, sessionId, active, onOpenPortForward, dragHandl
       {forwards.length === 0 ? (
         <div className="probe-empty-row">{t('当前会话没有端口映射。')}</div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+        <div className="flex flex-col gap-2 mt-2">
           {forwards.map((info) => {
             const isLocal = info.Kind === 'local';
             const stopped = info.Enabled === false;
@@ -712,26 +715,32 @@ function PortForwardSection({ t, sessionId, active, onOpenPortForward, dragHandl
             return (
               <div
                 key={info.ID}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm, 8px)', background: 'var(--surface-raised)', opacity: stopped ? 0.6 : 1 }}
+                className="flex items-center justify-between gap-2.5 py-2 px-2.5 border border-line rounded-sm bg-raised"
+                style={{ opacity: stopped ? 0.6 : 1 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: 1 }}>
+                <div className="flex items-center gap-1.5 min-w-0 flex-1">
                   <span
-                    style={{ flexShrink: 0, width: 15, height: 15, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 3, fontSize: 9, fontWeight: 700, fontFamily: 'var(--font-mono)', lineHeight: 1, background: isLocal ? 'color-mix(in srgb, var(--accent) 16%, transparent)' : 'color-mix(in srgb, var(--success) 16%, transparent)', color: isLocal ? 'var(--accent)' : 'var(--success)' }}
+                    className={cn(
+                      'shrink-0 w-[15px] h-[15px] inline-flex items-center justify-center rounded-xs text-[9px] font-bold font-mono leading-none',
+                      isLocal
+                        ? 'bg-[color-mix(in_srgb,var(--accent)_16%,transparent)] text-accent'
+                        : 'bg-[color-mix(in_srgb,var(--success)_16%,transparent)] text-success',
+                    )}
                   >
                     {isLocal ? 'L' : 'R'}
                   </span>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
                       <Tiptop text={label} className="probe-portforward-label" style={{ minWidth: 0, flex: 1 }} triggerClassName="probe-portforward-label-trigger">
                         {renderCompactLabel(info)}
                       </Tiptop>
                       {stopped && (
-                        <span style={{ flexShrink: 0, fontSize: 10, padding: '1px 6px', borderRadius: 999, background: 'color-mix(in srgb, var(--text-tertiary) 18%, transparent)', color: 'var(--text-tertiary)' }}>{t('已停止')}</span>
+                        <span className="shrink-0 text-[10px] px-1.5 py-[1px] rounded-full bg-[color-mix(in_srgb,var(--text-tertiary)_18%,transparent)] text-tertiary">{t('已停止')}</span>
                       )}
                     </div>
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                <div className="flex items-center gap-1.5 shrink-0">
                   {stopped
                     ? iconBtn(() => handleRestart(info.ID), t('重启'), 'var(--success)', <Play size={13} />)
                     : iconBtn(() => handleStop(info.ID), t('停止'), 'var(--warning)', <Power size={13} />)}
@@ -1102,7 +1111,7 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, active,
               <div key={String(text)}><span>{icon}</span><span>{text}</span></div>
             ))}
           </div>
-          <button onClick={() => setShowConfirm(true)} className="btn btn-primary">{t('开启监控')}</button>
+          <Button variant="primary" onClick={() => setShowConfirm(true)}>{t('开启监控')}</Button>
         </div>
         {showConfirm && (
           <div className="probe-confirm-overlay">
@@ -1126,8 +1135,8 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, active,
                 ].map((text) => <div key={text}><Check size={12} /> {text}</div>)}
               </div>
               <div className="probe-confirm-actions">
-                <button onClick={() => setShowConfirm(false)} className="btn btn-secondary btn-sm">{t('取消')}</button>
-                <button onClick={handleConfirm} className="btn btn-primary btn-sm">{t('确认开启')}</button>
+                <Button variant="secondary" size="sm" className="flex-1" onClick={() => setShowConfirm(false)}>{t('取消')}</Button>
+                <Button variant="primary" size="sm" className="flex-1" onClick={handleConfirm}>{t('确认开启')}</Button>
               </div>
             </div>
           </div>
@@ -1145,25 +1154,11 @@ export default function ProbePanel({ sessionId, host, addToast, enabled, active,
           <div className="probe-state-title">{t('写入失败，请重试')}</div>
           <div className="probe-state-desc">{t('监控脚本写入服务器失败，请检查连接或权限')}</div>
           {probeErrorDetail ? (
-            <div style={{
-              marginTop: 10,
-              maxWidth: 360,
-              padding: '10px 12px',
-              borderRadius: 8,
-              border: '1px solid var(--border)',
-              background: 'var(--surface-overlay)',
-              color: 'var(--text-secondary)',
-              fontSize: 12,
-              lineHeight: 1.6,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              textAlign: 'left',
-            }}
-            >
+            <div className="mt-2.5 max-w-[360px] px-3 py-2.5 rounded-lg border border-line bg-overlay text-secondary text-sm leading-[1.6] whitespace-pre-wrap [word-break:break-word] text-left">
               {probeErrorDetail}
             </div>
           ) : null}
-          <button onClick={() => { setProbeError(false); setProbeErrorDetail(''); probeErrorCountRef.current = 0; }} className="btn btn-primary btn-sm">{t('重试')}</button>
+          <Button variant="primary" size="sm" onClick={() => { setProbeError(false); setProbeErrorDetail(''); probeErrorCountRef.current = 0; }}>{t('重试')}</Button>
         </div>
       );
     }

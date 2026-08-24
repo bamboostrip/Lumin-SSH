@@ -2,11 +2,11 @@ import { useState, useEffect, useCallback, useRef, useReducer, type MouseEvent a
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 import { useTranslation } from '../i18n.ts';
 import Tiptop from './Tiptop.tsx';
-import { clampMenuPosition } from '../utils/menuPosition.ts';
+import { Button, ContextMenu, EmptyState } from './ui';
+import type { MenuItem } from './ui';
+import { cn } from '../utils/cn.ts';
+import { Z } from '../constants/zIndex.ts';
 import { ClipboardList, Search, RefreshCw, XCircle, X, ArrowUpDown, ArrowUp, ArrowDown, Copy } from 'lucide-react';
-
-const PROCESS_MENU_W = 170;
-const PROCESS_MENU_H = 160;
 
 /** 进程条目（GetFullProcessList 返回的宽松结构） */
 interface ProcessInfo {
@@ -69,7 +69,6 @@ export default function ProcessPage({ sessionId, addToast, active }: ProcessPage
   const [selectedPids, setSelectedPids] = useState<Set<string>>(new Set());
   const [killing, setKilling] = useState(false);
   const [contextMenu, setContextMenu] = useState<ProcessContextMenu | null>(null); // { x, y, process }
-  const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [detailState, detailDispatch] = useReducer((state: { processes: ProcessInfo[]; activePid: string | null }, action: DetailAction) => {
     switch (action.type) {
       case 'toggle': {
@@ -214,10 +213,10 @@ export default function ProcessPage({ sessionId, addToast, active }: ProcessPage
 
   // ponytail: 改为函数调用而非组件定义，避免每次 polling 渲染时 React 视为新组件类型导致表头 unmount/remount
   const renderSortIcon = (col: string) => {
-    if (col !== sortKey) return <ArrowUpDown size={13} style={{ opacity: 0.7, marginLeft: 2, flexShrink: 0 }} />;
+    if (col !== sortKey) return <ArrowUpDown size={13} className="opacity-70 ml-0.5 shrink-0" />;
     return sortAsc
-      ? <ArrowUp size={13} style={{ marginLeft: 2, flexShrink: 0, color: 'var(--accent)' }} />
-      : <ArrowDown size={13} style={{ marginLeft: 2, flexShrink: 0, color: 'var(--accent)' }} />;
+      ? <ArrowUp size={13} className="ml-0.5 shrink-0 text-accent" />
+      : <ArrowDown size={13} className="ml-0.5 shrink-0 text-accent" />;
   };
 
   const toggleSelect = (pid: string) => {
@@ -329,12 +328,11 @@ export default function ProcessPage({ sessionId, addToast, active }: ProcessPage
   const handleRowContextMenu = (e: ReactMouseEvent, p: ProcessInfo) => {
     e.preventDefault();
     e.stopPropagation();
-    const pos = clampMenuPosition(e.clientX, e.clientY, PROCESS_MENU_W, PROCESS_MENU_H);
     // 复用详情面板已加载的环境变量；未知时异步探测，无则不展示菜单项
     const known = (activeProcess?.pid === p.pid && envVars !== null)
       ? envVars.length > 0
       : null;
-    setContextMenu({ x: pos.x, y: pos.y, process: p, hasEnv: known });
+    setContextMenu({ x: e.clientX, y: e.clientY, process: p, hasEnv: known });
     if (known !== null) return;
     const pid = p.pid;
     AppGo.GetProcessEnv(sessionId, pid)
@@ -353,36 +351,6 @@ export default function ProcessPage({ sessionId, addToast, active }: ProcessPage
         });
       });
   };
-
-  useEffect(() => {
-    if (!contextMenu) return;
-    const onDown = (e: MouseEvent) => {
-      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
-        setContextMenu(null);
-      }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setContextMenu(null);
-    };
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [contextMenu]);
-
-  // 菜单渲染后按实测尺寸再夹一次，防止估高不足导致溢出（含 hasEnv 出现后增高）
-  useEffect(() => {
-    if (!contextMenu || !contextMenuRef.current) return;
-    const { offsetWidth, offsetHeight } = contextMenuRef.current;
-    setContextMenu(prev => {
-      if (!prev) return prev;
-      const next = clampMenuPosition(prev.x, prev.y, offsetWidth, offsetHeight);
-      if (next.x === prev.x && next.y === prev.y) return prev;
-      return { ...prev, x: next.x, y: next.y };
-    });
-  }, [contextMenu?.process?.pid, contextMenu?.hasEnv]);
 
   const startDetailDrag = useCallback((e: ReactMouseEvent) => {
     e.preventDefault();
@@ -450,21 +418,22 @@ export default function ProcessPage({ sessionId, addToast, active }: ProcessPage
         <h3 className="data-page-title">
           <ClipboardList size={16} /> {t('进程管理')}
         </h3>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div className="flex gap-1.5">
           {selectedPids.size > 0 && (
-            <button
-              className="btn btn-danger btn-sm"
+            <Button
+              variant="danger"
+              size="sm"
               onClick={killSelected}
               disabled={killing}
             >
               <XCircle size={12} />
               {t('终止选中')} ({selectedPids.size})
-            </button>
+            </Button>
           )}
-          <button className="btn btn-ghost btn-sm" onClick={load} disabled={loading}>
-            <RefreshCw size={13} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+          <Button variant="ghost" size="sm" onClick={load} disabled={loading}>
+            <RefreshCw size={13} className={cn(loading && 'animate-spin')} />
             {t('刷新')}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -488,45 +457,45 @@ export default function ProcessPage({ sessionId, addToast, active }: ProcessPage
       {/* 表格区域 */}
       <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
         {loading && !processes ? (
-          <div className="empty-state" style={{ marginTop: '10vh' }}>
-            <div style={{ fontSize: 32, opacity: 0.3 }}>⟳</div>
-            <p style={{ marginTop: 16, color: 'var(--text-secondary)', fontSize: 14 }}>{t('正在加载进程列表...')}</p>
-          </div>
+          <EmptyState
+            className="mt-[10vh]"
+            icon={<span className="text-[32px]">⟳</span>}
+            text={<span className="text-md text-secondary">{t('正在加载进程列表...')}</span>}
+          />
         ) : error ? (
-          <div className="empty-state" style={{ marginTop: '10vh' }}>
-            <div style={{ fontSize: 32, opacity: 0.3 }}>✕</div>
-            <p style={{ marginTop: 16, color: 'var(--danger)', fontSize: 14 }}>{t('加载失败')}</p>
-            <span style={{ fontSize: 12, color: 'var(--text-tertiary)', maxWidth: 400, textAlign: 'center' }}>{error}</span>
-            <button className="btn btn-sm" onClick={load} style={{ marginTop: 12 }}>{t('重试')}</button>
-          </div>
+          <EmptyState
+            className="mt-[10vh]"
+            icon={<span className="text-[32px]">✕</span>}
+            text={<span className="text-md text-danger">{t('加载失败')}</span>}
+            action={
+              <>
+                <span className="max-w-[400px] text-sm text-tertiary">{error}</span>
+                <Button variant="secondary" size="sm" onClick={load} className="mt-1">{t('重试')}</Button>
+              </>
+            }
+          />
         ) : filtered.length === 0 ? (
-          <div className="empty-state" style={{ marginTop: '10vh' }}>
-            <div style={{ fontSize: 48, opacity: 0.3 }}><Search size={48} /></div>
-            <p style={{ marginTop: 16, color: 'var(--text-secondary)', fontSize: 15, fontWeight: 500 }}>
+          <EmptyState
+            className="mt-[10vh]"
+            icon={<Search size={48} />}
+            text={<span className="text-lg font-medium text-secondary">
               {searchQuery ? t('未找到匹配的进程') : t('没有可显示的进程')}
-            </p>
-          </div>
+            </span>}
+          />
         ) : (
           <div className="data-table-shell" style={{ minWidth: TABLE_MIN_WIDTH }}>
             {/* 表头 */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: tableColumns,
-              gap: 0,
-              background: 'var(--surface-sunken)',
-              borderBottom: '1px solid var(--border)',
-              fontSize: 12,
-              fontWeight: 700,
-              color: 'var(--text-tertiary)',
-              userSelect: 'none',
-            }}>
-              <div style={{ padding: '8px 6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div
+              className="grid bg-sunken border-b border-line text-sm font-bold text-tertiary select-none"
+              style={{ gridTemplateColumns: tableColumns }}
+            >
+              <div className="px-1.5 py-2 flex items-center justify-center">
                 <input type="checkbox"
                   id="process-select-all"
                   name="process-select-all"
                   autoComplete="off"
                   checked={selectedPids.size === filtered.length && filtered.length > 0}
-                  onChange={selectAll} style={{ cursor: 'pointer' }} />
+                  onChange={selectAll} className="cursor-pointer" />
               </div>
               {([
                 { key: 'pid', label: 'PID', align: 'right' },
@@ -536,23 +505,16 @@ export default function ProcessPage({ sessionId, addToast, active }: ProcessPage
                 { key: 'name', label: t('名称/命令行'), align: 'left' },
                 { key: 'loc', label: t('位置'), align: 'left' },
               ] as Array<{ key: string; label: string; align: 'right' | 'left' }>).map(({ key, label, align }) => (
-                <div key={key} style={{
-                  padding: '8px 6px',
-                  textAlign: align,
-                  cursor: key ? 'pointer' : 'default',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
-                  gap: 2,
-                  position: 'relative',
-                  borderRight: key === 'loc' ? 'none' : '1px solid var(--border-light)',
-                  background: key && sortKey === key ? 'var(--surface-active)' : 'transparent',
-                  color: key && sortKey === key ? 'var(--text-primary)' : undefined,
-                }} onClick={(e) => { if (colDragging.current) { colDragging.current = false; return; } key && handleSort(key); }}>
+                <div key={key} className={cn(
+                  'relative px-1.5 py-2 flex items-center gap-0.5 cursor-pointer min-w-0',
+                  key !== 'loc' && 'border-r border-line-light',
+                  align === 'right' ? 'justify-end' : 'justify-start',
+                  sortKey === key && 'bg-active text-primary',
+                )} onClick={(e) => { if (colDragging.current) { colDragging.current = false; return; } key && handleSort(key); }}>
                   {label} {key && renderSortIcon(key)}
                   {key !== 'loc' && (
                   <div onMouseDown={e => { e.stopPropagation(); startColResize(key, e); }}
-                    style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 12, cursor: 'col-resize', zIndex: 2 }} />
+                    className="absolute right-0 top-0 bottom-0 w-3 cursor-col-resize" style={{ zIndex: Z.STACK }} />
                   )}
                 </div>
               ))}
@@ -563,39 +525,33 @@ export default function ProcessPage({ sessionId, addToast, active }: ProcessPage
               {filtered.slice(visibleRange.start, visibleRange.end).map((p) => (
                 <div key={p.pid}
                   onContextMenu={(e) => handleRowContextMenu(e, p)}
-                  style={{
-                  display: 'grid',
-                  gridTemplateColumns: tableColumns,
-                  gap: 0,
-                  borderBottom: '1px solid var(--border-light)',
-                  fontSize: 12.5,
-                  fontFamily: 'var(--font-mono)',
-                  color: 'var(--text-primary)',
-                  cursor: 'pointer',
-                  background: selectedPids.has(p.pid) || contextMenu?.process?.pid === p.pid
-                    ? 'var(--surface-active)'
-                    : detailState.activePid === p.pid ? 'var(--surface-active)' : 'transparent',
-                }}>
-                  <div style={{ padding: '6px 6px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: '1px solid var(--border-light)' }} onClick={e => e.stopPropagation()}>
+                  style={{ gridTemplateColumns: tableColumns }}
+                  className={cn(
+                  'grid gap-0 border-b border-line-light text-[12.5px] font-mono text-primary cursor-pointer',
+                  selectedPids.has(p.pid) || contextMenu?.process?.pid === p.pid || detailState.activePid === p.pid
+                    ? 'bg-active'
+                    : 'bg-transparent',
+                )}>
+                  <div className="px-1.5 py-1.5 flex items-center justify-center border-r border-line-light" onClick={e => e.stopPropagation()}>
                     <input type="checkbox"
                       id={`process-select-row-${p.pid}`}
                       name="process-select-row"
                       autoComplete="off"
                       checked={selectedPids.has(p.pid)}
-                      onChange={() => toggleSelect(p.pid)} style={{ cursor: 'pointer' }} />
+                      onChange={() => toggleSelect(p.pid)} className="cursor-pointer" />
                   </div>
-                  <div style={{ padding: '6px 6px', textAlign: 'right', color: 'var(--text-tertiary)', fontSize: 11.5, borderRight: '1px solid var(--border-light)' }} onClick={() => handleRowClick(p)}>{p.pid}</div>
-                  <div style={{ padding: '6px 6px', textAlign: 'right', color: (p.cpu || 0) > 50 ? 'var(--danger)' : (p.cpu || 0) > 10 ? 'var(--warning)' : 'var(--text-primary)', borderRight: '1px solid var(--border-light)' }} onClick={() => handleRowClick(p)}>
+                  <div className="px-1.5 py-1.5 text-right text-tertiary text-[11.5px] border-r border-line-light" onClick={() => handleRowClick(p)}>{p.pid}</div>
+                  <div className="px-1.5 py-1.5 text-right border-r border-line-light" style={{ color: (p.cpu || 0) > 50 ? 'var(--danger)' : (p.cpu || 0) > 10 ? 'var(--warning)' : 'var(--text-primary)' }} onClick={() => handleRowClick(p)}>
                     {p.cpu?.toFixed(1)}%
                   </div>
-                  <div style={{ padding: '6px 6px', textAlign: 'right', color: 'var(--text-primary)', borderRight: '1px solid var(--border-light)' }} onClick={() => handleRowClick(p)}>{fmem(p.mem)}</div>
-                  <div style={{ padding: '6px 6px', textAlign: 'left', color: 'var(--text-tertiary)', fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderRight: '1px solid var(--border-light)' }} title={p.user} onClick={() => handleRowClick(p)}>{p.user}</div>
-                  <div style={{ padding: '6px 6px', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderRight: '1px solid var(--border-light)' }} title={`${p.name} ┊ ${p.cmd}`} onClick={() => handleRowClick(p)}>
-                    <span style={{ color: 'var(--text-primary)' }}>{p.name}</span>
-                    <span style={{ color: 'var(--text-muted)', margin: '0 2px' }}>┊</span>
-                    <span style={{ color: 'var(--text-secondary)' }}>{(p.cmd || p.name)}</span>
+                  <div className="px-1.5 py-1.5 text-right text-primary border-r border-line-light" onClick={() => handleRowClick(p)}>{fmem(p.mem)}</div>
+                  <div className="px-1.5 py-1.5 text-left text-tertiary text-[11.5px] truncate border-r border-line-light" title={p.user} onClick={() => handleRowClick(p)}>{p.user}</div>
+                  <div className="px-1.5 py-1.5 text-left truncate border-r border-line-light" title={`${p.name} ┊ ${p.cmd}`} onClick={() => handleRowClick(p)}>
+                    <span className="text-primary">{p.name}</span>
+                    <span className="text-muted mx-0.5">┊</span>
+                    <span className="text-secondary">{(p.cmd || p.name)}</span>
                   </div>
-                  <div style={{ padding: '6px 6px', textAlign: 'left', color: 'var(--text-tertiary)', fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.loc} onClick={() => handleRowClick(p)}>{p.loc}</div>
+                  <div className="px-1.5 py-1.5 text-left text-tertiary text-[11.5px] truncate" title={p.loc} onClick={() => handleRowClick(p)}>{p.loc}</div>
                 </div>
               ))}
               <div style={{ height: Math.max(0, (filtered.length - visibleRange.end) * ROW_H) }} />
@@ -606,60 +562,48 @@ export default function ProcessPage({ sessionId, addToast, active }: ProcessPage
 
       {/* 进程行右键菜单 */}
       {contextMenu && (
-        <div
-          ref={contextMenuRef}
-          className="context-menu"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div
-            className="context-menu-item danger"
-            onClick={() => {
-              const p = contextMenu.process;
-              setContextMenu(null);
-              void killOne(p);
-            }}
-          >
-            <span className="item-icon"><XCircle size={14} /></span>
-            <span className="item-label">{t('终止')}</span>
-          </div>
-          <div className="context-menu-divider" />
-          <div
-            className="context-menu-item"
-            onClick={() => {
-              const p = contextMenu.process;
-              setContextMenu(null);
-              copyText(p?.name, `${t('已复制')}: ${p?.name || ''}`);
-            }}
-          >
-            <span className="item-icon"><Copy size={14} /></span>
-            <span className="item-label">{t('复制名称')}</span>
-          </div>
-          <div
-            className="context-menu-item"
-            onClick={() => {
-              const p = contextMenu.process;
-              setContextMenu(null);
-              copyText(p?.cmd || p?.name, t('命令已复制到剪贴板'));
-            }}
-          >
-            <span className="item-icon"><Copy size={14} /></span>
-            <span className="item-label">{t('复制命令行')}</span>
-          </div>
-          {contextMenu.hasEnv && (
-            <div
-              className="context-menu-item"
-              onClick={() => {
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          minWidth={170}
+          onClose={() => setContextMenu(null)}
+          items={[
+            {
+              label: t('终止'),
+              icon: <XCircle size={14} />,
+              danger: true,
+              onSelect: () => {
                 const p = contextMenu.process;
-                setContextMenu(null);
+                void killOne(p);
+              },
+            },
+            'separator',
+            {
+              label: t('复制名称'),
+              icon: <Copy size={14} />,
+              onSelect: () => {
+                const p = contextMenu.process;
+                copyText(p?.name, `${t('已复制')}: ${p?.name || ''}`);
+              },
+            },
+            {
+              label: t('复制命令行'),
+              icon: <Copy size={14} />,
+              onSelect: () => {
+                const p = contextMenu.process;
+                copyText(p?.cmd || p?.name, t('命令已复制到剪贴板'));
+              },
+            },
+            ...(contextMenu.hasEnv ? [{
+              label: t('复制环境变量'),
+              icon: <Copy size={14} />,
+              onSelect: () => {
+                const p = contextMenu.process;
                 void copyEnv(p);
-              }}
-            >
-              <span className="item-icon"><Copy size={14} /></span>
-              <span className="item-label">{t('复制环境变量')}</span>
-            </div>
-          )}
-        </div>
+              },
+            }] : []),
+          ] as MenuItem[]}
+        />
       )}
 
       {/* 进程详情面板 */}
@@ -668,65 +612,48 @@ export default function ProcessPage({ sessionId, addToast, active }: ProcessPage
           <div
             className="split-resizer-h hotzone-bottom"
             onMouseDown={startDetailDrag}
-            style={{ flexShrink: 0, zIndex: 10 }}
           />
-          <div ref={detailRef} style={{
-            height: detailHeight,
-            flexShrink: 0,
-            borderTop: '1px solid var(--border)',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            background: 'var(--surface-sunken)',
-          }}>
+          <div ref={detailRef} style={{ height: detailHeight }} className="shrink-0 border-t border-line flex flex-col overflow-hidden bg-sunken">
             {/* 标签栏 */}
-            <div style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: '4px 8px', borderBottom: '1px solid var(--border-light)',
-              background: 'var(--surface-raised)', gap: 4,
-            }}>
-              <div style={{ display: 'flex', gap: 3, overflow: 'hidden', flex: 1 }}>
-                {detailState.processes.map(p => (
-                  <div key={p.pid}
-                    onClick={() => detailDispatch({ type: 'toggle', process: p })}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 4,
-                      padding: '3px 10px', fontSize: 12, borderRadius: 4, cursor: 'pointer',
-                      fontFamily: 'var(--font-mono)', userSelect: 'none', whiteSpace: 'nowrap',
-                      border: '1px solid',
-                      borderColor: detailState.activePid === p.pid ? 'var(--accent)' : 'var(--border)',
-                      background: detailState.activePid === p.pid ? 'var(--surface-active)' : 'var(--surface-sunken)',
-                      color: detailState.activePid === p.pid ? 'var(--text-primary)' : 'var(--text-secondary)',
-                      fontWeight: detailState.activePid === p.pid ? 500 : 400,
-                      transition: 'all 0.15s',
-                    }}
-                    onMouseEnter={e => { if (detailState.activePid !== p.pid) { e.currentTarget.style.borderColor = 'var(--border-focus)'; e.currentTarget.style.background = 'var(--surface-hover)'; e.currentTarget.style.color = 'var(--text-primary)'; }}}
-                    onMouseLeave={e => { if (detailState.activePid !== p.pid) { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface-sunken)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}}
-                  >
-                    <span>{p.pid}</span>
-                    <span style={{
-                      maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap', color: detailState.activePid === p.pid ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                    }}>{p.name}</span>
-                    <Tiptop text={t('关闭')} placement="bottom">
-                      <span
-                        onClick={e => { e.stopPropagation(); detailDispatch({ type: 'close', pid: p.pid }); }}
-                        aria-label={t('关闭')}
-                        style={{ marginLeft: 2, opacity: 0.4, cursor: 'pointer', fontSize: 13, lineHeight: 1 }}
-                      >×</span>
-                    </Tiptop>
-                  </div>
-                ))}
+            <div className="flex justify-between items-center px-2 py-1 border-b border-line-light bg-raised gap-1">
+              <div className="flex gap-[3px] overflow-hidden flex-1">
+                {detailState.processes.map(p => {
+                  const isActive = detailState.activePid === p.pid;
+                  return (
+                    <div key={p.pid}
+                      onClick={() => detailDispatch({ type: 'toggle', process: p })}
+                      className={cn(
+                        'flex items-center gap-1 px-2.5 py-[3px] text-sm rounded-sm cursor-pointer font-mono select-none whitespace-nowrap border transition-all duration-150',
+                        isActive
+                          ? 'border-accent bg-active text-primary font-medium'
+                          : 'border-line bg-sunken text-secondary hover:border-focus hover:bg-hover hover:text-primary',
+                      )}
+                    >
+                      <span>{p.pid}</span>
+                      <span className={cn(
+                        'max-w-[100px] truncate',
+                        isActive ? 'text-primary' : 'text-tertiary',
+                      )}>{p.name}</span>
+                      <Tiptop text={t('关闭')} placement="bottom">
+                        <span
+                          onClick={e => { e.stopPropagation(); detailDispatch({ type: 'close', pid: p.pid }); }}
+                          aria-label={t('关闭')}
+                          className="ml-0.5 opacity-40 cursor-pointer text-base leading-none"
+                        >×</span>
+                      </Tiptop>
+                    </div>
+                  );
+                })}
               </div>
-              <button className="btn btn-ghost btn-sm" onClick={() => detailDispatch({ type: 'closeAll' })}
-                style={{ padding: 2, color: 'var(--text-tertiary)', flexShrink: 0 }}>
+              <Button variant="ghost" size="sm" onClick={() => detailDispatch({ type: 'closeAll' })}
+                className="p-0.5 text-tertiary shrink-0">
                 <X size={14} />
-              </button>
+              </Button>
             </div>
             {/* 面板内容 */}
-            <div style={{ padding: 12, overflow: 'auto', flex: 1 }} key={activeProcess?.pid}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px', fontSize: 13 }}>
-                <DetailRow label="PID" value={<span style={{ fontFamily: 'var(--font-mono)' }}>{activeProcess?.pid}</span>} />
+            <div className="p-3 overflow-auto flex-1" key={activeProcess?.pid}>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-base">
+                <DetailRow label="PID" value={<span className="font-mono">{activeProcess?.pid}</span>} />
                 <DetailRow label={t('状态')} value={activeProcess?.stat || '-'} />
                 <DetailRow label={t('进程名')} value={activeProcess?.name} />
                 <DetailRow label={t('线程数')} value={activeProcess?.nlwp != null ? String(activeProcess.nlwp) : '-'} />
@@ -735,42 +662,30 @@ export default function ProcessPage({ sessionId, addToast, active }: ProcessPage
                 <DetailRow label={t('内存')} value={fmem(activeProcess?.mem)} />
                 <DetailRow label={t('用户')} value={activeProcess?.user} />
               </div>
-              {activeProcess?.loc && <div style={{ marginTop: 6 }}><DetailRow label={t('位置')} value={activeProcess.loc} /></div>}
-              <div style={{ marginTop: 12 }}>
-                <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 4 }}>{t('完整命令行')}:</div>
-                <div style={{
-                  fontSize: 12.5, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)',
-                  background: 'var(--surface-base)', padding: '8px 10px', borderRadius: 6, wordBreak: 'break-all',
-                  border: '1px solid var(--border-light)',
-                }}>
+              {activeProcess?.loc && <div className="mt-1.5"><DetailRow label={t('位置')} value={activeProcess.loc} /></div>}
+              <div className="mt-3">
+                <div className="text-sm text-tertiary mb-1">{t('完整命令行')}:</div>
+                <div className="text-[12.5px] font-mono text-primary bg-canvas px-2.5 py-2 rounded-md break-all border border-line-light">
                   {activeProcess?.cmd || activeProcess?.name}
                 </div>
               </div>
 
               {/* 环境变量 */}
               {envLoading ? (
-                <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-tertiary)' }}>
+                <div className="mt-3 text-sm text-tertiary">
                   {t('加载环境变量...')}
                 </div>
               ) : envVars && envVars.length > 0 ? (
-                <div style={{ marginTop: 12 }}>
+                <div className="mt-3">
                   <div
-                    style={{
-                      fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 4,
-                      cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 4,
-                    }}
+                    className="text-sm text-tertiary mb-1 cursor-pointer select-none flex items-center gap-1"
                     onClick={() => setShowEnv(v => !v)}
                   >
-                    <span style={{ display: 'inline-block', transition: 'transform 0.15s', transform: showEnv ? 'rotate(90deg)' : 'none' }}>▶</span>
-                    {t('环境变量')} <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>({envVars.length})</span>
+                    <span className="inline-block transition-transform duration-150" style={{ transform: showEnv ? 'rotate(90deg)' : 'none' }}>▶</span>
+                    {t('环境变量')} <span className="text-muted text-xs">({envVars.length})</span>
                   </div>
                   {showEnv && (
-                    <div style={{
-                      fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)',
-                      background: 'var(--surface-base)', padding: '8px 10px', borderRadius: 6,
-                      border: '1px solid var(--border-light)', maxHeight: 180, overflow: 'auto',
-                      lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-                    }}>
+                    <div className="text-sm font-mono text-primary bg-canvas px-2.5 py-2 rounded-md border border-line-light max-h-[180px] overflow-auto leading-[1.6] whitespace-pre-wrap break-all">
                       {envVars.map((line, i) => (
                         <div key={i}>{line}</div>
                       ))}
@@ -778,7 +693,7 @@ export default function ProcessPage({ sessionId, addToast, active }: ProcessPage
                   )}
                 </div>
               ) : envVars && envVars.length === 0 ? (
-                <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-tertiary)' }}>
+                <div className="mt-3 text-sm text-tertiary">
                   {t('无环境变量')}
                 </div>
               ) : null}
@@ -796,8 +711,8 @@ interface DetailRowProps {
 }
 
 const DetailRow = ({ label, value }: DetailRowProps) => (
-  <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '3px 0' }}>
-    <span style={{ color: 'var(--text-tertiary)', minWidth: 60, flexShrink: 0, fontSize: 12 }}>{label}</span>
-    <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{value}</span>
+  <div className="flex gap-2 items-center py-[3px]">
+    <span className="text-tertiary min-w-[60px] shrink-0 text-sm">{label}</span>
+    <span className="text-primary font-medium">{value}</span>
   </div>
 );

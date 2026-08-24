@@ -212,16 +212,7 @@ function buildModelPath(path: string, reviewId: string, index: number, side: str
 
 function buildLoadingNode(text: string) {
   return (
-    <div
-      style={{
-        height: '100%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--surface-base)',
-        color: 'var(--text-secondary)',
-        fontSize: 12,
-      }}>
+    <div className="h-full flex items-center justify-center bg-canvas text-secondary text-sm">
       {text}
     </div>
   )
@@ -402,57 +393,24 @@ export function DiffEditorPair({ block, index = 0, path = '', reviewId = '', sho
 
   return (
     <div
-      style={{
-        display: 'grid',
-        gridTemplateRows: showMetaBar ? '34px minmax(0, 1fr)' : 'minmax(0, 1fr)',
-        minHeight: 0,
-        border: '1px solid var(--border)',
-        borderRadius: 10,
-        overflow: 'hidden',
-        background: 'var(--surface-base)',
-      }}>
+      className={`grid ${showMetaBar ? 'grid-rows-[34px_minmax(0,1fr)]' : 'grid-rows-[minmax(0,1fr)]'} min-h-0 border border-line rounded-lg overflow-hidden bg-canvas`}>
       {showMetaBar ? (
-        <div
-          style={{
-            minWidth: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            padding: '0 10px',
-            borderBottom: '1px solid var(--border-subtle)',
-            background: 'var(--surface-raised)',
-          }}>
-          <div
-            style={{
-              minWidth: 0,
-              color: 'var(--text-secondary)',
-              fontSize: 12,
-              fontWeight: 600,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}>
+        <div className="min-w-0 flex items-center justify-between gap-3 px-2.5 border-b border-line-subtle bg-raised">
+          <div className="min-w-0 text-secondary text-sm font-semibold truncate">
             {label}
           </div>
           {Number.isFinite(matchedStartLine) && matchedStartLine > 0 ? (
-            <div
-              style={{
-                flexShrink: 0,
-                color: 'var(--text-tertiary)',
-                fontSize: 11,
-                fontFamily: 'var(--font-mono)',
-              }}>
+            <div className="shrink-0 text-tertiary text-xs font-mono">
               {`L${matchedStartLine}`}
             </div>
           ) : null}
         </div>
       ) : null}
-      <div style={{ minHeight: 0, position: 'relative' }}>
+      <div className="min-h-0 relative">
         {!editorReady ? (
-          <div style={{ position: 'absolute', inset: 0, zIndex: 1 }}>{buildLoadingNode(t('加载中...'))}</div>
+          <div className="absolute inset-0 z-[1]">{buildLoadingNode(t('加载中...'))}</div>
         ) : null}
-        <div ref={hostRef} style={{ height: '100%', minHeight: 0 }} />
+        <div ref={hostRef} className="h-full min-h-0" />
       </div>
     </div>
   )

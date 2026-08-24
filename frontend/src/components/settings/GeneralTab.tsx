@@ -187,7 +187,7 @@ export default function GeneralTab({
       }
       return [(
         <SettingsField key={node.id} definition={node}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-2">
             {(node.children || []).map((option) => (
               <RadioOption
                 key={option.id}

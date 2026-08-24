@@ -2,9 +2,20 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { Upload, Download, FolderOpen, X, CheckCircle2, AlertCircle, Clock3, ClipboardList, type LucideIcon } from 'lucide-react';
 import { useTranslation, type I18nKey } from '../i18n.ts';
 import Tiptop from './Tiptop.tsx';
+import { Button } from './ui';
+import { cn } from '../utils/cn.ts';
 import { type TransferChunk, type TransferQueueItem } from '../utils/fileWorkbench.ts';
 
 const MAX_RENDER_UPLOAD_CARDS = 1000;
+
+const ACTION_BTN_BASE = 'rounded-lg px-2 py-1 text-xs font-semibold cursor-pointer whitespace-nowrap';
+const ACTION_BTN_NORMAL = `${ACTION_BTN_BASE} border border-line bg-canvas text-secondary`;
+const ACTION_BTN_DANGER = `${ACTION_BTN_BASE} border border-[color-mix(in_srgb,var(--danger)_40%,var(--border))] bg-[color-mix(in_srgb,var(--danger-dim)_72%,var(--surface-base))] text-danger`;
+
+const PROGRESS_FILL_COLOR: Record<string, string> = {
+  failed: 'bg-danger',
+  completed: 'bg-success',
+};
 
 /** helper 的 t 参数使用严格 I18nKey 签名（与 useTranslation 返回值一致） */
 type LooseT = (key: I18nKey, vars?: Record<string, unknown>) => string;
@@ -180,15 +191,13 @@ function AutoFollowChunkGrid({ chunks, titleBuilder }: AutoFollowChunkGridProps)
     <div
       ref={containerRef}
       onScroll={handleScroll}
-      style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(8px, 1fr))', gap: 3, maxHeight: 88, overflowY: 'auto' }}
+      className="grid grid-cols-[repeat(auto-fill,minmax(8px,1fr))] gap-[3px] max-h-[88px] overflow-y-auto"
     >
       {chunks.map((chunk) => (
         <Tiptop key={chunk.index} text={titleBuilder(chunk)} style={{ display: 'block' }}>
           <div
+            className="h-2 min-w-2 rounded-full"
             style={{
-              height: 8,
-              minWidth: 8,
-              borderRadius: 999,
               background: getChunkColor(chunk.status),
               opacity: chunk.status === 'queued' ? 0.42 : 1,
               boxShadow: chunk.status === 'uploading' || chunk.status === 'retrying' ? `0 0 8px ${getChunkColor(chunk.status)}` : 'none',
@@ -246,18 +255,7 @@ function renderActionButton(label: string, danger: boolean, onClick: () => void)
     <button
       type="button"
       onClick={onClick}
-      style={{
-        border: '1px solid',
-        borderColor: danger ? 'color-mix(in srgb, var(--danger) 40%, var(--border))' : 'var(--border)',
-        background: danger ? 'color-mix(in srgb, var(--danger-dim) 72%, var(--surface-base))' : 'var(--surface-base)',
-        color: danger ? 'var(--danger)' : 'var(--text-secondary)',
-        borderRadius: 8,
-        padding: '4px 8px',
-        fontSize: 11,
-        fontWeight: 600,
-        cursor: 'pointer',
-        whiteSpace: 'nowrap',
-      }}
+      className={danger ? ACTION_BTN_DANGER : ACTION_BTN_NORMAL}
     >
       {label}
     </button>
@@ -341,12 +339,8 @@ export default function FileUploadQueuePanel({
 
   return (
     <div
+      className="w-full h-full flex flex-col bg-raised"
       style={{
-        width: '100%',
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        background: 'var(--surface-raised)',
         opacity: closing ? 0 : 1,
         transform: closing ? 'translateX(100%)' : 'translateX(0)',
         transformOrigin: 'right center',
@@ -355,28 +349,28 @@ export default function FileUploadQueuePanel({
         pointerEvents: closing ? 'none' : 'auto',
       }}
     >
-      <div className="modal-header" style={{ padding: '12px 14px 10px', borderBottom: '1px solid var(--border)' }}>
-        <div className="modal-title" style={{ fontSize: 14 }}>
-          <ClipboardList size={14} />
+      <div className="flex items-center justify-between px-3.5 pt-3 pb-2.5 border-b border-line">
+        <div className="flex items-center gap-2 text-md font-semibold text-primary">
+          <ClipboardList size={14} className="shrink-0" />
           {t('传输队列')}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="flex items-center gap-2">
           {removableIds.length > 0 ? renderActionButton(t('清空'), false, () => onRemoveItems?.(removableIds)) : null}
           <Tiptop text={t('关闭')} placement="bottom">
-            <button className="btn btn-ghost btn-icon btn-sm" onClick={onClose} aria-label={t('关闭')}>
+            <Button variant="ghost" size="icon" onClick={onClose} aria-label={t('关闭')}>
               <X size={14} />
-            </button>
+            </Button>
           </Tiptop>
         </div>
       </div>
-      <div style={{ padding: '8px 14px', fontSize: 11, color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border-subtle)' }}>
+      <div className="px-3.5 py-2 text-xs text-tertiary border-b border-line-subtle">
         {t('当前会话中的所有路径传输任务都会显示在这里')}
       </div>
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div className="flex-1 min-h-0 overflow-y-auto px-3.5 py-3 flex flex-col gap-2.5">
         {visibleItems.length === 0 && hiddenItems.length === 0 ? (
-          <div className="empty-state" style={{ padding: '48px 16px' }}>
-            <div className="empty-state-icon"><ClipboardList size={40} strokeWidth={1.5} /></div>
-            <div className="empty-state-text">{t('当前会话暂无传输任务')}</div>
+          <div className="flex flex-col items-center justify-center gap-3 px-4 py-12 text-center text-muted">
+            <div className="leading-none text-tertiary opacity-80"><ClipboardList size={40} strokeWidth={1.5} /></div>
+            <div className="text-base">{t('当前会话暂无传输任务')}</div>
           </div>
         ) : (
           <>
@@ -402,40 +396,29 @@ export default function FileUploadQueuePanel({
               const showOpenCompletedDownload = direction === 'download' && item.status === 'completed' && item.localPath;
 
               return (
-                <div key={item.id} style={{ border: '1px solid var(--border)', borderRadius: 10, background: 'var(--surface-base)', padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                    <div style={{ width: 28, height: 28, borderRadius: 8, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: meta.bg, color: meta.color, flexShrink: 0 }}>
+                <div key={item.id} className="rounded-lg border border-line bg-canvas p-3 flex flex-col gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-lg inline-flex items-center justify-center shrink-0" style={{ background: meta.bg, color: meta.color }}>
                       <Icon size={14} />
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
-                      <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
-                      <div style={{ color: 'var(--text-tertiary)', fontSize: 11, fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayPath}</div>
+                    <div className="flex flex-col min-w-0 flex-1">
+                      <div className="text-primary text-base font-semibold truncate">{item.name}</div>
+                      <div className="text-tertiary text-xs font-mono truncate">{displayPath}</div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                    <div className="flex items-center gap-2 shrink-0">
                       {showOpenCompletedDownload ? (
                         <Tiptop text={t('打开所在目录')} placement="bottom">
                           <button
                             type="button"
                             aria-label={t('打开所在目录')}
                             onClick={() => handleOpenCompletedDownload(item)}
-                            style={{
-                              width: 30,
-                              height: 24,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              borderRadius: 999,
-                              border: '1px solid color-mix(in srgb, var(--success) 44%, var(--border))',
-                              background: 'var(--success-dim)',
-                              color: 'var(--success)',
-                              cursor: 'pointer',
-                            }}
+                            className="w-[30px] h-6 inline-flex items-center justify-center rounded-full border border-[color-mix(in_srgb,var(--success)_44%,var(--border))] bg-success-dim text-success cursor-pointer"
                           >
                             <FolderOpen size={14} />
                           </button>
                         </Tiptop>
                       ) : (
-                        <div style={{ padding: '2px 8px', borderRadius: 999, background: meta.bg, color: meta.color, fontSize: 11, fontWeight: 600 }}>
+                        <div className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: meta.bg, color: meta.color }}>
                           {statusLabel}
                         </div>
                       )}
@@ -447,19 +430,22 @@ export default function FileUploadQueuePanel({
 
                   {isCompressed ? (
                     <>
-                      <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 8, padding: 8, background: 'var(--surface-sunken)', display: 'flex', flexDirection: 'column', gap: 7 }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', alignItems: 'center', gap: 10, fontSize: 11, color: 'var(--text-tertiary)' }}>
-                          <span>{t('当前阶段')}: <span style={{ color: item.status === 'failed' ? 'var(--danger)' : item.status === 'completed' ? 'var(--success)' : 'var(--accent)' }}>{phaseLabel}</span></span>
-                          <span style={{ textAlign: 'center', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div className="rounded-lg border border-line-subtle bg-sunken p-2 flex flex-col gap-[7px]">
+                        <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2.5 text-xs text-tertiary">
+                          <span>{t('当前阶段')}: <span className={cn(item.status === 'failed' && 'text-danger', item.status === 'completed' && 'text-success', item.status !== 'failed' && item.status !== 'completed' && 'text-accent')}>{phaseLabel}</span></span>
+                          <span className="text-center font-mono truncate">
                             {formatCompressedPhaseBytes(item, t)}
                           </span>
                           <span>{t('当前阶段进度')}: {phaseProgress.toFixed(0)}%</span>
                         </div>
-                        <div className="progress-bar-track">
-                          <div className="progress-bar-fill" style={{ width: `${phaseProgress}%`, background: item.status === 'failed' ? 'var(--danger)' : item.status === 'completed' ? 'var(--success)' : 'var(--accent)' }} />
+                        <div className="h-1 bg-hover rounded-full overflow-hidden">
+                          <div
+                            className={cn('h-full rounded-full transition-[width] duration-300', PROGRESS_FILL_COLOR[item.status === 'failed' || item.status === 'completed' ? item.status : ''] ?? 'bg-accent')}
+                            style={{ width: `${phaseProgress}%` }}
+                          />
                         </div>
                         {item.phaseCurrent ? (
-                          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.45, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <div className="text-xs text-tertiary leading-[1.45] truncate">
                             {t('当前文件')}: {item.phaseCurrent}
                           </div>
                         ) : null}
@@ -469,33 +455,19 @@ export default function FileUploadQueuePanel({
                               type="button"
                               onClick={() => { void openTransferErrorDetails(item, phaseDetail); }}
                               title={phaseDetail}
-                              style={{
-                                border: 'none',
-                                background: 'transparent',
-                                padding: 0,
-                                textAlign: 'left',
-                                fontSize: 11,
-                                color: 'var(--danger)',
-                                lineHeight: 1.45,
-                                cursor: 'pointer',
-                                textDecoration: 'underline',
-                                textDecorationStyle: 'dotted',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
+                              className="border-none bg-transparent p-0 text-left text-xs text-danger leading-[1.45] cursor-pointer underline decoration-dotted truncate"
                             >
                               {getTransferErrorSummary(phaseDetail, t)}
                             </button>
                           ) : (
-                            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.45, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <div className="text-xs text-tertiary leading-[1.45] truncate">
                               {phaseDetail}
                             </div>
                           )
                         ) : null}
                         {compressedPhaseChunks && compressedPhaseChunks.chunks.length > 0 ? (
-                          <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 8, padding: 8, background: 'color-mix(in srgb, var(--surface-sunken) 72%, transparent)', display: 'flex', flexDirection: 'column', gap: 7 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 11, color: 'var(--text-tertiary)' }}>
+                          <div className="rounded-lg border border-line-subtle bg-[color-mix(in_srgb,var(--surface-sunken)_72%,transparent)] p-2 flex flex-col gap-[7px]">
+                            <div className="flex justify-between gap-2.5 text-xs text-tertiary">
                               <span>{t('分块进度')}: {compressedPhaseChunks.chunksDone}/{compressedPhaseChunks.chunks.length}</span>
                               <span>{compressedPhaseChunks.chunksFailed > 0 ? `${compressedPhaseChunks.chunksFailed} ${t('失败')}` : `${fmtSize(compressedPhaseChunks.chunkSizeBytes || 0)} / ${t('块')}`}</span>
                             </div>
@@ -509,17 +481,20 @@ export default function FileUploadQueuePanel({
                     </>
                   ) : (
                     <>
-                      <div className="progress-bar-track">
-                        <div className="progress-bar-fill" style={{ width: `${progress}%`, background: item.status === 'failed' ? 'var(--danger)' : item.status === 'completed' ? 'var(--success)' : 'var(--accent)' }} />
+                      <div className="h-1 bg-hover rounded-full overflow-hidden">
+                        <div
+                          className={cn('h-full rounded-full transition-[width] duration-300', PROGRESS_FILL_COLOR[item.status === 'failed' || item.status === 'completed' ? item.status : ''] ?? 'bg-accent')}
+                          style={{ width: `${progress}%` }}
+                        />
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 12, fontSize: 11, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 text-xs text-tertiary font-mono">
                         <span>{fmtSize(item.bytesUploaded || 0)} / {fmtSize(item.bytesTotal || 0)}</span>
-                        <span style={{ color: chunksActive > 0 ? 'var(--accent)' : 'var(--text-tertiary)' }}>{t('块并发')}: {chunksActive}</span>
-                        <span style={{ textAlign: 'right' }}>{progress.toFixed(0)}%</span>
+                        <span className={chunksActive > 0 ? 'text-accent' : undefined}>{t('块并发')}: {chunksActive}</span>
+                        <span className="text-right">{progress.toFixed(0)}%</span>
                       </div>
                       {chunks.length > 0 ? (
-                        <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 8, padding: 8, background: 'var(--surface-sunken)', display: 'flex', flexDirection: 'column', gap: 7 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 11, color: 'var(--text-tertiary)' }}>
+                        <div className="rounded-lg border border-line-subtle bg-sunken p-2 flex flex-col gap-[7px]">
+                          <div className="flex justify-between gap-2.5 text-xs text-tertiary">
                             <span>{t('分块进度')}: {chunksDone}/{chunks.length}</span>
                             <span>{chunksFailed > 0 ? `${chunksFailed} ${t('失败')}` : `${fmtSize(item.chunkSizeBytes || 0)} / ${t('块')}`}</span>
                           </div>
@@ -537,19 +512,7 @@ export default function FileUploadQueuePanel({
                       type="button"
                       onClick={() => { void openTransferErrorDetails(item); }}
                       title={item.error}
-                      style={{
-                        border: 'none',
-                        background: 'transparent',
-                        padding: 0,
-                        textAlign: 'left',
-                        fontSize: 11,
-                        color: 'var(--danger)',
-                        lineHeight: 1.5,
-                        cursor: 'pointer',
-                        textDecoration: 'underline',
-                        textDecorationStyle: 'dotted',
-                        wordBreak: 'break-all',
-                      }}
+                      className="border-none bg-transparent p-0 text-left text-xs text-danger leading-normal cursor-pointer underline decoration-dotted break-all"
                     >
                       {getTransferErrorSummary(item.error, t)}
                     </button>
@@ -559,21 +522,21 @@ export default function FileUploadQueuePanel({
             })}
 
             {hiddenItems.length > 0 && hiddenMeta && (
-              <div style={{ border: '1px dashed var(--border)', borderRadius: 10, background: 'var(--surface-base)', padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: 8, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: hiddenMeta.bg, color: hiddenMeta.color, flexShrink: 0 }}>
+              <div className="rounded-lg border border-dashed border-line bg-canvas p-3 flex flex-col gap-2">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-7 h-7 rounded-lg inline-flex items-center justify-center shrink-0" style={{ background: hiddenMeta.bg, color: hiddenMeta.color }}>
                     <hiddenMeta.Icon size={14} />
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
-                    <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div className="flex flex-col min-w-0 flex-1">
+                    <div className="text-primary text-base font-semibold truncate">
                       + {hiddenItems.length} {t('项')}
                     </div>
-                    <div style={{ color: 'var(--text-tertiary)', fontSize: 11, lineHeight: 1.45 }}>
+                    <div className="text-tertiary text-xs leading-[1.45]">
                       {t('已折叠显示，避免传输队列卡片总数超过 {count}', { count: MAX_RENDER_UPLOAD_CARDS })}
                     </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                    <div style={{ padding: '2px 8px', borderRadius: 999, background: hiddenMeta.bg, color: hiddenMeta.color, fontSize: 11, fontWeight: 600 }}>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: hiddenMeta.bg, color: hiddenMeta.color }}>
                       {hiddenPhaseLabel}
                     </div>
                     {hiddenActiveItems.length > 0
@@ -581,7 +544,7 @@ export default function FileUploadQueuePanel({
                       : renderActionButton(t('从列表中移除'), false, () => onRemoveItems?.(hiddenItems.map((item) => item.id)))}
                   </div>
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.45 }}>
+                <div className="text-xs text-tertiary leading-[1.45]">
                   {hiddenActiveItems.length > 0
                     ? t('当前有 {count} 项活跃任务被折叠隐藏，仅保留最基本的阶段与终止操作。', { count: hiddenActiveItems.length })
                     : t('这些折叠项均已结束，仅保留从列表中移除操作。')}

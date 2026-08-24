@@ -2,6 +2,7 @@ import { Check, ChevronDown, Copy, FileCode2, FileText, RotateCcw, SquarePen, X 
 import { useEffect, useMemo, useState } from 'react'
 import Tiptop from '../../Tiptop.tsx'
 import { useTranslation, type I18nKey } from '../../../i18n.ts'
+import { cn } from '../../../utils/cn.ts'
 import AIChatMarkdown from './AIChatMarkdown.tsx'
 
 function normalizeAIMessageStatus(value: unknown) {
@@ -57,39 +58,20 @@ function ReadFileTokenList({ items, t }: { items: ReadFileTokenEstimate[]; t: (k
 		return null
 	}
 	return (
-		<div style={{ display: 'grid', gap: 2, marginTop: 6 }}>
-			<style>{`
-				@keyframes ai-chat-read-file-path-marquee {
-					0% { transform: translateX(0); }
-					100% { transform: translateX(-50%); }
-				}
-			`}</style>
+		<div className="mt-1.5 grid gap-0.5">
 			{items.map((item, index) => {
 				const copied = copiedPathIndex === index
 				return (
 					<div
 						key={`${item.path}-${index}`}
-						style={{
-							display: 'flex',
-							alignItems: 'center',
-							justifyContent: 'space-between',
-							gap: 10,
-							minWidth: 0,
-							padding: '7px 10px',
-							border: '1px solid rgba(var(--accent-rgb), 0.75)',
-							borderRadius: 6,
-							background: 'var(--surface-base)',
-							color: 'var(--text-secondary)',
-							fontFamily: 'var(--font-mono)',
-							fontSize: 12,
-							lineHeight: 1.35,
-						}}>
-						<div style={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+						className="flex min-w-0 items-center justify-between gap-2.5 rounded-md border border-[rgba(var(--accent-rgb),0.75)] bg-canvas px-2.5 py-[7px] font-mono text-sm leading-[1.35] text-secondary">
+						<div className="flex min-w-0 flex-1 items-center gap-2">
 							<Tiptop text={item.displayPath} style={{ display: 'flex', minWidth: 0, flex: 1 }}>
-								<div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
-									<div style={{ display: 'flex', width: 'max-content', minWidth: '100%', alignItems: 'center', animation: 'ai-chat-read-file-path-marquee 4s linear infinite', willChange: 'transform' }}>
-										<span style={{ flex: '0 0 auto', whiteSpace: 'nowrap', paddingRight: 32 }}>{item.displayPath}</span>
-										<span aria-hidden="true" style={{ flex: '0 0 auto', whiteSpace: 'nowrap', paddingRight: 32 }}>{item.displayPath}</span>
+								<div className="min-w-0 flex-1 overflow-hidden">
+									{/* 跑马灯动画 ai-chat-read-file-path-marquee（keyframes 已上收全局样式表） */}
+									<div className="flex w-max min-w-full animate-[ai-chat-read-file-path-marquee_4s_linear_infinite] items-center [will-change:transform]">
+										<span className="shrink-0 grow-0 basis-auto whitespace-nowrap pr-8">{item.displayPath}</span>
+										<span aria-hidden="true" className="shrink-0 grow-0 basis-auto whitespace-nowrap pr-8">{item.displayPath}</span>
 									</div>
 								</div>
 							</Tiptop>
@@ -102,24 +84,17 @@ function ReadFileTokenList({ items, t }: { items: ReadFileTokenEstimate[]; t: (k
 											setCopiedPathIndex(index)
 										}).catch(() => {})
 									}}
-									style={{
-										width: 22,
-										height: 22,
-										display: 'inline-flex',
-										alignItems: 'center',
-										justifyContent: 'center',
-										borderRadius: 6,
-										border: copied ? '1px solid color-mix(in srgb, var(--success) 30%, var(--border))' : '1px solid color-mix(in srgb, var(--accent) 24%, var(--border))',
-										background: copied ? 'color-mix(in srgb, var(--success) 8%, var(--surface-base))' : 'color-mix(in srgb, var(--accent) 6%, var(--surface-base))',
-										color: copied ? 'var(--success)' : 'var(--text-secondary)',
-										cursor: 'pointer',
-										flexShrink: 0,
-									}}>
+									className={cn(
+										'inline-flex h-[22px] w-[22px] shrink-0 cursor-pointer items-center justify-center rounded-md',
+										copied
+											? 'border border-[color-mix(in_srgb,var(--success)_30%,var(--border))] bg-[color-mix(in_srgb,var(--success)_8%,var(--surface-base))] text-success'
+											: 'border border-[color-mix(in_srgb,var(--accent)_24%,var(--border))] bg-[color-mix(in_srgb,var(--accent)_6%,var(--surface-base))] text-secondary',
+									)}>
 									{copied ? <Check size={11} color="currentColor" strokeWidth={2.5} /> : <Copy size={11} color="currentColor" strokeWidth={2.5} />}
 								</button>
 							</Tiptop>
 						</div>
-						<span style={{ flexShrink: 0, color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>{item.tokenDisplay}</span>
+						<span className="shrink-0 tabular-nums text-secondary">{item.tokenDisplay}</span>
 					</div>
 				)
 			})}
@@ -397,6 +372,7 @@ function buildCompactDiffRows(rawDiff: string, reviewBlocks: unknown, t: (key: I
   return buildCompactDiffRowsFromRawDiff(rawDiff)
 }
 
+// 差异行配色随行类型动态切换，保留内联注入
 function resolveCompactDiffRowPalette(row: CompactDiffRow) {
   switch (row?.type) {
     case 'file':
@@ -425,35 +401,27 @@ function CompactDiffPreview({ reviewBlocks = [], rawDiff = '', loading = false, 
   const rows = useMemo(() => buildCompactDiffRows(normalizedRawDiff, reviewBlocks, t), [normalizedRawDiff, reviewBlocks, t, lang])
   if (loading) {
     return (
-      <div style={{ padding: '10px 12px', border: '1px solid var(--border-subtle)', borderRadius: 10, background: 'var(--surface-base)', color: 'var(--text-secondary)', fontSize: 12 }}>
+      <div className="rounded-lg border border-line-subtle bg-canvas px-3 py-2.5 text-sm text-secondary">
         {t('加载中...')}
       </div>
     )
   }
   if (rows.length === 0) {
     return (
-      <div style={{ padding: '10px 12px', border: '1px solid var(--border-subtle)', borderRadius: 10, background: 'var(--surface-base)', color: 'var(--text-secondary)', fontSize: 12 }}>
+      <div className="rounded-lg border border-line-subtle bg-canvas px-3 py-2.5 text-sm text-secondary">
         {t('暂无可预览差异')}
       </div>
     )
   }
   return (
-    <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 10, background: 'var(--surface-base)', overflow: 'hidden' }}>
-      <div style={{ maxHeight: 240, overflow: 'auto', overscrollBehavior: 'contain', fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: '18px' }}>
+    <div className="overflow-hidden rounded-lg border border-line-subtle bg-canvas">
+      <div className="max-h-[240px] overflow-auto overscroll-contain font-mono text-xs leading-[18px]">
         {rows.map((row, index) => {
           if (row.type === 'hidden') {
             return (
               <div
                 key={row.key}
-                style={{
-                  padding: '6px 12px',
-                  borderTop: '1px solid var(--border-subtle)',
-                  borderBottom: '1px solid var(--border-subtle)',
-                  color: 'var(--text-tertiary)',
-                  background: 'rgba(var(--accent-rgb), 0.04)',
-                  textAlign: 'center',
-                  fontVariantNumeric: 'tabular-nums',
-                }}>
+                className="border-y border-y-line-subtle bg-[rgba(var(--accent-rgb),0.04)] px-3 py-1.5 text-center tabular-nums text-tertiary">
                 {`··· ${row.count} ···`}
               </div>
             )
@@ -463,14 +431,8 @@ function CompactDiffPreview({ reviewBlocks = [], rawDiff = '', loading = false, 
             return (
               <div
                 key={row.key}
-                style={{
-                  padding: '6px 10px',
-                  background: palette.background,
-                  color: palette.color,
-                  borderTop: index === 0 ? 'none' : '1px solid rgba(255,255,255,0.02)',
-                  fontWeight: 700,
-                  wordBreak: 'break-all',
-                }}>
+                style={{ background: palette.background, color: palette.color }}
+                className={cn('break-all px-2.5 py-1.5 font-bold', index === 0 ? '' : 'border-t border-t-[rgba(255,255,255,0.02)]')}>
                 {row.text}
               </div>
             )
@@ -479,44 +441,19 @@ function CompactDiffPreview({ reviewBlocks = [], rawDiff = '', loading = false, 
           return (
             <div
               key={row.key}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '52px 52px minmax(0, 1fr)',
-                minWidth: 0,
-                background: palette.background,
-                borderTop: index === 0 ? 'none' : '1px solid rgba(255,255,255,0.02)',
-              }}>
+              style={{ background: palette.background }}
+              className={cn('grid min-w-0 grid-cols-[52px_52px_minmax(0,1fr)]', index === 0 ? '' : 'border-t border-t-[rgba(255,255,255,0.02)]')}>
               <div
-                style={{
-                  padding: '0 8px 0 10px',
-                  color: 'var(--text-tertiary)',
-                  textAlign: 'right',
-                  borderRight: '1px solid var(--border-subtle)',
-                  userSelect: 'none',
-                  fontVariantNumeric: 'tabular-nums',
-                }}>
+                className="select-none border-r border-r-line-subtle pl-2.5 pr-2 text-right tabular-nums text-tertiary">
                 {row.oldLineNumber ?? ''}
               </div>
               <div
-                style={{
-                  padding: '0 8px',
-                  color: 'var(--text-tertiary)',
-                  textAlign: 'right',
-                  borderRight: '1px solid var(--border-subtle)',
-                  userSelect: 'none',
-                  fontVariantNumeric: 'tabular-nums',
-                }}>
+                className="select-none border-r border-r-line-subtle px-2 text-right tabular-nums text-tertiary">
                 {row.newLineNumber ?? ''}
               </div>
               <div
-                style={{
-                  padding: '0 10px',
-                  color: palette.color,
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  overflowWrap: 'anywhere',
-                  minWidth: 0,
-                }}>
+                style={{ color: palette.color }}
+                className="min-w-0 whitespace-pre-wrap px-2.5 [overflow-wrap:anywhere] [word-break:break-word]">
                 {row.type === 'meta' ? row.text : `${linePrefix}${row.text || ' '}`}
               </div>
             </div>
@@ -603,6 +540,7 @@ export default function AIChatToolCard({ restoreArtifactPath = '', copyContent =
 
   const normalizedStatus = useMemo(() => normalizeAIMessageStatus(status), [status])
   const expanded = isExpanded || ((isAutoExpanded && !hasSubsequentAssistantMessage) || ((normalizedStatus === '错误' || normalizedStatus === '已终止') && Boolean(result)))
+  // 状态徽标配色随状态动态切换，保留内联注入
   const statusPalette = useMemo(() => {
     switch (normalizedStatus) {
       case '待审阅':
@@ -684,39 +622,30 @@ export default function AIChatToolCard({ restoreArtifactPath = '', copyContent =
   }
 
   return (
-    <div style={{ display: 'grid', gap: 8 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 12 }}>
-        <div style={{ minWidth: 0, display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+    <div className="grid gap-2">
+      <div className="flex items-center justify-between gap-3 text-sm">
+        <div className="inline-flex min-w-0 flex-wrap items-center gap-2">
           <FileCode2 size={14} color="var(--text-secondary)" />
           {/* title 为 AI 返回动态文案（可能不在翻译表），t() 内部有兜底 */}
-          <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{t(title as I18nKey)}</span>
+          <span className="font-bold text-primary">{t(title as I18nKey)}</span>
           {showCopyCharacterCount ? (
-            <Tiptop text={copied ? t('已复制') : t('复制完整 diff/内容')} style={{ display: 'inline-flex' }}>
+            <Tiptop text={copied ? t('已复制') : t('复制完整 diff/内容')} className="inline-flex">
               <button
                 type="button"
                 onClick={handleCopyFullContent}
-                style={{
-                  height: 22,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '0 8px',
-                  borderRadius: 999,
-                  border: copied ? '1px solid color-mix(in srgb, var(--success) 32%, var(--border))' : '1px solid color-mix(in srgb, var(--accent) 24%, var(--border))',
-                  background: copied ? 'color-mix(in srgb, var(--success) 10%, var(--surface-overlay))' : 'color-mix(in srgb, var(--accent) 8%, var(--surface-overlay))',
-                  color: copied ? 'var(--success)' : 'var(--text-secondary)',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  flexShrink: 0,
-                }}>
+                className={cn(
+                  'inline-flex h-[22px] shrink-0 cursor-pointer items-center gap-1 rounded-full px-2 text-xs font-bold',
+                  copied
+                    ? 'border border-[color-mix(in_srgb,var(--success)_32%,var(--border))] bg-[color-mix(in_srgb,var(--success)_10%,var(--surface-overlay))] text-success'
+                    : 'border border-[color-mix(in_srgb,var(--accent)_24%,var(--border))] bg-[color-mix(in_srgb,var(--accent)_8%,var(--surface-overlay))] text-secondary',
+                )}>
                 <FileText size={11} color={copied ? 'currentColor' : 'var(--accent)'} />
                 <span>{copied ? t('已复制') : String(copyCharacterCount)}</span>
               </button>
             </Tiptop>
           ) : null}
           {showRevertTitleButton ? (
-            <Tiptop text={restored ? t('已还原') : t('左键预览/右键还原')} style={{ display: 'inline-flex' }}>
+            <Tiptop text={restored ? t('已还原') : t('左键预览/右键还原')} className="inline-flex">
               <button
                 type="button"
                 onClick={restored ? undefined : (event) => {
@@ -732,30 +661,21 @@ export default function AIChatToolCard({ restoreArtifactPath = '', copyContent =
                   event.stopPropagation()
                   void handleApplyRestore()
                 }}
-                style={{
-                  height: 22,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  padding: '0 8px',
-                  borderRadius: 999,
-                  border: restored ? '1px solid color-mix(in srgb, var(--success) 32%, var(--border))' : '1px solid color-mix(in srgb, var(--accent) 24%, var(--border))',
-                  background: restored ? 'color-mix(in srgb, var(--success) 10%, var(--surface-overlay))' : 'color-mix(in srgb, var(--accent) 8%, var(--surface-overlay))',
-                  color: restored ? 'var(--success)' : 'var(--text-secondary)',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  cursor: restored ? 'default' : 'pointer',
-                  flexShrink: 0,
-                }}>
+                className={cn(
+                  'inline-flex h-[22px] shrink-0 items-center gap-[5px] rounded-full px-2 text-xs font-bold',
+                  restored
+                    ? 'cursor-default border border-[color-mix(in_srgb,var(--success)_32%,var(--border))] bg-[color-mix(in_srgb,var(--success)_10%,var(--surface-overlay))] text-success'
+                    : 'cursor-pointer border border-[color-mix(in_srgb,var(--accent)_24%,var(--border))] bg-[color-mix(in_srgb,var(--accent)_8%,var(--surface-overlay))] text-secondary',
+                )}>
                 <RotateCcw size={11} color={restored ? 'currentColor' : 'var(--accent)'} />
                 <span>{restored ? t('已还原') : t('还原')}</span>
               </button>
             </Tiptop>
           ) : null}
         </div>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        <div className="inline-flex shrink-0 items-center gap-2">
           {status ? (
-            <div style={{ padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4, border: statusPalette.border, background: statusPalette.background, color: statusPalette.color }}>
+            <div style={{ border: statusPalette.border, background: statusPalette.background, color: statusPalette.color }} className="inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold">
               {statusPalette.tone === 'success' ? <Check size={11} color="currentColor" strokeWidth={2.5} /> : null}
               {statusPalette.tone === 'danger' ? <X size={11} color="currentColor" strokeWidth={2.5} /> : null}
               {/* 同 title：动态状态文案兜底 */}
@@ -763,23 +683,14 @@ export default function AIChatToolCard({ restoreArtifactPath = '', copyContent =
             </div>
           ) : null}
           {resultTokenEstimateDisplay ? (
-            <div style={{ padding: '2px 8px', borderRadius: 999, border: '1px solid color-mix(in srgb, var(--accent) 24%, var(--border))', background: 'color-mix(in srgb, var(--accent) 8%, var(--surface-overlay))', color: 'var(--text-secondary)', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums' }}>
+            <div className="whitespace-nowrap rounded-full border border-[color-mix(in_srgb,var(--accent)_24%,var(--border))] bg-[color-mix(in_srgb,var(--accent)_8%,var(--surface-overlay))] px-2 py-0.5 font-mono text-xs font-bold tabular-nums text-secondary">
               {resultTokenEstimateDisplay}
             </div>
           ) : null}
           <button
             type="button"
             onClick={handleToggleExpand}
-            style={{
-              width: 24,
-              height: 24,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              border: 'none',
-              background: 'transparent',
-              cursor: 'pointer',
-            }}>
+            className="inline-flex h-6 w-6 cursor-pointer items-center justify-center border-none bg-transparent">
             <ChevronDown
               size={14}
               color="var(--text-tertiary)"
@@ -791,57 +702,41 @@ export default function AIChatToolCard({ restoreArtifactPath = '', copyContent =
           </button>
         </div>
       </div>
-      <div style={{ width: '100%', border: '1px solid var(--border)', borderRadius: 12, background: 'var(--surface-overlay)', overflow: 'hidden' }}>
+      <div className="w-full overflow-hidden rounded-xl border border-line bg-overlay">
         <div
-          style={{
-            padding: '10px 12px',
-            borderBottom: expanded || showInlineDiffPreview ? '1px solid var(--border-subtle)' : 'none',
-            background: 'var(--surface-overlay)',
-            display: 'grid',
-            gap: 4,
-          }}>
+          className={cn(
+            'grid gap-1 bg-overlay px-3 py-2.5',
+            expanded || showInlineDiffPreview ? 'border-b border-b-line-subtle' : '',
+          )}>
           {showRemainingFileEdits ? (
             <div
-              style={{
-                display: 'inline-flex',
-                width: '100%',
-                alignItems: 'center',
-                gap: 6,
-                minWidth: 0,
-                padding: '4px 8px',
-                borderRadius: 8,
-                border: '1px solid color-mix(in srgb, var(--accent) 24%, var(--border))',
-                background: 'color-mix(in srgb, var(--accent) 8%, var(--surface-overlay))',
-                color: 'var(--text-primary)',
-                fontSize: 11,
-                fontWeight: 700,
-              }}>
+              className="inline-flex w-full min-w-0 items-center gap-1.5 rounded-lg border border-[color-mix(in_srgb,var(--accent)_24%,var(--border))] bg-[color-mix(in_srgb,var(--accent)_8%,var(--surface-overlay))] px-2 py-1 text-xs font-bold text-primary">
               <SquarePen size={12} color="var(--accent)" />
               <span>{t('预计剩余 {count} 个编辑文件').replace('{count}', String(normalizedRemainingFileEdits))}</span>
             </div>
           ) : (
-            <div style={{ fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>{actionLabel}</div>
+            <div className="text-[10px] font-bold uppercase tracking-[0.5px] text-tertiary">{actionLabel}</div>
           )}
           {readFileTokenEstimates.length > 0 ? (
             <ReadFileTokenList items={readFileTokenEstimates} t={t} />
           ) : (
-            <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 600, wordBreak: 'break-all' }}>
+            <div className="break-all text-base font-semibold text-primary">
               <AIChatMarkdown text={summary} enableQuoteContextMenu={true} />
             </div>
           )}
         </div>
         {showInlineDiffPreview ? (
-          <div style={{ padding: '12px' }}>
+          <div className="p-3">
             <CompactDiffPreview reviewBlocks={inlineDiffBlocks} rawDiff={inlineDiffRaw} loading={inlineDiffLoading} t={t} lang={lang} />
           </div>
         ) : null}
         {expanded ? (
-          <div style={{ display: 'grid', gap: 10, padding: '12px', borderTop: showInlineDiffPreview ? '1px solid var(--border-subtle)' : 'none' }}>
-            <pre style={{ margin: 0, color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.65, fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 260, overflowY: 'auto', overflowX: 'auto', overscrollBehavior: 'contain' }}>{code}</pre>
+          <div className={cn('grid gap-2.5 p-3', showInlineDiffPreview ? 'border-t border-t-line-subtle' : '')}>
+            <pre className="m-0 max-h-[260px] overflow-x-auto overflow-y-auto overscroll-contain whitespace-pre-wrap font-mono text-sm leading-[1.65] text-secondary [word-break:break-word]">{code}</pre>
             {result ? (
-              <div style={{ display: 'grid', gap: 6 }}>
-                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{t('result')}</div>
-                <pre style={{ margin: 0, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border-subtle)', background: 'var(--surface-base)', color: 'var(--text-primary)', fontSize: 12, lineHeight: 1.65, fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 320, overflowY: 'auto', overflowX: 'auto', overscrollBehavior: 'contain' }}>{/* result 为动态内容（可能不在翻译表），t() 内部有兜底 */}{t(result as I18nKey)}</pre>
+              <div className="grid gap-1.5">
+                <div className="text-xs uppercase tracking-[0.4px] text-tertiary">{t('result')}</div>
+                <pre className="m-0 max-h-[320px] overflow-x-auto overflow-y-auto overscroll-contain whitespace-pre-wrap rounded-lg border border-line-subtle bg-canvas px-3 py-2.5 font-mono text-sm leading-[1.65] text-primary [word-break:break-word]">{/* result 为动态内容（可能不在翻译表），t() 内部有兜底 */}{t(result as I18nKey)}</pre>
               </div>
             ) : null}
           </div>

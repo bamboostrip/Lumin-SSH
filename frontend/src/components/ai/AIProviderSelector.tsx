@@ -1,6 +1,7 @@
 import { Plus, Search } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation, getLanguage, type I18nKey } from '../../i18n.ts'
+import { Z } from '../../constants/zIndex.ts'
 import AIProviderListRow from './AIProviderListRow.tsx'
 import AIProviderQuickEditOverlay from './AIProviderQuickEditOverlay.tsx'
 import Tiptop from '../Tiptop.tsx'
@@ -1318,37 +1319,23 @@ export default function AIProviderSelector({
 
   return (
     <>
-      <div ref={containerRef} style={{ position: 'relative', flex: '1 1 0', width: 0, minWidth: 0, maxWidth: '100%', overflow: 'visible', zIndex: open || modelMenuOpen || reasoningMenuOpen ? 40 : 'auto' }}>
+      <div
+        ref={containerRef}
+        className="relative flex-[1_1_0] w-0 min-w-0 max-w-full overflow-visible"
+        style={{ zIndex: open || modelMenuOpen || reasoningMenuOpen ? 40 : 'auto' }}
+      >
         {providerBalanceLabelEnabled && providerBalanceDeltaLabel ? (
           <span
             key={`${providerBalanceDeltaTick}:${providerBalanceDeltaLabel}`}
-            style={{
-              position: 'absolute',
-              left: 10,
-              bottom: 'calc(100% + 2px)',
-              pointerEvents: 'none',
-              fontSize: 12,
-              fontWeight: 700,
-              lineHeight: 1,
-              whiteSpace: 'nowrap',
-              color: providerBalanceDeltaPositive ? 'var(--success)' : 'var(--danger)',
-              textShadow: '0 1px 2px rgba(0, 0, 0, 0.22)',
-              animation: 'ai-provider-balance-delta-float 2.2s ease-out forwards',
-              zIndex: 10003,
-            }}
+            className={`absolute left-2.5 bottom-[calc(100%+2px)] pointer-events-none text-sm font-bold leading-none whitespace-nowrap [text-shadow:0_1px_2px_rgba(0,0,0,0.22)] animate-[ai-provider-balance-delta-float_2.2s_ease-out_forwards] ${
+              providerBalanceDeltaPositive ? 'text-success' : 'text-danger'
+            }`}
+            style={{ zIndex: Z.TOAST }}
           >
             {providerBalanceDeltaLabel}
           </span>
         ) : null}
-        <style>{`
-          @keyframes ai-provider-balance-delta-float {
-            0% { opacity: 0; transform: translateY(8px) scale(0.92); }
-            18% { opacity: 1; transform: translateY(0) scale(1); }
-            72% { opacity: 1; transform: translateY(-10px) scale(1); }
-            100% { opacity: 0; transform: translateY(-18px) scale(0.98); }
-          }
-        `}</style>
-        <div style={{ display: 'flex', alignItems: 'stretch', width: '100%', minWidth: 0, maxWidth: '100%' }}>
+        <div className="flex items-stretch w-full min-w-0 max-w-full">
           <button
             type="button"
             onClick={() => {
@@ -1361,37 +1348,18 @@ export default function AIProviderSelector({
             onMouseLeave={closeTooltip}
             onFocus={handleTriggerMouseEnter}
             onBlur={closeTooltip}
+            className={`h-7 inline-flex items-center gap-1.5 px-2.5 text-sm font-medium transition-colors duration-100 whitespace-nowrap min-w-0 max-w-full flex-none border ${
+              open ? 'bg-accent-dim border-accent-border' : 'bg-transparent border-line'
+            }`}
             style={{
-              height: 28,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '0 10px',
               borderRadius: quickModelConfig.visible || quickReasoningConfig.visible ? '8px 0 0 8px' : 8,
-              border: `1px solid ${open ? 'var(--accent-border)' : 'var(--border)'}`,
-              background: open ? 'rgba(var(--accent-rgb), 0.12)' : 'transparent',
-              color: 'var(--text-primary)',
-              fontSize: 12,
-              fontWeight: 500,
-              transition: 'var(--transition)',
-              whiteSpace: 'nowrap',
-              minWidth: 0,
-              maxWidth: '100%',
-              flex: '0 0 auto',
               ...(providerTriggerWidth > 0 ? { width: providerTriggerWidth } : {}),
             }}
           >
             <span
               ref={providerLabelRef}
-              style={{
-                display: 'block',
-                minWidth: 0,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                fontSize: providerLabelFontSize,
-                lineHeight: 1.2,
-              }}
+              className="block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap leading-[1.2]"
+              style={{ fontSize: providerLabelFontSize }}
             >
               {providerTriggerText}
             </span>
@@ -1400,14 +1368,8 @@ export default function AIProviderSelector({
           {quickModelConfig.visible ? (
             <div
               ref={modelButtonRef}
-              style={{
-                position: 'relative',
-                marginLeft: -1,
-                minWidth: 0,
-                maxWidth: '100%',
-                flex: '0 0 auto',
-                ...(modelTriggerWidth > 0 ? { width: modelTriggerWidth } : {}),
-              }}>
+              className="relative -ml-px min-w-0 max-w-full flex-none"
+              style={modelTriggerWidth > 0 ? { width: modelTriggerWidth } : undefined}>
               <button
                 type="button"
                 onClick={() => {
@@ -1420,66 +1382,37 @@ export default function AIProviderSelector({
                 onMouseLeave={closeTooltip}
                 onFocus={handleTriggerMouseEnter}
                 onBlur={closeTooltip}
-                style={{
-                  height: 28,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  padding: '0 10px',
-                  borderRadius: quickReasoningConfig.visible ? 0 : '0 8px 8px 0',
-                  border: `1px solid ${modelMenuOpen ? 'var(--accent-border)' : 'var(--border)'}`,
-                  background: modelMenuOpen ? 'rgba(var(--accent-rgb), 0.12)' : 'transparent',
-                  color: modelMenuOpen ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  transition: 'var(--transition)',
-                  whiteSpace: 'nowrap',
-                  minWidth: 0,
-                  maxWidth: '100%',
-                  width: '100%',
-                }}
+                className={`h-7 inline-flex items-center px-2.5 text-sm font-semibold transition-colors duration-100 whitespace-nowrap min-w-0 max-w-full w-full border ${
+                  modelMenuOpen
+                    ? 'bg-accent-dim border-accent-border text-primary'
+                    : 'bg-transparent border-line text-secondary'
+                }`}
+                style={{ borderRadius: quickReasoningConfig.visible ? 0 : '0 8px 8px 0' }}
               >
                 <span
                   ref={modelLabelRef}
-                  style={{
-                    display: 'block',
-                    minWidth: 0,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    fontSize: modelLabelFontSize,
-                    lineHeight: 1.2,
-                  }}
+                  className="block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap leading-[1.2]"
+                  style={{ fontSize: modelLabelFontSize }}
                 >
                   {quickModelConfig.currentLabel}
                 </span>
               </button>
               {modelMenuOpen && modelTriggerRect ? (
                 <div
+                  className="fixed min-w-[180px] max-w-[320px] max-h-[320px] p-1 rounded-lg border border-line bg-overlay shadow-xl grid gap-0.5 overflow-y-auto"
                   style={{
-                    position: 'fixed',
                     right: Math.max(16, window.innerWidth - modelTriggerRect.right),
                     bottom: window.innerHeight - modelTriggerRect.top + 8,
-                    minWidth: 180,
-                    maxWidth: 320,
-                    maxHeight: 320,
-                    padding: 4,
-                    borderRadius: 10,
-                    border: '1px solid var(--border)',
-                    background: 'var(--surface-overlay)',
-                    boxShadow: 'var(--shadow-xl)',
-                    display: 'grid',
-                    gap: 2,
-                    overflowY: 'auto',
-                    zIndex: 10002,
+                    zIndex: Z.MENU,
                   }}
                 >
                   {quickModelLoading ? (
-                    <div style={{ padding: '6px 10px', fontSize: 11, color: 'var(--text-tertiary)' }}>
+                    <div className="px-2.5 py-1.5 text-xs text-tertiary">
                       {t('刷新中...')}
                     </div>
                   ) : null}
                   {!quickModelLoading && quickModelError ? (
-                    <div style={{ padding: '6px 10px', fontSize: 11, color: 'var(--danger)', lineHeight: 1.4 }}>
+                    <div className="px-2.5 py-1.5 text-xs text-danger leading-[1.4]">
                       {quickModelError}
                     </div>
                   ) : null}
@@ -1490,25 +1423,12 @@ export default function AIProviderSelector({
                         key={option}
                         type="button"
                         onClick={() => void handleQuickModelSelect(option)}
-                        style={{
-                          minHeight: 30,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: 12,
-                          padding: '0 10px',
-                          border: 'none',
-                          borderRadius: 8,
-                          background: active ? 'rgba(var(--accent-rgb), 0.12)' : 'transparent',
-                          color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
-                          fontSize: 12,
-                          fontWeight: active ? 700 : 500,
-                          textAlign: 'left',
-                          transition: 'var(--transition)',
-                        }}
+                        className={`min-h-[30px] flex items-center justify-between gap-3 px-2.5 rounded-lg border-none text-left text-sm transition-colors duration-100 ${
+                          active ? 'bg-accent-dim text-primary font-bold' : 'bg-transparent text-secondary font-medium'
+                        }`}
                       >
-                        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{option}</span>
-                        {active ? <span style={{ color: 'var(--accent)', fontSize: 12 }}>✓</span> : null}
+                        <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{option}</span>
+                        {active ? <span className="text-accent text-sm">✓</span> : null}
                       </button>
                     )
                   })}
@@ -1518,7 +1438,7 @@ export default function AIProviderSelector({
           ) : null}
 
           {quickReasoningConfig.visible ? (
-            <div ref={reasoningButtonRef} style={{ position: 'relative', marginLeft: -1, flexShrink: 0 }}>
+            <div ref={reasoningButtonRef} className="relative -ml-px shrink-0">
               <button
                 type="button"
                 onClick={() => {
@@ -1531,38 +1451,22 @@ export default function AIProviderSelector({
                 onMouseLeave={closeTooltip}
                 onFocus={handleTriggerMouseEnter}
                 onBlur={closeTooltip}
-                style={{
-                  height: 28,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  padding: '0 10px',
-                  borderRadius: '0 8px 8px 0',
-                  border: `1px solid ${reasoningMenuOpen ? 'var(--accent-border)' : 'var(--border)'}`,
-                  background: reasoningMenuOpen ? 'rgba(var(--accent-rgb), 0.12)' : 'transparent',
-                  color: reasoningMenuOpen ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  transition: 'var(--transition)',
-                  whiteSpace: 'nowrap',
-                }}
+                className={`h-7 inline-flex items-center px-2.5 text-sm font-semibold transition-colors duration-100 whitespace-nowrap border ${
+                  reasoningMenuOpen
+                    ? 'bg-accent-dim border-accent-border text-primary'
+                    : 'bg-transparent border-line text-secondary'
+                }`}
+                style={{ borderRadius: '0 8px 8px 0' }}
               >
                 <span>{quickReasoningConfig.currentLabel}</span>
               </button>
               {reasoningMenuOpen && triggerRect ? (
                 <div
+                  className="fixed min-w-[92px] p-1 rounded-lg border border-line bg-overlay shadow-xl grid gap-0.5"
                   style={{
-                    position: 'fixed',
                     right: Math.max(16, window.innerWidth - triggerRect.right),
                     bottom: window.innerHeight - triggerRect.top + 8,
-                    minWidth: 92,
-                    padding: 4,
-                    borderRadius: 10,
-                    border: '1px solid var(--border)',
-                    background: 'var(--surface-overlay)',
-                    boxShadow: 'var(--shadow-xl)',
-                    display: 'grid',
-                    gap: 2,
-                    zIndex: 10002,
+                    zIndex: Z.MENU,
                   }}
                 >
                   {quickReasoningConfig.options.map((option) => {
@@ -1572,25 +1476,12 @@ export default function AIProviderSelector({
                         key={option}
                         type="button"
                         onClick={() => void handleQuickReasoningSelect(option)}
-                        style={{
-                          minHeight: 30,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: 12,
-                          padding: '0 10px',
-                          border: 'none',
-                          borderRadius: 8,
-                          background: active ? 'rgba(var(--accent-rgb), 0.12)' : 'transparent',
-                          color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
-                          fontSize: 12,
-                          fontWeight: active ? 700 : 500,
-                          textAlign: 'left',
-                          transition: 'var(--transition)',
-                        }}
+                        className={`min-h-[30px] flex items-center justify-between gap-3 px-2.5 rounded-lg border-none text-left text-sm transition-colors duration-100 ${
+                          active ? 'bg-accent-dim text-primary font-bold' : 'bg-transparent text-secondary font-medium'
+                        }`}
                       >
                         <span>{getReasoningEffortLabel(t, option) || t('无')}</span>
-                        {active ? <span style={{ color: 'var(--accent)', fontSize: 12 }}>✓</span> : null}
+                        {active ? <span className="text-accent text-sm">✓</span> : null}
                       </button>
                     )
                   })}
@@ -1602,117 +1493,56 @@ export default function AIProviderSelector({
 
         {tooltipVisible && tooltipTriggerRect && !open && !editingState.open ? (
           <div
+            className="fixed w-max py-2.5 px-3 rounded-lg border border-line bg-overlay shadow-xl grid gap-1.5 pointer-events-none"
             style={{
-              position: 'fixed',
               ...(tooltipExpandLeft
                 ? { right: Math.max(16, window.innerWidth - tooltipTriggerRect.right) }
                 : { left: Math.max(16, tooltipTriggerRect.left) }),
               bottom: window.innerHeight - tooltipTriggerRect.top + 8,
-              width: 'max-content',
               maxWidth: Math.max(180, (tooltipExpandLeft ? tooltipTriggerRect.right : window.innerWidth - tooltipTriggerRect.left) - 16),
-              padding: '10px 12px',
-              borderRadius: 8,
-              border: '1px solid var(--border)',
-              background: 'var(--surface-overlay)',
-              boxShadow: 'var(--shadow-xl)',
-              display: 'grid',
-              gap: 6,
-              zIndex: 10001,
-              pointerEvents: 'none',
+              zIndex: Z.SEARCH_PANEL,
             }}
           >
             {providerSummaryRows.map((row) => (
-              <div
-                key={row.label}
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 8,
-                  minWidth: 0,
-                }}
-              >
-                <span
-                  style={{
-                    flexShrink: 0,
-                    fontSize: 11,
-                    color: 'var(--text-tertiary)',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
+              <div key={row.label} className="flex items-start gap-2 min-w-0">
+                <span className="shrink-0 text-xs text-tertiary whitespace-nowrap">
                   {row.label}
                 </span>
-                <span
-                  style={{
-                    minWidth: 0,
-                    maxWidth: '100%',
-                    fontSize: 11.5,
-                    color: 'var(--text-primary)',
-                    lineHeight: 1.45,
-                    overflowWrap: 'anywhere',
-                  }}
-                >
+                <span className="min-w-0 max-w-full text-[11.5px] text-primary leading-[1.45] [overflow-wrap:anywhere]">
                   {row.value}
                 </span>
               </div>
             ))}
             <div
-              style={{
-                position: 'absolute',
-                bottom: -6,
-                ...(tooltipExpandLeft ? { right: 20 } : { left: 20 }),
-                width: 10,
-                height: 10,
-                borderRight: '1px solid var(--border)',
-                borderBottom: '1px solid var(--border)',
-                background: 'var(--surface-overlay)',
-                transform: 'rotate(45deg)',
-              }}
+              className={`absolute -bottom-1.5 w-2.5 h-2.5 border-r border-b border-line bg-overlay rotate-45 ${
+                tooltipExpandLeft ? 'right-5' : 'left-5'
+              }`}
             />
           </div>
         ) : null}
 
         {open && triggerRect ? (
           <div
+            className="fixed rounded-lg border border-line bg-overlay shadow-xl flex flex-col overflow-hidden box-border"
             style={{
-              position: 'fixed',
               ...(panelBounds ? { left: panelBounds.left } : (expandLeft ? { right: window.innerWidth - triggerRect.right } : { left: triggerRect.left })),
               bottom: window.innerHeight - triggerRect.top + 8,
               width: dropdownMetrics?.width ?? 400,
               maxWidth: dropdownMetrics?.width ? `${dropdownMetrics.width}px` : 'min(400px, calc(100vw - 32px))',
               maxHeight: dropdownMetrics?.maxHeight ?? 320,
-              borderRadius: 10,
-              border: '1px solid var(--border)',
-              background: 'var(--surface-overlay)',
-              boxShadow: 'var(--shadow-xl)',
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
-              overflowX: 'hidden',
-              boxSizing: 'border-box',
-              zIndex: 10000,
+              zIndex: Z.SEARCH_PANEL,
             }}
           >
-            <div style={{ padding: 10, display: 'grid', gap: 8, borderBottom: '1px solid var(--border-subtle)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>{t('供应商列表')}</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div className="p-2.5 grid gap-2 border-b border-line-subtle">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-bold text-primary">{t('供应商列表')}</div>
+                <div className="flex items-center gap-2">
                   <Tiptop text={t('添加供应商')}>
                     <button
                       type="button"
                       aria-label={t('添加供应商')}
                       onClick={() => handleOpenEditor('create', null)}
-                      style={{
-                        width: 28,
-                        height: 28,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        borderRadius: 0,
-                        border: '1px solid var(--border)',
-                        background: 'transparent',
-                        color: 'var(--text-secondary)',
-                        transition: 'var(--transition)',
-                      }}
+                      className="w-7 h-7 inline-flex items-center justify-center rounded-none border border-line bg-transparent text-secondary transition-colors duration-100"
                     >
                       <Plus size={14} />
                     </button>
@@ -1720,8 +1550,8 @@ export default function AIProviderSelector({
                 </div>
               </div>
 
-              <div style={{ position: 'relative' }}>
-                <Search size={14} style={{ position: 'absolute', left: 10, top: 10, color: 'var(--text-tertiary)' }} />
+              <div className="relative">
+                <Search size={14} className="absolute left-2.5 top-2.5 text-tertiary" />
                 <input
                   name="ai-provider-search"
                   autoComplete="off"
@@ -1729,34 +1559,24 @@ export default function AIProviderSelector({
                   value={searchValue}
                   onChange={(event) => setSearchValue(event.target.value)}
                   placeholder={t('搜索...')}
-                  style={{
-                    width: '100%',
-                    height: 36,
-                    borderRadius: 0,
-                    border: '1px solid var(--border)',
-                    background: 'var(--surface-base)',
-                    color: 'var(--text-primary)',
-                    padding: '0 10px 0 32px',
-                    boxSizing: 'border-box',
-                    outline: 'none',
-                  }}
+                  className="w-full h-9 rounded-none border border-line bg-canvas text-primary pt-0 pb-0 pr-2.5 pl-8 box-border outline-none"
                 />
               </div>
             </div>
 
-            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', overflowX: 'hidden' }}>
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
               {filteredProviders.length === 0 ? (
-                <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center', fontSize: 12, color: 'var(--text-tertiary)' }}>
+                <div className="flex-1 min-h-0 flex items-center justify-center p-6 text-center text-sm text-tertiary">
                   {t('没有匹配的供应商')}
                 </div>
               ) : (
                 <>
                   {pinnedProviders.length > 0 ? (
-                    <div style={{ flexShrink: 0, borderBottom: normalProviders.length > 0 ? '1px solid var(--border-subtle)' : 'none', background: 'var(--surface-overlay)', overflowX: 'hidden' }}>
+                    <div className={`shrink-0 bg-overlay overflow-x-hidden ${normalProviders.length > 0 ? 'border-b border-line-subtle' : ''}`}>
                       {renderRows(pinnedProviders)}
                     </div>
                   ) : null}
-                  <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}>
+                  <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
                     {normalProviders.length > 0 ? renderRows(normalProviders) : null}
                   </div>
                 </>

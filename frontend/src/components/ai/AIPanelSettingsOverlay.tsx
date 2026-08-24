@@ -6,6 +6,7 @@ import MCPServersView from './MCPServersView.tsx'
 import AISlashCommandsSettings from './AISlashCommandsSettings.tsx'
 import AIConversationBackupSettings from './AIConversationBackupSettings.tsx'
 import Tiptop from '../Tiptop.tsx'
+import { Button } from '../ui'
 import { handleInputDragSelectAll } from './inputDragSelect.ts'
 
 function formatTokenCountInMillions(value: number) {
@@ -20,21 +21,11 @@ interface PreviewPillProps {
 function PreviewPill({ label, primary = false }: PreviewPillProps) {
   return (
     <div
-      style={{
-        minHeight: 34,
-        width: '100%',
-        padding: '0 12px',
-        borderRadius: 8,
-        border: `1px solid ${primary ? 'var(--accent-border)' : 'var(--border)'}`,
-        background: primary ? 'rgba(var(--accent-rgb), 0.14)' : 'transparent',
-        color: primary ? 'var(--accent)' : 'var(--text-secondary)',
-        fontSize: 13,
-        fontWeight: 600,
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        boxSizing: 'border-box',
-      }}
+      className={`min-h-[34px] w-full px-3 rounded-lg border text-base font-semibold inline-flex items-center justify-center box-border ${
+        primary
+          ? 'border-accent-border bg-[rgba(var(--accent-rgb),0.14)] text-accent'
+          : 'border-line bg-transparent text-secondary'
+      }`}
     >
       {label}
     </div>
@@ -57,36 +48,26 @@ interface PositionSelectorCardProps {
 
 function PositionSelectorCard({ title, description, items, onToggle, toggleLabel }: PositionSelectorCardProps) {
   return (
-    <div style={{ padding: 14, borderRadius: 12, background: 'var(--surface-base)', border: '1px solid var(--border)', display: 'grid', gap: 12 }}>
-      <div style={{ display: 'grid', gap: 4 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <div style={{ minWidth: 0, flex: 1, fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{title}</div>
+    <div className="p-3.5 rounded-xl bg-canvas border border-line grid gap-3">
+      <div className="grid gap-1">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1 text-base font-bold text-primary">{title}</div>
           <Tiptop text={toggleLabel}>
             <button
               type="button"
               onClick={onToggle}
               aria-label={toggleLabel}
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: 8,
-                border: '1px solid var(--border)',
-                background: 'transparent',
-                color: 'var(--text-secondary)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'var(--transition)',
-                flexShrink: 0,
-              }}
+              className="w-[34px] h-[34px] rounded-lg border border-line bg-transparent text-secondary inline-flex items-center justify-center transition-colors duration-100 shrink-0 cursor-pointer"
             >
               <ArrowRightLeft size={14} />
             </button>
           </Tiptop>
         </div>
-        <div style={{ fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.6 }}>{description}</div>
+        <div className="text-sm text-tertiary leading-[1.6]">{description}</div>
       </div>
-      <div style={{ minHeight: 58, padding: 12, borderRadius: 12, background: 'var(--surface-overlay)', border: '1px solid var(--border)', display: 'grid', gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))`, gap: 10, alignItems: 'center' }}>
+      <div
+        className="min-h-[58px] p-3 rounded-xl bg-overlay border border-line grid gap-2.5 items-center"
+        style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
         {items.map((item) => (
           <PreviewPill key={item.key} label={item.label} primary={item.primary} />
         ))}
@@ -106,29 +87,9 @@ function ToggleSwitchControl({ checked, onChange }: ToggleSwitchControlProps) {
       type="button"
       onClick={onChange}
       aria-pressed={checked}
-      style={{
-        width: 42,
-        height: 24,
-        borderRadius: 999,
-        border: '1px solid var(--border)',
-        background: checked ? 'var(--success)' : 'var(--surface-hover)',
-        padding: 2,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: checked ? 'flex-end' : 'flex-start',
-        transition: 'var(--transition)',
-        flexShrink: 0,
-      }}
+      className={`w-[42px] h-6 rounded-full border border-line p-0.5 flex items-center transition-colors duration-100 shrink-0 ${checked ? 'justify-end bg-success' : 'justify-start bg-hover'}`}
     >
-      <span
-        style={{
-          width: 18,
-          height: 18,
-          borderRadius: '50%',
-          background: '#fff',
-          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.3)',
-        }}
-      />
+      <span className="w-[18px] h-[18px] rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.3)]" />
     </button>
   )
 }
@@ -380,192 +341,68 @@ export default function AIPanelSettingsOverlay({
   return (
     <div
       ref={overlayRef}
+      className="absolute max-w-full max-h-full bg-[rgba(5,10,18,0.62)] backdrop-blur-[4px] flex items-stretch justify-center overflow-hidden z-[120]"
       style={{
-        position: 'absolute',
         top: overlayBounds?.top ?? 0,
         left: overlayBounds?.left ?? 0,
         width: overlayBounds?.width ?? '100%',
         height: overlayBounds?.height ?? '100%',
-        maxWidth: '100%',
-        maxHeight: '100%',
-        background: 'rgba(5, 10, 18, 0.62)',
-        backdropFilter: 'blur(4px)',
-        display: 'flex',
-        alignItems: 'stretch',
-        justifyContent: 'center',
-        overflow: 'hidden',
-        zIndex: 120,
       }}>
-      <div style={{ width: '100%', height: '100%', background: 'var(--surface-overlay)', border: '1px solid var(--border)', borderRadius: 0, boxShadow: 'var(--shadow-xl)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ height: 50, padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{t('设置')}</div>
+      <div className="w-full h-full bg-overlay border border-line rounded-none shadow-xl overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="h-[50px] px-4 flex items-center justify-between border-b border-line shrink-0">
+          <div className="text-md font-bold text-primary">{t('设置')}</div>
           <Tiptop text={t('关闭设置面板')}>
             <button
               type="button"
               onClick={onClose}
               disabled={tasksDirMigrating}
               aria-label={t('关闭设置面板')}
-              style={{ width: 30, height: 30, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, color: 'var(--text-secondary)', background: 'transparent', border: '1px solid transparent', transition: 'var(--transition)', opacity: tasksDirMigrating ? 0.4 : 1, cursor: tasksDirMigrating ? 'not-allowed' : 'pointer' }}
+              className={`w-[30px] h-[30px] inline-flex items-center justify-center rounded-lg text-secondary bg-transparent border border-transparent transition-colors duration-100 ${tasksDirMigrating ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
             >
               <X size={16} />
             </button>
           </Tiptop>
         </div>
-        <div style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
-          <div ref={tabListRef} style={{ width: 'fit-content', borderRight: '1px solid var(--border)', background: 'var(--surface-base)', padding: 0, display: 'flex', flexDirection: 'column', gap: 0, flex: '0 0 auto' }}>
-            <button
-              type="button"
-              data-ai-settings-tab-key="ai"
-              onClick={() => onChangeTab('ai')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'flex-start',
-                minHeight: 52,
-                padding: '0 10px',
-                textAlign: 'left',
-                fontSize: 13,
-                fontWeight: activeTab === 'ai' ? 600 : 500,
-                color: activeTab === 'ai' ? 'var(--text-primary)' : 'var(--text-secondary)',
-                background: activeTab === 'ai' ? 'rgba(var(--accent-rgb), 0.10)' : 'transparent',
-                border: 'none',
-                borderLeft: `2px solid ${activeTab === 'ai' ? 'var(--accent)' : 'transparent'}`,
-                borderRadius: 0,
-                transition: 'var(--transition)',
-                whiteSpace: 'nowrap',
-                width: '100%',
-              }}
-            >
-              <span>{t('基本')}</span>
-            </button>
-            <button
-              type="button"
-              data-ai-settings-tab-key="mcp"
-              onClick={() => onChangeTab('mcp')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'flex-start',
-                minHeight: 52,
-                padding: '0 10px',
-                textAlign: 'left',
-                fontSize: 13,
-                fontWeight: activeTab === 'mcp' ? 600 : 500,
-                color: activeTab === 'mcp' ? 'var(--text-primary)' : 'var(--text-secondary)',
-                background: activeTab === 'mcp' ? 'rgba(var(--accent-rgb), 0.10)' : 'transparent',
-                border: 'none',
-                borderLeft: `2px solid ${activeTab === 'mcp' ? 'var(--accent)' : 'transparent'}`,
-                borderRadius: 0,
-                transition: 'var(--transition)',
-                whiteSpace: 'nowrap',
-                width: '100%',
-              }}
-            >
-              <span>{t('MCP集成')}</span>
-            </button>
-            <button
-              type="button"
-              data-ai-settings-tab-key="mcp-servers"
-              onClick={() => onChangeTab('mcp-servers')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'flex-start',
-                minHeight: 52,
-                padding: '0 10px',
-                textAlign: 'left',
-                fontSize: 13,
-                fontWeight: activeTab === 'mcp-servers' ? 600 : 500,
-                color: activeTab === 'mcp-servers' ? 'var(--text-primary)' : 'var(--text-secondary)',
-                background: activeTab === 'mcp-servers' ? 'rgba(var(--accent-rgb), 0.10)' : 'transparent',
-                border: 'none',
-                borderLeft: `2px solid ${activeTab === 'mcp-servers' ? 'var(--accent)' : 'transparent'}`,
-                borderRadius: 0,
-                transition: 'var(--transition)',
-                whiteSpace: 'nowrap',
-                width: '100%',
-              }}
-            >
-              <span>{t('MCP服务器')}</span>
-            </button>
-            <button
-              type="button"
-              data-ai-settings-tab-key="slash-commands"
-              onClick={() => onChangeTab('slash-commands')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'flex-start',
-                minHeight: 52,
-                padding: '0 10px',
-                textAlign: 'left',
-                fontSize: 13,
-                fontWeight: activeTab === 'slash-commands' ? 600 : 500,
-                color: activeTab === 'slash-commands' ? 'var(--text-primary)' : 'var(--text-secondary)',
-                background: activeTab === 'slash-commands' ? 'rgba(var(--accent-rgb), 0.10)' : 'transparent',
-                border: 'none',
-                borderLeft: `2px solid ${activeTab === 'slash-commands' ? 'var(--accent)' : 'transparent'}`,
-                borderRadius: 0,
-                transition: 'var(--transition)',
-                whiteSpace: 'nowrap',
-                width: '100%',
-              }}
-            >
-              <span>{t('斜杠命令')}</span>
-            </button>
-            <button
-              type="button"
-              data-ai-settings-tab-key="appearance"
-              onClick={() => onChangeTab('appearance')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'flex-start',
-                minHeight: 52,
-                padding: '0 10px',
-                textAlign: 'left',
-                fontSize: 13,
-                fontWeight: activeTab === 'appearance' ? 600 : 500,
-                color: activeTab === 'appearance' ? 'var(--text-primary)' : 'var(--text-secondary)',
-                background: activeTab === 'appearance' ? 'rgba(var(--accent-rgb), 0.10)' : 'transparent',
-                border: 'none',
-                borderLeft: `2px solid ${activeTab === 'appearance' ? 'var(--accent)' : 'transparent'}`,
-                borderRadius: 0,
-                transition: 'var(--transition)',
-                whiteSpace: 'nowrap',
-                width: '100%',
-              }}
-            >
-              <span>{t('外观')}</span>
-            </button>
+        <div className="flex-1 min-h-0 flex overflow-hidden">
+          <div ref={tabListRef} className="w-fit border-r border-line bg-canvas p-0 gap-0 flex flex-col shrink-0">
+            {(
+              [
+                ['ai', t('基本')],
+                ['mcp', t('MCP集成')],
+                ['mcp-servers', t('MCP服务器')],
+                ['slash-commands', t('斜杠命令')],
+                ['appearance', t('外观')],
+              ] as Array<[string, string]>
+            ).map(([tabKey, tabLabel]) => (
+              <button
+                key={tabKey}
+                type="button"
+                data-ai-settings-tab-key={tabKey}
+                onClick={() => onChangeTab(tabKey)}
+                className={`flex items-center justify-start min-h-[52px] px-2.5 text-left text-base whitespace-nowrap w-full border-0 border-l-2 rounded-none transition-colors duration-100 cursor-pointer ${
+                  activeTab === tabKey
+                    ? 'font-semibold text-primary bg-[rgba(var(--accent-rgb),0.10)] border-l-accent'
+                    : 'font-medium text-secondary bg-transparent border-l-transparent'
+                }`}
+              >
+                <span>{tabLabel}</span>
+              </button>
+            ))}
             {activeConversationId ? (
               <button
                 type="button"
                 onClick={() => onChangeTab('backup')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'flex-start',
-                  minHeight: 52,
-                  padding: '0 10px',
-                  textAlign: 'left',
-                  fontSize: 13,
-                  fontWeight: activeTab === 'backup' ? 600 : 500,
-                  color: activeTab === 'backup' ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  background: activeTab === 'backup' ? 'rgba(var(--accent-rgb), 0.10)' : 'transparent',
-                  border: 'none',
-                  borderLeft: `2px solid ${activeTab === 'backup' ? 'var(--accent)' : 'transparent'}`,
-                  borderRadius: 0,
-                  transition: 'var(--transition)',
-                  whiteSpace: 'nowrap',
-                  width: '100%',
-                }}
+                className={`flex items-center justify-start min-h-[52px] px-2.5 text-left text-base whitespace-nowrap w-full border-0 border-l-2 rounded-none transition-colors duration-100 cursor-pointer ${
+                  activeTab === 'backup'
+                    ? 'font-semibold text-primary bg-[rgba(var(--accent-rgb),0.10)] border-l-accent'
+                    : 'font-medium text-secondary bg-transparent border-l-transparent'
+                }`}
               >
                 <span>{t('自动备份')}</span>
               </button>
             ) : null}
           </div>
-          <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div className="flex-1 min-w-0 overflow-y-auto px-5 py-[18px] flex flex-col gap-3.5">
             {activeTab === 'mcp' && (
               <MCPAccessView
                 mcpInfo={mcpInfo as Parameters<typeof MCPAccessView>[0]['mcpInfo']}
@@ -602,41 +439,41 @@ export default function AIPanelSettingsOverlay({
             ) : null}
             {activeTab === 'ai' ? (
               <>
-                <div style={{ display: 'grid', gap: 4 }}>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3 }}>{t('基本')}</div>
+                <div className="grid gap-1">
+                  <div className="text-[18px] font-bold text-primary leading-[1.3]">{t('基本')}</div>
                 </div>
-                <div style={{ background: 'var(--surface-base)', padding: 16, borderRadius: 12, border: '1px solid var(--border)', display: 'grid', gap: 12 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700 }}>{t('终端隔离')}</div>
-                      <div style={{ color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.6 }}>{t('为每个终端创建独立的 AI 面板与运行期会话。修改后将在下次启动应用时生效。')}</div>
+                <div className="bg-canvas p-4 rounded-xl border border-line grid gap-3">
+                  <div className="flex justify-between items-center gap-4">
+                    <div className="min-w-0">
+                      <div className="text-primary text-base font-bold">{t('终端隔离')}</div>
+                      <div className="text-tertiary text-sm leading-[1.6]">{t('为每个终端创建独立的 AI 面板与运行期会话。修改后将在下次启动应用时生效。')}</div>
                     </div>
                     <ToggleSwitchControl checked={aiTerminalIsolation} onChange={onToggleAiTerminalIsolation} />
                   </div>
-                  <div style={{ borderTop: '1px solid var(--border)' }} />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700 }}>{t('删除前需要二次确认')}</div>
-                      <div style={{ color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.6 }}>{t('删除 AI 对话或消息前先弹出确认提示')}</div>
+                  <div className="border-t border-line" />
+                  <div className="flex justify-between items-center gap-4">
+                    <div className="min-w-0">
+                      <div className="text-primary text-base font-bold">{t('删除前需要二次确认')}</div>
+                      <div className="text-tertiary text-sm leading-[1.6]">{t('删除 AI 对话或消息前先弹出确认提示')}</div>
                     </div>
                     <ToggleSwitchControl checked={confirmDelete} onChange={onToggleConfirmDelete} />
                   </div>
-                  <div style={{ borderTop: '1px solid var(--border)' }} />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700 }}>{t('拒绝工具后自动继续')}</div>
-                      <div style={{ color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.6 }}>{t('关闭后，点击“拒绝”会停止本次请求并等待下一条消息。')}</div>
+                  <div className="border-t border-line" />
+                  <div className="flex justify-between items-center gap-4">
+                    <div className="min-w-0">
+                      <div className="text-primary text-base font-bold">{t('拒绝工具后自动继续')}</div>
+                      <div className="text-tertiary text-sm leading-[1.6]">{t('关闭后，点击“拒绝”会停止本次请求并等待下一条消息。')}</div>
                     </div>
                     <ToggleSwitchControl
                       checked={continueAfterToolRejection}
                       onChange={() => onSaveGlobalAISettings?.({ continueAfterToolRejection: !continueAfterToolRejection })}
                     />
                   </div>
-                  <div style={{ borderTop: '1px solid var(--border)' }} />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700 }}>{t('任务提示音')}</div>
-                      <div style={{ color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.6 }}>{t('在追问需要处理和任务完成时播放提示音。')}</div>
+                  <div className="border-t border-line" />
+                  <div className="flex justify-between items-center gap-4">
+                    <div className="min-w-0">
+                      <div className="text-primary text-base font-bold">{t('任务提示音')}</div>
+                      <div className="text-tertiary text-sm leading-[1.6]">{t('在追问需要处理和任务完成时播放提示音。')}</div>
                     </div>
                     <ToggleSwitchControl
                       checked={soundEnabled !== false}
@@ -645,14 +482,14 @@ export default function AIPanelSettingsOverlay({
                   </div>
                   {soundEnabled !== false ? (
                     <>
-                      <div style={{ borderTop: '1px solid var(--border)' }} />
-                      <div style={{ display: 'grid', gap: 8 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700 }}>{t('提示音音量')}</div>
-                            <div style={{ color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.6 }}>{t('默认 20%，可按需调节。')}</div>
+                      <div className="border-t border-line" />
+                      <div className="grid gap-2">
+                        <div className="flex justify-between items-center gap-4">
+                          <div className="min-w-0">
+                            <div className="text-primary text-base font-bold">{t('提示音音量')}</div>
+                            <div className="text-tertiary text-sm leading-[1.6]">{t('默认 20%，可按需调节。')}</div>
                           </div>
-                          <span style={{ fontSize: 13, minWidth: 56, textAlign: 'right', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{`${Math.round((Number.isFinite(Number(soundVolume)) ? Number(soundVolume) : 0.2) * 100)}%`}</span>
+                          <span className="text-base min-w-14 text-right text-primary tabular-nums">{`${Math.round((Number.isFinite(Number(soundVolume)) ? Number(soundVolume) : 0.2) * 100)}%`}</span>
                         </div>
                         <input
                           id="ai-panel-sound-volume"
@@ -664,19 +501,19 @@ export default function AIPanelSettingsOverlay({
                           autoComplete="off"
                           value={Math.round((Number.isFinite(Number(soundVolume)) ? Number(soundVolume) : 0.2) * 100)}
                           onChange={(event) => onSaveGlobalAISettings?.({ soundVolume: Math.max(0, Math.min(1, (parseInt(event.target.value, 10) || 0) / 100)) })}
-                          style={{ width: '100%', cursor: 'pointer' }}
+                          className="w-full cursor-pointer"
                         />
                       </div>
                     </>
                   ) : null}
-                  <div style={{ borderTop: '1px solid var(--border)' }} />
-                  <div style={{ display: 'grid', gap: 8 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700 }}>{t('终端输出行数上限')}</div>
-                        <div style={{ color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.6 }}>{t('控制 MCP 终端输出保留的最大行数')}</div>
+                  <div className="border-t border-line" />
+                  <div className="grid gap-2">
+                    <div className="flex justify-between items-center gap-4">
+                      <div className="min-w-0">
+                        <div className="text-primary text-base font-bold">{t('终端输出行数上限')}</div>
+                        <div className="text-tertiary text-sm leading-[1.6]">{t('控制 MCP 终端输出保留的最大行数')}</div>
                       </div>
-                      <span style={{ fontSize: 13, minWidth: 56, textAlign: 'right', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{terminalOutputLineLimit}</span>
+                      <span className="text-base min-w-14 text-right text-primary tabular-nums">{terminalOutputLineLimit}</span>
                     </div>
                     <input
                       id="ai-panel-terminal-output-line-limit"
@@ -688,17 +525,17 @@ export default function AIPanelSettingsOverlay({
                       autoComplete="off"
                       value={terminalOutputLineLimit}
                       onChange={onTerminalOutputLineLimitChange}
-                      style={{ width: '100%', cursor: 'pointer' }}
+                      className="w-full cursor-pointer"
                     />
                   </div>
-                  <div style={{ borderTop: '1px solid var(--border)' }} />
-                  <div style={{ display: 'grid', gap: 8 }}>
-                    <div style={{ display: 'grid', gap: 6 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flexWrap: 'wrap' }}>
-                        <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700 }}>{t('工具阈值')}</div>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '2px 8px', borderRadius: 999, border: '1px solid rgba(var(--accent-rgb), 0.24)', background: 'rgba(var(--accent-rgb), 0.08)', color: 'var(--text-primary)', fontSize: 12, fontWeight: 700, fontVariantNumeric: 'tabular-nums', fontFamily: 'var(--font-mono)' }}>{toolResultTokenThresholdDisplay}</span>
+                  <div className="border-t border-line" />
+                  <div className="grid gap-2">
+                    <div className="grid gap-1.5">
+                      <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
+                        <div className="text-primary text-base font-bold">{t('工具阈值')}</div>
+                        <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full border border-[rgba(var(--accent-rgb),0.24)] bg-[rgba(var(--accent-rgb),0.08)] text-primary text-sm font-bold tabular-nums font-mono">{toolResultTokenThresholdDisplay}</span>
                       </div>
-                      <div style={{ color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.6 }}>{t('当工具返回结果的预估 Token 数超过此阈值时,原始内容将被省略,并显示“结果过大”的提示.调高可保留更多原始输出,但也会增加上下文膨胀风险.')}</div>
+                      <div className="text-tertiary text-sm leading-[1.6]">{t('当工具返回结果的预估 Token 数超过此阈值时,原始内容将被省略,并显示“结果过大”的提示.调高可保留更多原始输出,但也会增加上下文膨胀风险.')}</div>
                     </div>
                     <input
                       id="ai-panel-tool-result-token-threshold"
@@ -715,32 +552,25 @@ export default function AIPanelSettingsOverlay({
                         }
                       }}
                       onMouseLeave={handleInputDragSelectAll}
-                      style={{
-                        width: '100%',
-                        borderRadius: 8,
-                        border: '1px solid var(--border)',
-                        background: 'var(--surface-base)',
-                        color: 'var(--text-primary)',
-                        padding: '8px 10px',
-                        fontSize: 13,
-                        fontFamily: 'var(--font-mono)',
-                        boxSizing: 'border-box',
-                      }}
+                      className="w-full rounded-lg border border-line bg-canvas text-primary px-2.5 py-2 text-base font-mono box-border"
                     />
                   </div>
-                  <div style={{ borderTop: '1px solid var(--border)' }} />
-                  <div style={{ display: 'grid', gap: 8 }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700 }}>{t('AI 请求代理')}</div>
-                      <div style={{ color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.6 }}>{t('选择 AI 请求使用的代理节点，首项为不使用。')}</div>
+                  <div className="border-t border-line" />
+                  <div className="grid gap-2">
+                    <div className="min-w-0">
+                      <div className="text-primary text-base font-bold">{t('AI 请求代理')}</div>
+                      <div className="text-tertiary text-sm leading-[1.6]">{t('选择 AI 请求使用的代理节点，首项为不使用。')}</div>
                     </div>
                     <select
                       id="ai-panel-proxy"
                       name="ai-panel-proxy"
-                      className="select"
                       value={aiRequestProxyId}
                       onChange={(event) => onSaveGlobalAISettings?.({ aiRequestProxyId: event.target.value })}
-                      style={{ width: '100%' }}
+                      className="w-full min-h-[30px] py-[5px] pl-2.5 pr-8 bg-sunken border border-line rounded-sm text-primary text-sm outline-none cursor-pointer appearance-none bg-no-repeat transition-colors duration-[80ms] focus:border-focus focus:shadow-[0_0_0_2px_var(--accent-dim)]"
+                      style={{
+                        backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 12 12\'%3E%3Cpath fill=\'%236e7681\' d=\'M6 8L1 3h10z\'/%3E%3C/svg%3E")',
+                        backgroundPosition: 'right 12px center',
+                      }}
                     >
                       <option value="">{t('不使用')}</option>
                       {proxyNodes.map((node) => (
@@ -755,46 +585,43 @@ export default function AIPanelSettingsOverlay({
                     </select>
                   </div>
                 </div>
-                <div style={{ display: 'grid', gap: 4, marginTop: 4 }}>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3 }}>{t('数据存储')}</div>
+                <div className="grid gap-1 mt-1">
+                  <div className="text-[18px] font-bold text-primary leading-[1.3]">{t('数据存储')}</div>
                 </div>
-                <div style={{ background: 'var(--surface-base)', padding: 16, borderRadius: 12, border: '1px solid var(--border)', display: 'grid', gap: 12 }}>
-                  <div style={{ display: 'grid', gap: 8 }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700 }}>{t('对话存储目录')}</div>
-                      <div style={{ color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.6 }}>{t('AI 对话数据保存在此目录。更改目录会自动迁移现有数据。')}</div>
+                <div className="bg-canvas p-4 rounded-xl border border-line grid gap-3">
+                  <div className="grid gap-2">
+                    <div className="min-w-0">
+                      <div className="text-primary text-base font-bold">{t('对话存储目录')}</div>
+                      <div className="text-tertiary text-sm leading-[1.6]">{t('AI 对话数据保存在此目录。更改目录会自动迁移现有数据。')}</div>
                     </div>
                     <input
                       id="ai-tasks-dir"
                       name="tasksDir"
-                      className="input"
                       type="text"
                       value={tasksDir || ''}
                       readOnly
-                      style={{ width: '100%' }}
+                      className="w-full min-h-[30px] px-2.5 py-[5px] bg-sunken border border-line rounded-sm text-primary text-sm outline-none cursor-default transition-colors duration-[80ms] focus:border-focus focus:shadow-[0_0_0_2px_var(--accent-dim)]"
                     />
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
+                    <div className="flex gap-2 flex-wrap">
+                      <Button
+                        variant="secondary"
                         onClick={handleChangeTasksDir}
                         disabled={tasksDirMigrating}
-                        style={{ height: 30, padding: '0 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                        className="h-[30px] px-3.5 gap-1.5"
                       >
                         {tasksDirMigrating ? <Loader2 size={14} className="spin" /> : <FolderOpen size={14} />}
                         {tasksDirMigrating ? t('迁移中...') : t('更改目录')}
-                      </button>
+                      </Button>
                       {isCustomTasksDir ? (
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
+                        <Button
+                          variant="secondary"
                           onClick={handleResetTasksDir}
                           disabled={tasksDirMigrating}
-                          style={{ height: 30, padding: '0 14px', display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-secondary)' }}
+                          className="h-[30px] px-3.5 gap-1.5 text-secondary hover:text-secondary"
                         >
                           <RotateCcw size={14} />
                           {t('恢复默认')}
-                        </button>
+                        </Button>
                       ) : null}
                     </div>
                   </div>
@@ -809,9 +636,9 @@ export default function AIPanelSettingsOverlay({
             ) : null}
             {activeTab === 'appearance' ? (
               <>
-                <div style={{ display: 'grid', gap: 4 }}>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3 }}>{t('外观')}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>{t('控制底部审批与命令处理按钮的左右位置。')}</div>
+                <div className="grid gap-1">
+                  <div className="text-[18px] font-bold text-primary leading-[1.3]">{t('外观')}</div>
+                  <div className="text-sm text-tertiary leading-[1.5]">{t('控制底部审批与命令处理按钮的左右位置。')}</div>
                 </div>
                 <PositionSelectorCard
                   title={t('工具审批按钮位置')}
@@ -847,10 +674,10 @@ export default function AIPanelSettingsOverlay({
                   })}
                   toggleLabel={t('交换位置')}
                 />
-                <div style={{ background: 'var(--surface-base)', padding: 14, borderRadius: 12, border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700 }}>{t('消息操作条置底')}</div>
-                    <div style={{ color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.6 }}>{t('启用后,用户消息与Ai消息的操作条显示在每轮消息主体底部;关闭后显示在顶部.')}</div>
+                <div className="bg-canvas p-3.5 rounded-xl border border-line flex justify-between items-center gap-4">
+                  <div className="min-w-0">
+                    <div className="text-primary text-base font-bold">{t('消息操作条置底')}</div>
+                    <div className="text-tertiary text-sm leading-[1.6]">{t('启用后,用户消息与Ai消息的操作条显示在每轮消息主体底部;关闭后显示在顶部.')}</div>
                   </div>
                   <ToggleSwitchControl
                     checked={messageActionBarAtBottom}
@@ -859,10 +686,10 @@ export default function AIPanelSettingsOverlay({
                     })}
                   />
                 </div>
-                <div style={{ background: 'var(--surface-base)', padding: 14, borderRadius: 12, border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ color: 'var(--text-primary)', fontSize: 13, fontWeight: 700 }}>{t('用户消息导航')}</div>
-                    <div style={{ color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.6 }}>{t('启用后,对话区左侧显示用户消息导航圆点,悬停预览内容,点击跳转到对应消息.')}</div>
+                <div className="bg-canvas p-3.5 rounded-xl border border-line flex justify-between items-center gap-4">
+                  <div className="min-w-0">
+                    <div className="text-primary text-base font-bold">{t('用户消息导航')}</div>
+                    <div className="text-tertiary text-sm leading-[1.6]">{t('启用后,对话区左侧显示用户消息导航圆点,悬停预览内容,点击跳转到对应消息.')}</div>
                   </div>
                   <ToggleSwitchControl
                     checked={messageNavEnabled}

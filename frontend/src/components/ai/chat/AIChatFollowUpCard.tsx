@@ -4,6 +4,7 @@ import ReactMarkdown, { type Components } from 'react-markdown'
 import rehypeSanitize from 'rehype-sanitize'
 import remarkGfm from 'remark-gfm'
 import { useTranslation } from '../../../i18n.ts'
+import { cn } from '../../../utils/cn.ts'
 import AIChatMarkdown from './AIChatMarkdown.tsx'
 
 const FREEZE_AFTER_SUBMIT_MS = 1000
@@ -38,51 +39,32 @@ interface FollowUpAnswerPayload {
 
 const suggestionMarkdownComponents: Components = {
   p: ({ children }) => <span>{children}</span>,
-  ul: ({ children }) => <span style={{ display: 'grid', gap: 4, paddingLeft: 18 }}>{children}</span>,
-  ol: ({ children }) => <span style={{ display: 'grid', gap: 4, paddingLeft: 18 }}>{children}</span>,
-  li: ({ children }) => <span style={{ display: 'list-item', lineHeight: 1.6 }}>{children}</span>,
-  a: ({ children }) => <span style={{ color: 'var(--accent)', textDecoration: 'underline' }}>{children}</span>,
+  ul: ({ children }) => <span className="grid gap-1 pl-[18px]">{children}</span>,
+  ol: ({ children }) => <span className="grid gap-1 pl-[18px]">{children}</span>,
+  li: ({ children }) => <span className="leading-[1.6] [display:list-item]">{children}</span>,
+  a: ({ children }) => <span className="text-accent underline">{children}</span>,
   code: ({ children }) => (
-    <code
-      style={{
-        padding: '2px 6px',
-        borderRadius: 6,
-        background: 'color-mix(in srgb, var(--accent) 10%, var(--surface-overlay))',
-        color: 'var(--text-primary)',
-        fontFamily: 'var(--font-mono)',
-        fontSize: 12,
-      }}
-    >
+    <code className="rounded-md bg-[color-mix(in_srgb,var(--accent)_10%,var(--surface-overlay))] px-1.5 py-0.5 font-mono text-sm text-primary">
       {children}
     </code>
   ),
   pre: ({ children }) => (
     <span
-      style={{
-        display: 'block',
-        whiteSpace: 'pre-wrap',
-        wordBreak: 'break-word',
-        fontFamily: 'var(--font-mono)',
-      }}
+      className="block whitespace-pre-wrap font-mono [word-break:break-word]"
     >
       {children}
     </span>
   ),
   blockquote: ({ children }) => (
     <span
-      style={{
-        display: 'block',
-        paddingLeft: 12,
-        borderLeft: '3px solid color-mix(in srgb, var(--accent) 40%, var(--border))',
-        color: 'var(--text-secondary)',
-      }}
+      className="block border-l-[3px] border-l-[color-mix(in_srgb,var(--accent)_40%,var(--border))] pl-3 text-secondary"
     >
       {children}
     </span>
   ),
-  h1: ({ children }) => <span style={{ display: 'block', fontSize: 16, fontWeight: 700, lineHeight: 1.4 }}>{children}</span>,
-  h2: ({ children }) => <span style={{ display: 'block', fontSize: 15, fontWeight: 700, lineHeight: 1.45 }}>{children}</span>,
-  h3: ({ children }) => <span style={{ display: 'block', fontSize: 14, fontWeight: 700, lineHeight: 1.5 }}>{children}</span>,
+  h1: ({ children }) => <span className="block text-[16px] font-bold leading-[1.4]">{children}</span>,
+  h2: ({ children }) => <span className="block text-[15px] font-bold leading-[1.45]">{children}</span>,
+  h3: ({ children }) => <span className="block text-md font-bold leading-[1.5]">{children}</span>,
 }
 
 interface FollowUpSuggestionMarkdownProps {
@@ -92,7 +74,7 @@ interface FollowUpSuggestionMarkdownProps {
 
 function FollowUpSuggestionMarkdown({ text, inline = false }: FollowUpSuggestionMarkdownProps) {
   return (
-    <span style={{ display: inline ? 'inline' : 'block', width: inline ? 'auto' : '100%', lineHeight: 1.6, wordBreak: 'break-word' }}>
+    <span className={cn('leading-[1.6] [word-break:break-word]', inline ? 'inline w-auto' : 'block w-full')}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]} components={suggestionMarkdownComponents}>
         {text || ''}
       </ReactMarkdown>
@@ -236,24 +218,16 @@ function buildFollowUpResponse(questions: FollowUpQuestion[], answers: Record<st
   }
 }
 
-function buildOptionButtonStyle(selected: boolean, disabled: boolean): React.CSSProperties {
-  return {
-    width: '100%',
-    minHeight: 44,
-    display: 'grid',
-    gridTemplateColumns: '34px minmax(0, 1fr)',
-    alignItems: 'center',
-    gap: 10,
-    padding: '9px 12px',
-    borderRadius: 12,
-    border: selected ? '1px solid var(--accent)' : '1px solid var(--border)',
-    background: selected ? 'rgba(var(--accent-rgb), 0.08)' : 'var(--surface-overlay)',
-    color: 'var(--text-primary)',
-    textAlign: 'left',
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    opacity: disabled ? 0.6 : 1,
-    transition: 'var(--transition)',
-  }
+// 选项按钮选中/禁用态为条件样式，改为条件工具类（原 buildOptionButtonStyle）
+function buildOptionButtonClass(selected: boolean, disabled: boolean): string {
+  return cn(
+    'grid min-h-[44px] w-full grid-cols-[34px_minmax(0,1fr)] items-center gap-2.5 rounded-xl px-3 py-[9px] text-left [transition:var(--transition)]',
+    selected
+      ? 'border border-accent bg-[rgba(var(--accent-rgb),0.08)]'
+      : 'border border-line bg-overlay',
+    disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+    'text-primary',
+  )
 }
 
 interface OptionIndicatorProps {
@@ -265,26 +239,14 @@ function OptionIndicator({ type, checked }: OptionIndicatorProps) {
   if (type === 'multiple') {
     return (
       <span
-        style={{
-          width: 18,
-          height: 18,
-          borderRadius: 5,
-          border: `1.5px solid ${checked ? 'var(--accent)' : 'var(--text-tertiary)'}`,
-          background: checked ? 'rgba(var(--accent-rgb), 0.18)' : 'transparent',
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxSizing: 'border-box',
-        }}
+        className={cn(
+          'inline-flex h-[18px] w-[18px] box-border items-center justify-center rounded-sm border-[1.5px]',
+          checked ? 'border-accent bg-[rgba(var(--accent-rgb),0.18)]' : 'border-tertiary bg-transparent',
+        )}
       >
         <span
-          style={{
-            width: 9,
-            height: 9,
-            borderRadius: 3,
-            background: checked ? 'var(--accent)' : 'transparent',
-            display: 'block',
-          }}
+          style={{ background: checked ? 'var(--accent)' : 'transparent' }}
+          className="block h-[9px] w-[9px] rounded-xs"
         />
       </span>
     )
@@ -292,26 +254,14 @@ function OptionIndicator({ type, checked }: OptionIndicatorProps) {
 
   return (
     <span
-      style={{
-        width: 18,
-        height: 18,
-        borderRadius: '50%',
-        border: `1.5px solid ${checked ? 'var(--accent)' : 'var(--text-tertiary)'}`,
-        background: checked ? 'rgba(var(--accent-rgb), 0.12)' : 'transparent',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        boxSizing: 'border-box',
-      }}
+      className={cn(
+        'inline-flex h-[18px] w-[18px] box-border items-center justify-center rounded-full border-[1.5px]',
+        checked ? 'border-accent bg-[rgba(var(--accent-rgb),0.12)]' : 'border-tertiary bg-transparent',
+      )}
     >
       <span
-        style={{
-          width: 8,
-          height: 8,
-          borderRadius: '50%',
-          background: checked ? 'var(--accent)' : 'transparent',
-          display: 'block',
-        }}
+        style={{ background: checked ? 'var(--accent)' : 'transparent' }}
+        className="block h-2 w-2 rounded-full"
       />
     </span>
   )
@@ -522,56 +472,30 @@ export default function AIChatFollowUpCard({ question, questions, suggestions, r
     return null
   }
 
+  // 问题切换动画 ai-followup-slide-next / ai-followup-slide-prev（keyframes 已上收全局样式表）
+  const prevDisabled = !canGoPrevious || submitting || isFrozen
+  const nextActive = canGoNext && !submitting && !isFrozen
+
   return (
-    <div
-      style={{
-        display: 'grid',
-        gap: 10,
-        padding: 12,
-        borderRadius: 14,
-        border: '1px solid var(--border)',
-        background: 'var(--surface-overlay)',
-      }}
-    >
-      <style>{`
-        @keyframes ai-followup-slide-next {
-          0% {
-            opacity: 0;
-            transform: translateX(18px);
-          }
-          100% {
-            opacity: 1;
-            transform: translateX(0);
-          }
-        }
-        @keyframes ai-followup-slide-prev {
-          0% {
-            opacity: 0;
-            transform: translateX(-18px);
-          }
-          100% {
-            opacity: 1;
-            transform: translateX(0);
-          }
-        }
-      `}</style>
-      <div style={{ display: 'grid', gap: 4 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-tertiary)' }}>
+    <div className="grid gap-2.5 rounded-[14px] border border-line bg-overlay p-3">
+      <div className="grid gap-1">
+        <div className="flex items-center gap-1.5 text-base text-secondary">
           <MessageCircleQuestionMark size={13} />
           <span>{t('追问建议')}</span>
         </div>
-        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.4 }}>
+        <div className="text-[18px] font-bold leading-[1.4] text-primary">
           <AIChatMarkdown text={currentQuestion.text || ''} />
         </div>
       </div>
 
       <div
         key={`${currentQuestion.id}-${transitionTick}`}
-        style={{
-          display: 'grid',
-          gap: 8,
-          animation: `${transitionDirection === 'next' ? 'ai-followup-slide-next' : 'ai-followup-slide-prev'} 180ms ease`,
-        }}
+        className={cn(
+          'grid gap-2',
+          transitionDirection === 'next'
+            ? 'animate-[ai-followup-slide-next_180ms_ease]'
+            : 'animate-[ai-followup-slide-prev_180ms_ease]',
+        )}
       >
         {currentQuestion.type === 'free_text' ? (
           <textarea
@@ -579,19 +503,7 @@ export default function AIChatFollowUpCard({ question, questions, suggestions, r
             value={currentTextAnswer}
             onChange={(event) => handleFreeTextChange(currentQuestion, event.target.value)}
             disabled={submitting || isFrozen}
-            style={{
-              minHeight: 140,
-              resize: 'vertical',
-              borderRadius: 12,
-              border: '1px solid var(--border)',
-              background: 'var(--surface-overlay)',
-              color: 'var(--text-primary)',
-              padding: '12px 14px',
-              boxSizing: 'border-box',
-              fontSize: 13,
-              lineHeight: 1.6,
-              outline: 'none',
-            }}
+            className="min-h-[140px] resize-y rounded-xl border border-line bg-overlay px-3.5 py-3 text-base leading-[1.6] text-primary outline-none"
           />
         ) : currentQuestion.options.map((option) => {
           const checked = selectedIds.includes(option.id)
@@ -609,28 +521,14 @@ export default function AIChatFollowUpCard({ question, questions, suggestions, r
                 }
                 handleMultipleToggle(currentQuestion, option.id)
               }}
-              style={buildOptionButtonStyle(checked, disabled)}
+              className={buildOptionButtonClass(checked, disabled)}
             >
               <OptionIndicator type={optionType} checked={checked} />
-              <div style={{ minWidth: 0, display: 'grid', gap: option.mode ? 6 : 0 }}>
-                <div style={{ minWidth: 0, fontSize: 14, color: 'var(--text-primary)', lineHeight: 1.5 }}>
+              <div className={cn('grid min-w-0', option.mode ? 'gap-1.5' : 'gap-0')}>
+                <div className="min-w-0 text-md leading-[1.5] text-primary">
                   {option.recommended ? (
                     <span
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        padding: '2px 8px',
-                        borderRadius: 999,
-                        border: '1px solid color-mix(in srgb, var(--accent) 35%, var(--border-subtle))',
-                        background: 'rgba(var(--accent-rgb), 0.12)',
-                        color: 'var(--accent)',
-                        fontSize: 10,
-                        fontWeight: 700,
-                        lineHeight: 1.4,
-                        whiteSpace: 'nowrap',
-                        marginRight: 8,
-                        verticalAlign: 'text-top',
-                      }}
+                      className="mr-2 inline-flex items-center whitespace-nowrap rounded-full border border-[color-mix(in_srgb,var(--accent)_35%,var(--border-subtle))] bg-[rgba(var(--accent-rgb),0.12)] px-2 py-0.5 align-text-top text-[10px] font-bold leading-[1.4] text-accent"
                     >
                       {t('推荐')}
                     </span>
@@ -638,23 +536,9 @@ export default function AIChatFollowUpCard({ question, questions, suggestions, r
                   <FollowUpSuggestionMarkdown text={option.answer} inline />
                 </div>
                 {option.mode ? (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <span
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        padding: '2px 8px',
-                        borderRadius: 999,
-                        border: '1px solid var(--border-subtle)',
-                        background: 'var(--surface-elevated)',
-                        color: 'var(--text-tertiary)',
-                        fontSize: 10,
-                        fontWeight: 700,
-                        letterSpacing: 0.4,
-                        lineHeight: 1.4,
-                        textTransform: 'uppercase',
-                        whiteSpace: 'nowrap',
-                      }}
+                      className="inline-flex items-center whitespace-nowrap rounded-full border border-line-subtle bg-overlay px-2 py-0.5 text-[10px] font-bold uppercase leading-[1.4] tracking-[0.4px] text-tertiary"
                     >
                       {option.mode}
                     </span>
@@ -667,49 +551,32 @@ export default function AIChatFollowUpCard({ question, questions, suggestions, r
       </div>
 
       <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '56px 1fr 56px',
-          alignItems: 'center',
-          gap: 10,
-          paddingTop: 8,
-          borderTop: '1px solid var(--border-subtle)',
-        }}
+        className="grid grid-cols-[56px_1fr_56px] items-center gap-2.5 border-t border-t-line-subtle pt-2"
       >
         <button
           type="button"
           disabled={!canGoPrevious || submitting || isFrozen}
           onClick={handleGoPrevious}
-          style={{
-            height: 34,
-            borderRadius: 10,
-            border: '1px solid var(--border)',
-            background: 'transparent',
-            color: !canGoPrevious || submitting || isFrozen ? 'var(--text-muted)' : 'var(--text-primary)',
-            cursor: !canGoPrevious || submitting || isFrozen ? 'not-allowed' : 'pointer',
-            opacity: !canGoPrevious || submitting || isFrozen ? 0.5 : 1,
-          }}
+          className={cn(
+            'h-[34px] rounded-lg border border-line bg-transparent',
+            prevDisabled ? 'cursor-not-allowed opacity-50 text-muted' : 'cursor-pointer text-primary',
+          )}
         >
           <ChevronLeft size={16} />
         </button>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--text-secondary)' }}>
-          <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--accent)', display: 'inline-block' }} />
-          <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: 0.4 }}>{`${currentLabel} / ${totalLabel}`}</span>
-          <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--accent)', display: 'inline-block' }} />
+        <div className="flex items-center justify-center gap-2">
+          <span className="inline-block h-1 w-1 rounded-full bg-accent" />
+          <span className="text-base font-bold tracking-[0.4px] text-primary">{`${currentLabel} / ${totalLabel}`}</span>
+          <span className="inline-block h-1 w-1 rounded-full bg-accent" />
         </div>
         <button
           type="button"
           disabled={!canGoNext || submitting || isFrozen}
           onClick={() => void handleGoNext()}
-          style={{
-            height: 34,
-            borderRadius: 10,
-            border: '1px solid var(--border)',
-            background: canGoNext && !submitting && !isFrozen ? 'var(--accent)' : 'transparent',
-            color: canGoNext && !submitting && !isFrozen ? '#fff' : 'var(--text-muted)',
-            cursor: !canGoNext || submitting || isFrozen ? 'not-allowed' : 'pointer',
-            opacity: !canGoNext || submitting || isFrozen ? 0.5 : 1,
-          }}
+          className={cn(
+            'h-[34px] rounded-lg border border-line bg-transparent',
+            nextActive ? 'cursor-pointer text-primary' : 'cursor-not-allowed opacity-50 text-muted',
+          )}
         >
           <ChevronRight size={16} />
         </button>

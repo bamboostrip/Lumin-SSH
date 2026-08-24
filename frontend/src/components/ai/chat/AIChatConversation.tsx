@@ -2,6 +2,8 @@ import { ChevronDown } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { useTranslation, t } from '../../../i18n.ts'
+import { Z } from '../../../constants/zIndex.ts'
+import { cn } from '../../../utils/cn.ts'
 import AIChatAssistantTurn from './AIChatAssistantTurn.tsx'
 import AIChatContextCondenseCard from './AIChatContextCondenseCard.tsx'
 import AIChatReasoningBlock from './AIChatReasoningBlock.tsx'
@@ -146,11 +148,12 @@ function hasSubsequentAssistantTurn(entries: GroupedConversationEntry[], current
   return false
 }
 
-function getAIChatMessageEntryAnimationName(entry: GroupedConversationEntry) {
+// 入场/高亮动画 ai-chat-msg-enter-left|right / ai-chat-message-flash（keyframes 已上收全局样式表）
+function getAIChatMessageEntryAnimationClass(entry: GroupedConversationEntry) {
   if (entry?.type === 'user') {
-    return 'ai-chat-msg-enter-right'
+    return 'animate-[ai-chat-msg-enter-right_1500ms_cubic-bezier(0.16,1,0.3,1)_both]'
   }
-  return 'ai-chat-msg-enter-left'
+  return 'animate-[ai-chat-msg-enter-left_1500ms_cubic-bezier(0.16,1,0.3,1)_both]'
 }
 
 function isVerticallyScrollableElement(element: Element) {
@@ -563,8 +566,8 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
 
   if (groupedMessages.length === 0) {
     return (
-      <div style={{ flex: 1, minHeight: 0, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', padding: 20 }}>
-        <div style={{ maxWidth: 260, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.8 }}>
+      <div className="flex h-full min-h-0 flex-1 items-center justify-center bg-transparent p-5">
+        <div className="max-w-[260px] text-center text-sm leading-[1.8] text-tertiary">
           {t('选择供应商并发送消息后，AI会在这里按真实流式顺序输出内容。')}
         </div>
       </div>
@@ -581,57 +584,7 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
       onTouchCancelCapture={handleUserTouchEndCapture}
       onPointerDownCapture={handlePointerDownCapture}
       onKeyDownCapture={handleKeyDownCapture}
-      style={{ flex: 1, minHeight: 0, height: '100%', background: 'transparent', position: 'relative', overflowX: 'hidden' }}>
-      <style>{`
-        @keyframes ai-chat-message-flash {
-          0%, 100% { background: rgba(var(--accent-rgb), 0.06); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.12); }
-          50% { background: rgba(var(--accent-rgb), 0.22); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.42), 0 0 24px rgba(var(--accent-rgb), 0.24); }
-        }
-        @keyframes ai-chat-msg-enter-left {
-          from {
-            opacity: 0;
-            transform: translateX(-88px);
-          }
-          to {
-            opacity: 1;
-            transform: translateX(0);
-          }
-        }
-        @keyframes ai-chat-msg-enter-right {
-          from {
-            opacity: 0;
-            transform: translateX(88px);
-          }
-          to {
-            opacity: 1;
-            transform: translateX(0);
-          }
-        }
-        @keyframes ai-chat-message-breathe-border {
-          0%, 100% {
-            background: rgba(var(--accent-rgb), 0.04);
-            border-color: rgba(var(--accent-rgb), 0.14);
-            box-shadow: inset 0 1px 0 var(--border-light), inset 0 0 0 1px rgba(var(--accent-rgb), 0.08), inset 0 0 10px rgba(var(--accent-rgb), 0.04);
-            filter: brightness(1) saturate(1);
-          }
-          50% {
-            background: rgba(var(--accent-rgb), 0.18);
-            border-color: rgba(var(--accent-rgb), 0.82);
-            box-shadow: inset 0 1px 0 rgba(var(--accent-rgb), 0.28), inset 0 0 0 1px rgba(var(--accent-rgb), 0.44), inset 0 0 24px rgba(var(--accent-rgb), 0.16);
-            filter: brightness(1.14) saturate(1.3);
-          }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          @keyframes ai-chat-msg-enter-left {
-            from { opacity: 0; transform: translateX(-6px); }
-            to { opacity: 1; transform: translateX(0); }
-          }
-          @keyframes ai-chat-msg-enter-right {
-            from { opacity: 0; transform: translateX(6px); }
-            to { opacity: 1; transform: translateX(0); }
-          }
-        }
-      `}</style>
+      className="relative min-h-0 h-full flex-1 overflow-x-hidden bg-transparent">
       <Virtuoso
         ref={virtuosoRef}
         scrollerRef={(element) => {
@@ -661,20 +614,18 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
         itemContent={(index, entry) => {
           const entryKey = getEntryKey(entry, index)
           const isHighlighted = highlightedEntryKey === entryKey
-          const entryAnimName = getAIChatMessageEntryAnimationName(entry)
+          const entryAnimClass = getAIChatMessageEntryAnimationClass(entry)
           const isEditingTargetEntry = entry?.type === 'user' && typeof entry?.message?.id === 'string' && entry.message.id.trim() && entry.message.id.trim() === editingTargetMessageId
           return (
             <div
-              style={{
-                padding: `0 14px ${index === groupedMessages.length - 1 ? 18 : 14}px`,
-                borderRadius: 14,
-                direction: 'ltr',
-                animation: isHighlighted
-                  ? 'ai-chat-message-flash 0.72s ease-in-out 4'
-                  : `${entryAnimName} 1500ms cubic-bezier(0.16, 1, 0.3, 1) both`,
-                background: isHighlighted ? 'rgba(var(--accent-rgb), 0.08)' : 'transparent',
-                transition: 'background 180ms ease, box-shadow 180ms ease',
-              }}>
+              className={cn(
+                '[direction:ltr] rounded-[14px] px-3.5',
+                index === groupedMessages.length - 1 ? 'pb-[18px]' : 'pb-3.5',
+                isHighlighted
+                  ? 'animate-[ai-chat-message-flash_0.72s_ease-in-out_4] bg-[rgba(var(--accent-rgb),0.08)]'
+                  : cn(entryAnimClass, 'bg-transparent'),
+                '[transition:background_180ms_ease,box-shadow_180ms_ease]',
+              )}>
               {renderGroupedEntry(entry, {
                 onSendUserMessage,
                 onRetryUserMessage,
@@ -698,18 +649,12 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
         }}
       />
       {userMessageEntries.length >= 1 && messageNavEnabled ? (
-        <div style={{
-          position: 'absolute',
-          [isLeftSide ? 'right' : 'left']: 3,
-          top: 14,
-          bottom: 44,
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          alignItems: 'center',
-          gap: 5,
-          zIndex: 8,
-        }}>
+        <div
+          style={{ zIndex: Z.PANEL_BUTTON }}
+          className={cn(
+            'absolute bottom-[44px] top-[14px] flex flex-col items-center justify-center gap-[5px]',
+            isLeftSide ? 'right-[3px]' : 'left-[3px]',
+          )}>
           {userMessageEntries.map(({ entry, index }, navIndex) => {
             const navText = typeof entry.message?.text === 'string' ? entry.message.text.trim() : ''
             const navTime = typeof entry.message?.time === 'string' ? entry.message.time : ''
@@ -718,7 +663,7 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
             return (
               <div
                 key={entry.message?.id || `nav-${navIndex}`}
-                style={{ position: 'relative', display: 'flex', justifyContent: 'center' }}
+                className="relative flex justify-center"
                 onMouseEnter={() => setHoveredNavIndex(navIndex)}
                 onMouseLeave={() => setHoveredNavIndex(-1)}
               >
@@ -726,41 +671,20 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
                   type="button"
                   onClick={() => handleJumpToUserMessage(index, entry)}
                   aria-label={navPreview || t('图片消息')}
-                  style={{
-                    width: 7,
-                    height: 7,
-                    borderRadius: '50%',
-                    border: '1px solid var(--border)',
-                    background: isNavHovered ? 'var(--accent)' : 'var(--surface-overlay)',
-                    cursor: 'pointer',
-                    padding: 0,
-                    transition: 'transform 150ms ease, background 150ms ease, border-color 150ms ease',
-                    transform: isNavHovered ? 'scale(1.4)' : 'scale(1)',
-                  }}
+                  style={{ transform: isNavHovered ? 'scale(1.4)' : 'scale(1)' }}
+                  className={cn(
+                    'h-[7px] w-[7px] cursor-pointer rounded-full border border-line p-0 [transition:transform_150ms_ease,background_150ms_ease,border-color_150ms_ease]',
+                    isNavHovered ? 'bg-accent' : 'bg-overlay',
+                  )}
                 />
                 {isNavHovered ? (
-                  <div style={{
-                    position: 'absolute',
-                    [isLeftSide ? 'right' : 'left']: '100%',
-                    [isLeftSide ? 'marginRight' : 'marginLeft']: 10,
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    width: 'max-content',
-                    maxWidth: 240,
-                    padding: '6px 10px',
-                    borderRadius: 8,
-                    background: 'rgba(30, 35, 42, 0.96)',
-                    color: '#fff',
-                    fontSize: 12,
-                    lineHeight: 1.5,
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                    overflowWrap: 'anywhere',
-                    boxShadow: 'var(--shadow-lg)',
-                    pointerEvents: 'none',
-                    zIndex: 100,
-                  }}>
-                    {navTime ? <div style={{ fontSize: 10, opacity: 0.55, marginBottom: 3 }}>{navTime}</div> : null}
+                  <div
+                    style={{ zIndex: Z.POPUP }}
+                    className={cn(
+                      'pointer-events-none absolute top-1/2 w-max max-w-[240px] -translate-y-1/2 rounded-lg bg-[rgba(30,35,42,0.96)] px-2.5 py-1.5 text-sm leading-[1.5] text-white shadow-lg [overflow-wrap:anywhere] [word-break:break-word] whitespace-pre-wrap',
+                      isLeftSide ? 'right-full mr-2.5' : 'left-full ml-2.5',
+                    )}>
+                    {navTime ? <div className="mb-[3px] text-[10px] opacity-[0.55]">{navTime}</div> : null}
                     {navPreview || t('图片消息')}
                   </div>
                 ) : null}
@@ -771,33 +695,12 @@ export default function AIChatConversation({ messages = [], sessionId = '', term
       ) : null}
       {showScrollToBottom ? (
         <div
-          style={{
-            position: 'absolute',
-            right: 14,
-            bottom: 10,
-            zIndex: 10,
-            pointerEvents: 'none',
-          }}>
+          style={{ zIndex: Z.PANEL_BUTTON }}
+          className="pointer-events-none absolute bottom-2.5 right-3.5">
           <button
             type="button"
             onClick={handleScrollToBottom}
-            style={{
-              height: 32,
-              minWidth: 40,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
-              padding: '0 10px',
-              borderRadius: 999,
-              border: '1px solid var(--border)',
-              background: 'var(--surface-overlay)',
-              color: 'var(--text-primary)',
-              boxShadow: 'var(--shadow-lg)',
-              cursor: 'pointer',
-              pointerEvents: 'auto',
-              transition: 'var(--transition)',
-            }}>
+            className="pointer-events-auto inline-flex h-8 min-w-[40px] cursor-pointer items-center justify-center gap-1.5 rounded-full border border-line bg-overlay px-2.5 text-primary shadow-lg [transition:var(--transition)]">
             <ChevronDown size={14} />
           </button>
         </div>

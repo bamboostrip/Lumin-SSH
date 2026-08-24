@@ -4,6 +4,8 @@ import { useTranslation } from '../i18n.ts';
 import { formatShortcut } from '../utils/platform.ts';
 import { clampMenuPosition } from '../utils/menuPosition.ts';
 import { GLOBAL_CONTEXT_MENU_OPEN_EVENT, type GlobalContextMenuDetail } from '../utils/contextMenu.ts';
+import { MenuList, MenuPanel, type MenuItem } from './ui';
+import { Z } from '../constants/zIndex.ts';
 import * as runtime from '../../wailsjs/runtime/runtime.js';
 
 /** 菜单项输入（来自 .tsx 调用方，字段宽松） */
@@ -98,15 +100,55 @@ interface MenuState {
   items: NormalizedMenuItem[];
 }
 
+/** 子菜单锚点（记录父项行位置，用于固定定位子菜单面板） */
+interface SubmenuAnchor {
+  key: string;
+  top: number;
+  left: number;
+  right: number;
+}
+
 export default function GlobalContextMenu() {
   const { t } = useTranslation();
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [openSubmenuKey, setOpenSubmenuKey] = useState<string | null>(null);
+  const [submenuAnchor, setSubmenuAnchor] = useState<SubmenuAnchor | null>(null);
+  // 防止子菜单切换时触发 MenuList 的自动 onClose 关闭整个菜单（同 ServerList 模式）
+  const submenuToggleRef = useRef(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const listWrapperRef = useRef<HTMLDivElement | null>(null);
 
   const closeMenu = useCallback(() => {
     setMenu(null);
     setOpenSubmenuKey(null);
+    setSubmenuAnchor(null);
+  }, []);
+
+  const getRowRect = useCallback((key: string): SubmenuAnchor | null => {
+    const marker = listWrapperRef.current?.querySelector(`[data-gcm-key="${CSS.escape(key)}"]`);
+    const row = marker instanceof HTMLElement ? marker.closest('button') : null;
+    if (!row) {
+      return null;
+    }
+    const rect = row.getBoundingClientRect();
+    return { key, top: rect.top, left: rect.left, right: rect.right };
+  }, []);
+
+  const handleRowHoverEnter = useCallback((event: React.MouseEvent) => {
+    const target = event.target as HTMLElement | null;
+    const row = target?.closest('button');
+    if (!row || !listWrapperRef.current?.contains(row)) {
+      return;
+    }
+    const marker = row.querySelector('[data-gcm-key]');
+    if (!marker) {
+      setOpenSubmenuKey(null);
+      return;
+    }
+    const key = marker.getAttribute('data-gcm-key') ?? '';
+    const rect = row.getBoundingClientRect();
+    setSubmenuAnchor({ key, top: rect.top, left: rect.left, right: rect.right });
+    setOpenSubmenuKey(key);
   }, []);
 
   const handleInputAction = useCallback(async (targetInput: HTMLInputElement | HTMLTextAreaElement, action: EditableAction) => {
@@ -284,11 +326,48 @@ export default function GlobalContextMenu() {
   }
 
   const hasSubmenu = menu.items.some((item) => item.type === 'item' && item.children.length > 0);
+  const activeParent = openSubmenuKey
+    ? menu.items.find(
+        (item): item is Extract<NormalizedMenuItem, { type: 'item' }> =>
+          item.type === 'item' && item.key === openSubmenuKey && item.children.length > 0,
+      )
+    : undefined;
+  const anchor = openSubmenuKey && submenuAnchor?.key === openSubmenuKey ? submenuAnchor : null;
+  const submenuToLeft = typeof window !== 'undefined' && menu.x > window.innerWidth * 0.5;
+
+  const toUiItems = (items: NormalizedMenuItem[]): MenuItem[] =>
+    items.map((item): MenuItem => {
+      if (item.type === 'divider') {
+        return 'separator';
+      }
+      if (item.children.length > 0) {
+        return {
+          label: <span data-gcm-key={item.key}>{item.label}</span>,
+          shortcut: '›',
+          danger: item.danger,
+          disabled: item.disabled,
+          onSelect: () => {
+            submenuToggleRef.current = true;
+            const rect = anchor?.key === item.key ? anchor : getRowRect(item.key);
+            if (rect) {
+              setSubmenuAnchor(rect);
+            }
+            setOpenSubmenuKey((prev) => (prev === item.key ? null : item.key));
+          },
+        };
+      }
+      return {
+        label: item.label,
+        shortcut: item.shortcut || undefined,
+        danger: item.danger,
+        disabled: item.disabled,
+        onSelect: () => handleMenuItemClick(item),
+      };
+    });
+
   return createPortal(
     <div
       ref={menuRef}
-      className={hasSubmenu ? 'context-menu has-submenu' : 'context-menu'}
-      style={{ left: menu.x, top: menu.y }}
       onMouseDown={(event) => {
         event.stopPropagation();
       }}
@@ -296,63 +375,41 @@ export default function GlobalContextMenu() {
         event.stopPropagation();
       }}
     >
-      {menu.items.map((item) => {
-        if (item.type === 'divider') {
-          return <div key={item.key} className="context-menu-divider" />;
-        }
-        const hasChildren = item.children.length > 0;
-        const submenuToLeft = typeof window !== 'undefined' && menu.x > window.innerWidth * 0.5;
-        const className = [
-          'context-menu-item',
-          item.danger ? 'danger' : '',
-          item.disabled ? 'disabled' : '',
-        ].filter(Boolean).join(' ');
-        return (
-          <div
-            key={item.key}
-            className={className}
-            style={hasChildren ? { position: 'relative' } : undefined}
-            onMouseEnter={() => setOpenSubmenuKey(hasChildren && !item.disabled ? item.key : null)}
-            onClick={item.disabled || hasChildren ? undefined : () => handleMenuItemClick(item)}
+      <MenuPanel
+        className="fixed origin-top-left animate-[fadeIn_0.12s_ease] max-h-[calc(100vh-16px)]"
+        style={{
+          left: menu.x,
+          top: menu.y,
+          zIndex: Z.MENU,
+          overflow: hasSubmenu ? 'visible' : undefined,
+        }}
+      >
+        <div ref={listWrapperRef} onMouseEnter={handleRowHoverEnter}>
+          <MenuList
+            items={toUiItems(menu.items)}
+            onClose={() => {
+              if (submenuToggleRef.current) {
+                submenuToggleRef.current = false;
+                return;
+              }
+              closeMenu();
+            }}
+          />
+        </div>
+        {activeParent && anchor && (
+          <MenuPanel
+            minWidth={160}
+            className="fixed animate-[fadeIn_0.12s_ease]"
+            style={
+              submenuToLeft
+                ? { top: anchor.top - 5, right: window.innerWidth - anchor.left + 2, zIndex: Z.SUBMENU }
+                : { top: anchor.top - 5, left: anchor.right + 2, zIndex: Z.SUBMENU }
+            }
           >
-            <span className="item-label">{item.label}</span>
-            {hasChildren
-              ? <span className="item-shortcut" aria-hidden="true">›</span>
-              : item.shortcut ? <span className="item-shortcut">{item.shortcut}</span> : null}
-            {hasChildren && openSubmenuKey === item.key ? (
-              <div
-                className="context-menu"
-                style={submenuToLeft
-                  ? { position: 'absolute', right: '100%', top: -5, marginRight: 2 }
-                  : { position: 'absolute', left: '100%', top: -5, marginLeft: 2 }}
-                onMouseDown={(event) => event.stopPropagation()}
-                onClick={(event) => event.stopPropagation()}
-              >
-                {item.children.map((child) => {
-                  if (child.type === 'divider') {
-                    return <div key={child.key} className="context-menu-divider" />;
-                  }
-                  const childClassName = [
-                    'context-menu-item',
-                    child.danger ? 'danger' : '',
-                    child.disabled ? 'disabled' : '',
-                  ].filter(Boolean).join(' ');
-                  return (
-                    <div
-                      key={child.key}
-                      className={childClassName}
-                      onClick={child.disabled ? undefined : () => handleMenuItemClick(child)}
-                    >
-                      <span className="item-label">{child.label}</span>
-                      {child.shortcut ? <span className="item-shortcut">{child.shortcut}</span> : null}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : null}
-          </div>
-        );
-      })}
+            <MenuList items={toUiItems(activeParent.children)} onClose={closeMenu} />
+          </MenuPanel>
+        )}
+      </MenuPanel>
     </div>,
     document.body
   );

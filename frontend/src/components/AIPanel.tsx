@@ -3,6 +3,9 @@ import { Archive, ArchiveRestore, Bot, CheckSquare, ChevronLeft, ChevronRight, F
 import { EventsOn } from '../../wailsjs/runtime/runtime.js'
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js'
 import { useTranslation, t as translate, getLanguage, type I18nKey } from '../i18n.ts'
+import { Z } from '../constants/zIndex'
+import { Button } from './ui'
+import { cn } from '../utils/cn.ts'
 import AIPanelHeader from './ai/AIPanelHeader.tsx'
 import AIConversationBackupSettings from './ai/AIConversationBackupSettings.tsx'
 import AIPanelSettingsOverlay from './ai/AIPanelSettingsOverlay.tsx'
@@ -48,6 +51,13 @@ import { getTemporaryAIConversationSummary, listTemporaryAIConversations as list
 // ============================================================
 // AIPanel 类型契约（props 见 AIPanelProps；内部数据模型见下）
 // ============================================================
+
+const AI_ROW_ACTION_BASE =
+  'w-[26px] h-[26px] inline-flex items-center justify-center rounded-md shadow-none shrink-0 cursor-pointer transition-colors duration-[120ms]';
+const AI_ROW_ACTION_HOVER_ACCENT =
+  'hover:text-accent hover:bg-[rgba(var(--accent-rgb),0.10)] focus-visible:text-accent focus-visible:bg-[rgba(var(--accent-rgb),0.10)]';
+const AI_ROW_ACTION_HOVER_DANGER =
+  'hover:text-danger hover:bg-danger-dim focus-visible:text-danger focus-visible:bg-danger-dim';
 
 function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId = '', sessionTerminals = [], workspaceTabId = '', isHomeView = false, isWorkspaceTabActive = true, showComposer = true, initialConversationId = '', tabBar = null, onDevilModeChange, onGoHomeRequested, onOpenConversationRequested, onWorkspaceTabStateChange, addToast }: AIPanelProps) {
   const { t } = useTranslation()
@@ -4618,9 +4628,9 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
 
     if (globalSearchOpen) {
       content = (
-        <div style={{ display: 'grid', minHeight: 0 }}>
-          <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--surface-base)' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'center' }}>
+        <div className="grid min-h-0">
+          <div className="px-3.5 py-2.5 border-b border-line-subtle bg-canvas">
+            <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
               <input
                 id="ai-panel-main-global-search"
                 name="ai-panel-main-global-search"
@@ -4635,35 +4645,14 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
                   }
                 }}
                 placeholder={t('输入关键词搜索全部对话')}
-                style={{
-                  height: 34,
-                  width: '100%',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                  background: 'var(--surface-sunken)',
-                  color: 'var(--text-primary)',
-                  padding: '0 10px',
-                  boxSizing: 'border-box',
-                  outline: 'none',
-                }}
+                className="h-[34px] w-full rounded-lg border border-line bg-sunken text-primary px-2.5 box-border outline-none"
               />
               <button
                 type="button"
                 title={t('关闭搜索')}
                 aria-label={t('关闭搜索')}
                 onClick={resetGlobalSearchState}
-                style={{
-                  width: 34,
-                  height: 34,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                  background: 'var(--surface-base)',
-                  color: 'var(--text-tertiary)',
-                  cursor: 'pointer',
-                }}
+                className="w-[34px] h-[34px] inline-flex items-center justify-center rounded-lg border border-line bg-canvas text-tertiary cursor-pointer"
               >
                 ×
               </button>
@@ -4671,15 +4660,15 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
           </div>
           {normalizedGlobalSearchQuery ? (
             globalSearchLoading ? (
-              <div style={{ minHeight: 'calc(100% - 101px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.8 }}>
+              <div className="min-h-[calc(100%-101px)] flex items-center justify-center p-5 text-center text-tertiary text-sm leading-[1.8]">
                 {t('加载中...')}
               </div>
             ) : globalSearchResults.length === 0 ? (
-              <div style={{ minHeight: 'calc(100% - 101px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.8 }}>
+              <div className="min-h-[calc(100%-101px)] flex items-center justify-center p-5 text-center text-tertiary text-sm leading-[1.8]">
                 {t('没有找到匹配内容')}
               </div>
             ) : (
-              <div style={{ display: 'grid' }}>
+              <div className="grid">
                 {globalSearchResults.map((result) => {
                   const historyTimeParts = buildAIHistoryDisplayTimeParts(result.updatedAt || 0, getLanguage() || 'zh-CN')
                   const historyRelativeToneStyle = getAIHistoryRelativeTimeToneStyle(result.updatedAt || 0)
@@ -4690,36 +4679,26 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
                     onClick={() => {
                       void handleSelectGlobalSearchResult(result)
                     }}
-                    style={{
-                      width: '100%',
-                      display: 'grid',
-                      gap: 8,
-                      padding: '12px 14px',
-                      border: 'none',
-                      borderBottom: '1px solid var(--border)',
-                      background: 'transparent',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                    }}
+                    className="w-full grid gap-2 py-3 px-3.5 border-0 border-b border-line bg-transparent text-left cursor-pointer"
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                      <div style={{ minWidth: 0, fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{result.conversationTitle}</div>
-                      <div style={{ flexShrink: 0, fontSize: 11, color: 'var(--text-tertiary)' }}>{result.role === 'user' ? t('用户') : t('AI')}</div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0 text-md font-bold text-primary whitespace-nowrap overflow-hidden text-ellipsis">{result.conversationTitle}</div>
+                      <div className="shrink-0 text-xs text-tertiary">{result.role === 'user' ? t('用户') : t('AI')}</div>
                     </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 0, flexWrap: 'wrap' }}>
+                    <div className="text-xs text-muted flex items-center gap-0 flex-wrap">
                       <span>{historyTimeParts.absoluteText}</span>
                       {historyTimeParts.relativeText ? (
                         <span style={historyRelativeToneStyle}>({historyTimeParts.relativeText})</span>
                       ) : null}
                     </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{result.snippet}</div>
+                    <div className="text-sm text-secondary leading-[1.6] whitespace-pre-wrap break-words">{result.snippet}</div>
                   </button>
                   )
                 })}
               </div>
             )
           ) : (
-            <div style={{ minHeight: 'calc(100% - 101px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.8 }}>
+            <div className="min-h-[calc(100%-101px)] flex items-center justify-center p-5 text-center text-tertiary text-sm leading-[1.8]">
               {t('搜索全部对话中的消息')}
             </div>
           )}
@@ -4727,8 +4706,8 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
       )
     } else if (displayConversationList.length === 0) {
       content = (
-        <div style={{ minHeight: 'calc(100% - 53px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.8 }}>
-          <div style={{ maxWidth: '80%', display: 'grid', gap: 2 }}>
+        <div className="min-h-[calc(100%-53px)] flex items-center justify-center p-5 text-center text-tertiary text-sm leading-[1.8]">
+          <div className="max-w-[80%] grid gap-0.5">
             <div>{conversationFilter === 'archived' ? t('当前没有已归档会话') : t('当前分组没有会话')}</div>
           </div>
         </div>
@@ -4747,14 +4726,10 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
         return (
           <div
             key={item.id}
+            className="w-full flex items-center border-b border-line transition-[color,background-color,border-color,opacity,box-shadow] duration-[120ms]"
             style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              borderBottom: '1px solid var(--border)',
               background: selected ? 'rgba(var(--accent-rgb), 0.12)' : panelState.activeConversationId === item.id ? 'rgba(var(--accent-rgb), 0.08)' : 'transparent',
               borderLeft: panelState.activeConversationId === item.id ? '2px solid var(--accent)' : '2px solid transparent',
-              transition: 'var(--transition)',
               opacity: item.archived === true ? 0.72 : 1,
               contentVisibility: 'auto',
               containIntrinsicSize: '56px',
@@ -4764,48 +4739,39 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
             {conversationSelectionMode ? (
               <button
                 type="button"
-                className="ai-conversation-row-action"
                 aria-label={selected ? t('取消选择') : t('选择')}
                 aria-pressed={selected}
                 onClick={() => toggleConversationSelection(item.id)}
-                style={{ width: 34, alignSelf: 'stretch', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', color: selected ? 'var(--accent)' : 'var(--text-muted)', cursor: 'pointer', flexShrink: 0 }}>
-                <span style={{ width: 16, height: 16, borderRadius: 4, border: `1px solid ${selected ? 'var(--accent)' : 'var(--border)'}`, background: selected ? 'var(--accent)' : 'transparent', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}>{selected ? '✓' : ''}</span>
+                className={cn(
+                  'w-[34px] self-stretch inline-flex items-center justify-center border-0 bg-transparent cursor-pointer shrink-0',
+                  'hover:text-accent hover:bg-[rgba(var(--accent-rgb),0.10)] focus-visible:text-accent focus-visible:bg-[rgba(var(--accent-rgb),0.10)]',
+                  selected ? 'text-accent' : 'text-muted',
+                )}>
+                <span
+                  className={cn(
+                    'w-4 h-4 rounded-sm border inline-flex items-center justify-center text-xs text-white',
+                  )}
+                  style={{ borderColor: selected ? 'var(--accent)' : 'var(--border)', background: selected ? 'var(--accent)' : 'transparent' }}
+                >{selected ? '✓' : ''}</span>
               </button>
             ) : null}
             <button
               type="button"
               onClick={() => conversationSelectionMode ? toggleConversationSelection(item.id) : void handleOpenConversation(item.id)}
-              style={{
-                flex: 1,
-                minWidth: 0,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '8px 12px',
-                border: 'none',
-                background: 'transparent',
-                textAlign: 'left',
-                cursor: 'pointer',
-              }}
+              className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2 border-0 bg-transparent text-left cursor-pointer"
             >
-              <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: 2, paddingLeft: item.depth > 0 ? `${item.depth * 12}px` : 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+              <div className="flex-1 min-w-0 grid gap-0.5" style={{ paddingLeft: item.depth > 0 ? `${item.depth * 12}px` : 0 }}>
+                <div className="flex items-center gap-1.5 min-w-0">
                   {isAgentSubtask ? (
                     <Tiptop text={t('子代理任务')} placement="top">
                       <span
                         aria-label={t('子代理任务')}
-                        style={{
-                          width: 18,
-                          height: 18,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          borderRadius: 999,
-                          border: isArchivedAgentSubtask ? '1px solid var(--border)' : '1px solid rgba(var(--accent-rgb), 0.22)',
-                          background: isArchivedAgentSubtask ? 'var(--surface-sunken)' : 'rgba(var(--accent-rgb), 0.10)',
-                          color: isArchivedAgentSubtask ? 'var(--text-tertiary)' : 'var(--accent)',
-                          flexShrink: 0,
-                        }}
+                        className={cn(
+                          'w-[18px] h-[18px] inline-flex items-center justify-center rounded-full shrink-0 border',
+                          isArchivedAgentSubtask
+                            ? 'border-line bg-sunken text-tertiary'
+                            : 'border-[rgba(var(--accent-rgb),0.22)] bg-[rgba(var(--accent-rgb),0.10)] text-accent',
+                        )}
                       >
                         <Bot size={11} />
                       </span>
@@ -4815,50 +4781,42 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
                     <Tiptop text={t('摘要子任务')} placement="top">
                       <span
                         aria-label={t('摘要子任务')}
-                        style={{
-                          width: 18,
-                          height: 18,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          borderRadius: 999,
-                          border: '1px solid rgba(var(--accent-rgb), 0.22)',
-                          background: 'rgba(var(--accent-rgb), 0.10)',
-                          color: 'var(--accent)',
-                          flexShrink: 0,
-                        }}
+                        className="w-[18px] h-[18px] inline-flex items-center justify-center rounded-full border border-[rgba(var(--accent-rgb),0.22)] bg-[rgba(var(--accent-rgb),0.10)] text-accent shrink-0"
                       >
                         <Scissors size={11} />
                       </span>
                     </Tiptop>
                   ) : null}
                   {item.transient === true ? (
-                    <span title={t('临时会话')} style={{ flexShrink: 0, padding: '1px 5px', borderRadius: 4, background: 'rgba(var(--accent-rgb), 0.12)', color: 'var(--accent)', fontSize: 10, fontWeight: 600 }}>
+                    <span title={t('临时会话')} className="shrink-0 px-[5px] py-px rounded-sm bg-[rgba(var(--accent-rgb),0.12)] text-accent text-[10px] font-semibold">
                       {t('临时会话')}
                     </span>
                   ) : null}
-                  <div style={{ minWidth: 0, fontSize: 13, fontWeight: panelState.activeConversationId === item.id ? 600 : 500, color: isArchivedAgentSubtask ? 'var(--text-secondary)' : 'var(--text-primary)', lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{displayTitle || item.title}</div>
+                  <div className={cn(
+                    'min-w-0 text-base leading-tight whitespace-nowrap overflow-hidden text-ellipsis',
+                    isArchivedAgentSubtask ? 'text-secondary' : 'text-primary',
+                    panelState.activeConversationId === item.id ? 'font-semibold' : 'font-medium',
+                  )}>{displayTitle || item.title}</div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0, flexWrap: 'wrap' }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 0 }}>
+                <div className="flex items-center gap-0.5 min-w-0 flex-wrap">
+                  <div className="text-xs text-tertiary whitespace-nowrap inline-flex items-center gap-0">
                     <span>{historyTimeParts.absoluteText}</span>
                     {historyTimeParts.relativeText ? (
                       <span style={historyRelativeToneStyle}>({historyTimeParts.relativeText})</span>
                     ) : null}
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>·{item.messageCount}</div>
+                  <div className="text-xs text-muted whitespace-nowrap">·{item.messageCount}</div>
                 </div>
               </div>
             </button>
-            {!conversationSelectionMode ? <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginRight: 10, flexShrink: 0 }}>
+            {!conversationSelectionMode ? <div className="flex items-center gap-1 mr-2.5 shrink-0">
               {item.transient === true ? (
                 <button
                   type="button"
-                  className="ai-conversation-row-action"
                   title={`${t('临时会话')} → ${t('保存')}`}
                   aria-label={`${t('临时会话')} → ${t('保存')}`}
                   onClick={() => void handleMakeConversationPermanent(item.id)}
-                  style={{ width: 26, height: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, color: 'var(--accent)', background: 'transparent', border: '1px solid transparent', boxShadow: 'none', flexShrink: 0, cursor: 'pointer', transition: 'background 120ms ease, border-color 120ms ease, color 120ms ease' }}
+                  className={cn(AI_ROW_ACTION_BASE, AI_ROW_ACTION_HOVER_ACCENT, 'text-accent')}
                 >
                   <ArchiveRestore size={13} />
                 </button>
@@ -4866,25 +4824,10 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
               {item.transient !== true ? (
               <button
                 type="button"
-                className="ai-conversation-row-action"
                 title={t('打开任务所在文件夹')}
                 aria-label={t('打开任务所在文件夹')}
                 onClick={() => void handleOpenConversationFolder(item.id)}
-                style={{
-                  width: 26,
-                  height: 26,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRadius: 6,
-                  color: 'var(--text-muted)',
-                  background: 'transparent',
-                  border: '1px solid transparent',
-                  boxShadow: 'none',
-                  flexShrink: 0,
-                  cursor: 'pointer',
-                  transition: 'background 120ms ease, border-color 120ms ease, color 120ms ease',
-                }}
+                className={cn(AI_ROW_ACTION_BASE, AI_ROW_ACTION_HOVER_ACCENT, 'text-muted')}
               >
                 <FolderOpen size={13} />
               </button>
@@ -4892,52 +4835,22 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
               {item.transient !== true ? (
               <button
                 type="button"
-                className="ai-conversation-row-action"
                 title={t('编辑任务标题')}
                 aria-label={t('编辑任务标题')}
                 onClick={() => void handleRenameConversationTitle(item.id)}
-                style={{
-                  width: 26,
-                  height: 26,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRadius: 6,
-                  color: 'var(--text-muted)',
-                  background: 'transparent',
-                  border: '1px solid transparent',
-                  boxShadow: 'none',
-                  flexShrink: 0,
-                  cursor: 'pointer',
-                  transition: 'background 120ms ease, border-color 120ms ease, color 120ms ease',
-                }}
+                className={cn(AI_ROW_ACTION_BASE, AI_ROW_ACTION_HOVER_ACCENT, 'text-muted')}
               >
                 <Pencil size={13} />
               </button>
               ) : null}
               <button
                 type="button"
-                className="ai-conversation-row-action ai-conversation-row-action-danger"
                 title={t('删除')}
                 aria-label={t('删除')}
                 onClick={() => {
                   void handleDeleteConversation(item.id)
                 }}
-                style={{
-                  width: 26,
-                  height: 26,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRadius: 6,
-                  color: 'var(--text-muted)',
-                  background: 'transparent',
-                  border: '1px solid transparent',
-                  boxShadow: 'none',
-                  flexShrink: 0,
-                  cursor: 'pointer',
-                  transition: 'background 120ms ease, border-color 120ms ease, color 120ms ease',
-                }}
+                className={cn(AI_ROW_ACTION_BASE, AI_ROW_ACTION_HOVER_DANGER, 'text-muted')}
               >
                 ×
               </button>
@@ -4948,39 +4861,41 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
     }
 
     return (
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: 'var(--surface-base)' }}>
-        <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--surface-raised)', position: 'sticky', top: 0, zIndex: 2, display: 'grid', gap: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>{conversationSelectionMode ? t('已选择 {count} 项').replace('{count}', String(selectedConversationIds.size)) : t('对话历史')}</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <button type="button" title={conversationSelectionMode ? t('退出多选') : t('多选')} aria-label={conversationSelectionMode ? t('退出多选') : t('多选')} onClick={() => conversationSelectionMode ? clearConversationSelection() : setConversationSelectionMode(true)} style={{ width: 28, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, border: conversationSelectionMode ? '1px solid var(--accent-border)' : '1px solid var(--border-subtle)', background: conversationSelectionMode ? 'rgba(var(--accent-rgb), 0.10)' : 'var(--surface-sunken)', color: conversationSelectionMode ? 'var(--accent)' : 'var(--text-tertiary)', cursor: 'pointer' }}><CheckSquare size={14} /></button>
-          <button type="button" title={t('新建分组')} aria-label={t('新建分组')} onClick={() => void handleCreateConversationGroup()} style={{ width: 28, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, border: '1px solid var(--border-subtle)', background: 'var(--surface-sunken)', color: 'var(--text-tertiary)', cursor: 'pointer' }}><FolderPlus size={14} /></button>
+      <div className="flex-1 min-h-0 overflow-y-auto bg-canvas">
+        <div className="px-2.5 py-2 border-b border-line-subtle bg-raised sticky top-0 grid gap-2" style={{ zIndex: Z.STACK }}>
+          <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold text-secondary">{conversationSelectionMode ? t('已选择 {count} 项').replace('{count}', String(selectedConversationIds.size)) : t('对话历史')}</div>
+          <div className="flex items-center gap-1.5">
+          <button type="button" title={conversationSelectionMode ? t('退出多选') : t('多选')} aria-label={conversationSelectionMode ? t('退出多选') : t('多选')} onClick={() => conversationSelectionMode ? clearConversationSelection() : setConversationSelectionMode(true)} className={cn(
+            'w-7 h-7 inline-flex items-center justify-center rounded-md border cursor-pointer',
+            conversationSelectionMode
+              ? 'border-accent-border bg-[rgba(var(--accent-rgb),0.10)] text-accent'
+              : 'border-line-subtle bg-sunken text-tertiary',
+          )}><CheckSquare size={14} /></button>
+          <button type="button" title={t('新建分组')} aria-label={t('新建分组')} onClick={() => void handleCreateConversationGroup()} className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-line-subtle bg-sunken text-tertiary cursor-pointer"><FolderPlus size={14} /></button>
           <button
             type="button"
             title={t('全局搜索对话')}
             aria-label={t('全局搜索对话')}
             onClick={handleOpenGlobalSearch}
-            style={{
-              width: 28,
-              height: 28,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 6,
-              border: globalSearchOpen ? '1px solid var(--accent-border)' : '1px solid var(--border-subtle)',
-              background: globalSearchOpen ? 'rgba(var(--accent-rgb), 0.10)' : 'var(--surface-sunken)',
-              color: globalSearchOpen ? 'var(--accent)' : 'var(--text-tertiary)',
-              cursor: 'pointer',
-              transition: 'var(--transition-fast)',
-              flexShrink: 0,
-            }}
+            className={cn(
+              'w-7 h-7 inline-flex items-center justify-center rounded-md border cursor-pointer shrink-0 transition-[color,background-color,border-color,opacity] duration-[80ms]',
+              globalSearchOpen
+                ? 'border-accent-border bg-[rgba(var(--accent-rgb),0.10)] text-accent'
+                : 'border-line-subtle bg-sunken text-tertiary',
+            )}
           >
             <Search size={14} />
           </button>
           </div>
           </div>
-          <div role="tablist" aria-label={t('分组')} style={{ display: 'flex', gap: 6, overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: 1 }}>
-            <button role="tab" aria-selected={conversationFilter === 'all'} type="button" onClick={() => { setConversationFilter('all'); clearConversationSelection(); cancelRenameConversationGroup() }} onDoubleClick={showSystemGroupRenameUnsupported} style={{ height: 26, padding: '0 9px', borderRadius: 7, border: conversationFilter === 'all' ? '1px solid var(--accent-border)' : '1px solid var(--border-subtle)', background: conversationFilter === 'all' ? 'rgba(var(--accent-rgb), 0.10)' : 'transparent', color: conversationFilter === 'all' ? 'var(--accent)' : 'var(--text-secondary)', fontSize: 11, whiteSpace: 'nowrap', cursor: 'pointer', flexShrink: 0 }}>{t('全部')}</button>
+          <div role="tablist" aria-label={t('分组')} className="flex gap-1.5 overflow-x-auto [scrollbar-width:none] pb-px">
+            <button role="tab" aria-selected={conversationFilter === 'all'} type="button" onClick={() => { setConversationFilter('all'); clearConversationSelection(); cancelRenameConversationGroup() }} onDoubleClick={showSystemGroupRenameUnsupported} className={cn(
+              'h-[26px] px-[9px] rounded-md border text-xs whitespace-nowrap cursor-pointer shrink-0',
+              conversationFilter === 'all'
+                ? 'border-accent-border bg-[rgba(var(--accent-rgb),0.10)] text-accent'
+                : 'border-line-subtle bg-transparent text-secondary',
+            )}>{t('全部')}</button>
             {conversationOrganizer.groups.map((group) => {
               const selected = conversationFilter === group.id
               const editing = editingConversationGroupId === group.id
@@ -4998,7 +4913,8 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
                     if (event.key === 'Enter') { event.preventDefault(); commitRenameConversationGroup() }
                     if (event.key === 'Escape') { event.preventDefault(); cancelRenameConversationGroup() }
                   }}
-                  style={{ width: Math.max(72, Math.min(150, editingConversationGroupName.length * 12 + 24)), height: 26, padding: '0 8px', borderRadius: 7, border: '1px solid var(--accent-border)', background: 'var(--surface-sunken)', color: 'var(--text-primary)', fontSize: 11, outline: '2px solid rgba(var(--accent-rgb), 0.16)', flexShrink: 0 }}
+                  className="h-[26px] px-2 rounded-md border border-accent-border bg-sunken text-primary text-xs outline-2 outline-[rgba(var(--accent-rgb),0.16)] shrink-0"
+                  style={{ width: Math.max(72, Math.min(150, editingConversationGroupName.length * 12 + 24)) }}
                 />
               ) : (
                 <button
@@ -5014,27 +4930,45 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
                   onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverConversationGroupId(group.id) }}
                   onDrop={(event) => { event.preventDefault(); reorderConversationGroup(draggingConversationGroupId || event.dataTransfer.getData('text/plain'), group.id); setDraggingConversationGroupId(''); setDragOverConversationGroupId('') }}
                   onDragEnd={() => { setDraggingConversationGroupId(''); setDragOverConversationGroupId('') }}
-                  style={{ height: 26, padding: '0 9px', borderRadius: 7, border: dragOver ? '1px solid var(--accent)' : selected ? '1px solid var(--accent-border)' : '1px solid var(--border-subtle)', background: selected ? 'rgba(var(--accent-rgb), 0.10)' : 'transparent', color: selected ? 'var(--accent)' : 'var(--text-secondary)', fontSize: 11, whiteSpace: 'nowrap', cursor: dragging ? 'grabbing' : 'grab', flexShrink: 0, opacity: dragging ? 0.5 : 1, transform: dragOver ? 'translateX(2px)' : 'none', transition: 'var(--transition-fast)' }}>
+                  className={cn(
+                    'h-[26px] px-[9px] rounded-md border text-xs whitespace-nowrap shrink-0 transition-[color,background-color,border-color,opacity] duration-[80ms]',
+                    dragOver
+                      ? 'border-accent'
+                      : selected
+                        ? 'border-accent-border'
+                        : 'border-line-subtle',
+                    selected ? 'bg-[rgba(var(--accent-rgb),0.10)] text-accent' : 'bg-transparent text-secondary',
+                  )}
+                  style={{
+                    cursor: dragging ? 'grabbing' : 'grab',
+                    opacity: dragging ? 0.5 : 1,
+                    transform: dragOver ? 'translateX(2px)' : 'none',
+                  }}>
                   {group.name}
                 </button>
               )
             })}
-            <button role="tab" aria-selected={conversationFilter === 'archived'} type="button" onClick={() => { setConversationFilter('archived'); clearConversationSelection(); cancelRenameConversationGroup() }} onDoubleClick={showSystemGroupRenameUnsupported} style={{ height: 26, padding: '0 9px', borderRadius: 7, border: conversationFilter === 'archived' ? '1px solid var(--accent-border)' : '1px solid var(--border-subtle)', background: conversationFilter === 'archived' ? 'rgba(var(--accent-rgb), 0.10)' : 'transparent', color: conversationFilter === 'archived' ? 'var(--accent)' : 'var(--text-secondary)', fontSize: 11, whiteSpace: 'nowrap', cursor: 'pointer', flexShrink: 0 }}>{t('已归档')}</button>
+            <button role="tab" aria-selected={conversationFilter === 'archived'} type="button" onClick={() => { setConversationFilter('archived'); clearConversationSelection(); cancelRenameConversationGroup() }} onDoubleClick={showSystemGroupRenameUnsupported} className={cn(
+              'h-[26px] px-[9px] rounded-md border text-xs whitespace-nowrap cursor-pointer shrink-0',
+              conversationFilter === 'archived'
+                ? 'border-accent-border bg-[rgba(var(--accent-rgb),0.10)] text-accent'
+                : 'border-line-subtle bg-transparent text-secondary',
+            )}>{t('已归档')}</button>
           </div>
         </div>
         {content}
         {conversationSelectionMode && selectedConversationIds.size > 0 ? (
-          <div style={{ position: 'sticky', bottom: 0, zIndex: 3, display: 'grid', gap: 6, padding: 8, borderTop: '1px solid var(--border)', background: 'var(--surface-raised)' }}>
+          <div className="sticky bottom-0 grid gap-1.5 p-2 border-t border-line bg-raised" style={{ zIndex: Z.STACK + 1 }}>
             {moveToGroupOpen ? (
-              <div style={{ display: 'flex', gap: 6, overflowX: 'auto', scrollbarWidth: 'none' }}>
-                <button type="button" onClick={() => handleMoveSelectedConversations('')} className="btn btn-ghost btn-sm" style={{ flexShrink: 0 }}>{t('移出分组')}</button>
-                {conversationOrganizer.groups.map((group) => <button key={group.id} type="button" onClick={() => handleMoveSelectedConversations(group.id)} className="btn btn-ghost btn-sm" style={{ flexShrink: 0 }}>{group.name}</button>)}
+              <div className="flex gap-1.5 overflow-x-auto [scrollbar-width:none]">
+                <Button variant="ghost" size="sm" onClick={() => handleMoveSelectedConversations('')} className="shrink-0">{t('移出分组')}</Button>
+                {conversationOrganizer.groups.map((group) => <Button key={group.id} variant="ghost" size="sm" onClick={() => handleMoveSelectedConversations(group.id)} className="shrink-0">{group.name}</Button>)}
               </div>
             ) : null}
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setMoveToGroupOpen((current) => !current)} style={{ flex: 1 }}>{t('移动到分组')}</button>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => void handleSetSelectedArchived(conversationFilter !== 'archived')} style={{ flex: 1, display: 'inline-flex', gap: 5, alignItems: 'center', justifyContent: 'center' }}>{conversationFilter === 'archived' ? <ArchiveRestore size={13} /> : <Archive size={13} />}{conversationFilter === 'archived' ? t('恢复') : t('归档')}</button>
-              <button type="button" className="btn btn-danger btn-sm" onClick={() => void handleDeleteSelectedConversations()} aria-label={t('删除')} style={{ width: 34, padding: 0 }}><Trash2 size={13} /></button>
+            <div className="flex gap-1.5">
+              <Button variant="ghost" size="sm" onClick={() => setMoveToGroupOpen((current) => !current)} className="flex-1">{t('移动到分组')}</Button>
+              <Button variant="ghost" size="sm" onClick={() => void handleSetSelectedArchived(conversationFilter !== 'archived')} className="flex-1 gap-[5px]">{conversationFilter === 'archived' ? <ArchiveRestore size={13} /> : <Archive size={13} />}{conversationFilter === 'archived' ? t('恢复') : t('归档')}</Button>
+              <Button variant="danger" size="sm" onClick={() => void handleDeleteSelectedConversations()} aria-label={t('删除')} className="w-[34px] p-0"><Trash2 size={13} /></Button>
             </div>
           </div>
         ) : null}
@@ -5088,10 +5022,10 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
       }}
     >
       {tasksDirMigrating ? (
-        <div style={{ position: 'absolute', inset: 0, background: 'rgba(5, 10, 18, 0.6)', backdropFilter: 'blur(3px)', zIndex: 9999, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-          <Loader2 size={36} className="spin" style={{ color: 'var(--accent)' }} />
-          <div style={{ color: 'var(--text-primary)', fontSize: 14, fontWeight: 600 }}>{t('正在迁移对话数据...')}</div>
-          <div style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>{t('迁移期间请勿使用 AI 对话')}</div>
+        <div className="absolute inset-0 bg-[rgba(5,10,18,0.6)] backdrop-blur-[3px] flex flex-col items-center justify-center gap-3" style={{ zIndex: Z.SETTINGS }}>
+          <Loader2 size={36} className="animate-[spin_1s_linear_infinite] text-accent" />
+          <div className="text-md font-semibold text-primary">{t('正在迁移对话数据...')}</div>
+          <div className="text-sm text-tertiary">{t('迁移期间请勿使用 AI 对话')}</div>
         </div>
       ) : null}
       <AIPanelHeader
@@ -5118,37 +5052,27 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
         fullSummaryCondenseAvailable={true}
       />
       {tabBar}
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div data-ai-chat-stage="true" style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        <div data-ai-chat-stage="true" className="flex-1 min-h-0 relative overflow-hidden flex flex-col">
           {activeConversation || !isHomeView ? (
             <>
               {isThemeTuningConversation && !isConversationLoading ? (
-                <div
-                  style={{
-                    padding: '8px 12px',
-                    borderBottom: '1px solid var(--accent-border)',
-                    background: 'rgba(var(--accent-rgb), 0.08)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 10,
-                  }}
-                >
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                <div className="px-3 py-2 border-b border-accent-border bg-[rgba(var(--accent-rgb),0.08)] flex items-center justify-between gap-2.5">
+                  <div className="text-sm text-secondary leading-normal">
                     {t('当前处于配色模式,对话记录不会保存')}
                   </div>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => { void handleGoHome() }}
-                    style={{ flexShrink: 0 }}
+                    className="shrink-0"
                   >
                     {t('退出配色模式')}
-                  </button>
+                  </Button>
                 </div>
               ) : null}
               {conversationSearchOpen ? (
-                <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', background: 'var(--surface-raised)', display: 'grid', gridTemplateColumns: '1fr auto auto auto auto', gap: 8, alignItems: 'center' }}>
+                <div className="px-3 py-2 border-b border-line bg-raised grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 items-center">
                   <input
                     id="ai-panel-main-conversation-search"
                     name="ai-panel-main-conversation-search"
@@ -5168,19 +5092,9 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
                       }
                     }}
                     placeholder={t('输入关键词搜索当前对话')}
-                    style={{
-                      height: 34,
-                      width: '100%',
-                      borderRadius: 8,
-                      border: '1px solid var(--border)',
-                      background: 'var(--surface-sunken)',
-                      color: 'var(--text-primary)',
-                      padding: '0 10px',
-                      boxSizing: 'border-box',
-                      outline: 'none',
-                    }}
+                    className="h-[34px] w-full rounded-lg border border-line bg-sunken text-primary px-2.5 box-border outline-none"
                   />
-                  <div style={{ minWidth: 48, textAlign: 'center', fontSize: 12, color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>
+                  <div className="min-w-12 text-center text-sm text-tertiary tabular-nums">
                     {conversationSearchResults.length > 0 ? `${conversationSearchIndex + 1}/${conversationSearchResults.length}` : '0/0'}
                   </div>
                   <button
@@ -5189,18 +5103,10 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
                     aria-label={t('上一个搜索结果')}
                     onClick={() => handleCycleConversationSearchResult(-1)}
                     disabled={conversationSearchResults.length === 0}
-                    style={{
-                      width: 34,
-                      height: 34,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderRadius: 8,
-                      border: '1px solid var(--border)',
-                      background: 'var(--surface-base)',
-                      color: conversationSearchResults.length > 0 ? 'var(--text-primary)' : 'var(--text-muted)',
-                      cursor: conversationSearchResults.length > 0 ? 'pointer' : 'not-allowed',
-                    }}
+                    className={cn(
+                      'w-[34px] h-[34px] inline-flex items-center justify-center rounded-lg border border-line bg-canvas',
+                      conversationSearchResults.length > 0 ? 'text-primary cursor-pointer' : 'text-muted cursor-not-allowed',
+                    )}
                   >
                     ‹
                   </button>
@@ -5210,18 +5116,10 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
                     aria-label={t('下一个搜索结果')}
                     onClick={() => handleCycleConversationSearchResult(1)}
                     disabled={conversationSearchResults.length === 0}
-                    style={{
-                      width: 34,
-                      height: 34,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderRadius: 8,
-                      border: '1px solid var(--border)',
-                      background: 'var(--surface-base)',
-                      color: conversationSearchResults.length > 0 ? 'var(--text-primary)' : 'var(--text-muted)',
-                      cursor: conversationSearchResults.length > 0 ? 'pointer' : 'not-allowed',
-                    }}
+                    className={cn(
+                      'w-[34px] h-[34px] inline-flex items-center justify-center rounded-lg border border-line bg-canvas',
+                      conversationSearchResults.length > 0 ? 'text-primary cursor-pointer' : 'text-muted cursor-not-allowed',
+                    )}
                   >
                     ›
                   </button>
@@ -5230,18 +5128,7 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
                     title={t('关闭搜索')}
                     aria-label={t('关闭搜索')}
                     onClick={resetConversationSearchState}
-                    style={{
-                      width: 34,
-                      height: 34,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderRadius: 8,
-                      border: '1px solid var(--border)',
-                      background: 'var(--surface-base)',
-                      color: 'var(--text-tertiary)',
-                      cursor: 'pointer',
-                    }}
+                    className="w-[34px] h-[34px] inline-flex items-center justify-center rounded-lg border border-line bg-canvas text-tertiary cursor-pointer"
                   >
                     ×
                   </button>
@@ -5279,21 +5166,8 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
               muted
               playsInline
               aria-hidden="true"
-              style={{
-                position: 'absolute',
-                right: 18,
-                bottom: 0,
-                width: 'min(32%, 180px)',
-                minWidth: 120,
-                maxWidth: '42vw',
-                maxHeight: 280,
-                objectFit: 'contain',
-                pointerEvents: 'none',
-                userSelect: 'none',
-                opacity: 0.96,
-                zIndex: 2,
-                filter: 'drop-shadow(0 10px 24px rgba(0, 0, 0, 0.22))',
-              }}
+              className="absolute right-[18px] bottom-0 w-[min(32%,180px)] min-w-[120px] max-w-[42vw] max-h-[280px] object-contain pointer-events-none select-none opacity-96 drop-shadow-[0_10px_24px_rgba(0,0,0,0.22)]"
+              style={{ zIndex: Z.STACK }}
             />
           ) : null}
         </div>
@@ -5901,17 +5775,7 @@ export default function AIPanel({ width, side, sessionId, terminalId, sessionTer
       data-ai-workspace-tab-bar="true"
       onClickCapture={suppressAIWorkspaceTabCloseInteraction}
       onDoubleClickCapture={suppressAIWorkspaceTabCloseInteraction}
-      style={{
-        height: 40,
-        display: 'flex',
-        alignItems: 'stretch',
-        gap: 0,
-        padding: '4px 6px 0',
-        borderBottom: '1px solid var(--border)',
-        background: 'var(--surface-base)',
-        flexShrink: 0,
-        overflow: 'hidden',
-      }}>
+      className="h-10 flex items-stretch gap-0 pt-1 px-1.5 border-b border-line bg-canvas shrink-0 overflow-hidden">
       {aiWorkspaceTabOverflow ? (
         <button
           type="button"
@@ -5995,19 +5859,10 @@ export default function AIPanel({ width, side, sessionId, terminalId, sessionTer
                   ],
                 })
               }}
-              style={{
-                flex: '0 0 auto',
-                width: 176,
-                minWidth: 132,
-                maxWidth: 220,
-                display: 'flex',
-                alignItems: 'center',
-                border: `1px solid ${active ? 'var(--border)' : 'transparent'}`,
-                borderBottom: active ? '1px solid var(--surface-raised)' : '1px solid transparent',
-                borderRadius: '8px 8px 0 0',
-                background: active ? 'var(--surface-raised)' : 'transparent',
-                marginBottom: -1,
-              }}>
+              className={cn(
+                'shrink-0 basis-auto w-44 min-w-[132px] max-w-[220px] flex items-center rounded-t-lg -mb-px border',
+                active ? 'border-line border-b-raised bg-raised' : 'border-transparent',
+              )}>
               <Tiptop text={tabLabel} placement="bottom" style={{ display: 'flex', height: '100%', minWidth: 0, flex: 1 }}>
                 <button
                   type="button"
@@ -6027,29 +5882,15 @@ export default function AIPanel({ width, side, sessionId, terminalId, sessionTer
                     closeWorkspaceTab(tab.id)
                   }}
                   aria-label={tabLabel}
-                  style={{
-                    minWidth: 0,
-                    flex: '1 1 auto',
-                    height: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'flex-start',
-                    gap: 7,
-                    padding: '0 8px 0 10px',
-                    border: 'none',
-                    position: 'relative',
-                    background: 'transparent',
-                    color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
-                    cursor: 'pointer',
-                    fontSize: 12,
-                    fontWeight: active ? 700 : 500,
-                    fontVariantNumeric: 'tabular-nums',
-                  }}>
-                  {running ? <span aria-label={t('执行中')} style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--accent)', flexShrink: 0 }} /> : null}
-                  <span style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{index + 1}</span>
-                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tabTitle}</span>
+                  className={cn(
+                    'min-w-0 grow basis-auto h-full flex items-center justify-start gap-[7px] pl-2.5 pr-2 border-0 relative bg-transparent cursor-pointer text-sm tabular-nums',
+                    active ? 'text-primary font-bold' : 'text-secondary font-medium',
+                  )}>
+                  {running ? <span aria-label={t('执行中')} className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" /> : null}
+                  <span className="text-muted tabular-nums shrink-0">{index + 1}</span>
+                  <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{tabTitle}</span>
                   {transient ? (
-                    <span title={t('临时会话')} style={{ flexShrink: 0, padding: '1px 5px', borderRadius: 4, background: 'rgba(var(--accent-rgb), 0.12)', color: 'var(--accent)', fontSize: 10, fontWeight: 600 }}>
+                    <span title={t('临时会话')} className="shrink-0 px-[5px] py-px rounded-sm bg-[rgba(var(--accent-rgb),0.12)] text-accent text-[10px] font-semibold">
                       {t('临时会话')}
                     </span>
                   ) : null}
@@ -6065,7 +5906,7 @@ export default function AIPanel({ width, side, sessionId, terminalId, sessionTer
                     event.stopPropagation()
                     closeWorkspaceTab(tab.id)
                   }}
-                  style={{ width: 24, height: 24, marginRight: 4, padding: 0, border: 'none', borderRadius: 5, background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', flexShrink: 0, fontSize: 15, lineHeight: 1 }}>
+                  className="w-6 h-6 mr-1 p-0 border-0 rounded-sm bg-transparent text-muted cursor-pointer shrink-0 text-lg leading-none">
                   ×
                 </button>
               ) : null}
@@ -6089,24 +5930,15 @@ export default function AIPanel({ width, side, sessionId, terminalId, sessionTer
         title={t('新对话')}
         aria-label={t('新对话')}
         onClick={createWorkspaceTab}
-        style={{
-          width: 30,
-          border: 'none',
-          borderBottom: '2px solid transparent',
-          background: 'transparent',
-          color: 'var(--text-secondary)',
-          cursor: 'pointer',
-          fontSize: 18,
-          flexShrink: 0,
-        }}>
+        className="w-[30px] border-0 border-b-2 border-b-transparent bg-transparent text-secondary cursor-pointer text-[18px] shrink-0">
         +
       </button>
     </div>
   )
   return (
-    <div style={{ width, minWidth: width, height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+    <div className="h-full min-h-0 flex flex-col overflow-hidden relative" style={{ width, minWidth: width }}>
       {tabGroup.tabs.map((tab) => (
-        <div key={tab.id} style={{ position: 'absolute', inset: 0, display: activeTabId === tab.id ? 'flex' : 'none' }}>
+        <div key={tab.id} className="absolute inset-0" style={{ display: activeTabId === tab.id ? 'flex' : 'none' }}>
           <AIConversationTabPanel
             width="100%"
             side={side}

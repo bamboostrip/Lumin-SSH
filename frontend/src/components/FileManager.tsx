@@ -6,10 +6,10 @@ const FileEditor = React.lazy(() => import('./FileEditor.tsx'));
 import { CanResolveFilePaths, EventsOn, OnFileDrop, OnFileDropOff } from '../../wailsjs/runtime/runtime.js';
 import { useTranslation, t as tKey, getLanguage, type I18nKey } from '../i18n.ts';
 import { Z } from '../constants/zIndex.ts';
-import { clampMenuPosition } from '../utils/menuPosition.ts';
 import { isArchive, isBinaryLike, isViewable } from '../utils/fileTypeClassify.ts';
 import { suppressDragOutClick } from '../utils/dragOutClickGuard.ts';
 import FileUploadQueuePanel from './FileUploadQueuePanel.tsx';
+import { Button, ContextMenu as UiContextMenu, EmptyState, type MenuItem as UiMenuItem } from './ui';
 import { type TransferChunk, type TransferQueueItem } from '../utils/fileWorkbench.ts';
 import { ChmodPerms, DownloadConflictSettings, FileManagerDownloadConflictSettings, FileManagerVirtualRange, FileManagerVirtualRow, IdentityOption, IdentityPresetOption, uploadChunkWithRetry, RowEffectState, FileListViewAnchor, FileManagerPaneEffectState, FileManagerPaneViewState, addOpeningFile, areFileManagerTabStatesEqual, buildDirectoryItemFromPath, buildDownloadConflictOptionsPayload, buildFileManagerVirtualRows, buildIdentityOptionList, calcChmodOctal, CHMOD_GROUP_PRESET_OPTIONS, CHMOD_OWNER_PRESET_OPTIONS, clampFileListColumnWidth, cloneFileManagerItemsForCache, computeCompressedOverallProgress, createFileManagerPaneEffectState, createFileManagerPaneViewState, createFileManagerTab, createLimiter, createLocalItemShell, DEFAULT_FILE_MANAGER_DOWNLOAD_DIR, DEFAULT_MAX_EDIT_SIZE_MB, DOWNLOAD_CONFLICT_STRATEGY_AUTO_RENAME, DOWNLOAD_CONFLICT_STRATEGY_DIFF_OVERWRITE, DOWNLOAD_CONFLICT_STRATEGY_FORCE_OVERWRITE, DOWNLOAD_CONFLICT_STRATEGY_PROMPT, DOWNLOAD_RENAME_SUFFIX_RANDOM, DOWNLOAD_RENAME_SUFFIX_SEQUENCE, DOWNLOAD_RENAME_SUFFIX_TIMESTAMP, downloadConflictKindLabel, extractManualPinnedTabsFromWorkspace, FILE_LIST_ACTIONS_COLUMN_WIDTH, FILE_LIST_MODIFIED_MAX_WIDTH, FILE_LIST_MODIFIED_MIN_WIDTH, FILE_LIST_NAME_MIN_WIDTH, FILE_LIST_PERMISSION_MAX_WIDTH, FILE_LIST_PERMISSION_MIN_WIDTH, FILE_LIST_SIZE_MAX_WIDTH, FILE_LIST_SIZE_MIN_WIDTH, FILE_MANAGER_INTERNAL_DRAG_MIME, FILE_MANAGER_LAYOUT_MODE_CLASSIC, FILE_MANAGER_LAYOUT_MODE_SIDEBAR_DUAL, FILE_MANAGER_NEW_TAB_PATH_MODE_INHERIT_CURRENT, FILE_MANAGER_NEW_TAB_PATH_MODE_ROOT, FILE_MANAGER_NEW_TAB_PATH_MODE_SESSION_INITIAL_PATH, FILE_MANAGER_NEW_TAB_PATH_MODE_TERMINAL_CWD, FILE_MANAGER_SYSTEM_TAB_KIND_CWD, FILE_MANAGER_SYSTEM_TAB_KIND_HOME, FILE_MANAGER_VIRTUAL_ROW_ITEM, FILE_MANAGER_VIRTUAL_ROW_PARENT, fileIcon, fileListMeasureCanvas, findFileManagerVirtualRowIndex, fmtDate, fmtSize, formatIdentityDisplay, formatPermissionDisplay, getDownloadConflictSettingsFromStorage, getFileManagerInitialPathMode, getFileManagerLayoutMode, getFileManagerNewTabPathMode, getFileManagerSystemTabType, getFileManagerTabLabel, getParentPath, globalOpeningFiles, globalOpeningListeners, globalOpeningTimers, ICON_SIZE, isCompressedTransferEnabled, isEditable, isFileManagerDualPaneDragTransferEnabled, isFileManagerSharedPinnedTabsEnabled, isFileManagerVirtualRangeVisible, isHiddenFile, isMissingUnzipError, MAX_CHUNK_UPLOAD_RETRIES, measureFileListTextWidth, mergeSharedPinnedTabsIntoWorkspaceTabs, normalizeChmodMode, normalizeFileManagerPaneKey, normalizeIdentityId, notifyOpeningListeners, parsePositiveInt, permsFromChmodMode, readBlobAsBase64, removeOpeningFile, renderFileManagerTabTitle, resolveIdentityCompareKey, resolveIdentityInputSpec, resolveIdentityInputValue, runWithLimit, runWithLimitSettled, shouldAutoOpenTransferQueue, shouldHideFileManagerTabCloseButton, shouldInvertFileManagerDualPaneDragModifier, shouldPromptFileManagerDualPaneDragDirectory, shouldShowFileManagerTabIcons, sortFileManagerItems, traverseEntry, UPLOAD_ABORT_SENTINEL, UPLOAD_PANEL_CLOSE_ANIMATION_MS, upsertLocalItem } from '../utils/fileManagerHelpers.tsx';
 import type { FileEditorFile } from './FileEditor.tsx';
@@ -390,9 +390,9 @@ function ChmodDialog({ path, permission, mode, rememberedMode = '', autoApplyLas
         <div className="modal-body">
           <div className="chmod-dialog-body">
             <div className="chmod-dialog-path">{path}</div>
-            <div style={{ display: 'grid', gap: 10, marginTop: 12, marginBottom: 12 }}>
-              <div style={{ display: 'grid', gap: 6 }}>
-                <label htmlFor="chmod-owner-input" style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{t('属主')}</label>
+            <div className="grid gap-[10px] my-3">
+              <div className="grid gap-1.5">
+                <label htmlFor="chmod-owner-input" className="text-sm text-tertiary">{t('属主')}</label>
                 <input
                   id="chmod-owner-input"
                   name="chmod-owner"
@@ -412,8 +412,8 @@ function ChmodDialog({ path, permission, mode, rememberedMode = '', autoApplyLas
                   <option key={option.label} value={option.label} />
                 ))}
               </datalist>
-              <div style={{ display: 'grid', gap: 6 }}>
-                <label htmlFor="chmod-group-input" style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{t('属组')}</label>
+              <div className="grid gap-1.5">
+                <label htmlFor="chmod-group-input" className="text-sm text-tertiary">{t('属组')}</label>
                 <input
                   id="chmod-group-input"
                   name="chmod-group"
@@ -437,9 +437,9 @@ function ChmodDialog({ path, permission, mode, rememberedMode = '', autoApplyLas
             <div className="chmod-grid">
               <div className="chmod-row">
                 <span></span>
-                <span style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-tertiary)' }}>{t('读取')}</span>
-                <span style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-tertiary)' }}>{t('写入')}</span>
-                <span style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-tertiary)' }}>{t('执行')}</span>
+                <span className="text-center text-sm text-tertiary">{t('读取')}</span>
+                <span className="text-center text-sm text-tertiary">{t('写入')}</span>
+                <span className="text-center text-sm text-tertiary">{t('执行')}</span>
               </div>
               <div className="chmod-row">
                 <span className="chmod-row-label">{t('用户')}</span>
@@ -466,12 +466,12 @@ function ChmodDialog({ path, permission, mode, rememberedMode = '', autoApplyLas
                 ))}
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <label htmlFor="chmod-octal-input" style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{t('八进制:')}</label>
+            <div className="flex items-center gap-3">
+              <label htmlFor="chmod-octal-input" className="text-sm text-tertiary">{t('八进制:')}</label>
               <input id="chmod-octal-input" name="chmod-octal" className="chmod-octal-input" autoComplete="off" value={octal} onChange={handleOctalChange} />
-              <button className="btn btn-ghost btn-sm" type="button" onClick={handleApplyLastSettings} disabled={!canApplyLastSettings}>
+              <Button variant="ghost" size="sm" onClick={handleApplyLastSettings} disabled={!canApplyLastSettings}>
                 {t('应用上次')}
-              </button>
+              </Button>
             </div>
             {showIncludeSubdirectories && (
               <label htmlFor="fm-chmod-include-children" className="chmod-checkbox" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
@@ -482,8 +482,8 @@ function ChmodDialog({ path, permission, mode, rememberedMode = '', autoApplyLas
           </div>
         </div>
         <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onClose}>{t('取消')}</button>
-          <button className="btn btn-primary" onClick={() => onSave(octal.length === 3 ? octal : calcChmodOctal(perms), includeChildren, ownerInput, groupInput)}>{t('确定')}</button>
+          <Button variant="ghost" onClick={onClose}>{t('取消')}</Button>
+          <Button variant="primary" onClick={() => onSave(octal.length === 3 ? octal : calcChmodOctal(perms), includeChildren, ownerInput, groupInput)}>{t('确定')}</Button>
         </div>
       </div>
     </div>,
@@ -553,131 +553,91 @@ function RenameInput({ initialValue, isDirectory, onConfirm, onCancel, mountedRe
   );
 }
 
-// Context menu component
-function ContextMenu({ pos, item, mode = 'item', isPinned = false, isSystemPinned = false, canTogglePinned = false, canCloseTab = false, showCreateActions = false, deleteItemCount = 1, clipboardItemCount = 1, canPaste = false, clipboardActionArrow = '', onClose, onDownload, onEdit, onOpenSystemEditor, onOpenWithEditor, onRename, onDelete, onDeleteShell, onMkdir, onNewFile, onCompress, onUncompress, onChmod, onCopyPath, onCopyItem, onCutItem, onPaste, onOpenInNewTab, onTogglePinned, onCloseTab, t }: ContextMenuProps) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [adjusted, setAdjusted] = useState({ left: pos.x, top: pos.y });
+// Context menu component（视觉迁移：手写 DOM 换 ui/ContextMenu，业务条件原样映射为 items）
+function ContextMenu({ pos, item, mode = 'item', isPinned = false, isSystemPinned = false, canTogglePinned = false, canCloseTab = false, showCreateActions = false, deleteItemCount = 1, clipboardItemCount = 1, canPaste = false, clipboardActionArrow = '', onClose, onDownload, onEdit, onOpenSystemEditor, onOpenWithEditor, onRename, onDelete, onMkdir, onNewFile, onCompress, onUncompress, onChmod, onCopyPath, onCopyItem, onCutItem, onPaste, onOpenInNewTab, onTogglePinned, onCloseTab, t }: ContextMenuProps) {
   const isTabMenu = mode === 'tab';
   const shouldShowCreateActions = showCreateActions || !item;
   const shouldShowDividerBeforeCreate = Boolean(item && shouldShowCreateActions);
   const shouldShowDeleteActions = Boolean(item) && !isTabMenu;
   const shouldShowDividerBeforeDelete = shouldShowDeleteActions;
-
-  React.useLayoutEffect(() => {
-    if (!ref.current) return;
-    // 使用 offsetWidth/offsetHeight 测量：菜单带有 scale(0.94) 入场动画，
-    // getBoundingClientRect 会拿到变换后的缩小尺寸，导致底部 clamp 不足、末尾项被裁剪
-    const clamped = clampMenuPosition(pos.x, pos.y, ref.current.offsetWidth, ref.current.offsetHeight);
-    setAdjusted({ left: clamped.x, top: clamped.y });
-  }, [pos.x, pos.y]);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [onClose]);
+  const icon = (Icon: LucideIcon) => <Icon size={14} />;
 
   return (
-    <div
-      ref={ref}
-      className="context-menu"
-      style={{ left: adjusted.left, top: adjusted.top, zIndex: Z.MENU }}
-    >
-      {item && item.isDirectory && (
-        <div className="context-menu-item" onClick={onOpenInNewTab}>
-          <FolderOpen size={14} /> {t('在新标签页打开')}
-        </div>
-      )}
-      {isTabMenu && canTogglePinned && !isSystemPinned && (
-        <div className="context-menu-item" onClick={onTogglePinned}>
-          <Pin size={14} /> {isPinned ? t('取消固定') : t('固定')}
-        </div>
-      )}
-      {canCloseTab && (
-        <div className="context-menu-item" onClick={onCloseTab}>
-          <X size={14} /> {t('关闭标签')}
-        </div>
-      )}
-      {item && (
-        <div className="context-menu-item" onClick={onCopyPath}>
-          <Copy size={14} /> {t('复制路径')}
-        </div>
-      )}
-      {item && !isTabMenu && (
-        <div className="context-menu-item" onClick={onCopyItem}>
-          <Copy size={14} /> {clipboardActionArrow === '<-' ? `${clipboardActionArrow} ${t('复制')}` : `${t('复制')}${clipboardActionArrow ? ` ${clipboardActionArrow}` : ''}`}{clipboardItemCount > 1 ? ` (${clipboardItemCount}${t('项')})` : ''}
-        </div>
-      )}
-      {item && !isTabMenu && (
-        <div className="context-menu-item" onClick={onCutItem}>
-          <Scissors size={14} /> {clipboardActionArrow === '<-' ? `${clipboardActionArrow} ${t('剪切')}` : `${t('剪切')}${clipboardActionArrow ? ` ${clipboardActionArrow}` : ''}`}{clipboardItemCount > 1 ? ` (${clipboardItemCount}${t('项')})` : ''}
-        </div>
-      )}
-      {!isTabMenu && canPaste && (
-        <div className="context-menu-item" onClick={onPaste}>
-          <ClipboardPaste size={14} /> {t('粘贴')}
-        </div>
-      )}
-      {item && !item.isDirectory && isEditable(item.name) && (
-        <div className="context-menu-item" onClick={onEdit}>
-          <SquarePen size={14} /> {t('编辑')}
-        </div>
-      )}
-      {item && !item.isDirectory && (
-        <div className="context-menu-item" onClick={onOpenSystemEditor}>
-          <MonitorSmartphone size={14} /> {t('系统编辑器打开')}
-        </div>
-      )}
-      {item && !item.isDirectory && (
-        <div className="context-menu-item" onClick={onOpenWithEditor}>
-          <PencilLine size={14} /> {t('指定编辑器打开')}
-        </div>
-      )}
-      {item && (
-        <div className="context-menu-item" onClick={onDownload}>
-          <Download size={14} /> {item.isDirectory ? t('下载文件夹到本地') : t('下载到本地')}
-        </div>
-      )}
-      {item && (
-        <div className="context-menu-item" onClick={onCompress}>
-          <Archive size={14} /> {t('压缩 (tar.gz)')}
-        </div>
-      )}
-      {item && !item.isDirectory && isArchive(item.name) && (
-        <div className="context-menu-item" onClick={onUncompress}>
-          <FileArchive size={14} /> {t('解压')}
-        </div>
-      )}
-      {item && (!isTabMenu || !isSystemPinned) && (
-        <div className="context-menu-item" onClick={onRename}>
-          <PenLine size={14} /> {isTabMenu ? t('重命名标签标题') : t('重命名')}
-        </div>
-      )}
-      {item && (
-        <div className="context-menu-item" onClick={onChmod}>
-          <Lock size={14} /> {t('修改权限')}
-        </div>
-      )}
-      {shouldShowDividerBeforeCreate && <div className="context-menu-divider" />}
-      {shouldShowCreateActions && (
-        <div className="context-menu-item" onClick={onNewFile}>
-          <FilePlus size={14} /> {t('新建文件')}
-        </div>
-      )}
-      {shouldShowCreateActions && (
-        <div className="context-menu-item" onClick={onMkdir}>
-          <FolderPlus size={14} /> {t('新建文件夹')}
-        </div>
-      )}
-      {shouldShowDividerBeforeDelete && <div className="context-menu-divider" />}
-      {shouldShowDeleteActions && (
-        <div className="context-menu-item danger" onClick={onDelete}>
-          <Trash2 size={14} /> {t('删除')}{deleteItemCount > 1 ? ` (${deleteItemCount}${t('项')})` : ''}
-        </div>
-      )}
-    </div>
+    <UiContextMenu x={pos.x} y={pos.y} items={((): UiMenuItem[] => {
+      const entries: UiMenuItem[] = [];
+      if (item && item.isDirectory) {
+        entries.push({ label: t('在新标签页打开'), icon: icon(FolderOpen), onSelect: onOpenInNewTab });
+      }
+      if (isTabMenu && canTogglePinned && !isSystemPinned) {
+        entries.push({ label: isPinned ? t('取消固定') : t('固定'), icon: icon(Pin), onSelect: onTogglePinned });
+      }
+      if (canCloseTab) {
+        entries.push({ label: t('关闭标签'), icon: icon(X), onSelect: onCloseTab });
+      }
+      if (item) {
+        entries.push({ label: t('复制路径'), icon: icon(Copy), onSelect: onCopyPath });
+      }
+      if (item && !isTabMenu) {
+        entries.push({
+          label: `${clipboardActionArrow === '<-' ? `${clipboardActionArrow} ${t('复制')}` : `${t('复制')}${clipboardActionArrow ? ` ${clipboardActionArrow}` : ''}`}${clipboardItemCount > 1 ? ` (${clipboardItemCount}${t('项')})` : ''}`,
+          icon: icon(Copy),
+          onSelect: onCopyItem,
+        });
+      }
+      if (item && !isTabMenu) {
+        entries.push({
+          label: `${clipboardActionArrow === '<-' ? `${clipboardActionArrow} ${t('剪切')}` : `${t('剪切')}${clipboardActionArrow ? ` ${clipboardActionArrow}` : ''}`}${clipboardItemCount > 1 ? ` (${clipboardItemCount}${t('项')})` : ''}`,
+          icon: icon(Scissors),
+          onSelect: onCutItem,
+        });
+      }
+      if (!isTabMenu && canPaste) {
+        entries.push({ label: t('粘贴'), icon: icon(ClipboardPaste), onSelect: onPaste });
+      }
+      if (item && !item.isDirectory && isEditable(item.name)) {
+        entries.push({ label: t('编辑'), icon: icon(SquarePen), onSelect: onEdit });
+      }
+      if (item && !item.isDirectory) {
+        entries.push({ label: t('系统编辑器打开'), icon: icon(MonitorSmartphone), onSelect: onOpenSystemEditor });
+      }
+      if (item && !item.isDirectory) {
+        entries.push({ label: t('指定编辑器打开'), icon: icon(PencilLine), onSelect: onOpenWithEditor });
+      }
+      if (item) {
+        entries.push({ label: item.isDirectory ? t('下载文件夹到本地') : t('下载到本地'), icon: icon(Download), onSelect: onDownload });
+      }
+      if (item) {
+        entries.push({ label: t('压缩 (tar.gz)'), icon: icon(Archive), onSelect: onCompress });
+      }
+      if (item && !item.isDirectory && isArchive(item.name)) {
+        entries.push({ label: t('解压'), icon: icon(FileArchive), onSelect: onUncompress });
+      }
+      if (item && (!isTabMenu || !isSystemPinned)) {
+        entries.push({ label: isTabMenu ? t('重命名标签标题') : t('重命名'), icon: icon(PenLine), onSelect: onRename });
+      }
+      if (item) {
+        entries.push({ label: t('修改权限'), icon: icon(Lock), onSelect: onChmod });
+      }
+      if (shouldShowDividerBeforeCreate) {
+        entries.push('separator');
+      }
+      if (shouldShowCreateActions) {
+        entries.push({ label: t('新建文件'), icon: icon(FilePlus), onSelect: onNewFile });
+        entries.push({ label: t('新建文件夹'), icon: icon(FolderPlus), onSelect: onMkdir });
+      }
+      if (shouldShowDividerBeforeDelete) {
+        entries.push('separator');
+      }
+      if (shouldShowDeleteActions) {
+        entries.push({
+          label: `${t('删除')}${deleteItemCount > 1 ? ` (${deleteItemCount}${t('项')})` : ''}`,
+          icon: icon(Trash2),
+          danger: true,
+          onSelect: onDelete,
+        });
+      }
+      return entries;
+    })()} onClose={onClose} zIndex={Z.MENU} />
   );
 }
 
@@ -5920,7 +5880,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         <div className="file-name-cell">
           <span className="file-icon">
             {openingFiles.has(`${sessionId}:${itemPath}`) ? (
-              <RefreshCw className="spin" size={14} style={{ color: 'var(--text-accent)' }} />
+              <RefreshCw className="animate-[spin_1s_linear_infinite] text-accent" size={14} />
             ) : (
               fileIcon(item.name, item.isDirectory, item.isSymlink)
             )}
@@ -5961,35 +5921,40 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           <div className="file-actions file-col-actions">
             {!item.isDirectory && isEditable(item.name) && (
               <Tiptop text={openingFiles.has(`${sessionId}:${itemPath}`) ? t('正在打开文件...') : t('编辑')}>
-                <button
-                  className="btn btn-ghost btn-sm btn-icon"
+                <Button
+                  variant="ghost"
+                  size="icon"
                   aria-label={t('编辑')}
                   disabled={openingFiles.has(`${sessionId}:${itemPath}`)}
                   onClick={(event) => { event.stopPropagation(); void handleEdit(item); }}
                 >
-                  {openingFiles.has(`${sessionId}:${itemPath}`) ? <RefreshCw className="spin" size={14} /> : <SquarePen size={14} />}
-                </button>
+                  {openingFiles.has(`${sessionId}:${itemPath}`) ? <RefreshCw className="animate-[spin_1s_linear_infinite]" size={14} /> : <SquarePen size={14} />}
+                </Button>
               </Tiptop>
             )}
             <Tiptop text={item.isDirectory ? t('下载文件夹到本地') : t('下载到本地')}>
-              <button
-                className="btn btn-ghost btn-sm btn-icon"
+              <Button
+                variant="ghost"
+                size="icon"
                 aria-label={item.isDirectory ? t('下载文件夹到本地') : t('下载到本地')}
                 onClick={(event) => { event.stopPropagation(); void handleDownload(item, { basePath: normalizedBasePath }); }}
-              ><Download size={14} /></button>
+              ><Download size={14} /></Button>
             </Tiptop>
             <Tiptop text={t('重命名')}>
-              <button
-                className="btn btn-ghost btn-sm btn-icon"
+              <Button
+                variant="ghost"
+                size="icon"
                 aria-label={t('重命名')}
                 onClick={(event) => { event.stopPropagation(); startRename(item); }}
-              ><PenLine size={14} /></button>
+              ><PenLine size={14} /></Button>
             </Tiptop>
             <Tiptop text={t('删除')}>
-              <button
-                className="btn btn-ghost btn-sm btn-icon"
+              {/* text-danger 工具类保留危险色，hover 行为与 ghost 变体一致 */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-danger"
                 aria-label={t('删除')}
-                style={{ color: 'var(--danger)' }}
                 onClick={(event) => {
                   event.stopPropagation();
                   if (operationInProgressRef.current) {
@@ -5998,7 +5963,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
                     void handleDelete(item);
                   }
                 }}
-              ><Trash2 size={14} /></button>
+                ><Trash2 size={14} /></Button>
             </Tiptop>
           </div>
         ) : (
@@ -6015,10 +5980,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
 
     const emptyPlaceholderComponent = showEmptyState
       ? () => (
-        <div className="empty-state">
-          <div className="empty-state-icon"><FolderOpen size={48} strokeWidth={1.5} /></div>
-          <div className="empty-state-text">{t('目录为空')}</div>
-        </div>
+        <EmptyState icon={<FolderOpen size={48} strokeWidth={1.5} />} text={t('目录为空')} />
       )
       : undefined;
 
@@ -6029,10 +5991,10 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
 
     return (
       <div className="file-list-viewport">
-        <div className="file-list-body" style={{ height: '100%' }}>
+        <div className="file-list-body h-full">
           <Virtuoso
             ref={getPaneVirtuosoRefCallback(normalizedPaneKey)}
-            style={{ height: '100%' }}
+            className="h-full"
             data={paneRows}
             computeItemKey={(index, row) => row?.rowKey || `${normalizedPaneKey}-${index}`}
             scrollerRef={getPaneScrollerRefCallback(normalizedPaneKey)}
@@ -6059,7 +6021,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         {options.loading === true && (
           <div className="file-list-loading" role="status" aria-live="polite">
             <div className="file-list-loading-spinner">
-              <RefreshCw className="spin" size={28} />
+              <RefreshCw className="animate-[spin_1s_linear_infinite]" size={28} />
             </div>
             <div className="file-list-loading-text">{t('加载中...')}</div>
           </div>
@@ -6106,11 +6068,11 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           void handleDualPaneTransferDrop(event, paneState);
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderTop: '2px solid transparent', borderBottom: '1px solid var(--border)', background: 'var(--surface-base)' }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{String(paneState.label ?? '')}</span>
-          <span style={{ fontSize: 11, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(paneState.path || '/')}</span>
+        <div className="flex items-center gap-2 px-3 py-2 border-t-2 border-t-transparent border-b border-line bg-canvas">
+          <span className="text-sm font-semibold text-primary">{String(paneState.label ?? '')}</span>
+          <span className="text-xs text-secondary truncate">{String(paneState.path || '/')}</span>
         </div>
-        <div className="file-list" style={{ flex: 1, minWidth: 0 }}>
+        <div className="file-list flex-1 min-w-0">
           <div className="file-list-header">
             <span className="file-col-name">{t('名称')} {paneState.sortField === 'name' ? (paneState.sortDir === 'asc' ? '↑' : '↓') : ''}</span>
             <span className="file-col-size">{t('大小')} {paneState.sortField === 'size' ? (paneState.sortDir === 'asc' ? '↑' : '↓') : ''}</span>
@@ -6152,7 +6114,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           onDrop={(event) => {
             void handleDualPaneTransferDrop(event, paneState);
           }}
-          style={{ position: 'absolute', inset: 0, background: 'transparent', border: 'none', cursor: 'pointer' }}
+          className="absolute inset-0 bg-transparent border-none cursor-pointer"
         />
       </div>
     );
@@ -6201,7 +6163,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         ref={uploadInputRef}
         type="file"
         multiple
-        style={{ display: 'none' }}
+        className="hidden"
         autoComplete="off"
         onChange={(e) => { void handleSelectedFiles(e); }}
       />
@@ -6212,7 +6174,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
         type="file"
         multiple
         {...({ webkitdirectory: '', directory: '' } as React.InputHTMLAttributes<HTMLInputElement>)}
-        style={{ display: 'none' }}
+        className="hidden"
         autoComplete="off"
         onChange={(e) => { void handleSelectedFiles(e); }}
       />
@@ -6220,7 +6182,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
       <div className="file-toolbar">
         {/* Editable path input */}
         <input
-          className="path-input"
+          className="path-input flex-1 min-w-0"
           type="text"
           name="directoryPath"
           aria-label={t('当前目录路径')}
@@ -6258,14 +6220,15 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
               (e.target as HTMLInputElement).blur();
             }
           }}
-          style={{ flex: 1, minWidth: 0 }}
         />
 
         {clipboard && (
           <>
             <Tiptop text={t('粘贴')} placement="bottom">
-              <button
-                className={`btn file-toolbar-outline-btn has-count ${clipboard.mode === 'cut' ? 'clipboard-cut' : 'clipboard-copy'}`}
+              {/* file-toolbar-outline-btn 系列类保留（file-manager 专属样式，含 has-count/clipboard 配色） */}
+              <Button
+                variant="ghost"
+                className={`file-toolbar-outline-btn has-count ${clipboard.mode === 'cut' ? 'clipboard-cut' : 'clipboard-copy'}`}
                 aria-label={t('粘贴')}
                 onClick={() => {
                   if (operationInProgressRef.current) {
@@ -6277,16 +6240,17 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
               >
                 <ClipboardPaste size={14} />
                 <span className={`clipboard-count-badge ${clipboard.mode === 'cut' ? 'clipboard-cut' : 'clipboard-copy'}`}>{clipboard.paths.length}</span>
-              </button>
+              </Button>
             </Tiptop>
             <Tiptop text={t('取消')} placement="bottom">
-              <button
-                className="btn file-toolbar-outline-btn"
+              <Button
+                variant="ghost"
+                className="file-toolbar-outline-btn"
                 aria-label={t('取消')}
                 onClick={() => updateClipboard(null)}
               >
                 <X size={14} />
-              </button>
+              </Button>
             </Tiptop>
           </>
         )}
@@ -6358,26 +6322,28 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           {fileLocatorQuery.trim() ? (
             <>
               <Tiptop text={t('上一个命中')} placement="bottom">
-                <button
-                  className="btn file-toolbar-outline-btn"
+                <Button
+                  variant="ghost"
+                  className="file-toolbar-outline-btn"
                   aria-label={t('上一个命中')}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => navigateFileLocatorMatch(-1)}
                   disabled={fileLocatorMatches.length === 0}
                 >
                   <ChevronUp size={14} />
-                </button>
+                </Button>
               </Tiptop>
               <Tiptop text={t('下一个命中')} placement="bottom">
-                <button
-                  className="btn file-toolbar-outline-btn"
+                <Button
+                  variant="ghost"
+                  className="file-toolbar-outline-btn"
                   aria-label={t('下一个命中')}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => navigateFileLocatorMatch(1)}
                   disabled={fileLocatorMatches.length === 0}
                 >
                   <ChevronDown size={14} />
-                </button>
+                </Button>
               </Tiptop>
             </>
           ) : null}
@@ -6385,26 +6351,29 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
 
         <div className="file-toolbar-actions">
           <Tiptop text={t('新建文件')} placement="bottom">
-            <button
-              className="btn file-toolbar-outline-btn"
+            <Button
+              variant="ghost"
+              className="file-toolbar-outline-btn"
               aria-label={t('新建文件')}
               onClick={() => { void handleNewFile(); }}
             >
               <FilePlus size={14} />
-            </button>
+            </Button>
           </Tiptop>
           <Tiptop text={t('新建文件夹')} placement="bottom">
-            <button
-              className="btn file-toolbar-outline-btn"
+            <Button
+              variant="ghost"
+              className="file-toolbar-outline-btn"
               aria-label={t('新建文件夹')}
               onClick={() => { void handleMkdir(); }}
             >
               <FolderPlus size={14} />
-            </button>
+            </Button>
           </Tiptop>
           <Tiptop text={t('上传文件或右键上传文件夹')} placement="bottom">
-            <button
-              className="btn file-toolbar-outline-btn"
+            <Button
+              variant="ghost"
+              className="file-toolbar-outline-btn"
               aria-label={t('上传文件或右键上传文件夹')}
               onClick={handleUpload}
               onContextMenu={(e) => {
@@ -6414,43 +6383,32 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
               }}
             >
               <Upload size={14} />
-            </button>
+            </Button>
           </Tiptop>
           <Tiptop text={t('传输队列')} placement="bottom">
-            <button
-              className={`btn btn-ghost btn-sm btn-icon${uploadPanelState.uploadOpen ? ' active' : ''}`}
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-pressed={uploadPanelState.uploadOpen}
               aria-label={t('传输队列')}
               onClick={toggleUploadPanel}
-              style={{ position: 'relative' }}
+              className="relative"
             >
-              <ClipboardList size={14} />
+                <ClipboardList size={14} />
               {activeUploadCount > 0 && (
                 <span
-                  style={{
-                    position: 'absolute',
-                    top: -4,
-                    right: -4,
-                    minWidth: 15,
-                    height: 15,
-                    padding: '0 4px',
-                    borderRadius: 999,
-                    background: 'var(--accent)',
-                    color: '#fff',
-                    fontSize: 10,
-                    fontWeight: 700,
-                    lineHeight: '15px',
-                    textAlign: 'center',
-                  }}
+                  className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-1 rounded-full bg-accent text-white text-[10px] font-bold leading-[15px] text-center"
                 >
                   {activeUploadCount > 99 ? '99+' : activeUploadCount}
                 </span>
               )}
-            </button>
+            </Button>
           </Tiptop>
           {currentPath !== '/' && (
             <Tiptop text={tKey('返回上级')} placement="bottom">
-              <button
-                className="btn btn-ghost btn-sm btn-icon"
+              <Button
+                variant="ghost"
+                size="icon"
                 aria-label={tKey('返回上级')}
                 onClick={() => {
                   const parent = currentPath.substring(0, currentPath.lastIndexOf('/')) || '/';
@@ -6462,17 +6420,18 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
                 }}
               >
                 <FolderUp size={14} />
-              </button>
+              </Button>
             </Tiptop>
           )}
           <Tiptop text={t('刷新')} placement="bottom">
-            <button
-              className="btn btn-ghost btn-sm btn-icon"
+            <Button
+              variant="ghost"
+              size="icon"
               aria-label={t('刷新')}
               onClick={() => { void loadDir(currentPath); }}
             >
               <RefreshCw size={14} />
-            </button>
+            </Button>
           </Tiptop>
         </div>
       </div>
@@ -6561,7 +6520,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
               : (
                 <>
                   <div>{tab.path || '/'}</div>
-                  <div style={{ marginTop: 2, opacity: 0.78, fontSize: 11 }}>{t('双击关闭标签,长按拖拽调整')}</div>
+                  <div className="mt-0.5 text-xs opacity-[0.78]">{t('双击关闭标签,长按拖拽调整')}</div>
                 </>
               );
             return (
@@ -6662,7 +6621,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
                   />
                 )}
                 {showFileManagerTabIcons && !isSystemPinnedTab && <Folder size={11} />}
-                {isPinnedTab && !isSystemPinnedTab && <Pin size={9} style={{ opacity: 0.78, marginLeft: -1, marginRight: -2 }} />}
+                {isPinnedTab && !isSystemPinnedTab && <Pin size={9} className="opacity-[0.78] -ml-px -mr-0.5" />}
                 <Tiptop
                   text={tabDropPreviewText || tabDefaultTiptopText}
                   placement="bottom"
@@ -6709,7 +6668,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
                 reorderFileManagerTabs(draggedTabId, appendTarget.id, 'after');
                 clearFileManagerTabDragState();
               }}
-              style={{ flex: '1 0 24px', minWidth: 24, alignSelf: 'stretch' }}
+              className="flex-[1_0_24px] min-w-6 self-stretch"
             />
           )}
         </div>
@@ -6726,47 +6685,50 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           </button>
         )}
         <div className="terminal-sub-tab-actions">
-          <button
-            className="btn btn-ghost btn-sm terminal-create-btn"
+          {/* terminal-create-btn 为 terminal 标签栏系统类，保留并去掉 .btn 基类 */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="terminal-create-btn"
             onClick={() => { void handleCreateFileManagerTab(); }}
             aria-label={t('新建标签')}
             title={t('新建标签')}
           >
             <Plus size={14} />
             {t('新建标签')}
-          </button>
+          </Button>
         </div>
       </div>
       )}
 
       {/* Content area: file list + optional split editor */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', gap: 0 }}>
+      <div className="flex flex-1 overflow-hidden gap-0">
         {isDualPaneLayout && (
-          <div style={{ display: 'flex', flexShrink: 0, alignItems: 'stretch', gap: 8 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm btn-icon"
+          <div className="flex shrink-0 items-stretch gap-2">
+            <div className="flex flex-col gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
                 aria-label={fileManagerSidebarOpen ? t('收起标签侧栏') : t('展开标签侧栏')}
                 title={fileManagerSidebarOpen ? t('收起标签侧栏') : t('展开标签侧栏')}
                 onClick={() => setFileManagerSidebarOpen((current) => !current)}
               >
                 {fileManagerSidebarOpen ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm btn-icon"
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
                 aria-label={t('新建标签')}
                 title={t('新建标签')}
                 onClick={() => { void handleCreateFileManagerTab(); }}
               >
                 <Plus size={14} />
-              </button>
+              </Button>
             </div>
             {fileManagerSidebarOpen && (
-              <div style={{ width: 220, minWidth: 220, border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--surface-raised)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{t('历史标签')}</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, overflowY: 'auto' }}>
+              <div className="w-[220px] min-w-[220px] border border-line rounded-md bg-raised flex flex-col overflow-hidden">
+                <div className="py-2.5 px-3 border-b border-line text-sm font-semibold text-primary">{t('历史标签')}</div>
+                <div className="flex flex-col gap-1.5 p-2 overflow-y-auto">
                   {fileManagerWorkspace.tabs.map((tab) => {
                     const isSidebarActive = tab.id === currentPaneTabId;
                     const isPinnedTab = tab.pinned === true;
@@ -6798,15 +6760,15 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
                         }}
                       >
                         {showFileManagerTabIcons && !isSystemPinnedTab && <Folder size={12} />}
-                        {isPinnedTab && !isSystemPinnedTab && <Pin size={10} style={{ opacity: 0.78, marginLeft: -1, marginRight: -2 }} />}
-                        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{renderFileManagerTabTitle(tab, t)}</span>
+                        {isPinnedTab && !isSystemPinnedTab && <Pin size={10} className="opacity-[0.78] -ml-px -mr-0.5" />}
+                        <span className="flex-1 min-w-0 truncate">{renderFileManagerTabTitle(tab, t)}</span>
                         {!hideFileManagerTabCloseButton && fileManagerWorkspace.tabs.length > 1 && !isPinnedTab && (
                           <span
                             onClick={(event) => {
                               event.stopPropagation();
                               void handleCloseFileManagerTab(tab.id, event);
                             }}
-                            style={{ display: 'inline-flex', alignItems: 'center' }}
+                            className="inline-flex items-center"
                           >
                             <X size={11} />
                           </span>
@@ -6840,26 +6802,26 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
           }}
         >
           {isDualPaneLayout && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderTop: '2px solid var(--accent)', borderBottom: '1px solid var(--border)', background: 'var(--surface-base)' }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)' }}>{activePaneLabel}</span>
-              <span style={{ fontSize: 11, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{currentPath || '/'}</span>
+            <div className="flex items-center gap-2 px-3 py-2 border-t-2 border-accent border-b border-line bg-canvas">
+              <span className="text-sm font-semibold text-accent">{activePaneLabel}</span>
+              <span className="text-xs text-secondary truncate">{currentPath || '/'}</span>
             </div>
           )}
-          <div className="file-list" style={{ flex: 1, minWidth: 0 }} aria-busy={loading}>
+          <div className="file-list flex-1 min-w-0" aria-busy={loading}>
             {fileListTypeaheadQuery ? (
               <div className="file-list-typeahead-hud">{fileListTypeaheadQuery}</div>
             ) : null}
             <div className="file-list-header">
-              <span className="file-col-name" onClick={() => handleSort('name')} style={{ cursor: 'pointer' }}>
+              <span className="file-col-name cursor-pointer" onClick={() => handleSort('name')}>
                 {t('名称')} {sortField === 'name' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
               </span>
-              <span className="file-col-size" onClick={() => handleSort('size')} style={{ cursor: 'pointer' }}>
+              <span className="file-col-size cursor-pointer" onClick={() => handleSort('size')}>
                 {t('大小')} {sortField === 'size' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
               </span>
-              <span className="file-col-permission" onClick={() => handleSort('permissions')} style={{ cursor: 'pointer' }}>
+              <span className="file-col-permission cursor-pointer" onClick={() => handleSort('permissions')}>
                 {t('权限')} {sortField === 'permissions' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
               </span>
-              <span className="file-col-modified" onClick={() => handleSort('modified')} style={{ cursor: 'pointer' }}>
+              <span className="file-col-modified cursor-pointer" onClick={() => handleSort('modified')}>
                 {t('修改时间')} {sortField === 'modified' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
               </span>
               <span className="file-col-actions"></span>
@@ -7083,7 +7045,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
 
       {/* File Editor (modal/popup/split 均由 FileEditor 内部决定渲染方式) */}
       {openEditFiles.length > 0 && (
-        <Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-tertiary)' }}>{t('加载中...')}</div>}>
+        <Suspense fallback={<div className="flex items-center justify-center h-full text-tertiary">{t('加载中...')}</div>}>
           <FileEditor
             files={openEditFiles}
             activePath={activeEditPath || undefined}
@@ -7147,7 +7109,7 @@ export default function FileManager({ sessionId, sessionGroupId = sessionId, add
               </>
             ) : (
               <div className="file-operation-spinner">
-                <RefreshCw className="spin" size={20} />
+                <RefreshCw className="animate-[spin_1s_linear_infinite]" size={20} />
               </div>
             )}
           </div>

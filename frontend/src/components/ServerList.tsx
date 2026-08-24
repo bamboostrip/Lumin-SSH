@@ -3,6 +3,10 @@ import { useTranslation } from '../i18n.ts';
 import { Monitor, Pencil, Link, Trash2, X, SquarePen, Folder, FolderOpen, ChevronUp, ChevronDown, Copy, Trash, ChevronLeft, ChevronRight, Download, PenLine } from 'lucide-react';
 import { clampMenuPosition } from '../utils/menuPosition.ts';
 import Tiptop from './Tiptop.tsx';
+import { Button, ContextMenu, MenuList, MenuPanel } from './ui';
+import type { MenuItem } from './ui';
+import { Z } from '../constants/zIndex.ts';
+import { cn } from '../utils/cn.ts';
 import type { config } from '../../wailsjs/go/models.ts';
 import type { ServerPingResult } from '../hooks/useServerPing.ts';
 import type { ServerListViewMode } from '../hooks/useDashboardPreferences.ts';
@@ -167,7 +171,6 @@ export default function ServerList({
   const [menuServer, setMenuServer] = useState<config.Connection | null>(null);
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
   const [groupHeaderMenu, setGroupHeaderMenu] = useState<{ groupName: string; x: number; y: number } | null>(null); // { groupName, x, y }
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [groupMenu, setGroupMenu] = useState(false);
   const [localCollapsedGroups, setLocalCollapsedGroups] = useState<Set<string>>(new Set());
   const collapsedGroups = controlledCollapsedGroups ?? localCollapsedGroups;
@@ -175,12 +178,17 @@ export default function ServerList({
   const [groupOrder, setGroupOrder] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('serverGroupOrder') || '[]') as string[]; } catch { return []; }
   });
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const groupHeaderMenuRef = useRef<HTMLDivElement | null>(null);
   const menuSourceRef = useRef<HTMLElement | null>(null);
+  // 「移动到分组」子菜单切换时跳过 MenuList 的自动 onClose，保持主菜单打开
+  const submenuToggleRef = useRef(false);
   const lastClickedIndex = useRef(-1); // 记录上次点击的扁平索引，用于 Shift 批量选择
   const [showMoveGroupDropdown, setShowMoveGroupDropdown] = useState(false);
   const moveGroupMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const closeServerMenu = () => {
+    setMenuServer(null);
+    setGroupMenu(false);
+  };
 
   // 用指针位移区分「点击连接」与「拖选复制」：
   // - 几乎没移动 → 视为点击，连接时清掉浏览器误选
@@ -260,19 +268,6 @@ export default function ServerList({
   // Close context menu on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuServer(null);
-      }
-      if (groupHeaderMenuRef.current && !groupHeaderMenuRef.current.contains(e.target as Node)) {
-        setGroupHeaderMenu(null);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
       if (showMoveGroupDropdown && moveGroupMenuRef.current && !moveGroupMenuRef.current.contains(e.target as Node)) {
         setShowMoveGroupDropdown(false);
       }
@@ -280,17 +275,6 @@ export default function ServerList({
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [showMoveGroupDropdown]);
-
-  useEffect(() => {
-    if (!menuServer || !menuRef.current) return;
-
-    const { offsetWidth, offsetHeight } = menuRef.current;
-    setMenuPos((prev) => {
-      const next = clampMenuPosition(prev.x, prev.y, offsetWidth, offsetHeight);
-      if (next.x === prev.x && next.y === prev.y) return prev;
-      return next;
-    });
-  }, [menuServer]);
 
   const getEditAnimationPayload = (server: config.Connection, sourceRoot: HTMLElement | null) => {
     const root = sourceRoot || null;
@@ -464,8 +448,7 @@ export default function ServerList({
     e.stopPropagation();
     setMenuServer(null);
     setGroupMenu(false);
-    const next = clampMenuPosition(e.clientX, e.clientY, MENU_ESTIMATED_WIDTH, 48);
-    setGroupHeaderMenu({ groupName, x: next.x, y: next.y });
+    setGroupHeaderMenu({ groupName, x: e.clientX, y: e.clientY });
   };
 
   const handleRenameGroupFromMenu = async () => {
@@ -519,8 +502,8 @@ export default function ServerList({
 
   if (servers.length === 0) {
     return (
-      <div className="empty-state" style={{ marginTop: 20 }}>
-        <div className="empty-state-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Monitor size={48} strokeWidth={1.5} /></div>
+      <div className="empty-state mt-5">
+        <div className="empty-state-icon flex items-center justify-center"><Monitor size={48} strokeWidth={1.5} /></div>
         <div className="empty-state-text">
           {t('暂无服务器')}
         </div>
@@ -536,7 +519,6 @@ export default function ServerList({
     const connected = hasSession(server);
     const sessionForServer = connectedSessionMap.get(server.id);
     const osInfo = getOSInfo(server.name, server.os, (sessionForServer?.osInfo as Record<string, unknown> | null | undefined) || null);
-    const isHovered = hoveredId === server.id;
     const { rowToken, nameToken, hostToken } = getSaveFlowTokens(server);
     const isChecked = selectedSet.has(server.id);
 
@@ -559,18 +541,14 @@ export default function ServerList({
       <Tiptop key={`${server.id}-${rowToken || 'stable'}`} text={`${server.username}@${server.host}:${server.port || 22}`}>
         <div
           data-server-update-id={server.id}
-          className={`server-card ${active ? 'active' : ''}${rowToken ? ' save-flow-hit' : ''}${selectionMode && isChecked ? 'selected' : ''}`}
+          className={cn('server-card group m-0', active && 'active', rowToken && 'save-flow-hit', selectionMode && isChecked && 'selected')}
           {...pointerSelectHandlers}
           onClick={handleCardClick}
           onContextMenu={(e) => handleContextMenu(e, server)}
-          onMouseEnter={() => setHoveredId(server.id)}
-          onMouseLeave={() => setHoveredId(null)}
-          style={{ margin: 0 }}
         >
           {selectionMode && (
             <div
-              className={`custom-checkbox ${isChecked ? 'checked' : ''}`}
-              style={{ marginRight: 8 }}
+              className={cn('custom-checkbox mr-2', isChecked && 'checked')}
               onClick={(e) => {
                 e.stopPropagation();
                 onSelectChange(server.id);
@@ -583,57 +561,54 @@ export default function ServerList({
               )}
             </div>
           )}
-          <div style={{
-            width: 28, height: 28, borderRadius: 'var(--radius-sm)',
-            background: osInfo.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 15, flexShrink: 0,
-            border: '1px solid var(--border-subtle)',
-          }}>
+          <div
+            className="w-7 h-7 rounded-sm flex items-center justify-center text-lg shrink-0 border border-line-subtle"
+            style={{ background: osInfo.bg }}
+          >
             {osInfo.icon}
           </div>
-          <div className="server-info" style={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, minWidth: 0 }}>
-            <div className="server-name" style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>
+          <div className="server-info flex flex-col gap-px flex-1 min-w-0">
+            <div className="server-name flex items-center gap-[5px] text-base text-primary font-medium">
               <span
                 key={`name-${nameToken || 'stable'}`}
                 data-edit-source-field="name"
-                className={`save-flow-target${nameToken ? ' save-flow-target-active' : ''}`}
-                style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                className={cn('save-flow-target overflow-hidden text-ellipsis whitespace-nowrap', nameToken && 'save-flow-target-active')}
               >
                 {server.name || server.host}
               </span>
               {connected && (
-                <span style={{ fontSize: 10, color: 'var(--success)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
+                <span className="text-[10px] text-success font-mono shrink-0">
                   ● {t('已连接')}
                 </span>
               )}
             </div>
-            <div className="server-host" data-edit-source-field="hostPort" style={{ color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div className="server-host text-tertiary overflow-hidden text-ellipsis whitespace-nowrap" data-edit-source-field="hostPort">
               <span
                 key={`host-${hostToken || 'stable'}`}
-                className={`save-flow-target${hostToken ? ' save-flow-target-active' : ''}`}
+                className={cn('save-flow-target', hostToken && 'save-flow-target-active')}
               >
                 {hideSensitive ? mask(`${server.username}@${server.host}`) : `${server.username}@${server.host}:${server.port || 22}`}
               </span>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          <div className="flex items-center gap-1.5 shrink-0">
             {ping?.online && ping?.latency !== undefined && ping?.latency !== null ? (
               <>
-                <span style={{
-                  fontSize: 11, fontFamily: 'var(--font-mono)',
-                  color: latClass === 'good' ? 'var(--success)' : latClass === 'warn' ? 'var(--warning)' : 'var(--danger)',
-                }}>
+                <span className={cn(
+                  'text-xs font-mono',
+                  latClass === 'good' ? 'text-success' : latClass === 'warn' ? 'text-warning' : 'text-danger',
+                )}>
                   {ping.latency === -1 ? t('<1毫秒') : `${ping.latency}${t('毫秒')}`}
                 </span>
-                <div style={{
-                  width: 7, height: 7, borderRadius: '50%',
-                  background: latClass === 'good' ? 'var(--success)' : latClass === 'warn' ? 'var(--warning)' : 'var(--danger)',
-                }} />
+                <div className={cn(
+                  'w-[7px] h-[7px] rounded-full',
+                  latClass === 'good' ? 'bg-success' : latClass === 'warn' ? 'bg-warning' : 'bg-danger',
+                )} />
               </>
             ) : (
               ping !== undefined && !ping?.online ? (
                 <Tiptop text={t('服务器离线或不可达')}>
-                  <span style={{ fontSize: 14, color: 'var(--danger)', fontWeight: 'bold', lineHeight: 1 }} aria-label={t('服务器离线或不可达')}><X size={13} /></span>
+                  <span className="text-md text-danger font-bold leading-none" aria-label={t('服务器离线或不可达')}><X size={13} /></span>
                 </Tiptop>
               ) : null
             )}
@@ -641,13 +616,7 @@ export default function ServerList({
               <button
                 onClick={(e) => { e.stopPropagation(); triggerEdit(server, e.currentTarget.closest('.server-card')); }}
                 aria-label={t('编辑服务器')}
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  padding: '3px 4px', borderRadius: 4,
-                  color: isHovered ? 'var(--text-primary)' : 'var(--text-muted)',
-                  fontSize: 13, opacity: isHovered ? 1 : 0,
-                  transition: 'opacity 0.12s, color 0.12s', display: 'flex', alignItems: 'center',
-                }}
+                className="flex items-center bg-transparent border-none cursor-pointer py-[3px] px-1 rounded-sm text-base text-muted opacity-0 group-hover:opacity-100 group-hover:text-primary transition-[opacity,color] duration-[120ms]"
               >
                 <SquarePen size={13} />
               </button>
@@ -667,20 +636,14 @@ export default function ServerList({
             <div
               key={`__group_${item.groupName || 'ungrouped'}`}
               onContextMenu={(e) => openGroupHeaderMenu(e, item.groupName)}
-              style={{
-                gridColumn: '1 / -1',
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '4px 0', marginBottom: item.collapsed ? 0 : 4,
-                marginTop: 4,
-                borderTop: '1px solid var(--border-subtle)',
-                paddingTop: 8,
-                color: 'var(--text-secondary)', fontSize: 12, fontWeight: 500,
-                userSelect: 'none',
-              }}
+              className={cn(
+                'col-span-full flex items-center gap-1.5 py-1 pt-2 mt-1 border-t border-line-subtle text-sm text-secondary font-medium select-none',
+                item.collapsed ? 'mb-0' : 'mb-1',
+              )}
             >
               {selectionMode && (
                 <div
-                  className={`custom-checkbox ${isGroupSelected(item.groupName) ? 'checked' : isGroupPartiallySelected(item.groupName) ? 'indeterminate' : ''}`}
+                  className={cn('custom-checkbox', isGroupSelected(item.groupName) ? 'checked' : isGroupPartiallySelected(item.groupName) ? 'indeterminate' : '')}
                   onClick={(e) => { e.stopPropagation(); handleGroupToggleSelect(item.groupName); }}
                 >
                   {isGroupSelected(item.groupName) ? (
@@ -694,10 +657,10 @@ export default function ServerList({
                   ) : null}
                 </div>
               )}
-              <span onClick={() => toggleGroup(item.groupName)} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', flex: 1 }}>
+              <span onClick={() => toggleGroup(item.groupName)} className="flex items-center gap-1.5 cursor-pointer flex-1">
                 {item.collapsed ? <Folder size={14} /> : <FolderOpen size={14} />}
                 <span>{item.groupName || t('未分组')}</span>
-                <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>({item.count})</span>
+                <span className="text-xs text-tertiary">({item.count})</span>
               </span>
               {selectionMode && item.groupName && onGroupDelete && (
                 <Tiptop text={t('删除分组')} placement="bottom">
@@ -709,7 +672,7 @@ export default function ServerList({
                         onGroupDelete(item.groupName, ids);
                       }
                     }}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--danger)', display: 'flex', borderRadius: 4 }}
+                    className="bg-transparent border-none cursor-pointer p-0.5 text-danger flex rounded-sm"
                     aria-label={t('删除分组')}
                   >
                     <Trash size={13} />
@@ -717,12 +680,12 @@ export default function ServerList({
                 </Tiptop>
               )}
               {item.groupName && (
-                <span style={{ display: 'flex', gap: 2 }}>
+                <span className="flex gap-0.5">
                   <Tiptop text={t('上移')}>
-                    <button onClick={(e) => { e.stopPropagation(); moveGroup(item.groupName, -1); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-tertiary)', display: 'flex' }} aria-label={t('上移')}><ChevronUp size={13} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); moveGroup(item.groupName, -1); }} className="bg-transparent border-none cursor-pointer p-0.5 text-tertiary flex" aria-label={t('上移')}><ChevronUp size={13} /></button>
                   </Tiptop>
                   <Tiptop text={t('下移')}>
-                    <button onClick={(e) => { e.stopPropagation(); moveGroup(item.groupName, 1); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-tertiary)', display: 'flex' }} aria-label={t('下移')}><ChevronDown size={13} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); moveGroup(item.groupName, 1); }} className="bg-transparent border-none cursor-pointer p-0.5 text-tertiary flex" aria-label={t('下移')}><ChevronDown size={13} /></button>
                   </Tiptop>
                 </span>
               )}
@@ -735,7 +698,7 @@ export default function ServerList({
         <table className="server-table">
           <thead>
             <tr>
-              {selectionMode && <th style={{ width: 36 }}></th>}
+              {selectionMode && <th className="w-9"></th>}
               <th>{t('系统')}</th>
               <th>{t('别名')}</th>
               <th>{t('主机地址')}</th>
@@ -746,178 +709,175 @@ export default function ServerList({
           </thead>
           <tbody>
              {flatItems.map((item, idx) => {
-               if (item.type === 'header') {
-                   return (
-                   <tr key={`__group_${item.groupName || 'ungrouped'}`}>
-                     <td
-                       colSpan={6 + (selectionMode ? 1 : 0)}
-                       onContextMenu={(e) => openGroupHeaderMenu(e, item.groupName)}
-                       style={{
-                         padding: '6px 8px',
-                         color: 'var(--text-secondary)', fontSize: 13, fontWeight: 500,
-                         userSelect: 'none', background: 'var(--surface-sunken)',
-                       }}
-                     >
-                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, width: '100%' }}>
-                         {selectionMode && (
-                           <div
-                             className={`custom-checkbox ${isGroupSelected(item.groupName) ? 'checked' : isGroupPartiallySelected(item.groupName) ? 'indeterminate' : ''}`}
-                             onClick={(e) => { e.stopPropagation(); handleGroupToggleSelect(item.groupName); }}
-                           >
-                             {isGroupSelected(item.groupName) ? (
-                               <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
-                                 <polyline points="20 6 9 17 4 12" />
-                               </svg>
-                             ) : isGroupPartiallySelected(item.groupName) ? (
-                               <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
-                                 <line x1="4" y1="12" x2="20" y2="12" />
-                               </svg>
-                             ) : null}
-                           </div>
-                         )}
-                         <span onClick={() => toggleGroup(item.groupName)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', flex: 1 }}>
-                           {item.collapsed ? <Folder size={13} /> : <FolderOpen size={13} />}
-                           {item.groupName || t('未分组')}
-                           <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>({item.count})</span>
-                         </span>
-                         {selectionMode && item.groupName && onGroupDelete && (
-                           <Tiptop text={t('删除分组')} placement="bottom">
-                             <button
-                               onClick={(e) => {
-                                 e.stopPropagation();
-                                 const ids = allGroupServerIds[item.groupName];
-                                 if (ids && ids.length > 0 && onGroupDelete) {
-                                   onGroupDelete(item.groupName, ids);
-                                 }
-                               }}
-                               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--danger)', display: 'inline-flex', borderRadius: 4 }}
-                               aria-label={t('删除分组')}
-                             >
-                               <Trash size={12} />
-                             </button>
-                           </Tiptop>
-                         )}
-                         {item.groupName && (
-                           <span style={{ display: 'inline-flex', gap: 2 }}>
-                             <Tiptop text={t('上移')}>
-                               <button onClick={(e) => { e.stopPropagation(); moveGroup(item.groupName, -1); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-tertiary)', display: 'inline-flex' }} aria-label={t('上移')}><ChevronUp size={12} /></button>
-                             </Tiptop>
-                             <Tiptop text={t('下移')}>
-                               <button onClick={(e) => { e.stopPropagation(); moveGroup(item.groupName, 1); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-tertiary)', display: 'inline-flex' }} aria-label={t('下移')}><ChevronDown size={12} /></button>
-                             </Tiptop>
-                           </span>
-                         )}
-                       </span>
-                     </td>
-                   </tr>
-                 );
-               }
+                if (item.type === 'header') {
+                    return (
+                    <tr key={`__group_${item.groupName || 'ungrouped'}`}>
+                      <td
+                        colSpan={6 + (selectionMode ? 1 : 0)}
+                        onContextMenu={(e) => openGroupHeaderMenu(e, item.groupName)}
+                        className="px-2 py-1.5 text-base text-secondary font-medium select-none bg-sunken"
+                      >
+                        <span className="inline-flex items-center gap-1.5 w-full">
+                          {selectionMode && (
+                            <div
+                              className={cn('custom-checkbox', isGroupSelected(item.groupName) ? 'checked' : isGroupPartiallySelected(item.groupName) ? 'indeterminate' : '')}
+                              onClick={(e) => { e.stopPropagation(); handleGroupToggleSelect(item.groupName); }}
+                            >
+                              {isGroupSelected(item.groupName) ? (
+                                <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                              ) : isGroupPartiallySelected(item.groupName) ? (
+                                <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                                  <line x1="4" y1="12" x2="20" y2="12" />
+                                </svg>
+                              ) : null}
+                            </div>
+                          )}
+                          <span onClick={() => toggleGroup(item.groupName)} className="inline-flex items-center gap-1.5 cursor-pointer flex-1">
+                            {item.collapsed ? <Folder size={13} /> : <FolderOpen size={13} />}
+                            {item.groupName || t('未分组')}
+                            <span className="text-xs text-tertiary">({item.count})</span>
+                          </span>
+                          {selectionMode && item.groupName && onGroupDelete && (
+                            <Tiptop text={t('删除分组')} placement="bottom">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const ids = allGroupServerIds[item.groupName];
+                                  if (ids && ids.length > 0 && onGroupDelete) {
+                                    onGroupDelete(item.groupName, ids);
+                                  }
+                                }}
+                                className="bg-transparent border-none cursor-pointer p-0.5 text-danger inline-flex rounded-sm"
+                                aria-label={t('删除分组')}
+                              >
+                                <Trash size={12} />
+                              </button>
+                            </Tiptop>
+                          )}
+                          {item.groupName && (
+                            <span className="inline-flex gap-0.5">
+                              <Tiptop text={t('上移')}>
+                                <button onClick={(e) => { e.stopPropagation(); moveGroup(item.groupName, -1); }} className="bg-transparent border-none cursor-pointer p-0.5 text-tertiary inline-flex" aria-label={t('上移')}><ChevronUp size={12} /></button>
+                              </Tiptop>
+                              <Tiptop text={t('下移')}>
+                                <button onClick={(e) => { e.stopPropagation(); moveGroup(item.groupName, 1); }} className="bg-transparent border-none cursor-pointer p-0.5 text-tertiary inline-flex" aria-label={t('下移')}><ChevronDown size={12} /></button>
+                              </Tiptop>
+                            </span>
+                          )}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                }
                const server = item.server;
                const ping = pingEnabled ? pings[server.id] : undefined;
                const latClass = ping ? LATENCY_CLASS(ping.latency) : 'offline';
                const active = isActive(server);
                const connected = hasSession(server);
-               const sessionForServer = connectedSessionMap.get(server.id);
-               const osInfo = getOSInfo(server.name, server.os, (sessionForServer?.osInfo as Record<string, unknown> | null | undefined) || null);
-               const isHovered = hoveredId === server.id;
-               const { rowToken, nameToken, hostToken, usernameToken } = getSaveFlowTokens(server);
-               const isChecked = selectedSet.has(server.id);
+                const sessionForServer = connectedSessionMap.get(server.id);
+                const osInfo = getOSInfo(server.name, server.os, (sessionForServer?.osInfo as Record<string, unknown> | null | undefined) || null);
+                const { rowToken, nameToken, hostToken, usernameToken } = getSaveFlowTokens(server);
+                const isChecked = selectedSet.has(server.id);
 
-               const handleTableRowClick = (e: React.MouseEvent) => {
-                 if (selectionMode) {
-                   e.stopPropagation();
-                   if (e.shiftKey) {
-                     handleShiftClick(server, idx);
-                   } else {
-                     handleServerClick(server, idx);
-                   }
-                   return;
-                 }
-                 tryConnect(server);
-               };
+                const handleTableRowClick = (e: React.MouseEvent) => {
+                  if (selectionMode) {
+                    e.stopPropagation();
+                    if (e.shiftKey) {
+                      handleShiftClick(server, idx);
+                    } else {
+                      handleServerClick(server, idx);
+                    }
+                    return;
+                  }
+                  tryConnect(server);
+                };
 
-               return (
-                 <tr
-                   key={`${server.id}-${rowToken || 'stable'}`}
-                   data-server-update-id={server.id}
-                   className={`server-table-row ${active ? 'active' : ''}${rowToken ? ' save-flow-hit' : ''}${selectionMode && isChecked ? 'selected' : ''}`}
-                   {...pointerSelectHandlers}
-                   onClick={handleTableRowClick}
-                   onContextMenu={(e) => handleContextMenu(e, server)}
-                  onMouseEnter={() => setHoveredId(server.id)}
-                  onMouseLeave={() => setHoveredId(null)}
-                 >
-                  {selectionMode && (
-                    <td style={{ width: 36, padding: '4px 8px' }}>
-                      <div
-                        className={`custom-checkbox ${isChecked ? 'checked' : ''}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSelectChange(server.id);
-                        }}
-                       >
-                         {isChecked && (
-                           <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
-                             <polyline points="20 6 9 17 4 12" />
-                           </svg>
-                         )}
-                       </div>
-                    </td>
-                  )}
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ width: 20, height: 20, color: osInfo.accent }}>{osInfo.icon}</div>
-                      <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{osInfo.label}</span>
-                    </div>
-                  </td>
-                  <td data-edit-source-field="name" style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
-                    <span key={`name-${nameToken || 'stable'}`} className={`save-flow-target${nameToken ? ' save-flow-target-active' : ''}`}>
-                      {server.name || server.host}
-                    </span>
-                    {connected && <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--success)', padding: '2px 4px', background: 'var(--success-dim)', borderRadius: 4 }}>{t('已连接')}</span>}
-                  </td>
-                  <td data-edit-source-field="hostPort" style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--text-secondary)' }}>
-                    <span key={`host-${hostToken || 'stable'}`} className={`save-flow-target${hostToken ? ' save-flow-target-active' : ''}`}>
-                      {hideSensitive ? mask(server.host) : `${server.host}:${server.port || 22}`}
-                    </span>
-                  </td>
-                  <td data-edit-source-field="username" style={{ color: 'var(--text-secondary)' }}>
-                    <span key={`username-${usernameToken || 'stable'}`} className={`save-flow-target${usernameToken ? ' save-flow-target-active' : ''}`}>
-                      {hideSensitive ? mask(server.username) : server.username}
-                    </span>
-                  </td>
-                  <td>
-                    {ping?.online && ping?.latency !== undefined && ping?.latency !== null ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <div style={{
-                          width: 8, height: 8, borderRadius: '50%',
-                          background: latClass === 'good' ? 'var(--success)' : latClass === 'warn' ? 'var(--warning)' : 'var(--danger)'
-                        }} />
-                        <span style={{ fontSize: 12, color: latClass === 'good' ? 'var(--success)' : latClass === 'warn' ? 'var(--warning)' : 'var(--danger)', fontFamily: 'var(--font-mono)' }}>
-                          {ping.latency === -1 ? t('<1毫秒') : `${ping.latency}${t('毫秒')}`}
-                        </span>
-                      </div>
-                    ) : (
-                      ping !== undefined && !ping?.online ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--danger)' }}>
-                          <X size={14} />
-                          <span style={{ fontSize: 12 }}>{t('离线')}</span>
+                return (
+                  <tr
+                    key={`${server.id}-${rowToken || 'stable'}`}
+                    data-server-update-id={server.id}
+                    className={cn('server-table-row', active && 'active', rowToken && 'save-flow-hit', selectionMode && isChecked && 'selected')}
+                    {...pointerSelectHandlers}
+                    onClick={handleTableRowClick}
+                    onContextMenu={(e) => handleContextMenu(e, server)}
+                  >
+                   {selectionMode && (
+                     <td className="w-9 px-2 py-1">
+                       <div
+                         className={cn('custom-checkbox', isChecked && 'checked')}
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           onSelectChange(server.id);
+                         }}
+                        >
+                          {isChecked && (
+                            <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          )}
                         </div>
-                      ) : <span style={{ color: 'var(--text-tertiary)' }}>-</span>
-                    )}
-                  </td>
-                  <td>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); triggerEdit(server, e.currentTarget.closest('.server-table-row')); }}
-                      className="btn btn-ghost btn-sm"
-                      style={{ padding: '4px 8px', fontSize: 12 }}
-                    >
-                      {t('编辑')}
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
+                     </td>
+                   )}
+                   <td>
+                     <div className="flex items-center gap-2">
+                       <div className="w-5 h-5" style={{ color: osInfo.accent }}>{osInfo.icon}</div>
+                       <span className="text-sm text-tertiary">{osInfo.label}</span>
+                     </div>
+                   </td>
+                   <td data-edit-source-field="name" className="font-medium text-primary">
+                     <span key={`name-${nameToken || 'stable'}`} className={cn('save-flow-target', nameToken && 'save-flow-target-active')}>
+                       {server.name || server.host}
+                     </span>
+                     {connected && <span className="ml-1.5 text-[10px] text-success py-0.5 px-1 bg-success-dim rounded-sm">{t('已连接')}</span>}
+                   </td>
+                   <td data-edit-source-field="hostPort" className="text-base text-secondary font-mono">
+                     <span key={`host-${hostToken || 'stable'}`} className={cn('save-flow-target', hostToken && 'save-flow-target-active')}>
+                       {hideSensitive ? mask(server.host) : `${server.host}:${server.port || 22}`}
+                     </span>
+                   </td>
+                   <td data-edit-source-field="username" className="text-secondary">
+                     <span key={`username-${usernameToken || 'stable'}`} className={cn('save-flow-target', usernameToken && 'save-flow-target-active')}>
+                       {hideSensitive ? mask(server.username) : server.username}
+                     </span>
+                   </td>
+                   <td>
+                     {ping?.online && ping?.latency !== undefined && ping?.latency !== null ? (
+                       <div className="flex items-center gap-1.5">
+                         <div className={cn(
+                           'w-2 h-2 rounded-full',
+                           latClass === 'good' ? 'bg-success' : latClass === 'warn' ? 'bg-warning' : 'bg-danger',
+                         )} />
+                         <span className={cn(
+                           'text-sm font-mono',
+                           latClass === 'good' ? 'text-success' : latClass === 'warn' ? 'text-warning' : 'text-danger',
+                         )}>
+                           {ping.latency === -1 ? t('<1毫秒') : `${ping.latency}${t('毫秒')}`}
+                         </span>
+                       </div>
+                     ) : (
+                       ping !== undefined && !ping?.online ? (
+                         <div className="flex items-center gap-1.5 text-danger">
+                           <X size={14} />
+                           <span className="text-sm">{t('离线')}</span>
+                         </div>
+                       ) : <span className="text-tertiary">-</span>
+                     )}
+                   </td>
+                   <td>
+                     <Button
+                       variant="ghost"
+                       size="sm"
+                       className="px-2 py-1"
+                       onClick={(e) => { e.stopPropagation(); triggerEdit(server, e.currentTarget.closest('.server-table-row')); }}
+                     >
+                       {t('编辑')}
+                     </Button>
+                   </td>
+                 </tr>
+               );
+             })}
           </tbody>
         </table>
       </div>
@@ -925,91 +885,93 @@ export default function ServerList({
 
       {/* Context Menu */}
       {groupHeaderMenu && (
-        <div
-          ref={groupHeaderMenuRef}
-          className="context-menu"
-          style={{ left: groupHeaderMenu.x, top: groupHeaderMenu.y, zIndex: 120 }}
-        >
-          <div
-            className="context-menu-item"
-            onClick={() => { void handleRenameGroupFromMenu(); }}
-          >
-            <PenLine size={14} style={{ marginRight: 8 }} /> {t('重命名分组')}
-          </div>
-        </div>
+        <ContextMenu
+          x={groupHeaderMenu.x}
+          y={groupHeaderMenu.y}
+          minWidth={MENU_ESTIMATED_WIDTH}
+          items={[
+            { label: t('重命名分组'), icon: <PenLine size={14} />, onSelect: () => { void handleRenameGroupFromMenu(); } },
+          ]}
+          onClose={() => setGroupHeaderMenu(null)}
+        />
       )}
 
        {menuServer && (
-         <div
-           ref={menuRef}
-           className="context-menu"
-           style={{ left: menuPos.x, top: menuPos.y }}
-         >
+        <>
+          {/* 透明 backdrop：点击任意空白处关闭（含子菜单） */}
           <div
-            className="context-menu-item"
-            onClick={() => { onConnect(menuServer); setMenuServer(null); }}
+            className="fixed inset-0"
+            style={{ zIndex: Z.MENU_BACKDROP }}
+            onMouseDown={() => closeServerMenu()}
+            onContextMenu={(e) => { e.preventDefault(); closeServerMenu(); }}
+          />
+          <MenuPanel
+            minWidth={MENU_ESTIMATED_WIDTH}
+            className="fixed overflow-visible animate-[fadeIn_0.12s_ease]"
+            style={{ left: menuPos.x, top: menuPos.y, zIndex: Z.MENU }}
           >
-            <Link size={14} style={{ marginRight: 8 }} /> {t('连接')}
-          </div>
-          <div
-            className="context-menu-item"
-            onClick={() => { triggerEdit(menuServer, menuSourceRef.current); setMenuServer(null); }}
-          >
-            <SquarePen size={14} style={{ marginRight: 8 }} /> {t('编辑配置')}
-          </div>
-          <div
-            className="context-menu-item"
-            onClick={() => { onClone(menuServer, getEditAnimationPayload(menuServer, menuSourceRef.current)); setMenuServer(null); }}
-          >
-            <Copy size={14} style={{ marginRight: 8 }} /> {t('克隆')}
-          </div>
-          {onMoveGroup && (
-            <div
-              className="context-menu-item"
-              onClick={() => { setGroupMenu(!groupMenu); }}
-              style={{ position: 'relative' }}
-            >
-              <Folder size={14} style={{ marginRight: 8 }} /> {t('移动到分组')}
-              {groupMenu && (
-                <div
-                  className="context-menu"
-                  style={{ position: 'absolute', left: '100%', top: 0 }}
-                  onClick={(e) => e.stopPropagation()}
+            <div className="relative">
+              <MenuList
+                items={[
+                  { label: t('连接'), icon: <Link size={14} />, onSelect: () => { onConnect(menuServer); } },
+                  { label: t('编辑配置'), icon: <SquarePen size={14} />, onSelect: () => { triggerEdit(menuServer, menuSourceRef.current); } },
+                  { label: t('克隆'), icon: <Copy size={14} />, onSelect: () => { onClone(menuServer, getEditAnimationPayload(menuServer, menuSourceRef.current)); } },
+                  ...(onMoveGroup ? [{
+                    label: t('移动到分组'),
+                    icon: <Folder size={14} />,
+                    onSelect: () => {
+                      submenuToggleRef.current = true;
+                      setGroupMenu((prev) => !prev);
+                    },
+                  } as MenuItem] : []),
+                  'separator',
+                  {
+                    label: t('删除'),
+                    icon: <Trash2 size={14} />,
+                    danger: true,
+                    onSelect: () => {
+                      void (async () => {
+                        if (await window.luminDialog?.confirm(`${t('确定删除服务器')}「${menuServer.name || menuServer.host}」？`)) {
+                          onDelete(menuServer.id);
+                        }
+                      })();
+                    },
+                  },
+                ] as MenuItem[]}
+                onClose={() => {
+                  if (submenuToggleRef.current) {
+                    submenuToggleRef.current = false;
+                    return;
+                  }
+                  closeServerMenu();
+                }}
+              />
+              {groupMenu && onMoveGroup && (
+                <MenuPanel
+                  minWidth={MENU_ESTIMATED_WIDTH}
+                  className="absolute left-full top-0 animate-[fadeIn_0.12s_ease]"
+                  style={{ zIndex: Z.SUBMENU }}
                 >
-                  {existingGroups.filter(g => g !== (menuServer.group || '')).map(g => (
-                    <div
-                      key={g}
-                      className="context-menu-item"
-                      onClick={() => { onMoveGroup(menuServer.id, g); setMenuServer(null); setGroupMenu(false); }}
-                    >
-                      <Folder size={13} style={{ marginRight: 8 }} /> {g}
-                    </div>
-                  ))}
-                  {menuServer.group && (
-                    <div
-                      className="context-menu-item"
-                      onClick={() => { onMoveGroup(menuServer.id, ''); setMenuServer(null); setGroupMenu(false); }}
-                    >
-                      <X size={13} style={{ marginRight: 8 }} /> {t('移出分组')}
-                    </div>
-                  )}
-                </div>
+                  <MenuList
+                    items={[
+                      ...existingGroups.filter(g => g !== (menuServer.group || '')).map((g): MenuItem => ({
+                        label: g,
+                        icon: <Folder size={13} />,
+                        onSelect: () => { onMoveGroup(menuServer.id, g); },
+                      })),
+                      ...(menuServer.group ? [{
+                        label: t('移出分组'),
+                        icon: <X size={13} />,
+                        onSelect: () => { onMoveGroup(menuServer.id, ''); },
+                      } as MenuItem] : []),
+                    ] as MenuItem[]}
+                    onClose={closeServerMenu}
+                  />
+                </MenuPanel>
               )}
             </div>
-          )}
-          <div className="context-menu-divider" />
-          <div
-            className="context-menu-item danger"
-            onClick={async () => {
-              if (await window.luminDialog?.confirm(`${t('确定删除服务器')}「${menuServer.name || menuServer.host}」？`)) {
-                onDelete(menuServer.id);
-              }
-              setMenuServer(null);
-            }}
-          >
-            <Trash2 size={14} style={{ marginRight: 8 }} /> {t('删除')}
-          </div>
-         </div>
+          </MenuPanel>
+        </>
        )}
 
      </>

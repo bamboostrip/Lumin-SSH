@@ -26,9 +26,10 @@ import { parseCommandInputContext } from '../utils/terminalCommandAutocompletePa
 import Tiptop from './Tiptop.tsx';
 import { ToggleSwitch } from './settings/SharedComponents.tsx';
 import type { QuickCommandsHandle } from './QuickCommands.tsx';
+import { Button, ContextMenu, Modal } from './ui';
 import '@xterm/xterm/css/xterm.css';
 import { useTranslation, type I18nKey } from '../i18n.ts';
-import { readClipboardText, btnStyle, buildWrappedMultiLineCommand, DEFAULT_TERMINAL_SHORTCUTS, extractCommandFromBufferLine, findTerminalHttpLinksOnLine, formatTerminalTimestamp, getLogicalLineSegments, getTerminalBufferSnapshotText, getTerminalInputStartLine, getTermSearchDecorations, getTextareaAutocompletePopupPosition, iconBtnStyle, isInteractivePromptText, isTerminalHttpUrl, joinedIndexToPos, lineToTextAndCols, normalizeTerminalPasteText, SCREEN_NON_INTERACTIVE_OPTIONS, SHELL_PROMPT_PREFIX_PATTERNS, splitTrailingIncompleteEscapeSequence, startsInteractiveScreen, TERMINAL_SIGNAL_BYTES, TERMINAL_URL_REGEX, textDecoder, textEncoder } from '../utils/terminalHelpers.ts';
+import { readClipboardText, buildWrappedMultiLineCommand, DEFAULT_TERMINAL_SHORTCUTS, extractCommandFromBufferLine, findTerminalHttpLinksOnLine, formatTerminalTimestamp, getLogicalLineSegments, getTerminalBufferSnapshotText, getTerminalInputStartLine, getTermSearchDecorations, getTextareaAutocompletePopupPosition, isInteractivePromptText, isTerminalHttpUrl, joinedIndexToPos, lineToTextAndCols, normalizeTerminalPasteText, SCREEN_NON_INTERACTIVE_OPTIONS, SHELL_PROMPT_PREFIX_PATTERNS, splitTrailingIncompleteEscapeSequence, startsInteractiveScreen, TERMINAL_SIGNAL_BYTES, TERMINAL_URL_REGEX, textDecoder, textEncoder } from '../utils/terminalHelpers.ts';
 import defaultTermBg from '../assets/term_bg.webp';
 import { Z } from '../constants/zIndex';
 import { getTerminalTheme, getAppThemeMode, isDarkTerminalSurface, getSolidTerminalBackground, type TerminalTheme } from '../utils/theme.ts';
@@ -54,11 +55,6 @@ interface CommandBlockState {
 
 // 启动时从 localStorage 加载自定义关键字规则（模块级，仅执行一次）
 loadKeywordRulesFromStorage();
-
-/** 右键菜单项：type 为判别属性（字面量类型），保证三元表达式里的 union 可收窄 */
-type TerminalContextMenuItem =
-  | { type: 'action'; icon: React.ReactNode; label: string; action: string; shortcut?: string; disabled?: boolean }
-  | { type: 'separator' };
 
 export interface TerminalProps {
   sessionId: string;
@@ -2214,7 +2210,7 @@ export default function Terminal({
       return;
     }
     setContextHasSelection(hasSelection);
-    setContextMenu({ ...clampMenuPosition(e.clientX, e.clientY, 190, 196), source: 'terminal' });
+    setContextMenu({ x: e.clientX, y: e.clientY, source: 'terminal' });
   };
 
   const handleInputContextMenu = (e: React.MouseEvent) => {
@@ -2224,7 +2220,7 @@ export default function Terminal({
     const input = cmdInputRef.current;
     const hasSelection = !!input && (input.selectionStart ?? 0) !== (input.selectionEnd ?? 0);
     setContextHasSelection(hasSelection);
-    setContextMenu({ ...clampMenuPosition(e.clientX, e.clientY, 190, 132), source: 'input' });
+    setContextMenu({ x: e.clientX, y: e.clientY, source: 'input' });
   };
 
   const closeContextMenu = () => {
@@ -2349,11 +2345,11 @@ export default function Terminal({
     }
   };
 
-  // 点击外部关闭右键菜单 / 链接菜单
+  // 点击外部关闭右键菜单 / 链接菜单（[role="menu"] 为 ui/ContextMenu 菜单项容器）
   useEffect(() => {
     if (!contextMenu && !linkMenu) return;
     const handler = (e: MouseEvent) => {
-      if ((e.target as Element | null)?.closest?.('.context-menu')) return;
+      if ((e.target as Element | null)?.closest?.('.context-menu, [role="menu"]')) return;
       setContextMenu(null);
       setLinkMenu(null);
     };
@@ -3221,40 +3217,28 @@ export default function Terminal({
       ref={wrapperRef}
       onContextMenu={handleContextMenu}
       onClick={closeContextMenu}
-      style={{
-        position: 'relative',
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        // 主题底色 + 色调层；壁纸半透明叠在上面
-        background: 'var(--term-container-bg)',
-        overflow: 'hidden',
-      }}
+      // 主题底色 + 色调层；壁纸半透明叠在上面
+      className="relative h-full flex flex-col overflow-hidden bg-[var(--term-container-bg)]"
     >
       {/* 主题色调层：xterm 背景已不透明，叠在内容上方才能生效（弹出层 fixed+zIndex 更高，不受影响） */}
-      <div style={{
-        position: 'absolute',
-        inset: 0,
-        background: 'var(--term-tint, transparent)',
-        pointerEvents: 'none',
-        zIndex: Z.STACK,
-      }} />
+      <div
+        className="absolute inset-0 pointer-events-none bg-[var(--term-tint,transparent)]"
+        style={{ zIndex: Z.STACK }}
+      />
       {/* 壁纸层：叠在内容上方，浅色底下使用 multiply 混合模式，避免亮色/白色壁纸部分遮盖冲淡字色 */}
       {/* 全局背景激活时不渲染默认终端纹理，避免与全局壁纸叠加 */}
-      <div style={{
-        position: 'absolute',
-        inset: 0,
-        backgroundImage: `url("${bgInfo.image || (bgInfo.globalActive ? '' : defaultTermBg)}")`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        opacity: Number.isFinite(bgInfo.opacity) ? bgInfo.opacity : 0.15,
-        mixBlendMode: isDarkTerminalSurface(T) ? 'normal' : 'multiply',
-        pointerEvents: 'none',
-        zIndex: Z.STACK,
-      }} />
+      <div
+        className="absolute inset-0 pointer-events-none bg-cover bg-center"
+        style={{
+          zIndex: Z.STACK,
+          backgroundImage: `url("${bgInfo.image || (bgInfo.globalActive ? '' : defaultTermBg)}")`,
+          opacity: Number.isFinite(bgInfo.opacity) ? bgInfo.opacity : 0.15,
+          mixBlendMode: isDarkTerminalSurface(T) ? 'normal' : 'multiply',
+        }}
+      />
       
       {/* 内容层（置于背景之上) */}
-      <div style={{ position: 'relative', zIndex: Z.CONTENT, display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div className="relative flex flex-col h-full" style={{ zIndex: Z.CONTENT }}>
       {/* ── Session 状态栏 ── */}
       <div className="term-status-bar">
         {/* 状态指示灯 - 使用全局 CSS 类，连接成功时触发涟漪动画 */}
@@ -3265,13 +3249,13 @@ export default function Terminal({
           isError      ? 'offline' : '',
           !isConnected && !isConnecting && !isError ? 'offline' : '',
         ].filter(Boolean).join(' ')} style={{ flexShrink: 0 }} />
-        <span style={{ color: 'var(--term-server-color)', fontWeight: 500, fontFamily: 'var(--font-mono)' }}>
+        <span className="font-medium font-mono text-[var(--term-server-color)]">
           {serverName || 'Terminal'}
         </span>
         
         {/* 右侧极简状态显示 */}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 11, color: statusColor, fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
+        <div className="ml-auto flex items-center gap-2.5">
+          <span className="text-xs font-mono font-bold" style={{ color: statusColor }}>
             {isConnected  ? t('已连接')
              : isConnecting ? t('连接中...')
              : isError      ? t('错误')
@@ -3293,20 +3277,11 @@ export default function Terminal({
       {/* ── 终端内容查找栏 ── */}
       {showTermSearch && (
         <div
-          className="term-search-bar"
+          className="term-search-bar flex items-center gap-1.5 px-2.5 py-1.5 border-b border-[var(--term-separator)] bg-[var(--term-status-bg)] shrink-0"
           onMouseDown={(e) => e.stopPropagation()}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '6px 10px',
-            borderBottom: '1px solid var(--term-separator)',
-            background: 'var(--term-status-bg)',
-            flexShrink: 0,
-            zIndex: Z.SEARCH_PANEL,
-          }}
+          style={{ zIndex: Z.SEARCH_PANEL }}
         >
-          <Search size={13} style={{ color: 'var(--term-muted)', flexShrink: 0 }} />
+          <Search size={13} className="text-[var(--term-muted)] shrink-0" />
           <input
             name="terminal-search"
             autoComplete="off"
@@ -3329,31 +3304,14 @@ export default function Terminal({
               }
             }}
             placeholder={t('查找...')}
-            className="term-search-input"
-            style={{
-              flex: 1,
-              minWidth: 0,
-              padding: '4px 8px',
-              background: 'var(--term-input-bg)',
-              border: '1px solid var(--term-btn-border)',
-              borderRadius: 4,
-              color: 'var(--term-input-color)',
-              fontSize: 12,
-              outline: 'none',
-              fontFamily: 'var(--font-ui)',
-            }}
+            className="term-search-input flex-1 min-w-0 px-2 py-1 bg-[var(--term-input-bg)] border border-[var(--term-btn-border)] rounded-sm text-sm text-[var(--term-input-color)] outline-none font-sans"
           />
           <span
-            style={{
-              fontSize: 11,
-              color: termSearchQuery && termSearchResult.resultCount === 0
-                ? 'var(--danger, #ff7b72)'
-                : 'var(--term-muted)',
-              fontFamily: 'var(--font-mono)',
-              minWidth: 52,
-              textAlign: 'center',
-              flexShrink: 0,
-            }}
+            className={`text-xs font-mono min-w-[52px] text-center shrink-0 ${
+              termSearchQuery && termSearchResult.resultCount === 0
+                ? 'text-danger'
+                : 'text-[var(--term-muted)]'
+            }`}
           >
             {!termSearchQuery
               ? ''
@@ -3369,8 +3327,7 @@ export default function Terminal({
               onClick={() => setTermSearchCaseSensitive((v) => !v)}
               aria-label={t('区分大小写')}
               aria-pressed={termSearchCaseSensitive}
-              className={`term-btn${termSearchCaseSensitive ? ' active' : ''}`}
-              style={{ padding: '4px 6px', minWidth: 28, height: 26 }}
+              className={`term-btn${termSearchCaseSensitive ? ' active' : ''} py-1 px-1.5 min-w-7 h-[26px]`}
             >
               <CaseSensitive size={13} />
             </button>
@@ -3380,8 +3337,7 @@ export default function Terminal({
               type="button"
               onClick={() => findTermPrevious()}
               aria-label={t('上一个')}
-              className="term-btn"
-              style={{ padding: '4px 6px', minWidth: 28, height: 26 }}
+              className="term-btn py-1 px-1.5 min-w-7 h-[26px]"
               disabled={!termSearchQuery}
             >
               <ChevronUp size={13} />
@@ -3392,8 +3348,7 @@ export default function Terminal({
               type="button"
               onClick={() => findTermNext(false)}
               aria-label={t('下一个')}
-              className="term-btn"
-              style={{ padding: '4px 6px', minWidth: 28, height: 26 }}
+              className="term-btn py-1 px-1.5 min-w-7 h-[26px]"
               disabled={!termSearchQuery}
             >
               <ChevronDown size={13} />
@@ -3404,8 +3359,7 @@ export default function Terminal({
               type="button"
               onClick={closeTermSearch}
               aria-label={t('关闭')}
-              className="term-btn"
-              style={{ padding: '4px 6px', minWidth: 28, height: 26 }}
+              className="term-btn py-1 px-1.5 min-w-7 h-[26px]"
             >
               <X size={13} />
             </button>
@@ -3414,46 +3368,27 @@ export default function Terminal({
       )}
 
       {/* ── xterm 渲染层 + 时间轴 / 命令块边框 ── */}
-      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        <div ref={gutterRef} style={{
+      <div className="flex-1 min-h-0 flex">
+        <div ref={gutterRef} className="shrink-0 pt-0 overflow-hidden box-border" style={{
           display: (timestampsVisible || commandBlocksVisible) && !alternateBufferActive ? 'block' : 'none',
           // 时间戳约 72px；命令块约 16px；两者同时开约 96px
           // 时间戳列 70 + 命令块 14 + padding ≈ 90；仅时间戳 75；仅命令块 22
           width: timestampsVisible && commandBlocksVisible ? 90 : timestampsVisible ? 75 : 22,
-          flexShrink: 0,
-          paddingTop: 0,
-          overflow: 'hidden',
-          boxSizing: 'border-box',
         }} />
         <div
-          className={terminalDefaultMouseCursorEnabled ? 'terminal-output-default-mouse-cursor' : ''}
+          className={terminalDefaultMouseCursorEnabled ? 'terminal-output-default-mouse-cursor relative flex-1 min-h-0' : 'relative flex-1 min-h-0'}
           onMouseDownCapture={handleTerminalMouseDownCapture}
           onMouseUpCapture={handleTerminalMouseUpCapture}
-          style={{
-            position: 'relative',
-            flex: 1,
-            minHeight: 0,
-          }}
         >
           <div
             ref={containerRef}
-            style={{
-              height: '100%',
-              minHeight: 0,
-              padding: '0',
-              background: 'transparent',
-            }}
+            className="h-full min-h-0 p-0 bg-transparent"
           />
           {/* 常驻链接下划线（pointer-events:none，不挡点击/选区） */}
           <div
             ref={linkUnderlineLayerRef}
-            style={{
-              position: 'absolute',
-              inset: 0,
-              pointerEvents: 'none',
-              overflow: 'hidden',
-              zIndex: 2,
-            }}
+            className="absolute inset-0 pointer-events-none overflow-hidden"
+            style={{ zIndex: Z.STACK }}
           />
           </div>
       </div>
@@ -3534,35 +3469,35 @@ export default function Terminal({
         {/* 命令输入框 */}
         <Tiptop
           text={!cmdInputHintsHidden && !cmdInput && !commandAutocomplete.open ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5, padding: '2px 4px', fontSize: 11, lineHeight: 1.5, textAlign: 'left', minWidth: 190 }}>
-              <div style={{ fontWeight: 600, color: 'var(--text-primary)', borderBottom: '1px solid var(--border-subtle)', paddingBottom: 4, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div className="flex flex-col gap-[5px] px-1 py-0.5 text-xs leading-[1.5] text-left min-w-[190px]">
+              <div className="flex items-center gap-[5px] font-semibold text-primary border-b border-line-subtle pb-1 mb-0.5">
                 <span>{t('命令输入快捷键')}</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                <span style={{ color: 'var(--text-secondary)' }}>{t('执行命令')}</span>
-                <kbd style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 5px', fontSize: 10, fontFamily: 'var(--font-mono)' }}>Enter</kbd>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-secondary">{t('执行命令')}</span>
+                <kbd className="bg-overlay border border-line rounded-xs px-[5px] py-px text-[10px] font-mono">Enter</kbd>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                <span style={{ color: 'var(--text-secondary)' }}>{t('换行多行输入')}</span>
-                <kbd style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 5px', fontSize: 10, fontFamily: 'var(--font-mono)' }}>Shift + Enter</kbd>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-secondary">{t('换行多行输入')}</span>
+                <kbd className="bg-overlay border border-line rounded-xs px-[5px] py-px text-[10px] font-mono">Shift + Enter</kbd>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                <span style={{ color: 'var(--text-secondary)' }}>{t('快捷命令列表')}</span>
-                <kbd style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 5px', fontSize: 10, fontFamily: 'var(--font-mono)' }}>/</kbd>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-secondary">{t('快捷命令列表')}</span>
+                <kbd className="bg-overlay border border-line rounded-xs px-[5px] py-px text-[10px] font-mono">/</kbd>
               </div>
               {altOpenHistoryEnabled && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>{t('搜索历史指令')}</span>
-                  <kbd style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 5px', fontSize: 10, fontFamily: 'var(--font-mono)' }}>Alt</kbd>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-secondary">{t('搜索历史指令')}</span>
+                  <kbd className="bg-overlay border border-line rounded-xs px-[5px] py-px text-[10px] font-mono">Alt</kbd>
                 </div>
               )}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                <span style={{ color: 'var(--text-secondary)' }}>{t('补全候选项')}</span>
-                <kbd style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 5px', fontSize: 10, fontFamily: 'var(--font-mono)' }}>Tab</kbd>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-secondary">{t('补全候选项')}</span>
+                <kbd className="bg-overlay border border-line rounded-xs px-[5px] py-px text-[10px] font-mono">Tab</kbd>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                <span style={{ color: 'var(--text-secondary)' }}>{t('关闭此提示')}</span>
-                <kbd style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 5px', fontSize: 10, fontFamily: 'var(--font-mono)' }}>F1</kbd>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-secondary">{t('关闭此提示')}</span>
+                <kbd className="bg-overlay border border-line rounded-xs px-[5px] py-px text-[10px] font-mono">F1</kbd>
               </div>
             </div>
           ) : undefined}
@@ -3571,7 +3506,7 @@ export default function Terminal({
         >
           <textarea
             ref={cmdInputRef}
-            className="input term-command-input"
+            className="input term-command-input w-full text-sm py-2 px-[11px] h-9 min-h-9 bg-[var(--term-input-bg)] text-[var(--term-input-color)]"
             name="terminalCommand"
             value={cmdInput}
             rows={1}
@@ -3716,14 +3651,7 @@ export default function Terminal({
               return `${t('输入命令')}...`;
             })()}
             style={{
-              width: '100%',
-              fontSize: 12,
               fontFamily: 'var(--font-terminal)',
-              padding: '8px 11px',
-              height: 36,
-              minHeight: 36,
-              background: 'var(--term-input-bg)',
-              color: 'var(--term-input-color)',
               borderColor: cmdInput ? 'var(--border-focus)' : 'var(--term-btn-border)',
             }}
           />
@@ -3760,7 +3688,7 @@ export default function Terminal({
             aria-label={t('快捷命令')}
             className={`term-btn${showCommands ? ' active' : ''}`}
           >
-            <span style={{ display: 'inline-flex', alignItems: 'center' }}><Zap size={13} /></span>
+            <span className="inline-flex items-center"><Zap size={13} /></span>
             <span>{t('命令')}</span>
           </button>
         </Tiptop>
@@ -3793,10 +3721,9 @@ export default function Terminal({
           <button
             onClick={toggleMultiLineWrap}
             aria-label={multiLineWrapEnabled ? t('函数/变量作用域:命令内部') : t('函数/变量作用域:终端会话')}
-            className={`term-btn${multiLineWrapEnabled ? ' active' : ''}`}
-            style={{ padding: 0, width: 36, minWidth: 36, height: 36, minHeight: 36, justifyContent: 'center' }}
+            className={`term-btn${multiLineWrapEnabled ? ' active' : ''} p-0 w-9 min-w-9 h-9 min-h-9 justify-center`}
           >
-            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700 }}>
+            <span className="inline-flex items-center justify-center w-3.5 font-mono text-xs font-bold">
               &gt;_
             </span>
           </button>
@@ -3806,7 +3733,7 @@ export default function Terminal({
 
       {(commandAutocomplete.open || commandAutocomplete.loading) && !showHistory && !showCommands && commandAutocompletePopupPos && (
         <div
-          className="term-popup"
+          className="term-popup flex flex-col overflow-hidden"
           onMouseDown={(e) => e.preventDefault()}
           style={{
             position: 'fixed',
@@ -3814,28 +3741,16 @@ export default function Terminal({
             top: commandAutocompletePopupPos.top,
             width: commandAutocompletePopupPos.width,
             maxHeight: commandAutocompletePopupPos.maxHeight ?? 260,
-            display: 'flex',
-            flexDirection: 'column',
             zIndex: Z.POPUP,
-            overflow: 'hidden',
           }}
         >
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 10,
-            padding: '7px 10px',
-            borderBottom: '1px solid var(--term-separator)',
-            fontSize: 11,
-            color: 'var(--term-status-color)',
-          }}>
+          <div className="flex items-center justify-between gap-2.5 px-2.5 py-[7px] border-b border-[var(--term-separator)] text-xs text-[var(--term-status-color)]">
             <span>{t('命令')}</span>
-            <span style={{ color: 'var(--term-muted)', fontFamily: 'var(--font-mono)' }}>Tab</span>
+            <span className="text-[var(--term-muted)] font-mono">Tab</span>
           </div>
-          <div ref={commandAutocompleteListRef} style={{ maxHeight: 220, overflowY: 'auto', overflowX: 'hidden' }}>
+          <div ref={commandAutocompleteListRef} className="max-h-[220px] overflow-y-auto overflow-x-hidden">
             {commandAutocomplete.loading && commandAutocomplete.items.length === 0 ? (
-              <div style={{ padding: '10px 12px', fontSize: 12, color: 'var(--term-muted)' }}>
+              <div className="px-3 py-2.5 text-sm text-[var(--term-muted)]">
                 {t('正在搜索...')}
               </div>
             ) : commandAutocomplete.items.map((item, index) => {
@@ -3855,53 +3770,23 @@ export default function Terminal({
                     e.preventDefault();
                     applyCommandAutocompleteItem(item);
                   }}
-                  style={{
-                    width: '100%',
-                    minWidth: 0,
-                    display: 'grid',
-                    gap: 4,
-                    padding: '9px 12px',
-                    textAlign: 'left',
-                    border: 'none',
-                    borderBottom: index === commandAutocomplete.items.length - 1 && !commandAutocomplete.loading ? 'none' : '1px solid var(--term-separator)',
-                    background: isSelected ? 'rgba(59,130,246,0.12)' : 'transparent',
-                    color: 'var(--term-input-color)',
-                    cursor: 'pointer',
-                    overflow: 'hidden',
-                  }}
+                  className={`w-full min-w-0 grid gap-1 px-3 py-[9px] text-left cursor-pointer overflow-hidden border-x-0 border-t-0 ${
+                    index === commandAutocomplete.items.length - 1 && !commandAutocomplete.loading ? '' : 'border-b border-b-[var(--term-separator)]'
+                  } ${isSelected ? 'bg-[rgba(59,130,246,0.12)]' : 'bg-transparent'} text-[var(--term-input-color)]`}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{
-                      flex: 1,
-                      minWidth: 0,
-                      fontSize: 12,
-                      fontFamily: 'var(--font-terminal)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="flex-1 min-w-0 text-sm truncate"
+                      style={{ fontFamily: 'var(--font-terminal)' }}
+                    >
                       {item.label}
                     </span>
-                    <span style={{
-                      flexShrink: 0,
-                      padding: '2px 6px',
-                      borderRadius: 999,
-                      border: '1px solid var(--term-btn-border)',
-                      color: 'var(--term-status-color)',
-                      fontSize: 10,
-                      lineHeight: 1.2,
-                    }}>
+                    <span className="shrink-0 px-1.5 py-0.5 rounded-full border border-[var(--term-btn-border)] text-[var(--term-status-color)] text-[10px] leading-[1.2]">
                       {item.badge}
                     </span>
                   </div>
                   {item.description ? (
-                    <span style={{
-                      fontSize: 11,
-                      color: 'var(--term-muted)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}>
+                    <span className="text-xs text-[var(--term-muted)] truncate">
                       {item.description}
                     </span>
                   ) : null}
@@ -3909,12 +3794,7 @@ export default function Terminal({
               );
             })}
             {commandAutocomplete.loading && commandAutocomplete.items.length > 0 ? (
-              <div style={{
-                padding: '8px 12px',
-                fontSize: 11,
-                color: 'var(--term-muted)',
-                borderTop: '1px solid var(--term-separator)',
-              }}>
+              <div className="px-3 py-2 text-xs text-[var(--term-muted)] border-t border-[var(--term-separator)]">
                 {t('正在刷新结果...')}
               </div>
             ) : null}
@@ -3924,29 +3804,18 @@ export default function Terminal({
 
       {/* ── 历史指令弹窗（fixed 定位，不受 overflow:hidden 裁剪） ── */}
       {showHistory && historyPopupPos && (
-        <div ref={historyPopupRef} className="term-popup" style={{
+        <div ref={historyPopupRef} className="term-popup flex flex-col box-border w-[480px] max-w-[calc(100vw-16px)] max-h-[280px] text-sm" style={{
             left: historyPopupPos.left,
             bottom: historyPopupPos.bottom,
-            width: 480,
-            maxWidth: 'calc(100vw - 16px)',
-            maxHeight: 280,
-            boxSizing: 'border-box',
-            display: 'flex', flexDirection: 'column',
             zIndex: Z.POPUP,
             fontFamily: 'var(--font-terminal)',
-            fontSize: 12,
           }}>
             {/* 弹窗头部（标题 + 操作按钮） */}
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '8px 10px',
-              borderBottom: '1px solid var(--term-separator)',
-              flexShrink: 0,
-            }}>
-              <span style={{ color: 'var(--term-status-color)', fontSize: 11 }}>{t('历史命令')}</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span style={{ color: 'var(--term-muted)', fontSize: 11 }}>{t('Alt 打开历史指令')}</span>
+            <div className="flex items-center justify-between px-2.5 py-2 border-b border-[var(--term-separator)] shrink-0">
+              <span className="text-[var(--term-status-color)] text-xs">{t('历史命令')}</span>
+              <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-[5px]">
+                  <span className="text-[var(--term-muted)] text-xs">{t('Alt 打开历史指令')}</span>
                   <ToggleSwitch checked={altOpenHistoryEnabled} onChange={() => {
                     const enabled = !altOpenHistoryEnabled;
                     setAltOpenHistoryEnabled(enabled);
@@ -3979,14 +3848,14 @@ export default function Terminal({
                       console.error('[Terminal] 清空历史失败:', error);
                     }
                   }}
-                  style={{ ...btnStyle('red'), fontSize: 11, padding: '2px 8px' }}
+                  className="inline-flex items-center justify-center gap-1 border border-line bg-raised text-danger rounded-xs px-2 py-[2px] text-xs cursor-pointer select-none transition-colors duration-100 hover:bg-hover"
                 >
                   {t('清空列表')}
                 </button>
                 <button
                   onClick={() => { setShowHistory(false); setHistoryPopupPos(null); }}
                   aria-label={t('关闭')}
-                  style={btnStyle('red')}
+                  className="inline-flex items-center justify-center gap-1 border border-line bg-raised text-danger rounded-xs px-2 py-[3px] cursor-pointer select-none transition-colors duration-100 hover:bg-hover"
                 >
                   <X size={12} />
                 </button>
@@ -3994,48 +3863,34 @@ export default function Terminal({
             </div>
 
             {/* 历史列表（可滚动） */}
-            <div ref={historyScrollRef} style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+            <div ref={historyScrollRef} className="flex-1 overflow-y-auto min-h-0">
             {filteredHistory.length === 0 ? (
-              <div style={{ padding: 20, textAlign: 'center', color: 'var(--term-muted)', fontSize: 12 }}>
+              <div className="p-5 text-center text-[var(--term-muted)] text-sm">
                 {searchQuery ? t('无匹配结果') : t('暂无历史记录')}
               </div>
             ) : displayHistory.map((item, index) => (
               <div
                 key={item.id}
-                className="history-item"
                 data-history-index={index}
                 role="option"
                 aria-selected={historySelectedIndex === index}
                 onClick={() => selectHistoryCmd(item.command)}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '6px 10px',
-                  cursor: 'pointer',
-                  borderBottom: '1px solid var(--term-separator)',
-                  transition: 'background 0.1s',
-                  background: historySelectedIndex === index ? 'var(--surface-active)' : undefined,
-                }}
+                className={`flex items-center justify-between px-2.5 py-1.5 cursor-pointer border-b border-[var(--term-separator)] transition-colors duration-100 ${historySelectedIndex === index ? 'bg-active' : 'hover:bg-hover'}`}
               >
                 <span
-                  style={{
-                    flex: 1,
-                    color: 'var(--term-input-color)',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    paddingRight: 8,
-                  }}
+                  className="flex-1 min-w-0 text-[var(--term-input-color)] truncate pr-2"
                   title={item.command}
                 >
                   {item.command}
                 </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                <div className="flex items-center gap-[3px] shrink-0">
                   {/* 执行（绿色） */}
                   <Tiptop text={t('执行')}>
                     <button
+                      type="button"
                       onClick={(e) => { e.stopPropagation(); executeCommand(item.command); }}
                       aria-label={t('执行')}
-                      style={{ ...iconBtnStyle('var(--text-secondary)') }}
+                      className="inline-flex items-center justify-center w-6 h-6 border border-line bg-raised rounded-xs text-secondary cursor-pointer transition-colors duration-100 hover:text-primary"
                     >
                       <Play size={12} />
                     </button>
@@ -4043,18 +3898,21 @@ export default function Terminal({
                   {/* 复制（蓝色） */}
                   <Tiptop text={t('复制')}>
                     <button
+                      type="button"
                       onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(item.command).catch(() => {}); }}
                       aria-label={t('复制')}
-                      style={{ ...iconBtnStyle('var(--text-secondary)') }}>
+                      className="inline-flex items-center justify-center w-6 h-6 border border-line bg-raised rounded-xs text-secondary cursor-pointer transition-colors duration-100 hover:text-primary"
+                    >
                       <Clipboard size={12} />
                     </button>
                   </Tiptop>
                   {/* 删除（红色） */}
                   <Tiptop text={t('删除')}>
                     <button
+                      type="button"
                       onClick={(e) => { e.stopPropagation(); deleteHistoryItem(item.id); }}
                       aria-label={t('删除')}
-                      style={{ ...iconBtnStyle('var(--danger)', 'rgba(255,123,114,0.15)') }}
+                      className="inline-flex items-center justify-center w-6 h-6 border border-line bg-[rgba(255,123,114,0.15)] rounded-xs text-danger cursor-pointer transition-colors duration-100 hover:bg-danger-dim"
                     >
                       <X size={12} />
                     </button>
@@ -4065,12 +3923,7 @@ export default function Terminal({
             </div>
 
             {/* 搜索 + 模式切换 */}
-            <div style={{
-              display: 'flex', gap: 6, alignItems: 'center',
-              padding: '6px 10px',
-              borderTop: '1px solid var(--term-separator)',
-              flexShrink: 0,
-            }}>
+            <div className="flex gap-1.5 items-center px-2.5 py-1.5 border-t border-[var(--term-separator)] shrink-0">
               <input
                 ref={historySearchInputRef}
                 name="terminal-history-search"
@@ -4080,16 +3933,7 @@ export default function Terminal({
                 onChange={e => setSearchQuery(e.target.value)}
                 onKeyDown={handleHistorySearchKeyDown}
                 placeholder={t('搜索命令...')}
-                style={{
-                  flex: 1,
-                  padding: '4px 8px',
-                  background: 'var(--term-input-bg)',
-                  border: '1px solid var(--term-btn-border)',
-                  borderRadius: 4,
-                  color: 'var(--term-input-color)',
-                  fontSize: 12,
-                  outline: 'none',
-                }}
+                className="flex-1 px-2 py-1 bg-[var(--term-input-bg)] border border-[var(--term-btn-border)] rounded-sm text-sm text-[var(--term-input-color)] outline-none"
               />
               <div className="segment-control">
                 <button className={historyMode === 'server' ? 'active' : ''} onClick={() => setHistoryMode('server')}>
@@ -4103,277 +3947,217 @@ export default function Terminal({
           </div>
       )}
 
-      {/* ── 快捷命令二次确认框（复用 PC 既有 .modal 结构，仅 z 层降到 Z.DIALOG） ── */}
+      {/* ── 快捷命令二次确认框（ui/Modal；z 层降到 Z.DIALOG） ── */}
       {pendingQuickCmd && (() => {
         const params = extractQuickCommandParams(pendingQuickCmd.item.command);
         const filled = fillQuickCommandParams(pendingQuickCmd.item.command, pendingQuickCmd.values);
         return (
           // 遮罩不响应点击：只能用「取消」/ 右上 X / Esc 关闭，避免误点丢失已填参数
-          <div
-            className="modal-overlay"
-            style={{ zIndex: Z.DIALOG_BACKDROP }}
-            onMouseDown={(e) => e.stopPropagation()}
+          <Modal
+            open
+            onClose={() => setPendingQuickCmd(null)}
+            title={pendingQuickCmd.item.name || t('发送快捷命令')}
+            icon={<Zap size={16} />}
+            size="sm"
+            zIndex={Z.DIALOG}
+            closeOnOverlay={false}
+            closeOnEscape={false}
+            footer={<>
+              <Button variant="secondary" onClick={() => setPendingQuickCmd(null)}>
+                {t('取消')}
+              </Button>
+              <Button
+                variant="primary"
+                onClick={sendQuickCmdConfirmed}
+                disabled={!isConnected || !filled.trim()}
+                autoFocus={params.length === 0}
+                className="min-w-20"
+              >
+                <Play size={14} className="mr-1.5" />{t('发送')}
+              </Button>
+            </>}
           >
-            <div className="modal modal-sm" style={{ zIndex: Z.DIALOG }}>
-              <div className="modal-header">
-                <div className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                  <Zap size={16} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {pendingQuickCmd.item.name || t('发送快捷命令')}
-                  </span>
-                </div>
-                <button
-                  className="btn btn-ghost btn-icon"
-                  onClick={() => setPendingQuickCmd(null)}
-                  aria-label={t('取消')}
+            {params.map((p, i) => (
+              <div key={p.num} className="form-group">
+                <label className="form-label" htmlFor={`quick-cmd-param-${p.num}`}>
+                  {p.label || `${t('参数')}${p.num}`}
+                </label>
+                <div className="flex items-center gap-1.5">
+                <input
+                  name={`terminal-quick-cmd-param-${p.num}`}
+                  autoComplete="off"
+                  aria-label={p.label || `${t('参数')}${p.num}`}
+                  id={`quick-cmd-param-${p.num}`}
+                  type="text"
+                  className="input"
+                  value={pendingQuickCmd.values[p.num] || ''}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setPendingQuickCmd((prev) => (prev
+                      ? { ...prev, values: { ...prev.values, [p.num]: value } }
+                      : prev));
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      sendQuickCmdConfirmed();
+                    }
+                  }}
+                  autoFocus={i === 0}
+                  placeholder={p.label || `p#${p.num}`}
+                  style={{ flex: 1, minWidth: 0, fontFamily: 'var(--font-mono)' }}
+                />
+                <Button
+                  variant="secondary"
+                  data-terminal-quick-cmd-history="true"
+                  aria-expanded={quickCmdHistoryParam === p.num}
+                  onClick={(event) => {
+                    setQuickCmdHistorySearch('');
+                    if (quickCmdHistoryParam === p.num) {
+                      setQuickCmdHistoryParam(null);
+                      return;
+                    }
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    setQuickCmdHistoryPosition({
+                      left: Math.max(8, Math.min(rect.left, window.innerWidth - 228)),
+                      top: Math.min(rect.bottom + 4, window.innerHeight - 228),
+                    });
+                    setQuickCmdHistoryParam(p.num);
+                  }}
                 >
-                  <X size={18} />
-                </button>
-              </div>
-
-              <div className="modal-body">
-                {params.map((p, i) => (
-                  <div key={p.num} className="form-group">
-                    <label className="form-label" htmlFor={`quick-cmd-param-${p.num}`}>
-                      {p.label || `${t('参数')}${p.num}`}
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <input
-                      name={`terminal-quick-cmd-param-${p.num}`}
-                      autoComplete="off"
-                      aria-label={p.label || `${t('参数')}${p.num}`}
-                      id={`quick-cmd-param-${p.num}`}
-                      type="text"
-                      className="input"
-                      value={pendingQuickCmd.values[p.num] || ''}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setPendingQuickCmd((prev) => (prev
-                          ? { ...prev, values: { ...prev.values, [p.num]: value } }
-                          : prev));
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-                          e.preventDefault();
-                          sendQuickCmdConfirmed();
-                        }
-                      }}
-                      autoFocus={i === 0}
-                      placeholder={p.label || `p#${p.num}`}
-                      style={{ flex: 1, minWidth: 0, fontFamily: 'var(--font-mono)' }}
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
+                  {t('历史')}
+                </Button>
+                </div>
+                {quickCmdHistoryParam === p.num && createPortal((() => {
+                  const history = quickCmdParamHistory[pendingQuickCmd.item.command]?.[p.num] || [];
+                  const filteredHistory = quickCmdHistorySearch
+                    ? history.filter((value) => value.toLowerCase().includes(quickCmdHistorySearch.toLowerCase()))
+                    : history;
+                  const saveHistory = (values: string[]) => {
+                    const command = pendingQuickCmd.item.command;
+                    const nextHistory = {
+                      ...quickCmdParamHistoryRef.current,
+                      [command]: { ...(quickCmdParamHistoryRef.current[command] || {}), [p.num]: values },
+                    };
+                    quickCmdParamHistoryRef.current = nextHistory;
+                    setQuickCmdParamHistory(nextHistory);
+                    AppGo.SaveParamHistory(JSON.stringify(nextHistory)).catch(() => {});
+                  };
+                  return (
+                    <div
                       data-terminal-quick-cmd-history="true"
-                      aria-expanded={quickCmdHistoryParam === p.num}
-                      onClick={(event) => {
-                        setQuickCmdHistorySearch('');
-                        if (quickCmdHistoryParam === p.num) {
-                          setQuickCmdHistoryParam(null);
-                          return;
-                        }
-                        const rect = event.currentTarget.getBoundingClientRect();
-                        setQuickCmdHistoryPosition({
-                          left: Math.max(8, Math.min(rect.left, window.innerWidth - 228)),
-                          top: Math.min(rect.bottom + 4, window.innerHeight - 228),
-                        });
-                        setQuickCmdHistoryParam(p.num);
+                      onMouseDown={(event) => event.stopPropagation()}
+                      onClick={(event) => event.stopPropagation()}
+                      className="fixed w-[220px] max-h-[220px] flex flex-col box-border overflow-hidden bg-raised border border-line rounded-md shadow-md"
+                      style={{
+                        left: quickCmdHistoryPosition.left,
+                        top: quickCmdHistoryPosition.top,
+                        zIndex: Z.SUBMENU,
                       }}
                     >
-                      {t('历史')}
-                    </button>
-                    </div>
-                    {quickCmdHistoryParam === p.num && createPortal((() => {
-                      const history = quickCmdParamHistory[pendingQuickCmd.item.command]?.[p.num] || [];
-                      const filteredHistory = quickCmdHistorySearch
-                        ? history.filter((value) => value.toLowerCase().includes(quickCmdHistorySearch.toLowerCase()))
-                        : history;
-                      const saveHistory = (values: string[]) => {
-                        const command = pendingQuickCmd.item.command;
-                        const nextHistory = {
-                          ...quickCmdParamHistoryRef.current,
-                          [command]: { ...(quickCmdParamHistoryRef.current[command] || {}), [p.num]: values },
-                        };
-                        quickCmdParamHistoryRef.current = nextHistory;
-                        setQuickCmdParamHistory(nextHistory);
-                        AppGo.SaveParamHistory(JSON.stringify(nextHistory)).catch(() => {});
-                      };
-                      return (
-                        <div
-                          data-terminal-quick-cmd-history="true"
-                          onMouseDown={(event) => event.stopPropagation()}
-                          onClick={(event) => event.stopPropagation()}
-                          style={{
-                            position: 'fixed',
-                            left: quickCmdHistoryPosition.left,
-                            top: quickCmdHistoryPosition.top,
-                            zIndex: Z.SUBMENU,
-                            width: 220,
-                            maxHeight: 220,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            overflow: 'hidden',
-                            background: 'var(--surface-raised)',
-                            border: '1px solid var(--border)',
-                            borderRadius: 6,
-                            boxShadow: 'var(--shadow-md)',
-                          }}
-                        >
-                          <div style={{ padding: 6, flexShrink: 0, borderBottom: '1px solid var(--border-subtle)' }}>
-                            <input
-                              type="text"
-                              className="input"
-                              name={`terminal-quick-cmd-history-search-${p.num}`}
-                              autoComplete="off"
-                              autoFocus
-                              value={quickCmdHistorySearch}
-                              onChange={(event) => setQuickCmdHistorySearch(event.target.value)}
-                              onKeyDown={(event) => {
-                                if (event.key === 'Escape') {
-                                  setQuickCmdHistoryParam(null);
-                                  setQuickCmdHistorySearch('');
-                                }
-                              }}
-                              placeholder={t('搜索历史...')}
-                              aria-label={t('搜索历史...')}
-                              style={{ width: '100%' }}
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            onClick={() => {
-                              saveHistory([]);
+                      <div className="p-1.5 shrink-0 border-b border-line-subtle">
+                        <input
+                          type="text"
+                          className="input"
+                          name={`terminal-quick-cmd-history-search-${p.num}`}
+                          autoComplete="off"
+                          autoFocus
+                          value={quickCmdHistorySearch}
+                          onChange={(event) => setQuickCmdHistorySearch(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Escape') {
                               setQuickCmdHistoryParam(null);
                               setQuickCmdHistorySearch('');
-                            }}
-                            style={{ width: '100%', flexShrink: 0, justifyContent: 'flex-start', color: 'var(--danger)', borderBottom: '1px solid var(--border-subtle)', borderRadius: 0 }}
-                          >
-                            {t('清空列表')}
-                          </button>
-                          <div style={{ flex: 1, overflowY: 'auto' }}>
-                            {filteredHistory.length === 0 ? (
-                              <div style={{ padding: '8px 12px', color: 'var(--text-muted)', fontSize: 12 }}>
-                                {quickCmdHistorySearch ? t('无匹配结果') : t('暂无历史')}
-                              </div>
-                            ) : filteredHistory.map((value) => (
-                              <div
-                                key={value}
-                                style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)' }}
-                              >
-                                <button
-                                  type="button"
-                                  className="btn btn-ghost"
-                                  title={value}
-                                  onClick={() => {
-                                    setPendingQuickCmd((prev) => prev ? { ...prev, values: { ...prev.values, [p.num]: value } } : prev);
-                                    setQuickCmdHistoryParam(null);
-                                    setQuickCmdHistorySearch('');
-                                  }}
-                                  style={{ flex: 1, minWidth: 0, justifyContent: 'flex-start', borderRadius: 0, fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                                >
-                                  {value}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn btn-ghost btn-icon"
-                                  title={t('删除')}
-                                  aria-label={t('删除')}
-                                  onClick={() => saveHistory(history.filter((entry) => entry !== value))}
-                                  style={{ flexShrink: 0, color: 'var(--danger)', borderRadius: 0 }}
-                                >
-                                  <Trash2 size={12} />
-                                </button>
-                              </div>
-                            ))}
+                            }
+                          }}
+                          placeholder={t('搜索历史...')}
+                          aria-label={t('搜索历史...')}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          saveHistory([]);
+                          setQuickCmdHistoryParam(null);
+                          setQuickCmdHistorySearch('');
+                        }}
+                        className="w-full shrink-0 flex items-center gap-1 min-h-7 py-1 px-2 text-sm font-medium leading-none whitespace-nowrap select-none cursor-pointer outline-none border-0 border-b border-line-subtle rounded-none bg-transparent text-danger transition-colors duration-100 hover:bg-danger-dim"
+                      >
+                        {t('清空列表')}
+                      </button>
+                      <div className="flex-1 overflow-y-auto">
+                        {filteredHistory.length === 0 ? (
+                          <div className="px-3 py-2 text-muted text-sm">
+                            {quickCmdHistorySearch ? t('无匹配结果') : t('暂无历史')}
                           </div>
-                        </div>
-                      );
-                    })(), document.body)}
-                  </div>
-                ))}
-
-                <div className="form-group">
-                  <div className="form-label">{t('将要发送')}</div>
-                  <div className="term-quick-cmd-preview">{filled}</div>
-                </div>
+                        ) : filteredHistory.map((value) => (
+                          <div
+                            key={value}
+                            className="flex items-center border-b border-line-subtle"
+                          >
+                            <button
+                              type="button"
+                              title={value}
+                              onClick={() => {
+                                setPendingQuickCmd((prev) => prev ? { ...prev, values: { ...prev.values, [p.num]: value } } : prev);
+                                setQuickCmdHistoryParam(null);
+                                setQuickCmdHistorySearch('');
+                              }}
+                              className="flex-1 min-w-0 flex items-center gap-1 min-h-7 py-1 px-2 text-sm font-medium text-left leading-none select-none cursor-pointer outline-none border-0 rounded-none bg-transparent text-secondary transition-colors duration-100 font-mono overflow-hidden text-ellipsis whitespace-nowrap hover:bg-hover hover:text-primary"
+                            >
+                              {value}
+                            </button>
+                            <button
+                              type="button"
+                              title={t('删除')}
+                              aria-label={t('删除')}
+                              onClick={() => saveHistory(history.filter((entry) => entry !== value))}
+                              className="shrink-0 self-stretch inline-flex items-center justify-center w-[26px] min-w-[26px] p-0 text-sm font-medium leading-none select-none cursor-pointer outline-none border-0 rounded-none bg-transparent text-danger transition-colors duration-100 hover:bg-hover"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })(), document.body)}
               </div>
+            ))}
 
-              <div className="modal-footer">
-                <button className="btn btn-secondary" onClick={() => setPendingQuickCmd(null)}>
-                  {t('取消')}
-                </button>
-                <button
-                  className="btn btn-primary"
-                  onClick={sendQuickCmdConfirmed}
-                  disabled={!isConnected || !filled.trim()}
-                  autoFocus={params.length === 0}
-                  style={{ minWidth: 80 }}
-                >
-                  <Play size={14} style={{ marginRight: 6 }} />{t('发送')}
-                </button>
-              </div>
+            <div className="form-group">
+              <div className="form-label">{t('将要发送')}</div>
+              <div className="term-quick-cmd-preview">{filled}</div>
             </div>
-          </div>
+          </Modal>
         );
       })()}
 
-      {/* ── 右键上下文菜单（增强版：图标 + 边界检测 + disabled 状态） ── */}
+      {/* ── 右键上下文菜单（ui/ContextMenu，items 按 source 组装） ── */}
       {contextMenu && (
-        <div
-          className="context-menu"
-          onMouseDown={(e) => e.stopPropagation()}
-          style={{
-            position: 'fixed',
-            left: contextMenu.x,
-            top: contextMenu.y,
-            backgroundColor: 'var(--term-context-bg)',
-            border: 'var(--term-context-border)',
-            borderRadius: '8px',
-            boxShadow: 'var(--term-context-shadow)',
-            zIndex: Z.MENU,
-            padding: '4px 0',
-            minWidth: '190px',
-            fontFamily: 'var(--font-ui)',
-          }}
-        >
-          {(contextMenu?.source === 'input'
-            ? ([
-                { type: 'action', icon: <Trash2 size={13} />, label: t('剪切'), action: 'cut', shortcut: formatShortcut('Ctrl+X'), disabled: !contextHasSelection },
-                { type: 'action', icon: <Copy size={13} />, label: t('复制'), action: 'copy', shortcut: formatShortcut('Ctrl+C'), disabled: !contextHasSelection },
-                { type: 'action', icon: <Clipboard size={13} />, label: t('粘贴'), action: 'paste', shortcut: formatShortcut('Ctrl+V') },
-                { type: 'separator' },
-                { type: 'action', icon: <CheckSquare size={13} />, label: t('全选'), action: 'selectAll', shortcut: formatShortcut('Ctrl+A') },
-              ] as TerminalContextMenuItem[])
-            : ([
-                { type: 'action', icon: <Copy size={13} />, label: t('复制'), action: 'copy', shortcut: formatShortcut('Ctrl+C'), disabled: !contextHasSelection },
-                { type: 'action', icon: <Clipboard size={13} />, label: t('粘贴'), action: 'paste', shortcut: formatShortcut('Ctrl+V') },
-                { type: 'action', icon: <Clipboard size={13} />, label: t('粘贴所选项'), action: 'pasteSelection', shortcut: formatShortcut(shortcutsRef.current?.pasteSelection || DEFAULT_TERMINAL_SHORTCUTS.pasteSelection), disabled: !contextHasSelection },
-                { type: 'separator' },
-                { type: 'action', icon: <CheckSquare size={13} />, label: t('全选'), action: 'selectAll' },
-                { type: 'action', icon: <Search size={13} />, label: t('查找'), action: 'find', shortcut: formatShortcut(shortcutsRef.current?.find || 'Ctrl+F') },
-                { type: 'action', icon: <MessageSquarePlus size={13} />, label: t('添加到 AI助手'), action: 'sendToAssistant', disabled: !contextHasSelection },
-                { type: 'action', icon: <Trash2 size={13} />, label: t('清空屏幕'), action: 'clear', shortcut: formatShortcut('Ctrl+L') },
-              ] as TerminalContextMenuItem[])).map((item, idx) =>
-            item.type === 'separator' ? (
-              <div key={idx} className="context-menu-separator" />
-            ) : (
-              <div
-                key={idx}
-                className={`context-menu-item${item.disabled ? ' disabled' : ''}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (!item.disabled) handleMenuAction(item.action);
-                }}
-              >
-                <span className="item-icon">{item.icon}</span>
-                <span className="item-label">{item.label}</span>
-                {item.shortcut && <span className="item-shortcut">{item.shortcut}</span>}
-              </div>
-            )
-          )}
-        </div>
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          minWidth={190}
+          zIndex={Z.MENU}
+          onClose={() => setContextMenu(null)}
+          items={contextMenu.source === 'input' ? [
+            { label: t('剪切'), icon: <Trash2 size={13} />, shortcut: formatShortcut('Ctrl+X'), disabled: !contextHasSelection, onSelect: () => handleMenuAction('cut') },
+            { label: t('复制'), icon: <Copy size={13} />, shortcut: formatShortcut('Ctrl+C'), disabled: !contextHasSelection, onSelect: () => handleMenuAction('copy') },
+            { label: t('粘贴'), icon: <Clipboard size={13} />, shortcut: formatShortcut('Ctrl+V'), onSelect: () => handleMenuAction('paste') },
+            'separator',
+            { label: t('全选'), icon: <CheckSquare size={13} />, shortcut: formatShortcut('Ctrl+A'), onSelect: () => handleMenuAction('selectAll') },
+          ] : [
+            { label: t('复制'), icon: <Copy size={13} />, shortcut: formatShortcut('Ctrl+C'), disabled: !contextHasSelection, onSelect: () => handleMenuAction('copy') },
+            { label: t('粘贴'), icon: <Clipboard size={13} />, shortcut: formatShortcut('Ctrl+V'), onSelect: () => handleMenuAction('paste') },
+            { label: t('粘贴所选项'), icon: <Clipboard size={13} />, shortcut: formatShortcut(shortcutsRef.current?.pasteSelection || DEFAULT_TERMINAL_SHORTCUTS.pasteSelection), disabled: !contextHasSelection, onSelect: () => handleMenuAction('pasteSelection') },
+            'separator',
+            { label: t('全选'), icon: <CheckSquare size={13} />, onSelect: () => handleMenuAction('selectAll') },
+            { label: t('查找'), icon: <Search size={13} />, shortcut: formatShortcut(shortcutsRef.current?.find || 'Ctrl+F'), onSelect: () => handleMenuAction('find') },
+            { label: t('添加到 AI助手'), icon: <MessageSquarePlus size={13} />, disabled: !contextHasSelection, onSelect: () => handleMenuAction('sendToAssistant') },
+            { label: t('清空屏幕'), icon: <Trash2 size={13} />, shortcut: formatShortcut('Ctrl+L'), onSelect: () => handleMenuAction('clear') },
+          ]}
+        />
       )}
 
       {/* ── 终端链接菜单：复制 / 打开（对齐安卓） ── */}
@@ -4381,13 +4165,8 @@ export default function Terminal({
         <>
           {/* 透明遮罩：挡住终端拖选，点击空白关闭 */}
           <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: Z.MENU_BACKDROP,
-              background: 'transparent',
-              cursor: 'default',
-            }}
+            className="fixed inset-0 bg-transparent cursor-default"
+            style={{ zIndex: Z.MENU_BACKDROP }}
             onMouseDown={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -4400,78 +4179,51 @@ export default function Terminal({
             }}
           />
           <div
-            className="context-menu"
-            onMouseDown={(e) => e.stopPropagation()}
+            className="fixed bg-raised border border-line rounded-lg shadow-md p-1 min-w-[200px] max-w-[360px] animate-[fadeIn_0.12s_ease]"
             style={{
-              position: 'fixed',
               left: linkMenu.x,
               top: linkMenu.y,
-              backgroundColor: 'var(--term-context-bg)',
-              border: 'var(--term-context-border)',
-              borderRadius: '8px',
-              boxShadow: 'var(--term-context-shadow)',
               zIndex: Z.MENU,
-              padding: '4px 0',
-              minWidth: '200px',
-              maxWidth: '360px',
-              fontFamily: 'var(--font-ui)',
             }}
+            onMouseDown={(e) => e.stopPropagation()}
           >
             <div
-              style={{
-                padding: '6px 12px 4px',
-                fontSize: 11,
-                color: 'var(--text-muted, #8899aa)',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
+              className="px-3 pt-1.5 pb-1 text-xs text-muted truncate"
               title={linkMenu.url}
             >
               {linkMenu.url}
             </div>
-            <div className="context-menu-separator" />
-            <div
-              className="context-menu-item"
+            <div className="h-px my-1 mx-2 bg-line-subtle" />
+            <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 handleLinkMenuAction('copy');
               }}
+              className="flex items-center gap-2 w-full h-7 px-3 mx-0 rounded-sm text-sm text-left whitespace-nowrap cursor-pointer outline-none border-none bg-transparent text-secondary transition-colors duration-100 hover:bg-hover hover:text-primary"
             >
-              <span className="item-icon"><Copy size={13} /></span>
-              <span className="item-label">{t('复制')}</span>
-            </div>
-            <div
-              className="context-menu-item"
+              <span className="inline-flex items-center justify-center w-3.5 h-3.5 shrink-0 [&>svg]:w-full [&>svg]:h-full"><Copy size={13} /></span>
+              <span className="truncate">{t('复制')}</span>
+            </button>
+            <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 handleLinkMenuAction('open');
               }}
+              className="flex items-center gap-2 w-full h-7 px-3 mx-0 rounded-sm text-sm text-left whitespace-nowrap cursor-pointer outline-none border-none bg-transparent text-secondary transition-colors duration-100 hover:bg-hover hover:text-primary"
             >
-              <span className="item-icon"><ExternalLink size={13} /></span>
-              <span className="item-label">{t('打开')}</span>
-            </div>
+              <span className="inline-flex items-center justify-center w-3.5 h-3.5 shrink-0 [&>svg]:w-full [&>svg]:h-full"><ExternalLink size={13} /></span>
+              <span className="truncate">{t('打开')}</span>
+            </button>
           </div>
         </>
       )}
 
       {linkToast && (
         <div
-          style={{
-            position: 'absolute',
-            left: '50%',
-            bottom: 56,
-            transform: 'translateX(-50%)',
-            background: 'var(--term-context-bg, rgba(20,24,32,0.92))',
-            border: 'var(--term-context-border, 1px solid rgba(255,255,255,0.08))',
-            color: 'var(--text-primary, #eaf0f7)',
-            borderRadius: 8,
-            padding: '6px 12px',
-            fontSize: 12,
-            zIndex: Z.POPUP,
-            pointerEvents: 'none',
-            boxShadow: 'var(--term-context-shadow)',
-          }}
+          className="absolute left-1/2 bottom-14 -translate-x-1/2 bg-[var(--term-context-bg,rgba(20,24,32,0.92))] [border:var(--term-context-border,1px_solid_rgba(255,255,255,0.08))] text-[var(--text-primary,#eaf0f7)] rounded-lg px-3 py-1.5 text-sm pointer-events-none shadow-[var(--term-context-shadow)]"
+          style={{ zIndex: Z.POPUP }}
         >
           {linkToast}
         </div>

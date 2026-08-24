@@ -2,6 +2,8 @@ import React from 'react';
 import { t as $t, type I18nKey } from '../../i18n.ts';
 import * as AppGo from '../../../wailsjs/go/wailsapp/App.js';
 import { Save, Cloud, Database, Folder, FolderOpen, Lock, RefreshCw, Sparkles, Plug, type LucideIcon } from 'lucide-react';
+import { cn } from '../../utils/cn.ts';
+import { Button } from '../ui';
 import { SettingsPanel, SettingsSectionTitle, SettingsTabRoot, type SettingsDefinitionNode } from './SharedComponents';
 import { settings } from './settingDefinitions';
 
@@ -50,47 +52,47 @@ function ProviderCard({ provider, providerKey, form, configured, editing, onEdit
   const accent = provider.accent;
   const IC = PROVIDER_ICON_CMP[providerKey];
   return (
-    <SettingsPanel style={{ padding: 14 }}>
-      <div data-settings-field-id={definition?.id} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-        <div style={{ width: 40, height: 40, borderRadius: 8, background: 'var(--surface-sunken)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>{IC ? <IC size={20} /> : null}</div>
+    <SettingsPanel className="p-3.5">
+      <div data-settings-field-id={definition?.id} className="flex items-center gap-3 mb-5">
+        <div className="w-10 h-10 rounded-lg bg-sunken flex items-center justify-center text-secondary">{IC ? <IC size={20} /> : null}</div>
         <div>
-          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>{$t(provider.titleKey)}</div>
-          <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{$t(provider.subtitleKey)}</div>
+          <div className="text-[16px] font-semibold text-primary">{$t(provider.titleKey)}</div>
+          <div className="text-sm text-tertiary">{$t(provider.subtitleKey)}</div>
         </div>
       </div>
       {configured && !editing ? (
-        <div style={{ position: 'relative', background: 'var(--surface-raised)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '14px', display: 'flex', flexDirection: 'column', gap: 20, boxShadow: 'none', overflow: 'hidden' }}>
-          <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', background: accent, boxShadow: `0 0 12px ${accent}` }} />
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: accent }}></div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.3px' }}>{$t(provider.successMsgKey)}</div>
+        <div className="relative bg-raised border border-line rounded-md p-3.5 flex flex-col gap-5 shadow-none overflow-hidden">
+          <div className="absolute top-0 left-0 w-1 h-full" style={{ background: accent, boxShadow: `0 0 12px ${accent}` }} />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-2.5 h-2.5 rounded-full" style={{ background: accent }}></div>
+              <div className="text-[16px] font-bold text-primary tracking-[0.3px]">{$t(provider.successMsgKey)}</div>
             </div>
-            <button onClick={onEdit} style={{ padding: '6px 14px', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 500, background: 'var(--surface-hover)', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 6 }} onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-sunken)'; e.currentTarget.style.color = 'var(--text-primary)'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}>
+            <button onClick={onEdit} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-sm text-base font-medium bg-hover border border-line text-secondary cursor-pointer transition-colors duration-200 hover:bg-sunken hover:text-primary">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
               {$t('修改配置')}
             </button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginTop: '4px' }}>
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3 mt-1">
             {provider.summaryFields(form).map((sf, i) => (
-              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6, background: 'var(--surface-overlay)', padding: '10px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', ...(sf.fullWidth ? { gridColumn: '1 / -1' } : {}) }}>
-                <span style={{ fontSize: 12, color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.5px' }}>{sf.label}</span>
-                <span style={{ fontSize: 14, color: sf.primary ? 'var(--text-primary)' : 'var(--text-secondary)', fontWeight: sf.primary ? 600 : 400, fontFamily: 'var(--font-mono)', ...(sf.fullWidth ? { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : {}) }}>{sf.value}</span>
+              <div key={i} className={cn('flex flex-col gap-1.5 bg-overlay px-3 py-2.5 rounded-md border border-line', sf.fullWidth && 'col-span-full')}>
+                <span className="text-sm text-tertiary uppercase font-semibold tracking-[0.5px]">{sf.label}</span>
+                <span className={cn('text-md font-mono', sf.primary ? 'text-primary font-semibold' : 'text-secondary', sf.fullWidth && 'truncate')}>{sf.value}</span>
               </div>
             ))}
           </div>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="flex flex-col gap-4">
           {children}
-          <div style={{ display: 'flex', gap: 12, marginTop: 12, alignItems: 'center' }}>
-            <button className="btn btn-secondary" onClick={onTest} disabled={testing || loading}>
+          <div className="flex gap-3 mt-3 items-center">
+            <Button onClick={onTest} disabled={testing || loading}>
               {testing ? $t('测试中...') : <><Plug size={14} /> {$t('测试连接')}</>} {testResult === 'ok' && '✓'} {testResult === 'fail' && '✗'}
-            </button>
-            <button className="btn btn-primary" onClick={onSave} disabled={loading || testing}>
+            </Button>
+            <Button variant="primary" onClick={onSave} disabled={loading || testing}>
               {loading ? $t('保存中...') : <><Save size={14} /> {$t('保存配置')}</>}
-            </button>
-            {editing ? <button className="btn btn-ghost" onClick={onCancelEdit} style={{ marginLeft: 'auto' }}>{$t('取消')}</button> : null}
+            </Button>
+            {editing ? <Button variant="ghost" onClick={onCancelEdit} className="ml-auto">{$t('取消')}</Button> : null}
           </div>
         </div>
       )}
@@ -191,15 +193,15 @@ export default function SyncTab({
   const syncSettings = settingsData.sync;
   return (
     <SettingsTabRoot>
-      <SettingsPanel data-settings-section-id={syncSettings.sections.sync.id} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div data-settings-field-id={syncSettings.fields.autoSync.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginRight: 4 }}>{$t('自动同步')}</span>
-          <button className={autoSyncEnabled ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => onAutoSyncEnabledChange(!autoSyncEnabled)}>
+      <SettingsPanel data-settings-section-id={syncSettings.sections.sync.id} className="flex flex-col gap-2.5">
+        <div data-settings-field-id={syncSettings.fields.autoSync.id} className="flex items-center gap-2 flex-wrap">
+          <span className="text-lg font-semibold text-primary mr-1">{$t('自动同步')}</span>
+          <Button variant={autoSyncEnabled ? 'primary' : 'secondary'} onClick={() => onAutoSyncEnabledChange(!autoSyncEnabled)}>
             {autoSyncEnabled ? $t('已开启') : $t('已关闭')}
-          </button>
+          </Button>
         </div>
-        <div data-settings-field-id={syncSettings.fields.autoSyncMode.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginRight: 4 }}>{$t('自动同步模式')}</span>
+        <div data-settings-field-id={syncSettings.fields.autoSyncMode.id} className="flex items-center gap-2 flex-wrap">
+          <span className="text-lg font-semibold text-primary mr-1">{$t('自动同步模式')}</span>
           {[
             { id: 'webdav', label: <><Cloud size={14} /> WebDAV</> },
             { id: 'r2', label: <><Database size={14} /> R2 (S3)</> },
@@ -207,87 +209,76 @@ export default function SyncTab({
             { id: 'sftp', label: <><Lock size={14} /> SFTP</> },
             { id: 'all', label: <><RefreshCw size={14} /> {$t('全部')}</> },
           ].map((opt) => (
-            <button key={opt.id} className={syncMode === opt.id ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => onSyncModeChange(opt.id)}>
+            <Button key={opt.id} variant={syncMode === opt.id ? 'primary' : 'secondary'} onClick={() => onSyncModeChange(opt.id)}>
               {opt.label}
-            </button>
+            </Button>
           ))}
         </div>
-        <div data-settings-field-id={syncSettings.fields.encryption.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginRight: 4 }}>{$t('同步加密')}</span>
+        <div data-settings-field-id={syncSettings.fields.encryption.id} className="flex items-center gap-2 flex-wrap">
+          <span className="text-lg font-semibold text-primary mr-1">{$t('同步加密')}</span>
           {hasRecoveryPassword ? (
             <>
-              <button className="btn btn-primary" disabled>
+              <Button variant="primary" disabled>
                 <Lock size={14} /> {$t('已加密')}
-              </button>
-              <button className="btn btn-secondary" onClick={() => { setRecoveryPasswordEditing(true); setRecoveryPasswordInput(''); }} disabled={recoveryPasswordChanging}>
+              </Button>
+              <Button onClick={() => { setRecoveryPasswordEditing(true); setRecoveryPasswordInput(''); }} disabled={recoveryPasswordChanging}>
                 {$t('修改密码')}
-              </button>
-              <button className="btn btn-ghost" onClick={onClearRecoveryPassword} disabled={recoveryPasswordChanging} style={{ color: 'var(--danger)' }}>
+              </Button>
+              <Button variant="ghost" className="text-danger hover:text-danger" onClick={onClearRecoveryPassword} disabled={recoveryPasswordChanging}>
                 {$t('关闭加密')}
-              </button>
+              </Button>
             </>
           ) : recoveryPasswordEditing ? (
             <>
-              <input id="sync-recovery-password" name="sync-recovery-password" className="input" type="password" autoComplete="new-password" placeholder={$t('请输入恢复密码')} value={recoveryPasswordInput} disabled={recoveryPasswordChanging} onChange={(e) => setRecoveryPasswordInput(e.target.value)} autoFocus style={{ width: 200, height: 34, fontSize: 13 }} />
-              <button className="btn btn-primary" onClick={onSaveRecoveryPassword} disabled={!recoveryPasswordInput.trim() || recoveryPasswordChanging}>
+              <input id="sync-recovery-password" name="sync-recovery-password" className="input w-[200px] h-[34px] text-base" type="password" autoComplete="new-password" placeholder={$t('请输入恢复密码')} value={recoveryPasswordInput} disabled={recoveryPasswordChanging} onChange={(e) => setRecoveryPasswordInput(e.target.value)} autoFocus />
+              <Button variant="primary" onClick={onSaveRecoveryPassword} disabled={!recoveryPasswordInput.trim() || recoveryPasswordChanging}>
                 {$t('开启加密')}
-              </button>
-              <button className="btn btn-ghost" onClick={() => { setRecoveryPasswordEditing(false); setRecoveryPasswordInput(''); }} disabled={recoveryPasswordChanging}>
+              </Button>
+              <Button variant="ghost" onClick={() => { setRecoveryPasswordEditing(false); setRecoveryPasswordInput(''); }} disabled={recoveryPasswordChanging}>
                 {$t('取消')}
-              </button>
+              </Button>
             </>
           ) : (
             <>
-              <button className="btn btn-secondary" disabled>
+              <Button disabled>
                 {$t('明文')}
-              </button>
-              <button className="btn btn-secondary" onClick={() => setRecoveryPasswordEditing(true)}>
+              </Button>
+              <Button onClick={() => setRecoveryPasswordEditing(true)}>
                 <Lock size={14} /> {$t('加密同步')}
-              </button>
+              </Button>
             </>
           )}
         </div>
         {hasRecoveryPassword && recoveryPasswordEditing ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <input id="sync-recovery-new-password" name="sync-recovery-new-password" className="input" type="password" autoComplete="new-password" placeholder={$t('请输入新恢复密码')} value={recoveryPasswordInput} disabled={recoveryPasswordChanging} onChange={(e) => setRecoveryPasswordInput(e.target.value)} autoFocus style={{ width: 200, height: 34, fontSize: 13 }} />
-            <button className="btn btn-primary" onClick={onSaveRecoveryPassword} disabled={!recoveryPasswordInput.trim() || recoveryPasswordChanging}>
+          <div className="flex items-center gap-2 flex-wrap">
+            <input id="sync-recovery-new-password" name="sync-recovery-new-password" className="input w-[200px] h-[34px] text-base" type="password" autoComplete="new-password" placeholder={$t('请输入新恢复密码')} value={recoveryPasswordInput} disabled={recoveryPasswordChanging} onChange={(e) => setRecoveryPasswordInput(e.target.value)} autoFocus />
+            <Button variant="primary" onClick={onSaveRecoveryPassword} disabled={!recoveryPasswordInput.trim() || recoveryPasswordChanging}>
               {$t('保存')}
-            </button>
-            <button className="btn btn-ghost" onClick={() => { setRecoveryPasswordEditing(false); setRecoveryPasswordInput(''); }} disabled={recoveryPasswordChanging}>
+            </Button>
+            <Button variant="ghost" onClick={() => { setRecoveryPasswordEditing(false); setRecoveryPasswordInput(''); }} disabled={recoveryPasswordChanging}>
               {$t('取消')}
-            </button>
+            </Button>
           </div>
         ) : null}
-        <div style={{ fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+        <div className="text-sm text-tertiary leading-normal">
           {$t('默认明文同步，选择加密后需设置恢复密码。系统重装或云端凭据变更后，用恢复密码即可恢复备份。')}
-          <div style={{ marginTop: 4, color: 'var(--warning)' }}>{$t('注意：多设备同步时，所有设备需使用相同的加密密码，否则其他设备无法解密同步数据。')}</div>
-          {!hasRecoveryPassword ? <div style={{ marginTop: 4, color: 'var(--warning)' }}>{$t('未开启加密同步时会以明文保存到云端；如需保护云端备份，请选择加密并设置恢复密码。')}</div> : null}
+          <div className="mt-1 text-warning">{$t('注意：多设备同步时，所有设备需使用相同的加密密码，否则其他设备无法解密同步数据。')}</div>
+          {!hasRecoveryPassword ? <div className="mt-1 text-warning">{$t('未开启加密同步时会以明文保存到云端；如需保护云端备份，请选择加密并设置恢复密码。')}</div> : null}
         </div>
       </SettingsPanel>
 
-      <SettingsPanel data-settings-section-id={syncSettings.sections.provider.id} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, padding: 8 }}>
+      <SettingsPanel data-settings-section-id={syncSettings.sections.provider.id} className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-2 p-2">
         {providerList.map((item) => (
           <button
             key={item.id}
             onClick={() => onSyncProviderChange(item.id)}
             aria-pressed={syncProvider === item.id}
-            style={{
-              minWidth: 0,
-              padding: '10px 16px',
-              borderRadius: 'var(--radius-sm)',
-              background: syncProvider === item.id ? 'var(--accent-dim)' : 'var(--surface-sunken)',
-              border: `1px solid ${syncProvider === item.id ? 'var(--accent-border)' : 'var(--border)'}`,
-              color: syncProvider === item.id ? 'var(--text-primary)' : 'var(--text-secondary)',
-              fontWeight: syncProvider === item.id ? 600 : 400,
-              boxShadow: syncProvider === item.id ? '0 0 0 1px var(--accent-border) inset' : 'none',
-              cursor: 'pointer',
-              fontSize: 14,
-              transition: 'all 0.15s',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-            }}
+            className={cn(
+              'min-w-0 px-4 py-2.5 rounded-sm cursor-pointer text-md transition-all duration-150 border flex items-center justify-center gap-2',
+              syncProvider === item.id
+                ? 'bg-accent-dim border-accent-border text-primary font-semibold shadow-[inset_0_0_0_1px_var(--accent-border)]'
+                : 'bg-sunken border-line text-secondary',
+            )}
           >
             {(() => { const IconCmp = PROVIDER_ICON_CMP[item.id]; return IconCmp ? <IconCmp size={16} /> : null; })()} {item.label}
           </button>
@@ -404,7 +395,7 @@ export default function SyncTab({
             </select>
           </div>
           {ftpForm.mode === 'plain' ? (
-            <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.35)', color: 'var(--warning)', fontSize: 12, lineHeight: 1.6 }}>
+            <div className="px-3.5 py-2.5 rounded-lg bg-[rgba(245,158,11,0.1)] border border-[rgba(245,158,11,0.35)] text-warning text-sm leading-[1.6]">
               {$t('普通 FTP 不加密连接，用户名、密码、文件名和传输数据可能被截获。备份文件加密也无法保护 FTP 登录和传输元数据。')}
             </div>
           ) : null}
@@ -479,19 +470,19 @@ export default function SyncTab({
             <>
               <div className="form-group" data-settings-field-id={syncSettings.fields.privateKey.id}>
                 <label className="form-label" htmlFor="sync-sftp-private-key">{$t('私钥内容')}</label>
-                <textarea id="sync-sftp-private-key" name="sync-sftp-private-key" className="input" style={{ minHeight: 100, fontFamily: 'monospace', fontSize: 12 }} value={sftpForm.privateKey} onChange={setSFTPField('privateKey')} placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----" />
+                <textarea id="sync-sftp-private-key" name="sync-sftp-private-key" className="input min-h-[100px] font-mono text-sm" value={sftpForm.privateKey} onChange={setSFTPField('privateKey')} placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----" />
               </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <button className="btn btn-ghost" onClick={async () => {
+              <div className="flex gap-2 items-center">
+                <Button variant="ghost" className="text-sm" onClick={async () => {
                   try {
                     const key = await AppGo.ReadPrivateKeyFile();
                     if (key) setSftpForm((prev) => ({ ...prev, privateKey: key }));
                   } catch (e) {
                     addToast($t('读取私钥文件失败') + ': ' + e, 'error');
                   }
-                }} style={{ fontSize: 12 }}>
+                }}>
                   <FolderOpen size={14} /> {$t('从文件加载私钥')}
-                </button>
+                </Button>
               </div>
             </>
           )}
@@ -506,32 +497,32 @@ export default function SyncTab({
         </ProviderCard>
       ) : null}
 
-      <SettingsPanel data-settings-section-id={syncSettings.sections.cloud.id} style={{ padding: 14 }}>
-        <div data-settings-field-id={syncSettings.fields.cloudBackup.id} style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>{$t('云端同步')}</div>
-        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 20 }}>
+      <SettingsPanel data-settings-section-id={syncSettings.sections.cloud.id} className="p-3.5">
+        <div data-settings-field-id={syncSettings.fields.cloudBackup.id} className="text-[16px] font-semibold text-primary mb-2">{$t('云端同步')}</div>
+        <div className="text-sm text-secondary mb-5">
           {hasRecoveryPassword ? $t('同步将写入 .lumin2 加密备份') : $t('未开启同步加密时写入明文 .json 备份')}
         </div>
         {autoSyncEnabled && isAnyConfigured ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 8, marginBottom: 20, color: 'var(--success)', fontSize: 13 }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center' }}><Sparkles size={14} /></span> <span><strong>{$t('已开启自动云端备份：')}</strong>{$t('添加、编辑、删除时自动同步')}</span>
+          <div className="flex items-center gap-2 px-3.5 py-2.5 bg-[rgba(34,197,94,0.1)] border border-[rgba(34,197,94,0.3)] rounded-lg mb-5 text-success text-base">
+            <span className="inline-flex items-center"><Sparkles size={14} /></span> <span><strong>{$t('已开启自动云端备份：')}</strong>{$t('添加、编辑、删除时自动同步')}</span>
           </div>
         ) : null}
-        {formattedLastSyncTime ? <div style={{ fontSize: 12, color: 'var(--success)', marginBottom: 12 }}>{$t('上次同步')}: {formattedLastSyncTime}</div> : null}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '12px 14px', borderRadius: 'var(--radius-md)', border: '1px solid color-mix(in srgb, var(--warning) 35%, var(--border))', background: 'color-mix(in srgb, var(--warning) 8%, var(--surface-raised))', color: 'var(--text-secondary)', fontSize: 12, marginBottom: 16 }}>
+        {formattedLastSyncTime ? <div className="text-sm text-success mb-3">{$t('上次同步')}: {formattedLastSyncTime}</div> : null}
+        <div className="flex flex-col gap-2.5 px-3.5 py-3 rounded-md border border-[color-mix(in_srgb,var(--warning)_35%,var(--border))] bg-[color-mix(in_srgb,var(--warning)_8%,var(--surface-raised))] text-secondary text-sm mb-4">
           <div data-settings-field-id={syncSettings.fields.tombstones.id}>
-            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{$t('删除记录')}</span>
-            <span style={{ marginLeft: 10, padding: '1px 8px', borderRadius: 999, background: 'color-mix(in srgb, var(--warning) 18%, transparent)', color: 'var(--warning)', fontWeight: 600 }}>
+            <span className="text-primary font-semibold">{$t('删除记录')}</span>
+            <span className="ml-2.5 px-2 py-px rounded-full bg-[color-mix(in_srgb,var(--warning)_18%,transparent)] text-warning font-semibold">
               {$t('连接')} {Number.isFinite(tombstoneConnections) ? tombstoneConnections : 0}
             </span>
-            <span style={{ marginLeft: 8, padding: '1px 8px', borderRadius: 999, background: 'color-mix(in srgb, var(--text-secondary) 14%, transparent)', color: 'var(--text-primary)', fontWeight: 600 }}>
+            <span className="ml-2 px-2 py-px rounded-full bg-[color-mix(in_srgb,var(--text-secondary)_14%,transparent)] text-primary font-semibold">
               {$t('凭据')} {Number.isFinite(tombstoneCredentials) ? tombstoneCredentials : 0}
             </span>
-            <div style={{ marginTop: 6, color: 'var(--text-tertiary)', lineHeight: 1.45 }}>{$t('用于多设备同步删除，一般无需处理。')}</div>
+            <div className="mt-1.5 text-tertiary leading-[1.45]">{$t('用于多设备同步删除，一般无需处理。')}</div>
           </div>
           {tombstoneTotal > 0 ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div className="flex items-center gap-2 flex-wrap">
               <span>{$t('清理超过')}</span>
-              <select id="sync-tombstone-days" name="sync-tombstone-days" className="input" value={tombstoneDays} disabled={pruningTombstones || syncing || loadingBackups || restoring} onChange={(e) => setTombstoneDays(Number(e.target.value))} style={{ width: 90, height: 32, fontSize: 12, padding: '0 8px' }}>
+              <select id="sync-tombstone-days" name="sync-tombstone-days" className="input w-[90px] h-8 text-sm py-0 px-2" value={tombstoneDays} disabled={pruningTombstones || syncing || loadingBackups || restoring} onChange={(e) => setTombstoneDays(Number(e.target.value))}>
                 <option value={7}>7</option>
                 <option value={30}>30</option>
                 <option value={90}>90</option>
@@ -543,31 +534,20 @@ export default function SyncTab({
                 type="button"
                 onClick={() => onPruneSyncTombstones?.(tombstoneDays)}
                 disabled={pruningTombstones || syncing || loadingBackups || restoring}
-                style={{
-                  height: 32,
-                  padding: '0 12px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid color-mix(in srgb, var(--warning) 70%, transparent)',
-                  background: 'color-mix(in srgb, var(--warning) 16%, transparent)',
-                  color: 'var(--warning)',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  opacity: (pruningTombstones || syncing || loadingBackups || restoring) ? 0.55 : 1,
-                }}
+                className="h-8 px-3 rounded-sm border border-[color-mix(in_srgb,var(--warning)_70%,transparent)] bg-[color-mix(in_srgb,var(--warning)_16%,transparent)] text-warning text-sm font-semibold cursor-pointer disabled:opacity-55 disabled:pointer-events-none"
               >
                 {pruningTombstones ? $t('同步中...') : $t('清理删除记录')}
               </button>
             </div>
           ) : null}
         </div>
-        <div style={{ display: 'flex', gap: 12 }}>
-          <button data-settings-field-id={syncSettings.fields.mergeSync.id} className="btn btn-secondary" onClick={onSync} disabled={syncing || loadingBackups || restoring}>
+        <div className="flex gap-3">
+          <Button data-settings-field-id={syncSettings.fields.mergeSync.id} onClick={onSync} disabled={syncing || loadingBackups || restoring}>
             {syncing ? $t('同步中...') : <><RefreshCw size={14} /> {$t('合并同步')}</>}
-          </button>
-          <button data-settings-field-id={syncSettings.fields.restore.id} className="btn btn-secondary" onClick={onRestore} disabled={loadingBackups || restoring || syncing}>
+          </Button>
+          <Button data-settings-field-id={syncSettings.fields.restore.id} onClick={onRestore} disabled={loadingBackups || restoring || syncing}>
             {loadingBackups ? $t('加载备份列表中...') : <><RefreshCw size={14} /> {$t('从云端恢复')}</>}
-          </button>
+          </Button>
         </div>
       </SettingsPanel>
     </SettingsTabRoot>

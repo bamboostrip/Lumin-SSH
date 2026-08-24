@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, type ChangeEvent, type FormEvent, type MouseEvent as ReactMouseEvent } from 'react';
-import { Eye, EyeOff, Plus, X, Monitor, Key, FolderOpen, SquarePen, KeyRound, Globe } from 'lucide-react';
+import { Eye, EyeOff, Plus, Monitor, Key, FolderOpen, SquarePen, KeyRound, Globe } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 import { useTranslation, type I18nKey } from '../i18n.ts';
 import { TERMINAL_ENCODING_GROUPS } from '../constants/terminalEncodings.ts';
 import SearchableGroupedSelect from './SearchableGroupedSelect.tsx';
+import { Button, Modal } from './ui';
 import { getAIGlobalSettings } from './ai/aiGlobalSettingsBridge.ts';
 import type { ServerFormData } from '../hooks/useServerCatalog.ts';
 import type { config } from '../../wailsjs/go/models.ts';
@@ -264,19 +265,9 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
     onClose();
   };
 
-  const panel = (
+  const sections = (
     <>
-      <div className={inline ? 'dashboard-server-editor-header' : 'modal-header'} style={{ flexShrink: 0 }}>
-        <div className={inline ? 'dashboard-server-editor-title' : 'modal-title'}>
-          <span className={inline ? 'dashboard-server-editor-title-icon' : undefined} data-editor-add-target={!isEditing ? 'true' : undefined} style={{ display: 'inline-flex', alignItems: 'center' }}>{isEditing ? <SquarePen size={16} /> : <Plus size={16} />}</span>
-          {isEditing ? t('编辑配置') : t('添加')}
-        </div>
-        {!inline && <button className="btn btn-ghost btn-icon" onClick={onClose}><X size={16} /></button>}
-      </div>
-
-      <form onSubmit={handleSubmit} className={inline ? 'dashboard-server-editor-form' : undefined} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-        <div className={inline ? 'dashboard-server-editor-body' : 'modal-body'} style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-          <div className="webdav-section server-editor-section">
+      <div className="webdav-section server-editor-section">
             <div className="webdav-section-title server-editor-section-title"><span className="server-editor-section-icon"><Monitor size={15} /></span> {t('基本信息')}</div>
             <div className="server-editor-fields">
               <div className="form-group">
@@ -419,7 +410,7 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
                   <label className="form-label" htmlFor="server-password">
                     {isEditing ? t('新密码（留空则不修改）') : t('密码')} *
                   </label>
-                  <div style={{ position: 'relative' }}>
+                  <div className="relative">
                     <input
                       id="server-password"
                       name="password"
@@ -431,7 +422,7 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
                       onChange={set('password')}
                       style={{ paddingRight: 36 }}
                     />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}>
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 bg-transparent border-0 text-tertiary cursor-pointer p-1 flex items-center">
                       {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
                   </div>
@@ -439,11 +430,11 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
               ) : (
                 <>
                   <div className="form-group">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                      <label className="form-label" htmlFor="server-private-key" style={{ marginBottom: 0 }}>{t('私钥内容')}</label>
-                      <button type="button" className="btn btn-secondary btn-sm server-editor-browse" onClick={handleSelectPrivateKeyFile}>
-                        <FolderOpen size={12} style={{ verticalAlign: 'middle', marginRight: 2 }} /> {t('浏览')}
-                      </button>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="form-label" htmlFor="server-private-key">{t('私钥内容')}</label>
+                      <Button variant="secondary" size="sm" className="server-editor-browse" onClick={handleSelectPrivateKeyFile}>
+                        <FolderOpen size={12} className="inline-block align-middle mr-0.5" /> {t('浏览')}
+                      </Button>
                     </div>
                     <textarea
                       id="server-private-key"
@@ -462,7 +453,7 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
                   </div>
                   <div className="form-group">
                     <label className="form-label" htmlFor="server-passphrase">{t('私钥密码短语 (可选)')}</label>
-                    <div style={{ position: 'relative' }}>
+                    <div className="relative">
                       <input
                         id="server-passphrase"
                         name="passphrase"
@@ -473,7 +464,7 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
                         onChange={set('passphrase')}
                         style={{ paddingRight: 36 }}
                       />
-                      <button type="button" onClick={() => setShowPassphrase(!showPassphrase)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}>
+                      <button type="button" onClick={() => setShowPassphrase(!showPassphrase)} className="absolute right-2 top-1/2 -translate-y-1/2 bg-transparent border-0 text-tertiary cursor-pointer p-1 flex items-center">
                         {showPassphrase ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
                     </div>
@@ -568,7 +559,7 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
                   </div>
                   <div className="form-group">
                     <label className="form-label" htmlFor="server-proxy-password">{t('代理密码')}</label>
-                    <div style={{ position: 'relative' }}>
+                    <div className="relative">
                       <input
                         id="server-proxy-password"
                         name="proxyPassword"
@@ -579,7 +570,7 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
                         onChange={set('proxyPassword')}
                         style={{ paddingRight: 36 }}
                       />
-                      <button type="button" onClick={() => setShowProxyPassword(!showProxyPassword)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}>
+                      <button type="button" onClick={() => setShowProxyPassword(!showProxyPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 bg-transparent border-0 text-tertiary cursor-pointer p-1 flex items-center">
                         {showProxyPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
                     </div>
@@ -638,7 +629,7 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
                         : (item.label || '')
                   )}
                 />
-                <div style={{ color: 'var(--text-tertiary)', fontSize: 11, marginTop: 6 }}>
+                <div className="text-tertiary text-xs mt-1.5">
                   {t('设置该连接的终端输入与输出编码')}
                 </div>
               </div>
@@ -657,39 +648,35 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
               </label>
             </div>
           </div>
-        </div>
+    </>
+  );
 
-        <div className={inline ? 'dashboard-server-editor-footer' : 'modal-footer'} style={{ flexShrink: 0 }}>
-          {isEditing ? (
-            <>
-              <button type="button" className="btn btn-secondary" onClick={handleCancel}>
-                {t('取消')}
-              </button>
-              <button type="button" className="btn btn-primary" disabled={saving} onClick={() => void submitForm('save')}>
-                {saving ? t('保存中...') : t('保存配置')}
-              </button>
-            </>
-          ) : (
-            <>
-              <label className="server-editor-clear-check" htmlFor="server-clear-after-add" title={t('添加成功后清空表单，方便连续添加多台服务器')}>
-                <input id="server-clear-after-add" name="clearAfterAdd" type="checkbox" checked={clearAfterAdd} onChange={(e) => setClearAfterAdd(e.target.checked)} />
-                {t('添加后清空')}
-              </label>
-              {server && (
-                <button type="button" className="btn btn-secondary" onClick={handleCancel}>
-                  {t('取消')}
-                </button>
-              )}
-              <button type="button" data-submit-action="save" className="btn btn-primary" disabled={saving} onClick={() => void submitForm('save')}>
-                {saving ? t('保存中...') : t('添加')}
-              </button>
-              <button type="button" data-submit-action="connect" className="btn btn-success" disabled={saving} onClick={() => void submitForm('connect')}>
-                {saving ? t('保存中...') : t('添加并链接')}
-              </button>
-            </>
-          )}
-        </div>
-      </form>
+  const footerButtons = isEditing ? (
+    <>
+      <Button variant="secondary" onClick={handleCancel}>
+        {t('取消')}
+      </Button>
+      <Button variant="primary" disabled={saving} onClick={() => void submitForm('save')}>
+        {saving ? t('保存中...') : t('保存配置')}
+      </Button>
+    </>
+  ) : (
+    <>
+      <label className="server-editor-clear-check" htmlFor="server-clear-after-add" title={t('添加成功后清空表单，方便连续添加多台服务器')}>
+        <input id="server-clear-after-add" name="clearAfterAdd" type="checkbox" checked={clearAfterAdd} onChange={(e) => setClearAfterAdd(e.target.checked)} />
+        {t('添加后清空')}
+      </label>
+      {server && (
+        <Button variant="secondary" onClick={handleCancel}>
+          {t('取消')}
+        </Button>
+      )}
+      <Button data-submit-action="save" variant="primary" disabled={saving} onClick={() => void submitForm('save')}>
+        {saving ? t('保存中...') : t('添加')}
+      </Button>
+      <Button data-submit-action="connect" variant="success" disabled={saving} onClick={() => void submitForm('connect')}>
+        {saving ? t('保存中...') : t('添加并链接')}
+      </Button>
     </>
   );
 
@@ -697,17 +684,45 @@ export default function AddServerModal({ server, onSave, onSaveAndConnect, onClo
     return (
       <div className="glass-card dashboard-server-editor">
         <div className="dashboard-server-editor-shell">
-          {panel}
+          <div className="dashboard-server-editor-header" style={{ flexShrink: 0 }}>
+            <div className="dashboard-server-editor-title">
+              <span className="inline-flex items-center dashboard-server-editor-title-icon" data-editor-add-target={!isEditing ? 'true' : undefined}>{isEditing ? <SquarePen size={16} /> : <Plus size={16} />}</span>
+              {isEditing ? t('编辑配置') : t('添加')}
+            </div>
+          </div>
+          <form onSubmit={handleSubmit} className="dashboard-server-editor-form" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+            <div className="dashboard-server-editor-body" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+              {sections}
+            </div>
+            <div className="dashboard-server-editor-footer" style={{ flexShrink: 0 }}>
+              {footerButtons}
+            </div>
+          </form>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="modal-overlay" style={{ alignItems: 'flex-start', paddingTop: 56 }}>
-      <div className="modal modal-md" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', height: 'calc(100vh - 72px)', maxHeight: 'calc(100vh - 72px)' }}>
-        {panel}
-      </div>
-    </div>
+    <Modal
+      open
+      onClose={onClose}
+      size="xl"
+      closeOnOverlay={false}
+      closeOnEscape={false}
+      panelClassName="flex flex-col self-start mt-14 h-[calc(100vh-72px)] max-h-[calc(100vh-72px)]!"
+      bodyClassName="flex-1 min-h-0 overflow-y-auto"
+      icon={
+        <span className="inline-flex items-center shrink-0" data-editor-add-target={!isEditing ? 'true' : undefined}>
+          {isEditing ? <SquarePen size={16} /> : <Plus size={16} />}
+        </span>
+      }
+      title={isEditing ? t('编辑配置') : t('添加')}
+      footer={footerButtons}
+    >
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        {sections}
+      </form>
+    </Modal>
   );
 }

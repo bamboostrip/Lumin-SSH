@@ -1,9 +1,12 @@
 import { BarChart3, Monitor, Search, LayoutGrid, List, Eye, EyeOff, RefreshCw, Database, CheckSquare, Folder, FolderOpen, Download, Trash2, X, Plus, History, Clock, Terminal } from 'lucide-react';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useTranslation } from '../i18n.ts';
+import { cn } from '../utils/cn.ts';
 import AddServerModal from './AddServerModal.tsx';
 import ServerList from './ServerList.tsx';
 import Tiptop from './Tiptop.tsx';
+import { Button, ContextMenu, EmptyState } from './ui';
+import type { MenuItem } from './ui';
 import type { config } from '../../wailsjs/go/models.ts';
 import type { PingCounts, ServerPingResult } from '../hooks/useServerPing.ts';
 import type { DashboardHostPageMode, ServerListViewMode } from '../hooks/useDashboardPreferences.ts';
@@ -108,12 +111,11 @@ export default function Dashboard({
   const [showMoveGroupDropdown, setShowMoveGroupDropdown] = useState(false);
   const [groupSearchQuery, setGroupSearchQuery] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-  const [localMenuOpen, setLocalMenuOpen] = useState(false);
+  const [localMenuPos, setLocalMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [localShells, setLocalShells] = useState<string[]>([]);
   // 'hosts' | 'recent' — 由 App 持有，便于主页 ping 仅在 hosts 时运行
   const hostPageMode = hostPageModeProp === 'recent' ? 'recent' : 'hosts';
   const moveGroupMenuRef = useRef<HTMLDivElement | null>(null);
-  const localMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     window.go?.wailsapp?.App?.GetLocalShells?.()
@@ -169,9 +171,6 @@ export default function Dashboard({
       if (moveGroupMenuRef.current && !moveGroupMenuRef.current.contains(event.target as Node)) {
         setShowMoveGroupDropdown(false);
       }
-      if (localMenuRef.current && !localMenuRef.current.contains(event.target as Node)) {
-        setLocalMenuOpen(false);
-      }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -190,6 +189,37 @@ export default function Dashboard({
     if (!query) return existingGroups;
     return existingGroups.filter(g => g.toLowerCase().includes(query));
   }, [existingGroups, groupSearchQuery]);
+
+  const localMenuItems = useMemo<MenuItem[]>(() => {
+    const shellLabel = (sh: string) =>
+      sh.startsWith('wsl://')
+        ? `WSL - ${sh.slice(6)}`
+        : sh === 'powershell.exe'
+          ? 'Windows PowerShell'
+          : sh === 'pwsh.exe' || sh.endsWith('pwsh.exe')
+            ? 'PowerShell 7'
+            : sh === 'cmd.exe'
+              ? 'Command Prompt'
+              : sh;
+    return [
+      { type: 'header', label: t('选择本地终端或串口') },
+      ...localShells.map<MenuItem>((sh) => ({
+        label: shellLabel(sh),
+        onSelect: () => {
+          setLocalMenuPos(null);
+          onConnectLocal?.(shellLabel(sh), sh);
+        },
+      })),
+      'separator',
+      {
+        label: t('串口终端...'),
+        onSelect: () => {
+          setLocalMenuPos(null);
+          setShowSerialModal?.(true);
+        },
+      },
+    ];
+  }, [localShells, t, onConnectLocal, setShowSerialModal]);
 
   const visibleGroupNames = useMemo(() => {
     const groups = new Set<string>();
@@ -224,7 +254,15 @@ export default function Dashboard({
             <span className="card-header-title">{t('系统状态')}</span>
             {pingEnabled && (
               <Tiptop text={t('刷新延迟')} placement="bottom">
-                <button className={`btn-icon-spin ${isRefreshingPing ? 'spinning' : ''}`} onClick={onRefreshPing} aria-label={t('刷新延迟')} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, display: "flex", alignItems: "center" }}><RefreshCw size={14} /></button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn('ml-auto btn-icon-spin', isRefreshingPing && 'spinning')}
+                  onClick={onRefreshPing}
+                  aria-label={t('刷新延迟')}
+                >
+                  <RefreshCw size={14} />
+                </Button>
               </Tiptop>
             )}
           </div>
@@ -283,101 +321,65 @@ export default function Dashboard({
                 </Tiptop>
               </div>
               <div style={{ position: 'relative', flex: '1 1 100px', maxWidth: 300, minWidth: 80 }}>
-                <Search size={12} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)', pointerEvents: 'none' }} />
+                <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-tertiary pointer-events-none" />
                 <input
                   id="server-search"
                   name="serverSearch"
                   type="search"
                   autoComplete="off"
                   aria-label={t('搜索服务器...')}
-                  className="input-compact"
+                  className="input-compact w-full h-7 pl-[26px] pr-2 text-xs rounded-sm bg-sunken border border-line-subtle text-primary placeholder:text-muted"
                   placeholder={t('搜索服务器...')}
                   value={searchQuery}
                   onChange={onSearchChange}
-                  style={{ width: '100%', paddingLeft: 26, height: 28, fontSize: 12, borderRadius: 'var(--radius-sm)', background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)' }}
                 />
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', flex: '0 0 auto', marginLeft: 'auto' }}>
               {/* 本地连接 / 串口 快速连接下拉菜单 */}
-              <div ref={localMenuRef} style={{ position: 'relative' }}>
-                <Tiptop text={t('本地终端 & 串口')} placement="bottom">
-                  <button
-                    className={`btn btn-ghost btn-icon${localMenuOpen ? ' active' : ''}`}
-                    onClick={() => setLocalMenuOpen(prev => !prev)}
-                    aria-label={t('本地连接')}
-                    aria-pressed={localMenuOpen}
-                  >
-                    <Terminal size={14} />
-                  </button>
-                </Tiptop>
-                {localMenuOpen && (
-                  <div
-                    className="context-menu"
-                    style={{
-                      position: 'absolute',
-                      top: '100%',
-                      right: 0,
-                      marginTop: 4,
-                      zIndex: 1000,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      minWidth: 200,
-                      padding: '6px 8px',
-                    }}
-                  >
-                    <div style={{ padding: '2px 4px 6px 4px', fontSize: 11, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', marginBottom: 6 }}>
-                      {t('选择本地终端或串口')}
-                    </div>
-                    {localShells.map((sh) => {
-                      const displayName = sh.startsWith('wsl://') 
-                        ? `WSL - ${sh.slice(6)}` 
-                        : sh === 'powershell.exe' 
-                        ? 'Windows PowerShell' 
-                        : sh === 'pwsh.exe' || sh.endsWith('pwsh.exe')
-                        ? 'PowerShell 7' 
-                        : sh === 'cmd.exe' 
-                        ? 'Command Prompt' 
-                        : sh;
-                      return (
-                        <div
-                          key={sh}
-                          className="context-menu-item"
-                          onClick={() => {
-                            setLocalMenuOpen(false);
-                            onConnectLocal?.(displayName, sh);
-                          }}
-                        >
-                          {displayName}
-                        </div>
-                      );
-                    })}
-                    <div className="context-menu-divider" style={{ margin: '4px 0' }} />
-                    <div
-                      className="context-menu-item"
-                      onClick={() => {
-                        setLocalMenuOpen(false);
-                        setShowSerialModal?.(true);
-                      }}
-                    >
-                      {t('串口终端...')}
-                    </div>
-                  </div>
-                )}
-              </div>
+              <Tiptop text={t('本地终端 & 串口')} placement="bottom">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="bg-sunken border-line-subtle hover:border-line"
+                  aria-pressed={!!localMenuPos}
+                  aria-label={t('本地连接')}
+                  onClick={(e) => {
+                    if (localMenuPos) {
+                      setLocalMenuPos(null);
+                      return;
+                    }
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setLocalMenuPos({ x: rect.right - 200, y: rect.bottom + 4 });
+                  }}
+                >
+                  <Terminal size={14} />
+                </Button>
+              </Tiptop>
+              {localMenuPos && (
+                <ContextMenu
+                  x={localMenuPos.x}
+                  y={localMenuPos.y}
+                  minWidth={200}
+                  items={localMenuItems}
+                  onClose={() => setLocalMenuPos(null)}
+                />
+              )}
 
               {hostPageMode === 'hosts' ? (
                 <>
                   {/* 选择模式开关 */}
                   <Tiptop text={selectionMode ? t('退出选择') : t('选择模式')} placement="bottom">
-                    <button
-                      className={`btn btn-ghost btn-icon${selectionMode ? ' active' : ''}`}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="bg-sunken border-line-subtle hover:border-line"
                       onClick={onSelectionModeToggle}
                       aria-label={selectionMode ? t('退出选择') : t('选择模式')}
                       aria-pressed={selectionMode}
                     >
                       <CheckSquare size={14} />
-                    </button>
+                    </Button>
                   </Tiptop>
                   {/* 视图切换 - 分段控件 */}
                   <div className="segment-control">
@@ -403,19 +405,23 @@ export default function Dashboard({
                   </div>
                   {/* 隐藏敏感信息 */}
                   <Tiptop text={hideSensitive ? t('显示敏感信息') : t('隐藏敏感信息')} placement="bottom">
-                    <button
-                      className={`btn btn-ghost btn-icon${hideSensitive ? ' active' : ''}`}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={cn(
+                        'bg-sunken border-line-subtle hover:border-line',
+                        hideSensitive && 'border-[rgba(var(--warning-rgb),0.35)] bg-warning-dim text-warning',
+                      )}
                       onClick={onHideSensitiveToggle}
                       aria-label={hideSensitive ? t('显示敏感信息') : t('隐藏敏感信息')}
                       aria-pressed={hideSensitive}
-                      style={hideSensitive ? { background: 'var(--warning-dim)', color: 'var(--warning)', borderColor: 'rgba(var(--warning-rgb), 0.35)' } : undefined}
                     >
                       {hideSensitive ? <Eye size={14} /> : <EyeOff size={14} />}
-                    </button>
+                    </Button>
                   </Tiptop>
                   {hasVisibleGroupHeaders && (
-                    <button
-                      className="btn btn-ghost"
+                    <Button
+                      variant="secondary"
                       onClick={() => {
                         if (allCollapsed) {
                           setCollapsedGroups(new Set());
@@ -423,89 +429,48 @@ export default function Dashboard({
                           setCollapsedGroups(new Set(visibleGroupNames));
                         }
                       }}
-                      style={{
-                        height: 28,
-                        padding: '0 8px',
-                        fontSize: 12,
-                        border: '1px solid var(--border)',
-                        borderRadius: 'var(--radius-sm)',
-                        background: 'var(--surface-overlay)',
-                        color: 'var(--text-secondary)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 5,
-                        fontWeight: 500,
-                        whiteSpace: 'nowrap',
-                        flexShrink: 0,
-                      }}
+                      className="shrink-0 gap-[5px]"
                     >
                       {allCollapsed ? <Folder size={13} /> : <FolderOpen size={13} />}
                       <span>{allCollapsed ? t('打开分组') : t('收起分组')}</span>
-                    </button>
+                    </Button>
                   )}
                   {/* 数据管理（导入/导出） */}
                   <Tiptop text={t('数据管理')} placement="bottom">
-                    <button
-                      className="btn btn-ghost"
-                      onClick={onOpenImportExport}
-                      aria-label={t('数据管理')}
-                      style={{
-                        height: 28,
-                        padding: '0 8px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 5,
-                        border: '1px solid var(--border)',
-                        borderRadius: 'var(--radius-sm)',
-                        background: 'var(--surface-overlay)',
-                        color: 'var(--text-secondary)',
-                        fontWeight: 500,
-                        whiteSpace: 'nowrap',
-                        flexShrink: 0,
-                      }}
-                    >
+                    <Button variant="secondary" onClick={onOpenImportExport} aria-label={t('数据管理')} className="shrink-0 gap-[5px]">
                       <Database size={13} />
-                      <span style={{ fontSize: 12 }}>{t('数据管理')}</span>
-                    </button>
+                      <span>{t('数据管理')}</span>
+                    </Button>
                   </Tiptop>
                 </>
               ) : (
                 <>
                   <Tiptop text={hideSensitive ? t('显示敏感信息') : t('隐藏敏感信息')} placement="bottom">
-                    <button
-                      className={`btn btn-ghost btn-icon${hideSensitive ? ' active' : ''}`}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={cn(
+                        'bg-sunken border-line-subtle hover:border-line',
+                        hideSensitive && 'border-[rgba(var(--warning-rgb),0.35)] bg-warning-dim text-warning',
+                      )}
                       onClick={onHideSensitiveToggle}
                       aria-label={hideSensitive ? t('显示敏感信息') : t('隐藏敏感信息')}
                       aria-pressed={hideSensitive}
-                      style={hideSensitive ? { background: 'var(--warning-dim)', color: 'var(--warning)', borderColor: 'rgba(var(--warning-rgb), 0.35)' } : undefined}
                     >
                       {hideSensitive ? <Eye size={14} /> : <EyeOff size={14} />}
-                    </button>
+                    </Button>
                   </Tiptop>
                   <Tiptop text={t('清空')} placement="bottom">
-                    <button
-                      className="btn btn-ghost"
+                    <Button
+                      variant="secondary"
                       onClick={handleClearRecent}
                       disabled={recentServers.length === 0}
                       aria-label={t('清空最近连接')}
-                      style={{
-                        height: 28,
-                        padding: '0 10px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 5,
-                        border: '1px solid var(--border)',
-                        borderRadius: 'var(--radius-sm)',
-                        background: 'var(--surface-overlay)',
-                        color: recentServers.length === 0 ? 'var(--text-tertiary)' : 'var(--text-secondary)',
-                        fontWeight: 500,
-                        opacity: recentServers.length === 0 ? 0.55 : 1,
-                        cursor: recentServers.length === 0 ? 'not-allowed' : 'pointer',
-                      }}
+                      className="shrink-0 gap-[5px]"
                     >
                       <Trash2 size={13} />
-                      <span style={{ fontSize: 12 }}>{t('清空')}</span>
-                    </button>
+                      <span>{t('清空')}</span>
+                    </Button>
                   </Tiptop>
                 </>
               )}
@@ -546,19 +511,18 @@ export default function Dashboard({
           ) : (
           <div className="hosts-scroll-area">
             {recentServers.length === 0 ? (
-              <div className="empty-state" style={{ marginTop: '12vh' }}>
-                <div className="empty-state-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Clock size={48} strokeWidth={1.5} />
-                </div>
-                <div className="empty-state-text">{t('暂无最近连接')}</div>
-                <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-tertiary)' }}>
-                  {t('连接成功后会出现在这里，方便快速再连')}
-                </div>
-              </div>
+              <EmptyState
+                className="mt-[12vh]"
+                icon={<Clock size={48} strokeWidth={1.5} />}
+                text={t('暂无最近连接')}
+                action={
+                  <div className="mt-2 text-xs text-tertiary">
+                    {t('连接成功后会出现在这里，方便快速再连')}
+                  </div>
+                }
+              />
             ) : filteredRecentServers.length === 0 ? (
-              <div className="empty-state" style={{ marginTop: '12vh' }}>
-                <div className="empty-state-text">{t('无匹配结果')}</div>
-              </div>
+              <EmptyState className="mt-[12vh]" text={t('无匹配结果')} />
             ) : (
               <div className="server-table-container">
                 <table className="server-table">

@@ -3,8 +3,8 @@ import { createPortal } from 'react-dom';
 import CodeMirror, { keymap, EditorView, EditorState, Prec, EditorSelection, showDialog, type Extension } from '@uiw/react-codemirror';
 import { useTranslation } from '../i18n.ts';
 import { formatShortcut } from '../utils/platform.ts';
-import { clampMenuPosition } from '../utils/menuPosition.ts';
-import { getTerminalTheme } from '../utils/theme.ts';
+import { Button, ContextMenu } from './ui';
+import { cn } from '../utils/cn.ts';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
@@ -316,7 +316,6 @@ export default function FileEditor({
   externalOpening = false,
 }: FileEditorProps) {
   const { t, lang: i18nLang } = useTranslation();
-  const C = getTerminalTheme().container;
 
   // 每个文件的编辑内容缓存：{ [path]: content }
   const [editedContents, setEditedContents] = useState<Record<string, string>>({});
@@ -432,8 +431,7 @@ export default function FileEditor({
     e.preventDefault();
     e.stopPropagation();
     const sel = window.getSelection()?.toString() || '';
-    const pos = clampMenuPosition(e.clientX, e.clientY, 160, 120);
-    setContextMenu({ ...pos, hasSelection: sel.length > 0 });
+    setContextMenu({ x: e.clientX, y: e.clientY, hasSelection: sel.length > 0 });
   };
 
   const handleMenuAction = (action: 'copy' | 'paste' | 'cut' | 'selectAll') => {
@@ -455,14 +453,6 @@ export default function FileEditor({
         break;
     }
   };
-
-  // 点击外部关闭右键菜单
-  useEffect(() => {
-    if (!contextMenu) return;
-    const handler = () => setContextMenu(null);
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [contextMenu]);
 
   const handleSave = useCallback(async () => {
     if (!activeFile || !isModified) return;
@@ -685,16 +675,7 @@ export default function FileEditor({
 
   // 标签页栏
   const tabsBar = (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: 2,
-      padding: '4px 8px 0',
-      borderBottom: '1px solid var(--border)',
-      background: 'var(--surface-overlay)',
-      overflowX: 'auto',
-      flexShrink: 0,
-    }}>
+    <div className="flex items-center gap-0.5 px-2 pt-1 border-b border-line bg-overlay overflow-x-auto shrink-0">
       {files.map(f => {
         const isActive = f.path === activeFile?.path;
         const fEdited = editedContents[f.path];
@@ -702,26 +683,13 @@ export default function FileEditor({
         return (
           <div
             key={f.path}
-            className={`terminal-sub-tab ${isActive ? 'active' : ''}`}
+            className={`terminal-sub-tab font-mono py-[5px] px-3 ${isActive ? 'active' : ''}`}
             onClick={() => onActivate(f.path)}
-            style={{ fontFamily: 'var(--font-mono)', padding: '5px 12px' }}
           >
             <span>{f.name}{fModified ? ' ●' : ''}</span>
             <span
               onClick={(e) => { e.stopPropagation(); closeFileWithConfirm(f.path); }}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 14,
-                height: 14,
-                borderRadius: 3,
-                cursor: 'pointer',
-                fontSize: 10,
-                opacity: 0.5,
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-              onMouseLeave={(e) => e.currentTarget.style.opacity = '0.5'}
+              className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-xs cursor-pointer text-[10px] opacity-50 hover:opacity-100"
             >
               <X size={10} />
             </span>
@@ -736,78 +704,28 @@ export default function FileEditor({
     <>
       {/* Header：最小化/关闭固定右上角；操作行加大右 padding，避免与保存重叠 */}
       <div
-        className="modal-header file-editor-toolbar"
-        style={{
-          cursor: mode === 'popup' ? 'move' : 'default',
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          gap: 8,
-          rowGap: 6,
-          // 非 split：最小化+关闭；split：仅关闭。留足空隙不压住保存
-          padding: mode === 'split' ? '8px 40px 6px 12px' : '16px 72px 8px 16px',
-          position: 'relative',
-          minWidth: 0,
-        }}
+        className={cn(
+          'relative flex flex-wrap items-center justify-between gap-2 gap-y-1.5 min-w-0',
+          mode === 'popup' ? 'cursor-move pt-2 pr-10 pb-1.5 pl-3' : 'pt-4 pr-[72px] pb-2 pl-4',
+        )}
         onMouseDown={mode === 'popup' ? startPopupDrag : undefined}
       >
-        <div
-          className="modal-title"
-          style={{
-            flex: '1 1 140px',
-            minWidth: 0,
-            maxWidth: '100%',
-            overflow: 'hidden',
-          }}
-        >
-          <SquarePen size={14} style={{ flexShrink: 0 }} />
+        <div className="flex flex-[1_1_140px] min-w-0 max-w-full items-center gap-2 overflow-hidden text-md font-semibold text-primary">
+          <SquarePen size={14} className="shrink-0" />
           <span
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 13,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              minWidth: 0,
-            }}
+            className="font-mono text-base truncate min-w-0"
             title={activeFile ? activeFile.name : t('编辑器')}
           >
             {activeFile ? activeFile.name : t('编辑器')}
           </span>
           {isModified && (
-            <span style={{
-              fontSize: 11,
-              background: 'var(--warning-dim)',
-              color: 'var(--warning)',
-              padding: '2px 8px',
-              borderRadius: 4,
-              fontWeight: 500,
-              flexShrink: 0,
-            }}>
+            <span className="text-xs bg-warning-dim text-warning px-2 py-0.5 rounded-sm font-medium shrink-0">
               {t('未保存')}
             </span>
           )}
         </div>
-        <div
-          style={{
-            display: 'flex',
-            flex: '1 1 auto',
-            flexWrap: 'wrap',
-            gap: 6,
-            alignItems: 'center',
-            justifyContent: 'flex-end',
-            minWidth: 0,
-          }}
-        >
-          <span style={{
-            fontSize: 11,
-            color: 'var(--text-tertiary)',
-            fontFamily: 'var(--font-mono)',
-            background: 'var(--surface-sunken)',
-            padding: '2px 8px',
-            borderRadius: 4,
-            flexShrink: 0,
-          }}>
+        <div className="flex flex-[1_1_auto] flex-wrap gap-1.5 items-center justify-end min-w-0">
+          <span className="text-xs text-tertiary font-mono bg-sunken px-2 py-0.5 rounded-sm shrink-0">
             {ext || 'text'}
           </span>
 
@@ -816,20 +734,10 @@ export default function FileEditor({
               <select
                 id="file-editor-split-position"
                 name="file-editor-split-position"
-                className="btn btn-ghost btn-sm"
                 value={splitPosition}
                 onChange={(e) => onSplitPositionChange && onSplitPositionChange(e.target.value)}
                 aria-label={t('分栏位置')}
-                style={{
-                  padding: '4px 6px',
-                  fontSize: 11,
-                  cursor: 'pointer',
-                  border: 'none',
-                  background: 'var(--surface-overlay)',
-                  color: 'var(--text-primary)',
-                  borderRadius: 6,
-                  flexShrink: 0,
-                }}
+                className="px-1.5 py-1 text-xs cursor-pointer border-none bg-overlay text-primary rounded-md shrink-0 outline-none transition-colors duration-100 hover:bg-hover hover:text-primary"
               >
                 <option value="left">{t('左侧分栏')}</option>
                 <option value="right">{t('右侧分栏')}</option>
@@ -842,20 +750,10 @@ export default function FileEditor({
             <select
               id="file-editor-edit-mode"
               name="file-editor-edit-mode"
-              className="btn btn-ghost btn-sm"
               value={mode}
               onChange={(e) => onModeChange && onModeChange(e.target.value)}
               aria-label={t('编辑模式')}
-              style={{
-                padding: '4px 6px',
-                fontSize: 11,
-                cursor: 'pointer',
-                border: 'none',
-                background: 'var(--surface-overlay)',
-                color: 'var(--text-primary)',
-                borderRadius: 6,
-                flexShrink: 0,
-              }}
+              className="px-1.5 py-1 text-xs cursor-pointer border-none bg-overlay text-primary rounded-md shrink-0 outline-none transition-colors duration-100 hover:bg-hover hover:text-primary"
             >
               <option value="modal">{t('全屏弹窗')}</option>
               <option value="popup">{t('浮动面板')}</option>
@@ -864,26 +762,19 @@ export default function FileEditor({
           </Tiptop>
 
           <Tiptop text={t('使用系统编辑器')} placement="bottom">
-            <button
-              className="btn btn-ghost btn-sm"
+            <Button
+              variant="ghost"
+              size="sm"
               disabled={!activeFile || externalOpening || !onOpenSystemEditor}
               onClick={() => { if (activeFile) onOpenSystemEditor?.(activeFile, currentContent); }}
               aria-label={t('使用系统编辑器')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '4px 8px',
-                fontSize: 11,
-                flexShrink: 0,
-                maxWidth: '100%',
-              }}
+              className="gap-1 px-2 py-1 max-w-full"
             >
-              <ExternalLink size={13} style={{ flexShrink: 0 }} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <ExternalLink size={13} className="shrink-0" />
+              <span className="truncate">
                 {t('使用系统编辑器')}
               </span>
-            </button>
+            </Button>
           </Tiptop>
 
           <Tiptop
@@ -892,8 +783,9 @@ export default function FileEditor({
               : t('用…编辑')}
             placement="bottom"
           >
-            <button
-              className="btn btn-ghost btn-sm"
+            <Button
+              variant="ghost"
+              size="sm"
               disabled={!activeFile || externalOpening || !onOpenWithEditor}
               onClick={() => {
                 if (activeFile) onOpenWithEditor?.(activeFile, currentContent, false);
@@ -902,77 +794,62 @@ export default function FileEditor({
               aria-label={preferredExternalApp
                 ? `${t('用已记住的编辑器打开')} (${preferredExternalAppLabel(preferredExternalApp)})`
                 : t('用…编辑')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '4px 8px',
-                fontSize: 11,
-                flexShrink: 0,
-                maxWidth: preferredExternalApp ? 110 : undefined,
-                minWidth: 0,
-              }}
+              className="gap-1 px-2 py-1 min-w-0"
+              style={{ maxWidth: preferredExternalApp ? 110 : undefined }}
             >
-              <AppWindow size={13} style={{ flexShrink: 0 }} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+              <AppWindow size={13} className="shrink-0" />
+              <span className="truncate min-w-0">
                 {preferredExternalApp
                   ? `${t('用')} ${preferredExternalAppLabel(preferredExternalApp)}`
                   : t('用…编辑')}
               </span>
-            </button>
+            </Button>
           </Tiptop>
 
           {preferredExternalApp && (
             <Tiptop text={t('更换外部编辑器')} placement="bottom">
-              <button
-                className="btn btn-ghost btn-sm"
+              <Button
+                variant="ghost"
+                size="sm"
                 disabled={!activeFile || externalOpening || !onOpenWithEditor}
                 onClick={() => {
                   if (activeFile) onOpenWithEditor?.(activeFile, currentContent, true);
                   setTimeout(() => setPreferredExternalApp(readPreferredExternalApp()), 0);
                 }}
                 aria-label={t('更换外部编辑器')}
-                style={{ padding: '4px 8px', fontSize: 11, flexShrink: 0 }}
+                className="px-2 py-1"
               >
                 {t('更换…')}
-              </button>
+              </Button>
             </Tiptop>
           )}
 
           <Tiptop text={saving ? t('保存中...') : t('保存')} placement="bottom">
-            <button
-              className="btn btn-primary btn-sm"
+            <Button
+              variant="primary"
+              size="sm"
               onClick={handleSave}
               disabled={saving || !isModified}
               aria-label={t('保存')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 4,
-                padding: '4px 10px',
-                fontSize: 11,
-                flexShrink: 0,
-                minHeight: 28,
-              }}
+              className="gap-1 px-2.5 py-1 min-h-7"
             >
-              <Save size={13} style={{ flexShrink: 0 }} />
+              <Save size={13} className="shrink-0" />
               {saving ? t('保存中...') : t('保存')}
-            </button>
+            </Button>
           </Tiptop>
         </div>
 
         {mode !== 'split' && (
           <Tiptop text={t('最小化')} placement="bottom" style={{ position: 'absolute', top: 8, right: 36, zIndex: Z.PANEL_BUTTON }}>
-            <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setMinimized(true)} aria-label={t('最小化')}>
+            <Button variant="ghost" size="icon" onClick={() => setMinimized(true)} aria-label={t('最小化')}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            </button>
+            </Button>
           </Tiptop>
         )}
         <Tiptop text={files.length > 1 ? t('关闭全部') : t('关闭')} placement="bottom" style={{ position: 'absolute', top: 8, right: 8, zIndex: Z.PANEL_BUTTON }}>
-          <button className="btn btn-ghost btn-icon btn-sm" onClick={handleCloseAllEditors} aria-label={files.length > 1 ? t('关闭全部') : t('关闭')}>
+          <Button variant="ghost" size="icon" onClick={handleCloseAllEditors} aria-label={files.length > 1 ? t('关闭全部') : t('关闭')}>
             <X size={14} />
-          </button>
+          </Button>
         </Tiptop>
       </div>
 
@@ -980,21 +857,12 @@ export default function FileEditor({
       {files.length > 1 && tabsBar}
 
       {/* File path */}
-      <div style={{
-        padding: '4px 16px 8px',
-        fontSize: 11,
-        color: 'var(--text-tertiary)',
-        fontFamily: 'var(--font-mono)',
-        borderBottom: '1px solid var(--border)',
-        overflow: 'auto',
-        whiteSpace: 'nowrap',
-        flexShrink: 0,
-      }}>
+      <div className="px-4 pt-1 pb-2 text-xs text-tertiary font-mono border-b border-line overflow-x-auto whitespace-nowrap shrink-0">
         {activeFile ? activeFile.path : ''}
       </div>
 
       {/* Editor */}
-      <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+      <div className="flex-1 overflow-auto min-h-0">
         {activeFile && (
           <CodeMirror
             key={activeFile.path}
@@ -1011,58 +879,26 @@ export default function FileEditor({
       </div>
 
       {/* Footer status bar */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: '6px 16px',
-        borderTop: '1px solid var(--border)',
-        fontSize: 11,
-        color: 'var(--text-tertiary)',
-        fontFamily: 'var(--font-mono)',
-      }}>
+      <div className="flex items-center justify-between px-4 py-1.5 border-t border-line text-xs text-tertiary font-mono">
         <span>{currentContent.split('\n').length}{t('行')} · {byteSize}{t('字节')}</span>
         <span>UTF-8 · {lang ? ext.toUpperCase() : t('文本')}</span>
       </div>
 
       {/* 右键菜单 */}
       {contextMenu && createPortal(
-        <div
-          className="context-menu"
-          style={{
-            position: 'fixed',
-            left: contextMenu.x,
-            top: contextMenu.y,
-            backgroundColor: C.contextBg,
-            border: '1px solid ' + C.btnBorder,
-            borderRadius: '8px',
-            boxShadow: C.contextShadow,
-            zIndex: Z.FLOATING_EDITOR_MENU,
-            padding: '4px 0',
-            minWidth: '160px',
-            fontFamily: 'var(--font-ui)',
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          {([
-            { label: t('复制'), action: 'copy', shortcut: formatShortcut('Ctrl+C'), disabled: !contextMenu?.hasSelection },
-            { label: t('粘贴'), action: 'paste', shortcut: formatShortcut('Ctrl+V') },
-            { label: t('剪切'), action: 'cut', shortcut: formatShortcut('Ctrl+X'), disabled: !contextMenu?.hasSelection },
-            { label: t('全选'), action: 'selectAll', shortcut: formatShortcut('Ctrl+A') },
-          ] as Array<{ label: string; action: 'copy' | 'paste' | 'cut' | 'selectAll'; shortcut: string; disabled?: boolean }>).map((item) => (
-            <div
-              key={item.action}
-              className="context-menu-item"
-              style={{ padding: '6px 12px', cursor: item.disabled ? 'default' : 'pointer', display: 'flex', justifyContent: 'space-between', fontSize: 13, opacity: item.disabled ? 0.4 : 1 }}
-              onMouseEnter={(e) => { if (!item.disabled) e.currentTarget.style.background = 'rgba(128,128,128,0.12)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
-              onClick={() => { if (!item.disabled) handleMenuAction(item.action); }}
-            >
-              <span>{item.label}</span>
-              <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>{item.shortcut}</span>
-            </div>
-          ))}
-        </div>,
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          zIndex={Z.FLOATING_EDITOR_MENU}
+          minWidth={160}
+          onClose={() => setContextMenu(null)}
+          items={[
+            { label: t('复制'), shortcut: formatShortcut('Ctrl+C'), disabled: !contextMenu.hasSelection, onSelect: () => handleMenuAction('copy') },
+            { label: t('粘贴'), shortcut: formatShortcut('Ctrl+V'), onSelect: () => handleMenuAction('paste') },
+            { label: t('剪切'), shortcut: formatShortcut('Ctrl+X'), disabled: !contextMenu.hasSelection, onSelect: () => handleMenuAction('cut') },
+            { label: t('全选'), shortcut: formatShortcut('Ctrl+A'), onSelect: () => handleMenuAction('selectAll') },
+          ]}
+        />,
         document.body
       )}
     </>
@@ -1074,35 +910,19 @@ export default function FileEditor({
     return createPortal(
       <div
         onClick={() => setMinimized(false)}
-        style={{
-          position: 'fixed',
-          bottom: 16,
-          right: 16,
-          zIndex: Z.FLOATING_EDITOR,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '8px 16px',
-          background: 'var(--surface-overlay)',
-          border: '1px solid var(--border)',
-          borderRadius: 10,
-          boxShadow: 'var(--shadow-md)',
-          cursor: 'pointer',
-          userSelect: 'none',
-          animation: 'fadeIn 0.15s ease',
-          pointerEvents: 'auto',
-        }}
+        className="fixed bottom-4 right-4 flex items-center gap-2 px-4 py-2 bg-overlay border border-line rounded-lg shadow-md cursor-pointer select-none pointer-events-auto animate-[fadeIn_0.12s_ease]"
+        style={{ zIndex: Z.FLOATING_EDITOR }}
       >
-        <SquarePen size={14} style={{ flexShrink: 0 }} />
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <SquarePen size={14} className="shrink-0" />
+        <span className="font-mono text-base max-w-[200px] truncate">
           {activeFile ? activeFile.name : t('编辑器')}
         </span>
         {files.length > 1 && (
-          <span style={{ fontSize: 11, color: 'var(--text-tertiary)', background: 'var(--surface-sunken)', padding: '1px 6px', borderRadius: 4 }}>
+          <span className="text-xs text-tertiary bg-sunken px-1.5 py-px rounded-sm">
             {files.length}
           </span>
         )}
-        {isModified && <span style={{ fontSize: 11, color: 'var(--warning)' }}>{t('未保存')}</span>}
+        {isModified && <span className="text-xs text-warning">{t('未保存')}</span>}
       </div>,
       document.body
     );
@@ -1112,21 +932,13 @@ export default function FileEditor({
     if (!isActive || typeof document === 'undefined') return null;
     return createPortal(
       <div
+        className="fixed flex flex-col bg-raised border border-line rounded-lg shadow-md overflow-hidden pointer-events-auto"
         style={{
-          position: 'fixed',
           left: popupPos.x,
           top: popupPos.y,
           width: popupPos.w,
           height: popupPos.h,
           zIndex: Z.FLOATING_EDITOR,
-          display: 'flex',
-          flexDirection: 'column',
-          background: 'var(--surface-raised)',
-          border: '1px solid var(--border)',
-          borderRadius: 10,
-          boxShadow: 'var(--shadow-md)',
-          overflow: 'hidden',
-          pointerEvents: 'auto',
         }}
         onContextMenu={handleContextMenu}
       >
@@ -1136,7 +948,8 @@ export default function FileEditor({
           <div
             key={h.dir}
             onMouseDown={startPopupResize(h.dir)}
-            style={{ position: 'absolute', zIndex: Z.STACK, cursor: h.cursor, ...h.pos }}
+            className="absolute"
+            style={{ zIndex: Z.STACK, cursor: h.cursor, ...h.pos }}
           />
         ))}
       </div>,
@@ -1149,18 +962,20 @@ export default function FileEditor({
     const host = document.getElementById('editor-split-host');
     if (!host) return null;
     return createPortal(
-      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }} onContextMenu={handleContextMenu}>
+      <div className="w-full h-full flex flex-col" onContextMenu={handleContextMenu}>
         {showWorkbenchTabs && (
           <div className="terminal-sub-tab-bar">
             <button
-              className={`btn btn-ghost btn-sm terminal-create-btn terminal-tool-btn ${activeWorkbenchTab === 'editor' ? 'active' : ''}`}
+              type="button"
+              className={`terminal-create-btn inline-flex items-center justify-center gap-1 whitespace-nowrap leading-none font-medium text-xs [transition:color_0.08s_ease,background-color_0.08s_ease,border-color_0.08s_ease,opacity_0.08s_ease] terminal-tool-btn ${activeWorkbenchTab === 'editor' ? 'active' : ''}`}
               onClick={() => handleWorkbenchTabChange('editor')}
             >
               <SquarePen size={14} />
               {t('编辑器')}
             </button>
             <button
-              className={`btn btn-ghost btn-sm terminal-create-btn terminal-tool-btn ${activeWorkbenchTab === 'upload' ? 'active' : ''}`}
+              type="button"
+              className={`terminal-create-btn inline-flex items-center justify-center gap-1 whitespace-nowrap leading-none font-medium text-xs [transition:color_0.08s_ease,background-color_0.08s_ease,border-color_0.08s_ease,opacity_0.08s_ease] terminal-tool-btn ${activeWorkbenchTab === 'upload' ? 'active' : ''}`}
               onClick={() => handleWorkbenchTabChange('upload')}
             >
               <Upload size={14} />
@@ -1170,24 +985,16 @@ export default function FileEditor({
         )}
         <div
           id={`workbench-editor-panel-${workbenchSessionId}`}
-          style={{
-            display: activeWorkbenchTab === 'editor' ? 'flex' : 'none',
-            flexDirection: 'column',
-            flex: 1,
-            minHeight: 0,
-          }}
+          className="flex flex-col flex-1 min-h-0"
+          style={{ display: activeWorkbenchTab === 'editor' ? 'flex' : 'none' }}
         >
           {editorContent}
         </div>
         {showWorkbenchTabs && (
           <div
             id={`workbench-upload-panel-${workbenchSessionId}`}
-            style={{
-              display: activeWorkbenchTab === 'upload' ? 'flex' : 'none',
-              flexDirection: 'column',
-              flex: 1,
-              minHeight: 0,
-            }}
+            className="flex flex-col flex-1 min-h-0"
+            style={{ display: activeWorkbenchTab === 'upload' ? 'flex' : 'none' }}
           />
         )}
       </div>,
@@ -1201,8 +1008,15 @@ export default function FileEditor({
   // 会导致切换服务器后旧会话的弹窗仍盖在最上层（跨服务器显示）。组件未 unmount，state 保留，切回时恢复。
   if (!isActive) return null;
   return createPortal(
-    <div className="modal-overlay" style={{ zIndex: Z.FULLSCREEN_OVERLAY }} onContextMenu={handleContextMenu}>
-      <div className="modal modal-xl" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 40px)', maxHeight: 'calc(100vh - 40px)', maxWidth: '100vw', marginTop: 40 }}>
+    <div
+      className="fixed inset-0 flex items-center justify-center bg-black/[0.42] animate-[fadeIn_0.12s_ease]"
+      style={{ zIndex: Z.FULLSCREEN_OVERLAY }}
+      onContextMenu={handleContextMenu}
+    >
+      <div
+        className="relative w-full max-h-[90vh] overflow-y-auto bg-raised border border-line rounded-md shadow-lg animate-[slideUp_0.12s_ease] flex flex-col"
+        style={{ height: 'calc(100vh - 40px)', maxHeight: 'calc(100vh - 40px)', maxWidth: '100vw', marginTop: 40 }}
+      >
         {editorContent}
       </div>
     </div>,

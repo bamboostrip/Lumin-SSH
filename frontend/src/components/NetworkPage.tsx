@@ -3,9 +3,15 @@ import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 import { useTranslation } from '../i18n.ts';
 import Tiptop from './Tiptop.tsx';
 import { formatRate, formatTransferTotal } from './probeFormatting.ts';
+import { Button } from './ui';
+import { cn } from '../utils/cn.ts';
+import { Z } from '../constants/zIndex.ts';
 import { Globe, RefreshCw, ArrowDown, ArrowUp, Info, ArrowUpDown, Search, X } from 'lucide-react';
 
 const HISTORY_SIZE = 60;
+
+/** 文件内复用卡片基底（surface-raised + border + r8），等价于原先重复手写的卡片内联样式 */
+const CARD_SHELL = 'bg-raised border border-line rounded-lg';
 
 /** 网卡统计（AppGo.NetworkInfo 返回的宽松结构） */
 interface NetworkInterfaceInfo {
@@ -71,9 +77,9 @@ function Sparkline({ data, color }: SparklineProps) {
     const max = Math.max(...points, 1);
     return points.map((v, i) => `${(i / (points.length - 1)) * 100},${34 - (v / max) * 32}`).join(' ');
   }, [points]);
-  if (!path) return <div style={{ height: 34 }} />;
+  if (!path) return <div className="h-[34px]" />;
   return (
-    <svg viewBox="0 0 100 34" preserveAspectRatio="none" style={{ width: '100%', height: 34, display: 'block' }}>
+    <svg viewBox="0 0 100 34" preserveAspectRatio="none" className="w-full h-[34px] block">
       <polyline points={path} fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -201,10 +207,10 @@ export default function NetworkPage({ sessionId, active }: NetworkPageProps) {
     else { setConnectionSortKey(key); setConnectionSortAsc(false); }
   };
   const renderConnectionSortIcon = (key: string) => {
-    if (key !== connectionSortKey) return <ArrowUpDown size={13} style={{ opacity: 0.65, marginLeft: 2, flexShrink: 0 }} />;
+    if (key !== connectionSortKey) return <ArrowUpDown size={13} className="opacity-65 ml-0.5 shrink-0" />;
     return connectionSortAsc
-      ? <ArrowUp size={13} style={{ marginLeft: 2, flexShrink: 0, color: 'var(--accent)' }} />
-      : <ArrowDown size={13} style={{ marginLeft: 2, flexShrink: 0, color: 'var(--accent)' }} />;
+      ? <ArrowUp size={13} className="ml-0.5 shrink-0 text-accent" />
+      : <ArrowDown size={13} className="ml-0.5 shrink-0 text-accent" />;
   };
   const startDetailDrag = useCallback((event: ReactMouseEvent) => {
     event.preventDefault();
@@ -271,56 +277,56 @@ export default function NetworkPage({ sessionId, active }: NetworkPageProps) {
   };
 
   return (
-    <div style={{ height: '100%', width: '100%', flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--surface-base)', overflow: 'hidden' }}>
-      <div style={{ height: 44, display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', borderBottom: '1px solid var(--border)', background: 'var(--surface-raised)', flexShrink: 0 }}>
-        <Globe size={16} style={{ color: 'var(--text-tertiary)' }} />
-        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', flex: 1 }}>{t('网络监控')}</div>
-        <button className="btn btn-ghost btn-sm" onClick={load} disabled={loading}>
-          <RefreshCw size={14} className={loading ? 'spin' : ''} /> {t('刷新')}
-        </button>
+    <div className="h-full w-full flex-1 min-w-0 flex flex-col bg-canvas overflow-hidden">
+      <div className="h-11 flex items-center gap-2.5 px-3.5 border-b border-line bg-raised shrink-0">
+        <Globe size={16} className="text-tertiary" />
+        <div className="text-md font-bold text-primary flex-1">{t('网络监控')}</div>
+        <Button variant="ghost" size="sm" onClick={load} disabled={loading}>
+          <RefreshCw size={14} className={cn(loading && 'animate-spin')} /> {t('刷新')}
+        </Button>
       </div>
 
-      <div style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: 14 }}>
+      <div className="flex-1 min-w-0 overflow-auto p-3.5">
         {error ? (
-          <div style={{ color: 'var(--danger)', fontSize: 13 }}>{t('加载失败')}: {error}</div>
+          <div className="text-danger text-base">{t('加载失败')}: {error}</div>
         ) : (
-          <div style={{ width: '100%', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+          <div className="w-full min-w-0 flex flex-col gap-3">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2.5">
               {[
                 { icon: <ArrowUp size={14} />, label: t('上传速度'), value: formatRate(network?.uploadSpeed || 0), color: 'var(--success)' },
                 { icon: <ArrowDown size={14} />, label: t('下载速度'), value: formatRate(network?.downloadSpeed || 0), color: 'var(--accent)' },
                 { icon: <ArrowUp size={14} />, label: t('总上传'), value: formatTransferTotal(network?.uploadTotal || 0), color: 'var(--success)' },
                 { icon: <ArrowDown size={14} />, label: t('总下载'), value: formatTransferTotal(network?.downloadTotal || 0), color: 'var(--accent)' },
               ].map(item => (
-                <div key={item.label} style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 14px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-tertiary)', fontSize: 12, marginBottom: 8 }}>{item.icon}{item.label}</div>
-                  <div style={{ color: item.color, fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 700 }}>{item.value}</div>
+                <div key={item.label} className={`${CARD_SHELL} px-3.5 py-3`}>
+                  <div className="flex items-center gap-1.5 text-tertiary text-sm mb-2">{item.icon}{item.label}</div>
+                  <div className="font-mono text-2xl font-bold" style={{ color: item.color }}>{item.value}</div>
                 </div>
               ))}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10 }}>
-              <div style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
-                <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 8 }}>{t('上传速度')}</div>
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-2.5">
+              <div className={`${CARD_SHELL} p-3`}>
+                <div className="text-sm text-tertiary mb-2">{t('上传速度')}</div>
                 <Sparkline data={history.up} color="var(--success)" />
               </div>
-              <div style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
-                <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 8 }}>{t('下载速度')}</div>
+              <div className={`${CARD_SHELL} p-3`}>
+                <div className="text-sm text-tertiary mb-2">{t('下载速度')}</div>
                 <Sparkline data={history.down} color="var(--accent)" />
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: 'var(--surface-raised)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', color: 'var(--text-tertiary)', fontSize: 12, lineHeight: 1.6 }}>
-              <Info size={14} style={{ marginTop: 2, color: 'var(--accent)', flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div className={cn(CARD_SHELL, 'flex items-start gap-2 px-3 py-2 text-tertiary text-sm leading-[1.6]')}>
+              <Info size={14} className="mt-0.5 text-accent shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span>{t('网络监控默认使用 /proc 和 iproute2/ss 采集数据，通常无需安装；lsof 与 net-tools 仅作为旧系统兼容补充。')}</span>
-                  <button type="button" onClick={() => setShowInstallTips(v => !v)} style={{ border: '1px solid var(--accent)', background: 'color-mix(in srgb, var(--accent) 14%, transparent)', color: 'var(--accent)', borderRadius: 6, padding: '3px 9px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>{showInstallTips ? t('收起') : t('可选安装命令')}</button>
+                  <button type="button" onClick={() => setShowInstallTips(v => !v)} className="border border-accent bg-accent/[0.14] text-accent rounded-md px-[9px] py-[3px] text-sm font-bold cursor-pointer">{showInstallTips ? t('收起') : t('可选安装命令')}</button>
                 </div>
                 {showInstallTips ? (
-                  <div style={{ marginTop: 6 }}>
+                  <div className="mt-1.5">
                     <div>{t('安装以下工具包后，可提升旧系统兼容性，并让 PID、进程名、端口、连接和网卡统计更完整准确')}:</div>
-                    <div style={{ display: 'grid', gap: 5, marginTop: 6, fontFamily: 'var(--font-mono)', overflowX: 'auto' }}>
+                    <div className="grid gap-[5px] mt-1.5 font-mono overflow-x-auto">
                       {[
                         ['Debian/Ubuntu', 'apt update && apt install iproute2 lsof net-tools -y'],
                         ['RHEL/CentOS/Rocky/Alma', 'yum install iproute lsof net-tools -y'],
@@ -329,7 +335,7 @@ export default function NetworkPage({ sessionId, active }: NetworkPageProps) {
                         ['Alpine', 'apk add iproute2 lsof net-tools'],
                         ['openSUSE', 'zypper install -y iproute2 lsof net-tools'],
                       ].map(([name, command]) => (
-                        <code key={name} style={{ display: 'block', padding: '5px 8px', borderRadius: 6, background: 'var(--surface-sunken)', border: '1px solid var(--border-light)', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}><span style={{ color: 'var(--accent)', fontWeight: 700 }}>{name}</span><span style={{ color: 'var(--text-tertiary)' }}>: </span><span style={{ color: 'var(--success)' }}>{command}</span></code>
+                        <code key={name} className="block px-2 py-[5px] rounded-md bg-sunken border border-line-light text-primary whitespace-nowrap"><span className="text-accent font-bold">{name}</span><span className="text-tertiary">: </span><span className="text-success">{command}</span></code>
                       ))}
                     </div>
                   </div>
@@ -337,8 +343,8 @@ export default function NetworkPage({ sessionId, active }: NetworkPageProps) {
               </div>
             </div>
 
-            <div style={{ background: 'var(--surface-raised)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr 1fr', gap: 10, padding: '9px 12px', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)', fontSize: 12, fontWeight: 700 }}>
+            <div className={`${CARD_SHELL} overflow-hidden`}>
+              <div className="grid grid-cols-[1.2fr_1fr_1fr_1fr_1fr] gap-2.5 py-[9px] px-3 border-b border-line text-tertiary text-sm font-bold">
                 <span>{t('网卡')}</span>
                 <span>{t('上传速度')}</span>
                 <span>{t('下载速度')}</span>
@@ -346,25 +352,25 @@ export default function NetworkPage({ sessionId, active }: NetworkPageProps) {
                 <span>{t('总下载')}</span>
               </div>
               {interfaces.length > 0 ? interfaces.map(item => (
-                <div key={item.name} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr 1fr', gap: 10, padding: '9px 12px', borderBottom: '1px solid var(--border-subtle)', alignItems: 'center', fontSize: 12.5 }}>
-                  <span style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{item.name}</span>
-                  <span style={{ color: 'var(--success)', fontFamily: 'var(--font-mono)' }}>{formatRate(item.uploadSpeed || 0)}</span>
-                  <span style={{ color: 'var(--accent)', fontFamily: 'var(--font-mono)' }}>{formatRate(item.downloadSpeed || 0)}</span>
-                  <span style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>{formatTransferTotal(item.uploadTotal || 0)}</span>
-                  <span style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>{formatTransferTotal(item.downloadTotal || 0)}</span>
+                <div key={item.name} className="grid grid-cols-[1.2fr_1fr_1fr_1fr_1fr] gap-2.5 py-[9px] px-3 border-b border-line-subtle items-center text-[12.5px]">
+                  <span className="text-primary font-mono font-bold">{item.name}</span>
+                  <span className="text-success font-mono">{formatRate(item.uploadSpeed || 0)}</span>
+                  <span className="text-accent font-mono">{formatRate(item.downloadSpeed || 0)}</span>
+                  <span className="text-tertiary font-mono">{formatTransferTotal(item.uploadTotal || 0)}</span>
+                  <span className="text-tertiary font-mono">{formatTransferTotal(item.downloadTotal || 0)}</span>
                 </div>
               )) : (
-                <div style={{ padding: 18, color: 'var(--text-tertiary)', fontSize: 13, textAlign: 'center' }}>{loading ? t('加载中...') : t('暂无网络接口数据')}</div>
+                <div className="p-[18px] text-tertiary text-base text-center">{loading ? t('加载中...') : t('暂无网络接口数据')}</div>
               )}
             </div>
 
-            <div className="data-table-shell" style={{ width: '100%', minWidth: 0, overflow: 'hidden' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginRight: 2 }}>{t('连接端口')}</div>
-                <div style={{ position: 'relative', flex: '1 1 240px', maxWidth: 420, minWidth: 180 }}>
-                  <Search size={13} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+            <div className="data-table-shell w-full min-w-0 overflow-hidden">
+              <div className="flex items-center gap-2.5 px-3 py-2 border-b border-line flex-wrap">
+                <div className="text-base font-bold text-primary mr-0.5">{t('连接端口')}</div>
+                <div className="relative flex-[1_1_240px] max-w-[420px] min-w-[180px]">
+                  <Search size={13} className="absolute left-[9px] top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
                   <input
-                    className="input"
+                    className={cn('input w-full h-7 py-1 pl-7 text-xs', connectionSearchQuery ? 'pr-[30px]' : 'pr-2')}
                     type="search"
                     name="network-connection-search"
                     autoComplete="off"
@@ -378,34 +384,38 @@ export default function NetworkPage({ sessionId, active }: NetworkPageProps) {
                     }}
                     placeholder={t('搜索PID、名称、IP或端口...')}
                     aria-label={t('搜索网络连接')}
-                    style={{ width: '100%', height: 28, padding: connectionSearchQuery ? '4px 30px 4px 28px' : '4px 8px 4px 28px', fontSize: 12 }}
                   />
                   {connectionSearchQuery ? (
                     <button
                       type="button"
                       onClick={() => setConnectionSearchQuery('')}
                       aria-label={t('清除搜索')}
-                      style={{ position: 'absolute', right: 5, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', padding: 3, display: 'flex' }}
+                      className="absolute right-[5px] top-1/2 -translate-y-1/2 border-none bg-transparent text-muted cursor-pointer p-[3px] flex"
                     >
                       <X size={12} />
                     </button>
                   ) : null}
                 </div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', fontSize: 12, color: 'var(--text-tertiary)', cursor: 'pointer' }}>
+                <label className="flex items-center gap-2 ml-auto text-sm text-tertiary cursor-pointer">
                   <input id="network-page-show-all-listeners" name="network-page-show-all-listeners" autoComplete="off" type="checkbox" checked={showAllListeners} onChange={(event) => handleShowAllListenersChange(event.target.checked)} />
                   <span>{t('显示全部监听端口')}</span>
                   {!showAllListeners && hiddenConnectionCount > 0 ? <span>({t('已隐藏空闲监听端口')}: {hiddenConnectionCount})</span> : null}
                 </label>
               </div>
-              <div style={{ overflowX: 'auto' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: connectionTableColumns, gap: 0, minWidth: connectionTableMinWidth, background: 'var(--surface-sunken)', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)', fontSize: 12, fontWeight: 700, userSelect: 'none' }}>
+              <div className="overflow-x-auto">
+              <div style={{ gridTemplateColumns: connectionTableColumns, minWidth: connectionTableMinWidth }} className="grid gap-0 bg-sunken border-b border-line text-tertiary text-sm font-bold select-none">
                 {[
                   ['pid', 'PID'], ['name', t('名称')], ['listenIP', t('监听IP')], ['port', t('端口')],
                   ['ipCount', t('IP数')], ['connCount', t('连接数')], ['upload', t('上传')], ['download', t('下载')]
                 ].map(([key, label]) => (
-                  <div key={key} onClick={(event) => { if (colDragging.current) { colDragging.current = false; return; } handleConnectionSort(key); }} style={{ padding: '8px 6px', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: ['pid', 'port', 'ipCount', 'connCount', 'upload', 'download'].includes(key) ? 'flex-end' : 'flex-start', gap: 2, cursor: 'pointer', userSelect: 'none', minWidth: 0, borderRight: key === 'download' ? 'none' : '1px solid var(--border-light)', background: connectionSortKey === key ? 'var(--surface-active)' : 'transparent', color: connectionSortKey === key ? 'var(--text-primary)' : undefined }}>
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>{renderConnectionSortIcon(key)}
-                    {key !== 'download' && <div onMouseDown={(event) => { event.stopPropagation(); startConnectionColResize(key, event); }} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 12, cursor: 'col-resize', zIndex: 2 }} />}
+                  <div key={key} onClick={(event) => { if (colDragging.current) { colDragging.current = false; return; } handleConnectionSort(key); }} className={cn(
+                    'py-2 px-1.5 relative flex items-center gap-0.5 cursor-pointer select-none min-w-0',
+                    key === 'download' ? null : 'border-r border-line-light',
+                    ['pid', 'port', 'ipCount', 'connCount', 'upload', 'download'].includes(key) ? 'justify-end' : 'justify-start',
+                    connectionSortKey === key && 'bg-active text-primary',
+                  )}>
+                    <span className="overflow-hidden text-ellipsis whitespace-nowrap">{label}</span>{renderConnectionSortIcon(key)}
+                    {key !== 'download' && <div onMouseDown={(event) => { event.stopPropagation(); startConnectionColResize(key, event); }} className="absolute right-0 top-0 bottom-0 w-3 cursor-col-resize" style={{ zIndex: Z.STACK }} />}
                   </div>
                 ))}
               </div>
@@ -415,20 +425,24 @@ export default function NetworkPage({ sessionId, active }: NetworkPageProps) {
                 const active = activeDetailKey === key;
                 return (
                   <Tiptop key={key} text={peers.length > 0 ? t('点击查看连接明细') : t('无连接可展开')}>
-                    <div onClick={() => openConnectionDetail(item, key)} style={{ display: 'grid', gridTemplateColumns: connectionTableColumns, gap: 0, minWidth: connectionTableMinWidth, borderBottom: '1px solid var(--border-subtle)', alignItems: 'center', fontSize: 12.5, cursor: peers.length > 0 ? 'pointer' : 'not-allowed', opacity: peers.length > 0 ? 1 : 0.72, background: active ? 'var(--surface-active)' : 'transparent' }}>
-                      <span style={{ padding: '8px 6px', textAlign: 'right', borderRight: '1px solid var(--border-light)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>{item.pid || '-'}</span>
-                      <span style={{ padding: '8px 6px', borderRight: '1px solid var(--border-light)', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.name || '-'}>{item.name || '-'}</span>
-                      <span style={{ padding: '8px 6px', borderRight: '1px solid var(--border-light)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.listenIP || '*'}>{item.listenIP || '*'}</span>
-                      <span style={{ padding: '8px 6px', textAlign: 'right', borderRight: '1px solid var(--border-light)', color: 'var(--accent)', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{item.port || '-'}</span>
-                      <span style={{ padding: '8px 6px', textAlign: 'right', borderRight: '1px solid var(--border-light)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>{item.ipCount ?? 0}</span>
-                      <span style={{ padding: '8px 6px', textAlign: 'right', borderRight: '1px solid var(--border-light)', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{item.connCount ?? 0}</span>
-                      <span style={{ padding: '8px 6px', textAlign: 'right', borderRight: '1px solid var(--border-light)', color: 'var(--success)', fontFamily: 'var(--font-mono)' }}>{formatOptionalTransfer(item.upload)}</span>
-                      <span style={{ padding: '8px 6px', textAlign: 'right', color: 'var(--accent)', fontFamily: 'var(--font-mono)' }}>{formatOptionalTransfer(item.download)}</span>
+                    <div onClick={() => openConnectionDetail(item, key)} style={{ gridTemplateColumns: connectionTableColumns, minWidth: connectionTableMinWidth }} className={cn(
+                      'grid gap-0 border-b border-line-subtle items-center text-[12.5px]',
+                      peers.length > 0 ? 'cursor-pointer' : 'cursor-not-allowed opacity-[0.72]',
+                      active && 'bg-active',
+                    )}>
+                      <span className="py-2 px-1.5 text-right border-r border-line-light text-tertiary font-mono">{item.pid || '-'}</span>
+                      <span className="py-2 px-1.5 border-r border-line-light text-primary truncate" title={item.name || '-'}>{item.name || '-'}</span>
+                      <span className="py-2 px-1.5 border-r border-line-light text-tertiary font-mono truncate" title={item.listenIP || '*'}>{item.listenIP || '*'}</span>
+                      <span className="py-2 px-1.5 text-right border-r border-line-light text-accent font-mono font-bold">{item.port || '-'}</span>
+                      <span className="py-2 px-1.5 text-right border-r border-line-light text-tertiary font-mono">{item.ipCount ?? 0}</span>
+                      <span className="py-2 px-1.5 text-right border-r border-line-light text-primary font-mono">{item.connCount ?? 0}</span>
+                      <span className="py-2 px-1.5 text-right border-r border-line-light text-success font-mono">{formatOptionalTransfer(item.upload)}</span>
+                      <span className="py-2 px-1.5 text-right text-accent font-mono">{formatOptionalTransfer(item.download)}</span>
                     </div>
                   </Tiptop>
                 );
               }) : (
-                <div style={{ minWidth: connectionTableMinWidth, padding: 18, color: 'var(--text-tertiary)', fontSize: 13, textAlign: 'center' }}>{loading ? t('加载中...') : connectionSearchTokens.length > 0 ? t('未找到匹配的网络连接') : connections.length > 0 ? t('空闲监听端口已隐藏') : t('暂无网络连接数据')}</div>
+                <div style={{ minWidth: connectionTableMinWidth }} className="p-[18px] text-tertiary text-base text-center">{loading ? t('加载中...') : connectionSearchTokens.length > 0 ? t('未找到匹配的网络连接') : connections.length > 0 ? t('空闲监听端口已隐藏') : t('暂无网络连接数据')}</div>
               )}
               </div>
             </div>
@@ -439,24 +453,30 @@ export default function NetworkPage({ sessionId, active }: NetworkPageProps) {
 
       {detailConnections.length > 0 ? (
         <>
-          <div className="split-resizer-h hotzone-bottom" onMouseDown={startDetailDrag} style={{ flexShrink: 0, zIndex: 10 }} />
-          <div style={{ height: detailHeight, flexShrink: 0, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--surface-sunken)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 8px', borderBottom: '1px solid var(--border-light)', background: 'var(--surface-raised)', gap: 4 }}>
-            <div style={{ display: 'flex', gap: 3, overflow: 'hidden', flex: 1 }}>
-              {detailConnections.map(({ key, item }) => (
-                <div key={key} onClick={() => setActiveDetailKey(key)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 10px', fontSize: 12, borderRadius: 4, cursor: 'pointer', fontFamily: 'var(--font-mono)', userSelect: 'none', whiteSpace: 'nowrap', border: '1px solid', borderColor: activeDetailKey === key ? 'var(--accent)' : 'var(--border)', background: activeDetailKey === key ? 'var(--surface-active)' : 'var(--surface-sunken)', color: activeDetailKey === key ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
-                  <span>{item.listenIP || '*'}:{item.port || '-'}</span>
-                  <span style={{ color: 'var(--text-tertiary)', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name || '-'}</span>
-                  <button type="button" onClick={(event) => { event.stopPropagation(); closeConnectionDetail(key); }} style={{ border: 'none', background: 'transparent', color: 'var(--text-tertiary)', cursor: 'pointer', padding: 0, fontSize: 13, lineHeight: 1 }}>×</button>
-                </div>
-              ))}
+          <div className="split-resizer-h hotzone-bottom" onMouseDown={startDetailDrag} />
+          <div style={{ height: detailHeight }} className="shrink-0 border-t border-line flex flex-col overflow-hidden bg-sunken">
+          <div className="flex justify-between items-center px-2 py-1 border-b border-line-light bg-raised gap-1">
+            <div className="flex gap-[3px] overflow-hidden flex-1">
+              {detailConnections.map(({ key, item }) => {
+                const isActive = activeDetailKey === key;
+                return (
+                  <div key={key} onClick={() => setActiveDetailKey(key)} className={cn(
+                    'flex items-center gap-[5px] px-2.5 py-[3px] text-sm rounded-sm cursor-pointer font-mono select-none whitespace-nowrap border',
+                    isActive ? 'border-accent bg-active text-primary' : 'border-line bg-sunken text-secondary',
+                  )}>
+                    <span>{item.listenIP || '*'}:{item.port || '-'}</span>
+                    <span className="text-tertiary max-w-[100px] truncate">{item.name || '-'}</span>
+                    <button type="button" onClick={(event) => { event.stopPropagation(); closeConnectionDetail(key); }} className="border-none bg-transparent text-tertiary cursor-pointer p-0 text-base leading-none">×</button>
+                  </div>
+                );
+              })}
             </div>
-            <button className="btn btn-ghost btn-sm" onClick={() => { setDetailConnections([]); setActiveDetailKey(null); }}>{t('关闭全部')}</button>
+            <Button variant="ghost" size="sm" onClick={() => { setDetailConnections([]); setActiveDetailKey(null); }}>{t('关闭全部')}</Button>
           </div>
-          <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 12 }}>
-            <div style={{ color: 'var(--text-tertiary)', fontSize: 12, marginBottom: 8 }}>{activeDetailConnection?.item?.listenIP || '*'}:{activeDetailConnection?.item?.port || '-'} {t('连接明细')}</div>
-            <div style={{ minWidth: 640 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px,1.4fr) minmax(130px,1fr) 80px 90px 90px', gap: 10, padding: '7px 10px', color: 'var(--text-tertiary)', fontSize: 12, fontWeight: 700, border: '1px solid var(--border-subtle)', borderBottom: 'none', borderRadius: '6px 6px 0 0' }}>
+          <div className="flex-1 min-h-0 overflow-auto p-3">
+            <div className="text-tertiary text-sm mb-2">{activeDetailConnection?.item?.listenIP || '*'}:{activeDetailConnection?.item?.port || '-'} {t('连接明细')}</div>
+            <div className="min-w-[640px]">
+              <div style={{ gridTemplateColumns: 'minmax(180px,1.4fr) minmax(130px,1fr) 80px 90px 90px' }} className="grid gap-2.5 px-2.5 py-[7px] text-tertiary text-sm font-bold rounded-t-md border border-line-subtle border-b-0">
                 <span>{t('位置')}</span>
                 <span>IP</span>
                 <span>{t('端口')}</span>
@@ -464,15 +484,15 @@ export default function NetworkPage({ sessionId, active }: NetworkPageProps) {
                 <span>{t('下载')}</span>
               </div>
               {Array.isArray(activeDetailConnection?.item?.peers) && activeDetailConnection.item.peers.length > 0 ? activeDetailConnection.item.peers.map((peer, peerIndex) => (
-                <div key={`${activeDetailConnection.key}-peer-${peerIndex}`} style={{ display: 'grid', gridTemplateColumns: 'minmax(180px,1.4fr) minmax(130px,1fr) 80px 90px 90px', gap: 10, padding: '7px 10px', color: 'var(--text-primary)', fontSize: 12.5, border: '1px solid var(--border-subtle)', borderTop: 'none' }}>
-                  <span style={{ color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={formatLocation(peer.location)}>{formatLocation(peer.location)}</span>
-                  <span style={{ fontFamily: 'var(--font-mono)' }}>{peer.ip || '-'}</span>
-                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)' }}>{peer.port || '-'}</span>
-                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--success)' }}>{formatOptionalTransfer(peer.upload)}</span>
-                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)' }}>{formatOptionalTransfer(peer.download)}</span>
+                <div key={`${activeDetailConnection.key}-peer-${peerIndex}`} style={{ gridTemplateColumns: 'minmax(180px,1.4fr) minmax(130px,1fr) 80px 90px 90px' }} className="grid gap-2.5 px-2.5 py-[7px] text-primary text-[12.5px] border border-line-subtle border-t-0">
+                  <span className="text-tertiary truncate" title={formatLocation(peer.location)}>{formatLocation(peer.location)}</span>
+                  <span className="font-mono">{peer.ip || '-'}</span>
+                  <span className="font-mono text-accent">{peer.port || '-'}</span>
+                  <span className="font-mono text-success">{formatOptionalTransfer(peer.upload)}</span>
+                  <span className="font-mono text-accent">{formatOptionalTransfer(peer.download)}</span>
                 </div>
               )) : (
-                <div style={{ padding: 12, color: 'var(--text-tertiary)', fontSize: 12, border: '1px solid var(--border-subtle)', borderTop: 'none' }}>{t('暂无连接明细')}</div>
+                <div className="p-3 text-tertiary text-sm border border-line-subtle border-t-0">{t('暂无连接明细')}</div>
               )}
             </div>
           </div>

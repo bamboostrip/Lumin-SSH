@@ -1,9 +1,15 @@
-import { useState, useEffect, type ChangeEvent, type FocusEvent } from 'react';
+import { useState, useEffect, type ChangeEvent } from 'react';
 import { ExternalLink, X, ArrowRight, ArrowLeftRight, MonitorSmartphone, Server, Hash, Power, Play, Trash2 } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 import { useTranslation } from '../i18n.ts';
+import { Button } from './ui';
+import { cn } from '../utils/cn.ts';
+import { Z } from '../constants/zIndex';
 import type { PortForwardInitialMapping } from '../hooks/usePortForwardDialog.ts';
 import type { sshmanager } from '../../wailsjs/go/models.ts';
+
+const INPUT_CLASS =
+  'w-full box-border px-2.5 py-2 text-base bg-sunken border border-line rounded-sm text-primary outline-none transition-[border-color,box-shadow] duration-100 placeholder:text-muted focus:border-accent focus:shadow-[0_0_0_2px_color-mix(in_srgb,var(--accent)_18%,transparent)]';
 
 export interface PortForwardDialogProps {
   sessionId: string;
@@ -158,26 +164,6 @@ export default function PortForwardDialog({
     };
 
     // 地址字段块: 卡片化容器, 与上方方向卡片视觉统一; 输入框绑定固定(local*=本机, remote*=远程), 仅 label/图标/角色随 kind 变
-    const inputStyle: React.CSSProperties = {
-        width: '100%',
-        padding: '8px 10px',
-        fontSize: 13,
-        background: 'var(--surface)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-sm)',
-        color: 'var(--text-primary)',
-        outline: 'none',
-        transition: 'var(--transition-fast)',
-        boxSizing: 'border-box',
-    };
-    const handleInputFocus = (event: FocusEvent<HTMLInputElement>) => {
-        event.target.style.borderColor = 'var(--accent)';
-        event.target.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent)';
-    };
-    const handleInputBlur = (event: FocusEvent<HTMLInputElement>) => {
-        event.target.style.borderColor = 'var(--border)';
-        event.target.style.boxShadow = 'none';
-    };
     // 监听地址安全判定: 仅回环地址视为安全; 空值或 0.0.0.0/:: 等非回环地址视为可能对外暴露
     const isSafeListenHost = (host: string) => {
         const h = String(host || '').trim().toLowerCase().replace(/^\[|\]$/g, '');
@@ -201,37 +187,23 @@ export default function PortForwardDialog({
         return (
             <div
                 key={keyName}
-                style={{
-                    padding: '12px 14px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--border)',
-                    background: 'var(--surface-raised)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 10,
-                }}
+                className="px-3.5 py-3 rounded-md border border-line bg-raised flex flex-col gap-2.5"
             >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div className="flex items-center gap-2">
                     <span
+                        className="inline-flex items-center justify-center w-6 h-6 rounded-xs shrink-0"
                         style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: 24,
-                            height: 24,
-                            borderRadius: 'var(--radius-xs)',
                             background: `color-mix(in srgb, ${roleColor} 14%, transparent)`,
                             color: roleColor,
-                            flexShrink: 0,
                         }}
                     >
                         {roleIcon}
                     </span>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{roleText}</span>
+                    <span className="text-base font-semibold text-primary">{roleText}</span>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 108px', gap: 10 }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <label htmlFor={`pf-${keyName}-host`} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-tertiary)' }}>
+                <div className="grid grid-cols-[1fr_108px] gap-2.5">
+                    <div className="flex flex-col gap-1">
+                        <label htmlFor={`pf-${keyName}-host`} className="flex items-center gap-[5px] text-xs text-tertiary">
                             <Server size={11} /> {t('主机地址')}
                         </label>
                         <input
@@ -241,14 +213,12 @@ export default function PortForwardDialog({
                             autoComplete="off"
                             value={hostValue}
                             onChange={onHostChange}
-                            onFocus={handleInputFocus}
-                            onBlur={handleInputBlur}
                             placeholder="127.0.0.1"
-                            style={showListenWarning ? { ...inputStyle, borderColor: 'var(--danger)' } : inputStyle}
+                            className={cn(INPUT_CLASS, showListenWarning && 'border-danger')}
                         />
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <label htmlFor={`pf-${keyName}-port`} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-tertiary)' }}>
+                    <div className="flex flex-col gap-1">
+                        <label htmlFor={`pf-${keyName}-port`} className="flex items-center gap-[5px] text-xs text-tertiary">
                             <Hash size={11} /> {t('端口')}
                         </label>
                         <input
@@ -258,15 +228,13 @@ export default function PortForwardDialog({
                             autoComplete="off"
                             value={portValue}
                             onChange={onPortChange}
-                            onFocus={handleInputFocus}
-                            onBlur={handleInputBlur}
                             placeholder="0"
-                            style={inputStyle}
+                            className={INPUT_CLASS}
                         />
                     </div>
                 </div>
                 {showListenWarning && (
-                    <div style={{ fontSize: 11, lineHeight: 1.4, color: 'var(--danger)' }}>
+                    <div className="text-xs leading-[1.4] text-danger">
                         {t('警告: 0.0.0.0、:: 或其他非本地地址可能暴露监听端口')}
                     </div>
                 )}
@@ -314,88 +282,97 @@ export default function PortForwardDialog({
     ];
 
     return (
-        <div className="modal-overlay" style={{ alignItems: 'flex-start', paddingTop: 52 }}>
-            <div className="modal modal-md" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', maxHeight: 'calc(100vh - 80px)' }}>
-                <div className="modal-header">
+        <div
+            className="fixed inset-0 flex items-start justify-center bg-black/[0.42] animate-[fadeIn_0.12s_ease] pt-[52px]"
+            style={{ zIndex: Z.MODAL }}
+        >
+            <div className="relative w-full max-w-[560px] flex flex-col bg-raised border border-line rounded-md shadow-lg overflow-hidden max-h-[calc(100vh-80px)] animate-[slideUp_0.12s_ease]">
+                <div className="px-5 pt-4 flex items-center justify-between gap-2">
                     <div>
-                        <div className="modal-title" style={{ marginBottom: 4 }}>{t('端口映射')}</div>
-                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.92rem' }}>
+                        <div className="flex items-center gap-2 text-md font-semibold text-primary mb-1">{t('端口映射')}</div>
+                        <div className="text-secondary text-[0.92rem]">
                             {t('在本机与远程服务器之间建立端口转发通道。')}
                         </div>
                     </div>
-                    <button className="btn btn-ghost btn-sm" type="button" onClick={onClose} aria-label={t('关闭')}>
+                    <Button variant="ghost" size="sm" type="button" onClick={onClose} aria-label={t('关闭')}>
                         <X size={16} />
-                    </button>
+                    </Button>
                 </div>
 
-                <div style={{ display: 'flex', gap: 8, padding: '8px 24px 0' }}>
-                    <button
-                        type="button"
-                        className={`btn btn-ghost btn-sm${activeTab === 'list' ? ' active' : ''}`}
+                <div className="flex gap-2 px-6 pt-2">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-pressed={activeTab === 'list'}
                         onClick={() => setActiveTab('list')}
                     >
                         {t('当前映射')}
-                    </button>
-                    <button
-                        type="button"
-                        className={`btn btn-ghost btn-sm${activeTab === 'new' ? ' active' : ''}`}
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-pressed={activeTab === 'new'}
                         onClick={() => setActiveTab('new')}
                     >
                         {t('新建映射')}
-                    </button>
+                    </Button>
                 </div>
 
-                <div style={{ padding: 24, overflowY: 'auto', flex: 1, minHeight: 0 }}>
+                <div className="p-6 overflow-y-auto flex-1 min-h-0">
                     {activeTab === 'list' ? (
                         <div>
-                            <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div style={{ fontWeight: 500 }}>{t('当前会话端口映射')}</div>
-                                <button type="button" className="btn btn-secondary btn-sm" onClick={refreshPortForwards} disabled={loading}>
+                            <div className="mb-4 flex justify-between items-center">
+                                <div className="font-medium">{t('当前会话端口映射')}</div>
+                                <Button variant="secondary" size="sm" onClick={refreshPortForwards} disabled={loading}>
                                     {t('刷新')}
-                                </button>
+                                </Button>
                             </div>
                             {loading ? (
                                 <div>{t('加载中...')}</div>
                             ) : portForwards.length === 0 ? (
-                                <div style={{ color: 'var(--text-tertiary)' }}>{t('当前会话没有端口映射。')}</div>
+                                <div className="text-tertiary">{t('当前会话没有端口映射。')}</div>
                             ) : (
-                                <div style={{ display: 'grid', rowGap: 12 }}>
+                                <div className="grid gap-y-3">
                                     {portForwards.map((info) => {
                                         const stopped = info.Enabled === false;
                                         return (
-                                            <div key={info.ID} style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 12, display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'center', opacity: stopped ? 0.65 : 1 }}>
-                                                <div style={{ minWidth: 0 }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                                                        <span style={{ fontWeight: 600 }}>{renderMappingLabel(info)}</span>
+                                            <div
+                                                key={info.ID}
+                                                className="p-3 border border-line rounded-xl grid grid-cols-[1fr_auto] gap-3 items-center"
+                                                style={{ opacity: stopped ? 0.65 : 1 }}
+                                            >
+                                                <div className="min-w-0">
+                                                    <div className="flex items-center gap-2 mb-1.5">
+                                                        <span className="font-semibold">{renderMappingLabel(info)}</span>
                                                         {stopped && (
-                                                            <span style={{ flexShrink: 0, fontSize: 11, padding: '1px 8px', borderRadius: 999, background: 'color-mix(in srgb, var(--text-tertiary) 18%, transparent)', color: 'var(--text-tertiary)' }}>{t('已停止')}</span>
+                                                            <span className="shrink-0 text-xs px-2 py-px rounded-full bg-[color-mix(in_srgb,var(--text-tertiary)_18%,transparent)] text-tertiary">{t('已停止')}</span>
                                                         )}
                                                     </div>
-                                                    <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{info.ID}</div>
+                                                    <div className="text-secondary text-sm">{info.ID}</div>
                                                     {!stopped && info.Kind === 'local' && info.LocalAddr && (
                                                         <a
                                                             href={`http://${info.LocalAddr}`}
                                                             target="_blank"
                                                             rel="noreferrer"
-                                                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 8, color: 'var(--accent)', fontSize: 12 }}
+                                                            className="inline-flex items-center gap-1 mt-2 text-accent text-sm"
                                                         >
                                                             {t('打开本地地址')} <ExternalLink size={12} />
                                                         </a>
                                                     )}
                                                 </div>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                                                <div className="flex items-center gap-2 shrink-0">
                                                     {stopped ? (
-                                                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => void handleRestart(info.ID)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--success)' }}>
+                                                        <Button variant="secondary" size="sm" onClick={() => void handleRestart(info.ID)} className="gap-[5px] text-success">
                                                             <Play size={13} /> {t('重启')}
-                                                        </button>
+                                                        </Button>
                                                     ) : (
-                                                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => void handleStop(info.ID)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--warning)' }}>
+                                                        <Button variant="secondary" size="sm" onClick={() => void handleStop(info.ID)} className="gap-[5px] text-warning">
                                                             <Power size={13} /> {t('停止')}
-                                                        </button>
+                                                        </Button>
                                                     )}
-                                                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => void handleDelete(info.ID)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--danger)' }}>
+                                                    <Button variant="secondary" size="sm" onClick={() => void handleDelete(info.ID)} className="gap-[5px] text-danger">
                                                         <Trash2 size={13} /> {t('删除')}
-                                                    </button>
+                                                    </Button>
                                                 </div>
                                             </div>
                                         );
@@ -404,9 +381,9 @@ export default function PortForwardDialog({
                             )}
                         </div>
                     ) : (
-                        <div style={{ display: 'grid', rowGap: 16 }}>
+                        <div className="grid gap-y-4">
                             {/* 方向选择: 卡片式, 标题 + 说明, 避免只用按钮文案表达方向 */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                            <div className="grid grid-cols-2 gap-3">
                                 {kindOptions.map((option) => {
                                     const selected = kind === option.value;
                                     return (
@@ -414,24 +391,18 @@ export default function PortForwardDialog({
                                             key={option.value}
                                             type="button"
                                             onClick={() => setKind(option.value)}
-                                            style={{
-                                                textAlign: 'left',
-                                                padding: '12px 14px',
-                                                borderRadius: 12,
-                                                border: `1px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
-                                                background: selected ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'var(--surface-raised)',
-                                                cursor: 'pointer',
-                                                transition: 'var(--transition-fast)',
-                                                display: 'flex',
-                                                flexDirection: 'column',
-                                                gap: 6,
-                                            }}
+                                            className={cn(
+                                                'text-left px-3.5 py-3 rounded-xl border cursor-pointer transition-colors duration-100 flex flex-col gap-1.5',
+                                                selected
+                                                    ? 'border-accent bg-[color-mix(in_srgb,var(--accent)_12%,transparent)]'
+                                                    : 'border-line bg-raised',
+                                            )}
                                         >
-                                            <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, color: selected ? 'var(--accent)' : 'var(--text-primary)' }}>
+                                            <span className={cn('flex items-center gap-1.5 font-semibold', selected ? 'text-accent' : 'text-primary')}>
                                                 <ArrowLeftRight size={14} />
                                                 {option.title}
                                             </span>
-                                            <span style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                                            <span className="text-sm text-secondary leading-normal">
                                                 {option.desc}
                                             </span>
                                         </button>
@@ -440,31 +411,31 @@ export default function PortForwardDialog({
                             </div>
 
                             {/* 方向可视化: 监听端 → 目标端 */}
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '6px 0', color: 'var(--text-secondary)', fontSize: 12 }}>
-                                <span style={{ padding: '3px 10px', borderRadius: 999, border: '1px solid var(--border)', background: 'var(--surface-raised)' }}>
+                            <div className="flex items-center justify-center gap-3 py-1.5 text-secondary text-sm">
+                                <span className="px-2.5 py-[3px] rounded-full border border-line bg-raised">
                                     {kind === 'local' ? t('本地监听') : t('远程监听')}
                                 </span>
-                                <ArrowRight size={16} style={{ color: 'var(--accent)' }} />
-                                <span style={{ padding: '3px 10px', borderRadius: 999, border: '1px solid var(--border)', background: 'var(--surface-raised)' }}>
+                                <ArrowRight size={16} className="text-accent" />
+                                <span className="px-2.5 py-[3px] rounded-full border border-line bg-raised">
                                     {kind === 'local' ? t('远程目标') : t('本机目标')}
                                 </span>
                             </div>
 
-                            <div style={{ display: 'grid', rowGap: 12 }}>
+                            <div className="grid gap-y-3">
                                 {orderedFieldBlocks}
                             </div>
 
                             {error && (
-                                <div style={{ color: 'var(--danger)', marginTop: 4 }}>{error}</div>
+                                <div className="text-danger mt-1">{error}</div>
                             )}
 
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
-                                <button type="button" className="btn btn-secondary" onClick={onClose} disabled={submitting}>
+                            <div className="flex justify-end gap-2.5 mt-2">
+                                <Button variant="secondary" onClick={onClose} disabled={submitting}>
                                     {t('关闭')}
-                                </button>
-                                <button type="button" className="btn btn-primary" onClick={handleCreate} disabled={submitting}>
+                                </Button>
+                                <Button variant="primary" onClick={handleCreate} disabled={submitting}>
                                     {submitting ? t('创建中...') : t('创建映射')}
-                                </button>
+                                </Button>
                             </div>
                         </div>
                     )}

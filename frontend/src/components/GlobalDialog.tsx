@@ -2,6 +2,8 @@ import { useState, useEffect, useId, useRef, useCallback } from 'react';
 import { Eye, EyeOff, Clipboard } from 'lucide-react';
 import { useTranslation, t } from '../i18n.ts';
 import Tiptop from './Tiptop.tsx';
+import { Button } from './ui';
+import { cn } from '../utils/cn.ts';
 import { Z } from '../constants/zIndex';
 
 const DIALOG_PRIORITY: Record<string, number> = {
@@ -379,35 +381,29 @@ function DialogContent({ current, active, onClose, onConfirm, onChoice }: Dialog
     <div
       ref={dialogRef}
       onFocusCapture={(event) => { lastFocusedRef.current = event.target as HTMLElement; }}
-      className={isLongTextAlert ? 'modal modal-md' : 'modal modal-sm'}
-      style={{
-        padding: 32,
-        textAlign: isLongTextAlert ? 'left' : 'center',
-        maxWidth: isLongTextAlert ? 'min(820px, calc(100vw - 32px))' : undefined,
-      }}
+      className={
+        isLongTextAlert
+          ? 'modal modal-md p-8 text-left max-w-[min(820px,calc(100vw-32px))]'
+          : 'modal modal-sm p-8 text-center'
+      }
     >
       <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: showCopyButton ? 'space-between' : 'center',
-          gap: 12,
-          marginBottom: 16,
-        }}
+        className={`flex items-center gap-3 mb-4 ${showCopyButton ? 'justify-between' : 'justify-center'}`}
       >
-        <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', minWidth: 0 }}>
+        <div className="text-2xl font-bold text-primary min-w-0">
           {current.title}
         </div>
         {showCopyButton ? (
-          <button
+          <Button
             type="button"
-            className="btn btn-ghost btn-sm"
+            variant="ghost"
+            size="sm"
+            className="shrink-0"
             onClick={handleCopyMessage}
-            style={{ flexShrink: 0 }}
           >
             <Clipboard size={14} />
             {t('复制')}
-          </button>
+          </Button>
         ) : null}
       </div>
       {isLongTextAlert ? (
@@ -418,35 +414,13 @@ function DialogContent({ current, active, onClose, onConfirm, onChoice }: Dialog
           value={messageText}
           spellCheck={false}
           onFocus={(event) => event.currentTarget.select()}
-          style={{
-            width: '100%',
-            minHeight: 220,
-            maxHeight: '45vh',
-            marginBottom: 28,
-            padding: '12px 14px',
-            resize: 'vertical',
-            borderRadius: 10,
-            border: '1px solid var(--border)',
-            background: 'var(--surface-sunken)',
-            color: 'var(--text-primary)',
-            fontSize: 13,
-            lineHeight: 1.6,
-            boxSizing: 'border-box',
-          }}
+          className="w-full min-h-[220px] max-h-[45vh] mb-7 px-3.5 py-3 resize-y rounded-lg border border-line bg-sunken text-primary text-base leading-[1.6] box-border"
         />
       ) : (
         <div
-          style={{
-            fontSize: 14,
-            color: 'var(--text-tertiary)',
-            marginBottom: 28,
-            lineHeight: 1.6,
-            wordBreak: 'break-word',
-            overflowWrap: 'anywhere',
-            whiteSpace: 'pre-wrap',
-            textAlign: current.type === 'choice' || current.type === 'alert' ? 'left' : undefined,
-            userSelect: 'text',
-          }}
+          className={`text-md text-tertiary mb-7 leading-[1.6] break-words [overflow-wrap:anywhere] whitespace-pre-wrap select-text ${
+            current.type === 'choice' || current.type === 'alert' ? 'text-left' : ''
+          }`}
         >
           {messageText}
         </div>
@@ -454,20 +428,13 @@ function DialogContent({ current, active, onClose, onConfirm, onChoice }: Dialog
       
       {current.type === 'prompt' && (
         <>
-          <div style={{ position: 'relative', marginBottom: inputError ? 8 : (current.checkboxLabel ? 12 : 28) }}>
+          <div className={`relative ${inputError ? 'mb-2' : current.checkboxLabel ? 'mb-3' : 'mb-7'}`}>
             <input 
               id={`${controlId}-input`}
               name="global-dialog-input"
               autoComplete="off"
               className="input"
-              style={{
-                width: '100%',
-                textAlign: 'center',
-                fontSize: 16,
-                padding: current.checkboxLabel ? '12px 68px 12px 16px' : '12px 36px 12px 16px',
-                borderColor: inputError ? 'var(--danger)' : undefined,
-                boxShadow: inputError ? '0 0 0 1px var(--danger)' : undefined,
-              }}
+              style={inputError ? { borderColor: 'var(--danger)', boxShadow: '0 0 0 1px var(--danger)' } : undefined}
               value={inputValue}
               onChange={e => {
                 setInputValue(e.target.value);
@@ -488,13 +455,7 @@ function DialogContent({ current, active, onClose, onConfirm, onChoice }: Dialog
                   type="button"
                   aria-label={showPassword ? t('隐藏密码') : t('显示密码')}
                   onClick={() => setShowPassword(!showPassword)}
-                  style={{
-                    background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer',
-                    padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 16, lineHeight: 1, borderRadius: 4, transition: 'background 0.15s',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--accent-rgb), 0.12)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                  className="bg-transparent border-none text-tertiary cursor-pointer p-1 flex items-center justify-center text-[16px] leading-none rounded-xs transition-colors duration-150 hover:bg-accent-dim"
                 >{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button>
               </Tiptop>
             )}
@@ -525,29 +486,17 @@ function DialogContent({ current, active, onClose, onConfirm, onChoice }: Dialog
                   }
                 }}
                 aria-label={t('粘贴')}
-                style={{
-                  background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer',
-                  padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 16, lineHeight: 1, borderRadius: 4, transition: 'background 0.15s',
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(var(--accent-rgb), 0.12)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                className="bg-transparent border-none text-tertiary cursor-pointer p-1 flex items-center justify-center text-[16px] leading-none rounded-xs transition-colors duration-150 hover:bg-accent-dim"
               ><Clipboard size={16} /></button>
             </Tiptop>
           </div>
           {inputError ? (
-            <div style={{
-              marginBottom: current.checkboxLabel ? 12 : 20,
-              fontSize: 12,
-              color: 'var(--danger)',
-              lineHeight: 1.4,
-              textAlign: 'center',
-            }}>
+            <div className={`text-sm text-danger leading-snug text-center ${current.checkboxLabel ? 'mb-3' : 'mb-5'}`}>
               {inputError}
             </div>
           ) : null}
           {current.checkboxLabel && current.checkboxLabel.trim() && (
-            <label htmlFor={`${controlId}-prompt-checkbox`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 28, fontSize: 13, color: 'var(--text-tertiary)', cursor: 'pointer' }}>
+            <label htmlFor={`${controlId}-prompt-checkbox`} className="flex items-center justify-center gap-2 mb-7 text-base text-tertiary cursor-pointer">
               <input id={`${controlId}-prompt-checkbox`} name="global-dialog-checkbox-prompt" autoComplete="off" type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)} />
               {current.checkboxLabel}
             </label>
@@ -557,30 +506,26 @@ function DialogContent({ current, active, onClose, onConfirm, onChoice }: Dialog
 
       {current.type === 'choice' ? (
         <>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+        <div className="flex gap-2 justify-center">
           {current.buttons?.map((btn, i) => (
-            <button
+            <Button
               key={i}
               data-dialog-choice={i}
               aria-keyshortcuts={btn.shortcut?.toUpperCase()}
-              className={btn.primary ? 'btn btn-primary' : btn.secondary ? 'btn btn-secondary' : 'btn btn-secondary'}
+              variant={btn.primary ? 'primary' : 'secondary'}
               onClick={() => onChoice(btn.value, checked)}
               onMouseEnter={() => setFocusAction(i)}
-              style={{
-                flex: 1,
-                padding: '10px 0',
-                justifyContent: 'center',
-                whiteSpace: 'nowrap',
-                outline: focusAction === i ? '2px solid var(--accent)' : 'none',
-                outlineOffset: 2,
-              }}
+              className={cn(
+                'flex-1 py-2.5 justify-center whitespace-nowrap',
+                focusAction === i && 'outline outline-2 outline-offset-2 outline-accent',
+              )}
             >
               {btn.shortcut ? `${btn.label}(${btn.shortcut.toUpperCase()})` : btn.label}
-            </button>
+            </Button>
           ))}
         </div>
         {current.checkboxLabel && (
-          <label htmlFor={`${controlId}-choice-checkbox`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 16, fontSize: 13, color: 'var(--text-tertiary)', cursor: 'pointer' }}>
+          <label htmlFor={`${controlId}-choice-checkbox`} className="flex items-center justify-center gap-2 mt-4 text-base text-tertiary cursor-pointer">
             <input id={`${controlId}-choice-checkbox`} name="global-dialog-checkbox-choice" autoComplete="off" type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)} />
             {current.checkboxLabel}
           </label>
@@ -589,32 +534,29 @@ function DialogContent({ current, active, onClose, onConfirm, onChoice }: Dialog
       ) : (
       <>
       {current.type === 'confirm' && current.checkboxLabel && (
-        <label htmlFor={`${controlId}-confirm-checkbox`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 20, fontSize: 13, color: 'var(--text-tertiary)', cursor: 'pointer' }}>
+        <label htmlFor={`${controlId}-confirm-checkbox`} className="flex items-center justify-center gap-2 mb-5 text-base text-tertiary cursor-pointer">
           <input id={`${controlId}-confirm-checkbox`} name="global-dialog-checkbox-confirm" autoComplete="off" type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)} />
           {current.checkboxLabel}
         </label>
       )}
-      <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+      <div className="flex gap-3 justify-center">
         {current.type !== 'alert' && (
-          <button
+          <Button
             data-dialog-action="cancel"
             aria-keyshortcuts={current.type === 'confirm' ? 'C Escape' : undefined}
-            className="btn btn-secondary"
+            variant="secondary"
             onClick={onClose}
             onMouseEnter={() => current.type === 'confirm' && setFocusAction('cancel')}
-            style={{
-              flex: 1,
-              padding: '10px 0',
-              justifyContent: 'center',
-              outline: current.type === 'confirm' && focusAction === 'cancel' ? '2px solid var(--accent)' : 'none',
-              outlineOffset: 2,
-            }}
+            className={cn(
+              'flex-1 py-2.5 justify-center',
+              current.type === 'confirm' && focusAction === 'cancel' && 'outline outline-2 outline-offset-2 outline-accent',
+            )}
           >
             {current.type === 'confirm' ? `${t('取消')}(C)` : t('取消')}
-          </button>
+          </Button>
         )}
-        <button
-          className="btn btn-primary"
+        <Button
+          variant="primary"
           disabled={current.type === 'prompt' && submitting}
           onClick={() => {
             if (current.type === 'prompt') void submitPrompt();
@@ -622,16 +564,13 @@ function DialogContent({ current, active, onClose, onConfirm, onChoice }: Dialog
             else onClose();
           }}
           onMouseEnter={() => current.type === 'confirm' && setFocusAction('confirm')}
-          style={{
-            ...(current.type === 'alert'
-              ? { minWidth: 120, justifyContent: 'center' }
-              : { flex: 1, padding: '10px 0', justifyContent: 'center' }),
-            outline: current.type === 'confirm' && focusAction === 'confirm' ? '2px solid var(--accent)' : 'none',
-            outlineOffset: 2,
-          }}
+          className={cn(
+            current.type === 'alert' ? 'min-w-[120px] justify-center' : 'flex-1 py-2.5 justify-center',
+            current.type === 'confirm' && focusAction === 'confirm' && 'outline outline-2 outline-offset-2 outline-accent',
+          )}
         >
           {current.type === 'alert' ? t('我知道了') : current.type === 'confirm' ? `${t('确定')}(Y)` : t('确定')}
-        </button>
+        </Button>
       </div>
       </>
       )}

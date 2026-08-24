@@ -1,13 +1,13 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle, type Ref } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle, type Ref } from 'react';
 import { createPortal } from 'react-dom';
 import { Folder, FolderPlus, Zap, Save, Pencil, Trash2, Rocket, SquarePen, X, List } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 import { useTranslation } from '../i18n.ts';
 import Tiptop from './Tiptop.tsx';
 import { Z } from '../constants/zIndex.ts';
-import { getThemeComponentTheme, type ThemeComponentStyle } from '../utils/theme.ts';
+import { ContextMenu, EmptyState, MenuList, MenuPanel, Modal, Button } from './ui';
+import type { MenuItem } from './ui';
 import { extractQuickCommandParams, fillQuickCommandParams, normalizeQuickCommandParamHistory, QUICK_COMMAND_PARAM_HISTORY_LIMIT, type QuickCommandParamHistory } from '../utils/quickCommandParams.ts';
-import { clampMenuPosition } from '../utils/menuPosition.ts';
 
 // ── 命令树节点 ───────────────────────────────────────────
 interface QuickCommandItem {
@@ -110,10 +110,9 @@ interface TreeNodeProps {
   onDropItem: (path: string, pos: string) => void;
   onDragEnd: () => void;
   dragVersion: number;
-  theme: ThemeComponentStyle;
 }
 
-function TreeNode({ item, index, path, selectedPath, onSelect, contextMenu, onContextMenu, closeContextMenu, onExecute, onMove, onDragStart, onDropItem, onDragEnd, dragVersion, theme }: TreeNodeProps) {
+function TreeNode({ item, index, path, selectedPath, onSelect, contextMenu, onContextMenu, closeContextMenu, onExecute, onMove, onDragStart, onDropItem, onDragEnd, dragVersion }: TreeNodeProps) {
   const { t } = useTranslation();
   const [hover, setHover] = useState(false);
   const [dropPos, setDropPos] = useState<'before' | 'inside' | 'after' | null>(null); // 'before' | 'inside' | 'after'
@@ -124,11 +123,8 @@ function TreeNode({ item, index, path, selectedPath, onSelect, contextMenu, onCo
     <Tiptop text={dir === -1 ? t('上移') : t('下移')}>
       <span
         onClick={(e) => { e.stopPropagation(); onMove && onMove(path, dir); }}
-        style={{
-          fontSize: 10, cursor: 'pointer', color: theme.mutedColor, padding: '0 3px',
-          visibility: hover ? 'visible' : 'hidden', lineHeight: '14px',
-          userSelect: 'none',
-        }}
+        className="text-[10px] cursor-pointer text-muted px-[3px] leading-[14px] select-none"
+        style={{ visibility: hover ? 'visible' : 'hidden' }}
       >{dir === -1 ? '▲' : '▼'}</span>
     </Tiptop>
   );
@@ -156,11 +152,10 @@ function TreeNode({ item, index, path, selectedPath, onSelect, contextMenu, onCo
     if (dropPos !== pos) return null;
 
     return (
-      <div style={{
-        position: 'absolute', left: 4, right: 4, height: 2,
-        background: 'var(--success)', borderRadius: 1, zIndex: Z.SCROLLBAR,
-        [pos === 'before' ? 'top' : 'bottom']: -1,
-      }} />
+      <div
+        className="absolute left-1 right-1 h-0.5 bg-success rounded-full z-[5]"
+        style={{ [pos === 'before' ? 'top' : 'bottom']: -1 }}
+      />
     );
   };
 
@@ -169,7 +164,7 @@ function TreeNode({ item, index, path, selectedPath, onSelect, contextMenu, onCo
     const isSelected = selectedPath === path;
     const childrenList = item._filteredChildren || item.children;
     return (
-      <div style={{ position: 'relative' }}>
+      <div className="relative">
         {/* before indicator */}
         {dropIndicator('before')}
         {/* after indicator */}
@@ -186,26 +181,27 @@ function TreeNode({ item, index, path, selectedPath, onSelect, contextMenu, onCo
             onMouseEnter={() => setHover(true)}
             onMouseLeave={() => setHover(false)}
             {...commonDragProps}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 4, padding: '5px 8px', cursor: 'pointer',
-              borderRadius: 3, fontSize: 13, color: isSelected ? 'var(--text-primary)' : theme.inputColor,
-              background: dropPos === 'inside' ? 'var(--surface-active)' : isSelected ? 'var(--surface-active)' : hover ? 'var(--surface-hover)' : 'transparent',
-              outline: dropPos === 'inside' ? '1px dashed var(--accent)' : 'none',
-              userSelect: 'none',
-              transition: 'background 0.1s',
-            }}
+            className={`flex items-center gap-1 px-2 py-[5px] cursor-pointer rounded-xs text-base select-none transition-colors duration-100 ${
+              dropPos === 'inside'
+                ? 'bg-active outline outline-1 outline-dashed outline-accent'
+                : isSelected
+                  ? 'bg-active text-primary'
+                  : hover
+                    ? 'bg-hover text-primary'
+                    : 'text-secondary'
+            }`}
           >
-            <span style={{ fontSize: 10, width: 14, textAlign: 'center', flexShrink: 0 }}>
+            <span className="text-[10px] w-3.5 text-center shrink-0">
               {isExpanded ? '▼' : '▶'}
             </span>
-            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
-              <Folder size={14} style={{ flexShrink: 0 }} /> {item.name}
+            <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-sm">
+              <Folder size={14} className="shrink-0" /> {item.name}
             </span>
             {arrowBtn(-1)}
             {arrowBtn(1)}
           </div>
           {isExpanded && childrenList && childrenList.map((child, ci) => (
-            <div key={ci} style={{ paddingLeft: 16 }}>
+            <div key={ci} className="pl-4">
               <TreeNode
                 item={child}
                 index={ci}
@@ -221,12 +217,11 @@ function TreeNode({ item, index, path, selectedPath, onSelect, contextMenu, onCo
                 onDropItem={onDropItem}
                 onDragEnd={onDragEnd}
                 dragVersion={dragVersion}
-                theme={theme}
               />
             </div>
           ))}
           {isExpanded && (!item.children || item.children.length === 0) && (
-            <div style={{ paddingLeft: 30, fontSize: 11, color: theme.mutedColor, padding: '4px 0 4px 30px', fontStyle: 'italic' }}>
+            <div className="italic py-1 pr-2 pl-[30px] text-xs text-muted">
               {t('(空分组，右键添加命令)')}
             </div>
           )}
@@ -238,7 +233,7 @@ function TreeNode({ item, index, path, selectedPath, onSelect, contextMenu, onCo
   // 普通命令节点
   const isSelected = selectedPath === path;
   return (
-    <div style={{ position: 'relative' }}>
+    <div className="relative">
       {dropIndicator('before')}
       {dropIndicator('after')}
       <div
@@ -252,14 +247,11 @@ function TreeNode({ item, index, path, selectedPath, onSelect, contextMenu, onCo
         onDragLeave={(e) => { e.stopPropagation(); setDropPos(null); }}
         onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const pos = calcDropPos(e, false); setDropPos(null); onDropItem && onDropItem(path, pos || 'after'); }}
         {...commonDragProps}
-        style={{
-          display: 'flex', alignItems: 'center', padding: '5px 8px', cursor: 'pointer',
-          borderRadius: 3, fontSize: 12, color: isSelected ? 'var(--text-primary)' : theme.inputColor,
-          background: isSelected ? 'var(--surface-active)' : hover ? 'var(--surface-hover)' : 'transparent',
-          userSelect: 'none',
-        }}
+        className={`flex items-center px-2 py-[5px] cursor-pointer rounded-xs text-sm select-none transition-colors duration-100 ${
+          isSelected ? 'bg-active text-primary' : hover ? 'bg-hover text-primary' : 'text-secondary'
+        }`}
       >
-        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
           {item.name}
         </span>
         {arrowBtn(-1)}
@@ -338,7 +330,6 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
   const [editCmdName, setEditCmdName] = useState('');
   const [editCmdText, setEditCmdText] = useState('');
 
-  const contextMenuRef = useRef<HTMLDivElement>(null);
   const groupPickerRef = useRef<HTMLSpanElement>(null);
   const dragSourceRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
@@ -742,24 +733,6 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
     setSelectedPath(path);
   };
 
-  useLayoutEffect(() => {
-    if (!contextMenu || !contextMenuRef.current) return;
-    const rect = contextMenuRef.current.getBoundingClientRect();
-    const next = clampMenuPosition(
-      contextMenu.anchorX,
-      contextMenu.anchorY,
-      rect.width,
-      rect.height,
-    );
-    if (next.x === contextMenu.x && next.y === contextMenu.y) return;
-    setContextMenu(current => {
-      if (!current || current.anchorX !== contextMenu.anchorX || current.anchorY !== contextMenu.anchorY || current.path !== contextMenu.path) {
-        return current;
-      }
-      return { ...current, ...next };
-    });
-  }, [contextMenu]);
-
   const closeContextMenu = () => setContextMenu(null);
 
   const doContextAction = async (action: 'addGroup' | 'addCmd' | 'edit' | 'editGroup' | 'delete' | 'execute') => {
@@ -976,43 +949,21 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
   };
 
   // ── 通用样式 ──────────────────────────────────────
-  const C = getThemeComponentTheme('quickCommands');
-  const inputStyle: React.CSSProperties = {
-    padding: '5px 8px', fontSize: 12, borderRadius: 3,
-    background: C.inputBg, border: '1px solid ' + C.btnBorder,
-    color: C.inputColor, outline: 'none', fontFamily: 'inherit',
-    width: '100%', boxSizing: 'border-box',
-  };
+  const inputClass =
+    'w-full box-border px-2 py-[5px] text-xs rounded-xs bg-sunken border border-line text-primary outline-none font-[inherit]';
 
   const selectedItem = useMemo(() => getSelectedItem(), [selectedPath, commands]);
-
-  // ── 内联样式常量（使用主题色）──
-  const _menuItemStyle: React.CSSProperties & { _hover?: React.CSSProperties } = {
-    padding: '6px 14px', cursor: 'pointer', color: C.inputColor,
-    display: 'flex', alignItems: 'center', gap: 6,
-    transition: 'background 0.1s',
-    _hover: { background: 'var(--surface-hover)' },
-  };
-
-  const _menuSepStyle: React.CSSProperties = {
-    height: 1, background: C.separator, margin: '4px 0',
-  };
-
-  const _labelStyle: React.CSSProperties = {
-    fontSize: 11, color: C.statusBarColor, display: 'block', marginBottom: 4,
-  };
 
   return (
     <div
       onMouseDown={(e) => e.stopPropagation()}
-      style={{ display: 'flex', flexDirection: 'column', height: '100%', background: C.popupBg, fontFamily: 'var(--font-ui)', overflow: 'hidden' }}
+      className="flex flex-col h-full bg-overlay overflow-hidden font-sans"
     >
       {/* ── 工具栏 ── */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px',
-        borderBottom: '1px solid var(--border-subtle)', flexShrink: 0,
-      }}>
-        <button
+      <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-line-subtle shrink-0">
+        <Button
+          variant="primary"
+          size="sm"
           onClick={() => {
             closeContextMenu();
             const list = structuredClone(commands);
@@ -1025,15 +976,15 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
             }
             setDlgName(''); setDlgCmd(''); setDlgAddCR(true);
           }}
-          className="btn btn-primary btn-sm"
-        >{t('＋ 添加命令')}</button>
-        <button
-          className="btn btn-secondary btn-sm"
+        >{t('＋ 添加命令')}</Button>
+        <Button
+          variant="secondary"
+          size="sm"
           onClick={() => { closeContextMenu(); setDialog({ type: 'addGroup', contextPath: '', parentList: commands }); setDlgName(''); setDlgCmd(''); setDlgAddCR(true); }}
-        ><FolderPlus size={14} /> {t('添加分组')}</button>
-        <button
-          type="button"
-          className={`btn btn-secondary btn-sm${showCmdEditor ? ' active' : ''}`}
+        ><FolderPlus size={14} /> {t('添加分组')}</Button>
+        <Button
+          variant="secondary"
+          size="sm"
           aria-pressed={showCmdEditor}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => {
@@ -1043,17 +994,12 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
             setCmdEditorShowOpts(false);
             setShowCmdEditor((v) => !v);
           }}
-          style={showCmdEditor ? {
-            color: 'var(--text-primary)',
-            background: 'var(--surface-active)',
-            borderColor: 'var(--accent)',
-          } : undefined}
-        >{t('命令编辑器')}</button>
+        >{t('命令编辑器')}</Button>
         {/* 固定命令条开关：把命令常驻显示在终端输入框上方 */}
         <Tiptop text={showCmdBar ? t('取消在终端固定显示命令') : t('在终端固定显示命令, 点击后确认发送')}>
-          <button
-            type="button"
-            className={`btn btn-secondary btn-sm${showCmdBar ? ' active' : ''}`}
+          <Button
+            variant="secondary"
+            size="sm"
             aria-pressed={showCmdBar}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
@@ -1064,18 +1010,14 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
               localStorage.setItem('terminalQuickCmdBar', String(next));
               window.dispatchEvent(new CustomEvent('quick-cmd-bar-changed', { detail: next }));
             }}
-            style={showCmdBar ? {
-              color: 'var(--text-primary)',
-              background: 'var(--surface-active)',
-              borderColor: 'var(--accent)',
-            } : undefined}
-          ><List size={14} /> {t('固定到终端')}</button>
+          ><List size={14} /> {t('固定到终端')}</Button>
         </Tiptop>
-        <div style={{ flex: 1 }} />
+        <div className="flex-1" />
         {onClose && (
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
+          <Button
+            variant="ghost"
+            size="sm"
+            className="px-1.5"
             onClick={() => {
               if (dirty) {
                 setConfirmUnsaved({ close: true });
@@ -1084,19 +1026,18 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
               onClose();
             }}
             aria-label={t('关闭')}
-            style={{ padding: '2px 6px' }}
           >
             <X size={14} />
-          </button>
+          </Button>
         )}
       </div>
 
       {/* ── 主体：左右分栏 / 命令编辑器 ── */}
-      <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
+      <div className="flex-1 flex min-h-0 overflow-hidden">
         {showCmdEditor ? (
           /* 内嵌命令编辑器（占满面板，不居中弹窗） */
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
-            <div style={{ padding: 12, flex: 1, minHeight: 0, display: 'flex' }}>
+          <div className="flex-1 flex flex-col min-w-0 min-h-0">
+            <div className="p-3 flex-1 min-h-0 flex">
               <textarea
                 id="qc-cmd-editor"
                 name="qc-cmd-editor"
@@ -1105,16 +1046,7 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
                 autoFocus
                 spellCheck={false}
                 placeholder={t('在此输入要发送的命令…')}
-                style={{
-                  ...inputStyle,
-                  flex: 1,
-                  width: '100%',
-                  minHeight: 0,
-                  resize: 'none',
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: 13,
-                  lineHeight: 1.55,
-                }}
+                className={`${inputClass} flex-1 min-h-0 resize-none font-mono text-base leading-[1.55]`}
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') {
                     e.preventDefault();
@@ -1130,94 +1062,64 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
                 }}
               />
             </div>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '8px 12px',
-              borderTop: '1px solid var(--border-subtle)',
-              flexShrink: 0,
-              position: 'relative',
-            }}>
-              <div style={{ position: 'relative' }} ref={cmdEditorOptsRef}>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
+            <div className="flex items-center gap-2 px-3 py-2 border-t border-line-subtle shrink-0 relative">
+              <div className="relative" ref={cmdEditorOptsRef}>
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => setCmdEditorShowOpts((v) => !v)}
-                >{t('选项')}</button>
+                >{t('选项')}</Button>
                 {cmdEditorShowOpts && (
                   <div
                     onMouseDown={(e) => e.stopPropagation()}
-                    style={{
-                      position: 'absolute',
-                      left: 0,
-                      bottom: 'calc(100% + 6px)',
-                      zIndex: 2,
-                      minWidth: 190,
-                      padding: '8px 10px',
-                      background: C.popupBg,
-                      border: '1px solid ' + C.btnBorder,
-                      borderRadius: 6,
-                      boxShadow: 'var(--shadow-md)',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 8,
-                    }}
+                    className="absolute left-0 bottom-[calc(100%+6px)] z-[2] min-w-[190px] px-2.5 py-2 bg-overlay border border-line rounded-md shadow-md flex flex-col gap-2"
                   >
-                    <div style={{ fontSize: 11, color: C.mutedColor, userSelect: 'none' }}>
+                    <div className="text-xs text-muted select-none">
                       {t('按Ctrl+Enter发送')}
                     </div>
-                    <label style={{
-                      display: 'flex', alignItems: 'center', gap: 6,
-                      fontSize: 12, color: C.inputColor, cursor: 'pointer',
-                    }}>
+                    <label className="flex items-center gap-1.5 text-sm text-primary cursor-pointer">
                       <input
                         type="checkbox"
                         name="qc-clear-after-send"
                         checked={cmdEditorClearAfterSend}
                         onChange={(e) => setCmdEditorClearAfterSend(e.target.checked)}
-                        style={{ accentColor: 'var(--success)' }}
+                        className="accent-success"
                       />
                       {t('发送后清空')}
                     </label>
-                    <label style={{
-                      display: 'flex', alignItems: 'center', gap: 6,
-                      fontSize: 12, color: C.inputColor, cursor: 'pointer',
-                    }}>
+                    <label className="flex items-center gap-1.5 text-sm text-primary cursor-pointer">
                       <input
                         type="checkbox"
                         name="qc-add-cr-editor"
                         checked={cmdEditorAddCR}
                         onChange={(e) => setCmdEditorAddCR(e.target.checked)}
-                        style={{ accentColor: 'var(--success)' }}
+                        className="accent-success"
                       />
                       {t('末尾添加回车符CR')}
                     </label>
                   </div>
                 )}
               </div>
-              <div style={{ flex: 1 }} />
-              <span style={{ fontSize: 11, color: C.mutedColor }}>{t('发送到')}</span>
+              <div className="flex-1" />
+              <span className="text-xs text-muted">{t('发送到')}</span>
               <select
                 id="qc-send-target-editor"
                 name="qc-send-target-editor"
                 value={sendTarget}
                 onChange={(e) => setSendTarget(e.target.value as 'current' | 'all')}
-                style={{
-                  fontSize: 11, padding: '3px 8px', borderRadius: 4,
-                  background: C.inputBg, border: '1px solid ' + C.btnBorder,
-                  color: C.inputColor, outline: 'none', cursor: 'pointer',
-                }}
+                className="text-xs px-2 py-[3px] rounded-xs bg-sunken border border-line text-primary outline-none cursor-pointer"
               >
                 <option value="current">{t('当前会话')}</option>
                 {connectedSessions.length > 1 && (
                   <option value="all">{t('全部会话')} ({connectedSessions.length})</option>
                 )}
               </select>
-              <button
-                type="button"
-                className="btn btn-primary btn-sm"
+              <Button
+                variant="primary"
+                size="sm"
                 onClick={sendEditorCommand}
                 disabled={!cmdEditorText.trim()}
-              ><Rocket size={14} /> {t('发送')}</button>
+              ><Rocket size={14} /> {t('发送')}</Button>
             </div>
           </div>
         ) : (
@@ -1229,17 +1131,12 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
           onDragEnter={(e) => { e.preventDefault(); setRootDragOver(true); }}
           onDragLeave={(e) => { if (e.currentTarget === e.target) setRootDragOver(false); }}
           onDrop={(e) => { e.preventDefault(); handleDropToRoot(); }}
-          style={{
-            width: 220, flexShrink: 0, borderRight: '1px solid var(--border-subtle)',
-            overflowY: 'auto', padding: '4px 6px',
-            background: rootDragOver ? 'var(--surface-active)' : C.inputBg,
-            outline: rootDragOver ? '1px dashed var(--accent)' : 'none',
-            display: 'flex', flexDirection: 'column',
-            transition: 'background 0.1s',
-          }}
+          className={`w-[220px] shrink-0 border-r border-line-subtle overflow-y-auto px-1.5 py-1 flex flex-col transition-colors duration-100 ${
+            rootDragOver ? 'bg-active outline outline-1 outline-dashed outline-accent' : 'bg-sunken'
+          }`}
         >
           {/* 搜索框 */}
-          <div style={{ padding: '2px 2px 6px', flexShrink: 0 }}>
+          <div className="px-0.5 pt-0.5 pb-1.5 shrink-0">
             <input
               type="text"
               name="qc-search"
@@ -1248,17 +1145,12 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
               value={searchText}
               onChange={e => setSearchText(e.target.value)}
               placeholder={t('搜索命令...')}
-              style={{
-                ...inputStyle,
-                width: '100%', boxSizing: 'border-box',
-                fontSize: 11, padding: '4px 8px',
-                borderRadius: 4,
-              }}
+              className={`${inputClass} px-2 py-1 rounded-sm`}
             />
           </div>
           {/* 命令树（带搜索过滤） */}
           <div
-            style={{ flex: 1, overflowY: 'auto' }}
+            className="flex-1 overflow-y-auto"
             onDragOver={(e) => { e.preventDefault(); setRootDragOver(true); }}
             onDragEnter={(e) => { e.preventDefault(); setRootDragOver(true); }}
             onDragLeave={(e) => { if (e.currentTarget === e.target) setRootDragOver(false); }}
@@ -1267,7 +1159,7 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
             {(() => {
               const displayed = filterTree(commands, searchText);
               return displayed.length === 0 ? (
-                <div style={{ padding: 16, textAlign: 'center', color: C.mutedColor, fontSize: 12 }}>
+                <div className="p-4 text-center text-muted text-sm">
                   {searchText ? t('无匹配结果') : t('点击上方按钮添加命令')}
                 </div>
               ) : (
@@ -1288,7 +1180,6 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
                     onDropItem={handleDropItem}
                     onDragEnd={clearDrag}
                     dragVersion={dragVersion}
-                    theme={C}
                   />
                 ))
               );
@@ -1297,12 +1188,12 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
         </div>
 
         {/* ── 右侧编辑器 ── */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
           {/* 选中了分组 → 显示分组信息 */}
           {selectedItem && selectedItem.type === 'group' ? (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '12px 14px', gap: 10, minHeight: 0, overflow: 'auto' }}>
+            <div className="flex-1 flex flex-col px-3.5 py-3 gap-2.5 min-h-0 overflow-auto">
               <div>
-                <label htmlFor="qc-group-name" style={{ fontSize: 11, color: C.statusBarColor, display: 'block', marginBottom: 4 }}>{t('分组名称')}</label>
+                <label htmlFor="qc-group-name" className="block mb-1 text-xs text-secondary">{t('分组名称')}</label>
                 <input
                   id="qc-group-name"
                   name="qc-group-name"
@@ -1310,21 +1201,23 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
                   autoComplete="off"
                   value={editGroupName}
                   onChange={e => setEditGroupName(e.target.value)}
-                  style={inputStyle}
+                  className={inputClass}
                 />
               </div>
-              <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-                <button
+              <div className="flex gap-1.5 mt-1">
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={() => {
                     const list = structuredClone(commands);
                     const r = resolvePath(list, selectedPath || '');
                     r.parent[r.idx].name = editGroupName.trim() || selectedItem.name || '';
                     save(list);
                   }}
-                  className="btn btn-primary btn-sm"
-                ><Save size={13} /> {t('保存名称')}</button>
-                <button
-                  className="btn btn-secondary btn-sm"
+                ><Save size={13} /> {t('保存名称')}</Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => {
                     const list = structuredClone(commands);
                     const r = resolvePath(list, selectedPath || '');
@@ -1334,57 +1227,38 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
                     }
                     setDlgName(''); setDlgCmd(''); setDlgAddCR(true);
                   }}
-                >{t('＋ 添加命令')}</button>
+                >{t('＋ 添加命令')}</Button>
               </div>
-              <div style={{ fontSize: 12, color: C.mutedColor, marginTop: 8 }}>
+              <div className="text-sm text-muted mt-2">
                 {selectedItem.children?.length || 0} {t('个命令/子分组')}
               </div>
             </div>
           ) : selectedItem ? (
             /* 选中命令：内容可滚，发送栏固定在底部（不随滚动悬浮） */
-            <div style={{
-              flex: 1, display: 'flex', flexDirection: 'column',
-              minHeight: 0, overflow: 'hidden',
-            }}>
-              <div style={{
-                flex: 1, minHeight: 0, overflow: 'auto',
-                padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8,
-              }}>
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="flex-1 min-h-0 overflow-auto px-3 py-2.5 flex flex-col gap-2">
               {/* 第一行：命令名徽章 + 命令预览 + 编辑 */}
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
-                padding: '8px 10px',
-                background: C.inputBg,
-                border: '1px solid ' + C.btnBorder,
-                borderRadius: 6,
-              }}>
-                <span className="badge" style={{ flexShrink: 0 }}>
+              <div className="flex items-center gap-2 shrink-0 px-2.5 py-2 bg-sunken border border-line rounded-md">
+                <span className="badge shrink-0">
                   {editCmdName || selectedItem.name || t('未命名命令')}
                 </span>
                 <span
-                  style={{
-                    flex: 1, minWidth: 0,
-                    fontFamily: "'JetBrains Mono', monospace",
-                    fontSize: 12,
-                    color: C.inputColor,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
+                  className="flex-1 min-w-0 font-mono text-sm text-primary overflow-hidden text-ellipsis whitespace-nowrap"
                   title={editCmdText || selectedItem.command || ''}
                 >
                   {editCmdText || selectedItem.command || ''}
                 </span>
-                <button
-                  className="btn btn-secondary btn-sm"
-                  style={{ flexShrink: 0 }}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="shrink-0"
                   onClick={() => {
                     setDialog({ type: 'edit' });
                     setDlgName(editCmdName || selectedItem.name || '');
                     setDlgCmd(editCmdText || selectedItem.command || '');
                     setDlgAddCR(selectedItem.addCR !== false);
                   }}
-                ><SquarePen size={13} /> {t('编辑')}</button>
+                ><SquarePen size={13} /> {t('编辑')}</Button>
               </div>
 
               {/* 第二行：参数输入（标签在框外，输入框 + 历史） */}
@@ -1392,26 +1266,22 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
                 const params = extractQuickCommandParams(editCmdText || selectedItem.command || '');
                 if (params.length === 0) {
                   return (
-                    <div style={{ flex: 1, minHeight: 12 }} />
+                    <div className="flex-1 min-h-3" />
                   );
                 }
                 const cmdKey = editCmdText || selectedItem.command || '';
                 return (
-                  <div style={{ overflowX: 'auto', overflowY: 'visible', flexShrink: 0, paddingBottom: 4 }}>
-                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                  <div className="overflow-x-auto overflow-y-visible shrink-0 pb-1">
+                    <div className="flex gap-3 flex-wrap items-end">
                       {params.map(p => {
                         const isOpen = historyDropdown?.cmdKey === cmdKey && historyDropdown.paramNum === p.num;
                         const histList = (paramHistory[cmdKey]?.[p.num]) || [];
                         return (
-                          <div key={p.num} style={{ position: 'relative', flexShrink: 0 }}>
-                            <span style={{
-                              fontSize: 12, fontWeight: 600,
-                              color: 'var(--text-primary, ' + C.inputColor + ')',
-                              display: 'block', marginBottom: 4,
-                            }}>
+                          <div key={p.num} className="relative shrink-0">
+                            <span className="text-sm font-semibold text-primary block mb-1">
                               {p.label || `${t('参数')}${p.num}`}
                             </span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <div className="flex items-center gap-1">
                               <input
                                 type="text"
                                 name={`qc-param-${p.num}`}
@@ -1420,17 +1290,12 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
                                 onChange={e => setParamValues(prev => ({ ...prev, [p.num]: e.target.value }))}
                                 onKeyDown={e => { if (e.key === 'Enter') doExecute(selectedItem); }}
                                 placeholder={p.label || `p#${p.num}`}
-                                style={{
-                                  ...inputStyle, width: 120,
-                                  fontSize: 12, padding: '5px 8px',
-                                  fontFamily: "'JetBrains Mono', monospace",
-                                  color: 'var(--text-primary, ' + C.inputColor + ')',
-                                  border: '1px solid var(--border, ' + C.btnBorder + ')',
-                                  background: 'var(--surface-raised, ' + C.inputBg + ')',
-                                }}
+                                className={`${inputClass} w-[120px] font-mono bg-raised border-line`}
                               />
-                              <button
-                                type="button"
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                aria-pressed={isOpen}
                                 data-history-dropdown="true"
                                 onPointerDown={(e) => {
                                   e.preventDefault();
@@ -1457,21 +1322,7 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
                                     setHistorySearch('');
                                   }
                                 }}
-                                style={{
-                                  background: isOpen ? 'var(--surface-active)' : 'var(--surface-raised)',
-                                  border: '1px solid var(--border, ' + C.btnBorder + ')',
-                                  color: 'var(--accent)',
-                                  borderRadius: 4,
-                                  fontSize: 12,
-                                  fontWeight: 600,
-                                  cursor: 'pointer',
-                                  padding: '5px 10px',
-                                  whiteSpace: 'nowrap',
-                                  lineHeight: 1.2,
-                                  position: 'relative',
-                                  zIndex: 2,
-                                }}
-                              >{t('历史')}</button>
+                              >{t('历史')}</Button>
                             </div>
                             {isOpen && createPortal(
                               <div
@@ -1483,15 +1334,10 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
                                   left: historyDropdown.left ?? 0,
                                   top: historyDropdown.top ?? 0,
                                   zIndex: Z.MENU,
-                                  width: 220, maxHeight: 220, display: 'flex', flexDirection: 'column',
-                                  boxSizing: 'border-box', overflow: 'hidden',
-                                  background: 'var(--surface-raised, ' + C.popupBg + ')',
-                                  border: '1px solid var(--border, ' + C.btnBorder + ')',
-                                  borderRadius: 6,
-                                  boxShadow: 'var(--shadow-md)',
                                 }}
+                                className="w-[220px] max-h-[220px] flex flex-col box-border overflow-hidden bg-raised border border-line rounded-md shadow-md"
                               >
-                                <div style={{ padding: 6, flexShrink: 0, borderBottom: '1px solid var(--border-subtle)' }}>
+                                <div className="p-1.5 shrink-0 border-b border-line-subtle">
                                   <input
                                     type="text"
                                     name="qc-history-search"
@@ -1501,15 +1347,10 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
                                     value={historySearch}
                                     onChange={e => setHistorySearch(e.target.value)}
                                     placeholder={t('搜索历史...')}
-                                    style={{
-                                      ...inputStyle, width: '100%', boxSizing: 'border-box',
-                                      fontSize: 12, padding: '5px 8px',
-                                      borderRadius: 4,
-                                      color: C.inputColor,
-                                    }}
                                     onKeyDown={e => {
                                       if (e.key === 'Escape') { setHistoryDropdown(null); setHistorySearch(''); }
                                     }}
+                                    className={`${inputClass} px-2 py-[5px] rounded-sm`}
                                   />
                                 </div>
                                 <div
@@ -1523,28 +1364,21 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
                                     setHistoryDropdown(null);
                                     setHistorySearch('');
                                   }}
-                                  style={{
-                                    padding: '6px 12px', fontSize: 12, color: 'var(--danger)',
-                                    cursor: 'pointer', borderBottom: '1px solid var(--border-subtle)',
-                                    flexShrink: 0, fontWeight: 600,
-                                  }}
+                                  className="px-3 py-1.5 text-sm text-danger cursor-pointer border-b border-line-subtle shrink-0 font-semibold hover:bg-danger-dim transition-colors duration-100"
                                 >{t('清空列表')}</div>
-                                <div style={{ flex: 1, overflowY: 'auto' }}>
+                                <div className="flex-1 overflow-y-auto">
                                   {(() => {
                                     const filtered = historySearch
                                       ? histList.filter(v => v.toLowerCase().includes(historySearch.toLowerCase()))
                                       : histList;
                                     return filtered.length === 0 ? (
-                                      <div style={{ padding: '8px 12px', fontSize: 12, color: C.mutedColor }}>
+                                      <div className="px-3 py-2 text-sm text-muted">
                                         {historySearch ? t('无匹配结果') : t('暂无历史')}
                                       </div>
                                     ) : filtered.map((val, i) => (
                                       <div
                                         key={i}
-                                        style={{
-                                          display: 'flex', alignItems: 'center',
-                                          borderBottom: '1px solid var(--border-subtle)',
-                                        }}
+                                        className="flex items-center border-b border-line-subtle"
                                       >
                                         <div
                                           title={val}
@@ -1553,14 +1387,7 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
                                             setHistoryDropdown(null);
                                             setHistorySearch('');
                                           }}
-                                          style={{
-                                            flex: 1, minWidth: 0, padding: '7px 12px', fontSize: 12,
-                                            color: C.inputColor, cursor: 'pointer',
-                                            fontFamily: "'JetBrains Mono', monospace",
-                                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                                          }}
-                                          onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-hover)'}
-                                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                          className="flex-1 min-w-0 px-3 py-[7px] text-sm text-primary cursor-pointer font-mono whitespace-nowrap overflow-hidden text-ellipsis hover:bg-hover transition-colors duration-100"
                                         >{val}</div>
                                         <button
                                           type="button"
@@ -1573,11 +1400,7 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
                                             setParamHistory(pHist);
                                             AppGo.SaveParamHistory(JSON.stringify(pHist)).catch(() => {});
                                           }}
-                                          style={{
-                                            flexShrink: 0, alignSelf: 'stretch', display: 'inline-flex', alignItems: 'center',
-                                            padding: '0 9px', border: 0, borderLeft: '1px solid var(--border-subtle)',
-                                            background: 'transparent', color: 'var(--danger)', cursor: 'pointer',
-                                          }}
+                                          className="shrink-0 self-stretch inline-flex items-center px-2 border-0 border-l border-line-subtle bg-transparent text-danger cursor-pointer hover:bg-danger-dim transition-colors duration-100"
                                         >
                                           <Trash2 size={12} />
                                         </button>
@@ -1599,13 +1422,8 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
               </div>
 
               {/* 第三行：CR + 发送目标 + 发送（固定在右侧底部，不随内容滚动） */}
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
-                padding: '8px 12px',
-                borderTop: '1px solid var(--border-subtle)',
-                background: C.popupBg,
-              }}>
-                <label style={{ fontSize: 11, color: C.statusBarColor, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+              <div className="flex items-center gap-2 shrink-0 px-3 py-2 border-t border-line-subtle bg-overlay">
+                <label className="text-xs text-secondary flex items-center gap-1 cursor-pointer">
                   <input
                     type="checkbox"
                     name="qc-dialog-add-cr"
@@ -1616,23 +1434,19 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
                       r.parent[r.idx].addCR = e.target.checked;
                       save(list);
                     }}
-                    style={{ accentColor: 'var(--success)' }}
+                    className="accent-success"
                   />
                   {t('末尾添加回车符CR')}
                 </label>
-                <div style={{ flex: 1 }} />
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 11, color: C.mutedColor }}>{t('发送到')}</span>
+                <div className="flex-1" />
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted">{t('发送到')}</span>
                   <select
                     id="qc-send-target-detail"
                     name="qc-send-target-detail"
                     value={sendTarget}
                     onChange={(e) => setSendTarget(e.target.value as 'current' | 'all')}
-                    style={{
-                      fontSize: 11, padding: '2px 6px', borderRadius: 3,
-                      background: C.inputBg, border: '1px solid ' + C.btnBorder,
-                      color: C.inputColor, outline: 'none', cursor: 'pointer',
-                    }}
+                    className="text-xs px-1.5 py-0.5 rounded-xs bg-sunken border border-line text-primary outline-none cursor-pointer"
                   >
                     <option value="current">{t('当前会话')}</option>
                     {connectedSessions.length > 1 && (
@@ -1640,18 +1454,24 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
                     )}
                   </select>
                 </div>
-                <button
-                  className="btn btn-primary btn-sm"
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={() => doExecute(selectedItem)}
-                ><Rocket size={14} /> {t('发送')}</button>
+                ><Rocket size={14} /> {t('发送')}</Button>
               </div>
             </div>
           ) : (
             /* 未选中任何项 */
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.mutedColor, fontSize: 13, flexDirection: 'column', gap: 8 }}>
-              <div style={{ opacity: 0.2 }}><Zap size={40} /></div>
-              <div>{t('选择左侧命令或添加新命令')}</div>
-            </div>
+            <EmptyState
+              className="flex-1 text-primary"
+              icon={(
+                <span className="flex items-center justify-center w-16 h-16 rounded-full bg-sunken border border-line-subtle text-accent">
+                  <Zap size={26} />
+                </span>
+              )}
+              text={t('选择左侧命令或添加新命令')}
+            />
           )}
         </div>
           </>
@@ -1660,127 +1480,125 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
 
       {/* ── 右键上下文菜单 ── */}
       {contextMenu && createPortal(
-        <>
-          <div onClick={closeContextMenu} style={{ position: 'fixed', inset: 0, zIndex: Z.MENU_BACKDROP, background: 'transparent' }} />
-          <div ref={contextMenuRef} style={{
-            position: 'fixed', left: contextMenu.x, top: contextMenu.y, zIndex: Z.MENU,
-            background: C.popupBg, border: '1px solid ' + C.btnBorder, borderRadius: 6,
-            boxShadow: 'var(--shadow-md)', padding: '4px 0', minWidth: 160,
-            fontSize: 12,
-          }}>
-            {contextMenu.type === 'group' ? (
-              <>
-                <div onClick={() => doContextAction('addCmd')} style={_menuItemStyle}>{t('＋ 添加命令')}</div>
-                <div onClick={() => doContextAction('addGroup')} style={_menuItemStyle}><FolderPlus size={14} /> {t('添加子分组')}</div>
-                <div style={_menuSepStyle} />
-                <div onClick={() => doContextAction('editGroup')} style={_menuItemStyle}><Pencil size={14} /> {t('重命名分组')}</div>
-                <div style={_menuSepStyle} />
-                <div onClick={() => doContextAction('delete')} style={{ ..._menuItemStyle, color: 'var(--danger)' }}><Trash2 size={14} /> {t('删除分组')}</div>
-              </>
-            ) : (
-              <>
-                <div onClick={() => doContextAction('execute')} style={_menuItemStyle}><Rocket size={14} /> {t('执行')}</div>
-                <div onClick={() => doContextAction('edit')} style={_menuItemStyle}><SquarePen size={14} /> {t('编辑')}</div>
-                <div style={_menuSepStyle} />
-                <div onClick={() => doContextAction('delete')} style={{ ..._menuItemStyle, color: 'var(--danger)' }}><Trash2 size={14} /> {t('删除')}</div>
-              </>
-            )}
-          </div>
-        </>,
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          minWidth={160}
+          onClose={closeContextMenu}
+          items={contextMenu.type === 'group' ? ([
+            { label: t('＋ 添加命令'), onSelect: () => doContextAction('addCmd') },
+            { label: t('添加子分组'), icon: <FolderPlus size={14} />, onSelect: () => doContextAction('addGroup') },
+            'separator',
+            { label: t('重命名分组'), icon: <Pencil size={14} />, onSelect: () => doContextAction('editGroup') },
+            'separator',
+            { label: t('删除分组'), icon: <Trash2 size={14} />, danger: true, onSelect: () => doContextAction('delete') },
+          ] as MenuItem[]) : ([
+            { label: t('执行'), icon: <Rocket size={14} />, onSelect: () => doContextAction('execute') },
+            { label: t('编辑'), icon: <SquarePen size={14} />, onSelect: () => doContextAction('edit') },
+            'separator',
+            { label: t('删除'), icon: <Trash2 size={14} />, danger: true, onSelect: () => doContextAction('delete') },
+          ] as MenuItem[])}
+        />,
         document.body
       )}
 
       {/* ── 未保存修改确认对话框 ── */}
       {confirmUnsaved && (
-        <>
-          <div onClick={handleConfirmCancel} style={{ position: 'fixed', inset: 0, zIndex: Z.DIALOG_BACKDROP, background: 'rgba(0,0,0,0.4)' }} />
-          <div style={{
-            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: Z.DIALOG,
-            width: 360, background: C.popupBg, border: '1px solid ' + C.btnBorder, borderRadius: 8,
-            boxShadow: 'var(--shadow-md)', padding: '16px 20px',
-          }}>
-            <div style={{ fontSize: 14, color: C.inputColor, marginBottom: 14, fontWeight: 600 }}>
-              {t('未保存的修改')}
-            </div>
-            <div style={{ fontSize: 12, color: C.statusBarColor, marginBottom: 16 }}>
-              {t('当前命令有未保存的修改，是否保存？')}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button className="btn btn-secondary btn-sm" onClick={handleConfirmCancel}>{t('取消')}</button>
-              <button className="btn btn-danger btn-sm" onClick={handleConfirmDiscard}>{t('不保存')}</button>
-              <button className="btn btn-primary btn-sm" onClick={handleConfirmSave}>{t('保存')}</button>
-            </div>
+        <Modal
+          open
+          size="sm"
+          zIndex={Z.DIALOG}
+          onClose={handleConfirmCancel}
+          title={t('未保存的修改')}
+        >
+          <div className="text-sm text-secondary">
+            {t('当前命令有未保存的修改，是否保存？')}
           </div>
-        </>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" size="sm" onClick={handleConfirmCancel}>{t('取消')}</Button>
+            <Button variant="danger" size="sm" onClick={handleConfirmDiscard}>{t('不保存')}</Button>
+            <Button variant="primary" size="sm" onClick={handleConfirmSave}>{t('保存')}</Button>
+          </div>
+        </Modal>
       )}
 
       {/* ── 添加/编辑对话框（覆盖层） ── */}
       {dialog && (
-        <>
-          <div onClick={() => setShowGroupPicker(false)} style={{ position: 'fixed', inset: 0, zIndex: Z.DIALOG_BACKDROP, background: 'rgba(0,0,0,0.4)' }} />
-          <div style={{
-            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: Z.DIALOG,
-            width: 480, background: C.popupBg, border: '1px solid ' + C.btnBorder, borderRadius: 8,
-            boxShadow: 'var(--shadow-md)', padding: '16px 20px',
-          }}>
-            <div style={{ fontSize: 14, color: C.inputColor, marginBottom: 14, fontWeight: 600 }}>
-              {dialog.type === 'addGroup' ? t('添加分组') : dialog.type === 'editGroup' ? t('重命名分组') : dialog.type === 'add' ? t('添加命令') : t('编辑命令')}
+        <Modal
+          open
+          zIndex={Z.DIALOG}
+          onClose={() => { setShowGroupPicker(false); setDialog(null); }}
+          panelClassName="max-w-[480px]"
+          title={
+            dialog.type === 'addGroup' ? t('添加分组')
+              : dialog.type === 'editGroup' ? t('重命名分组')
+                : dialog.type === 'add' ? t('添加命令')
+                  : t('编辑命令')
+          }
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => { setShowGroupPicker(false); setDialog(null); }}
+              >{t('取消')}</Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleDlgSave}
+                disabled={!dlgName.trim() || (dialog.type !== 'addGroup' && dialog.type !== 'editGroup' && !dlgCmd.trim())}
+              >{t('保存')}</Button>
+            </>
+          }
+        >
+          {/* 添加到提示（仅添加命令时显示） */}
+          {dialog.type === 'add' && (
+            <div className="text-sm text-muted select-none">
+              <span className="mr-1.5">{t('添加到:')}</span>
+              <span
+                ref={groupPickerRef}
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setGroupPickerPos({ x: rect.left, y: rect.bottom + 4 });
+                  setShowGroupPicker(prev => !prev);
+                }}
+                className="badge cursor-pointer select-none"
+              >
+                {dialog.groupName || t('根目录')}
+                <span className="text-[8px] opacity-70">▼</span>
+              </span>
             </div>
+          )}
 
-            {/* 添加到提示（仅添加命令时显示） */}
-            {dialog.type === 'add' && (
-              <div style={{ fontSize: 12, color: C.mutedColor, marginBottom: 12, userSelect: 'none' }}>
-                <span style={{ marginRight: 6 }}>{t('添加到:')}</span>
-                <span
-                  ref={groupPickerRef}
-                  onClick={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setGroupPickerPos({ x: rect.left, y: rect.bottom + 4 });
-                    setShowGroupPicker(prev => !prev);
-                  }}
-                  className="badge"
-                  style={{ cursor: 'pointer', userSelect: 'none' }}
-                >
-                  {dialog.groupName || t('根目录')}
-                  <span style={{ fontSize: 8, opacity: 0.7 }}>▼</span>
-                </span>
-              </div>
-            )}
+          {/* 名称 */}
+          <div>
+            <label htmlFor="qc-dlg-name" className="block mb-1 text-xs text-secondary">{t('名称')}</label>
+            <input
+              id="qc-dlg-name"
+              name="qc-dlg-name"
+              type="text"
+              autoComplete="off"
+              value={dlgName}
+              onChange={e => setDlgName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleDlgSave(); } }}
+              autoFocus
+              className={inputClass}
+              placeholder={dialog.type === 'addGroup' || dialog.type === 'editGroup' ? t('如：系统监控') : t('如：查看内存')}
+            />
+          </div>
 
-            {/* 名称 */}
-            <div style={{ marginBottom: 12 }}>
-              <label htmlFor="qc-dlg-name" style={_labelStyle}>{t('名称')}</label>
-              <input
-                id="qc-dlg-name"
-                name="qc-dlg-name"
-                type="text"
-                autoComplete="off"
-                value={dlgName}
-                onChange={e => setDlgName(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleDlgSave(); } }}
-                autoFocus
-                style={inputStyle}
-                placeholder={dialog.type === 'addGroup' || dialog.type === 'editGroup' ? t('如：系统监控') : t('如：查看内存')}
-              />
-            </div>
-
-            {/* 命令区域（仅命令类型显示） */}
-            {dialog.type !== 'addGroup' && dialog.type !== 'editGroup' && (
-              <>
-              <div style={{ marginBottom: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <label htmlFor="qc-dlg-cmd" style={_labelStyle}>{t('命令')}</label>
-                <div style={{ display: 'flex', gap: 3 }}>
+          {/* 命令区域（仅命令类型显示） */}
+          {dialog.type !== 'addGroup' && dialog.type !== 'editGroup' && (
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label htmlFor="qc-dlg-cmd" className="block text-xs text-secondary">{t('命令')}</label>
+                <div className="flex gap-[3px]">
                   {[1,2,3,4,5].map(n => (
                     <Tiptop key={n} text={t('插入参数 p#') + n}>
                       <button
                         onClick={() => insertParam(n)}
                         aria-label={t('插入参数 p#') + n}
-                        style={{
-                          background: 'transparent', border: '1px solid ' + C.btnBorder, borderRadius: 3,
-                          color: C.statusBarColor, fontSize: 10, cursor: 'pointer', padding: '1px 6px',
-                          fontFamily: 'monospace',
-                        }}
+                        className="bg-transparent border border-line rounded-xs text-secondary text-[10px] cursor-pointer px-1.5 py-px font-mono transition-colors duration-100 hover:bg-hover hover:text-primary"
                       >{t('参数')}{n}</button>
                     </Tiptop>
                   ))}
@@ -1792,47 +1610,32 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
                 value={dlgCmd}
                 onChange={e => setDlgCmd(e.target.value)}
                 rows={3}
-                style={{ ...inputStyle, resize: 'vertical', fontFamily: "'JetBrains Mono', monospace", fontSize: 12, lineHeight: 1.5, minHeight: 70 }}
+                className={`${inputClass} resize-vertical font-mono leading-normal min-h-[70px]`}
                 placeholder={t('如：free -m')}
               />
 
               {/* 参数预览 */}
               {extractQuickCommandParams(dlgCmd).length > 0 && (
-                <div style={{ marginTop: 4, fontSize: 11, color: 'var(--warning)' }}>
+                <div className="mt-1 text-xs text-warning">
                   {t('含')} {extractQuickCommandParams(dlgCmd).length} {t('个动态参数：')}{extractQuickCommandParams(dlgCmd).map(p => `[p#${p.num}${p.label ? ' ' + p.label : ''}]`).join(', ')}
                 </div>
               )}
             </div>
-            </>
-            )}
+          )}
 
-            {/* 末尾添加回车符 */}
-            {dialog.type !== 'addGroup' && dialog.type !== 'editGroup' && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, cursor: 'pointer', fontSize: 12, color: C.statusBarColor }}>
+          {/* 末尾添加回车符 */}
+          {dialog.type !== 'addGroup' && dialog.type !== 'editGroup' && (
+            <label className="flex items-center gap-1.5 cursor-pointer text-sm text-secondary">
               <input
                 type="checkbox"
                 name="qc-dlg-cr"
                 checked={dlgAddCR}
                 onChange={e => setDlgAddCR(e.target.checked)}
-                style={{ accentColor: 'var(--success)' }}
+                className="accent-success"
               />
               {t('末尾添加回车符CR')}
             </label>
-            )}
-
-            {/* 按钮 */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={() => { setShowGroupPicker(false); setDialog(null); }}
-              >{t('取消')}</button>
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={handleDlgSave}
-                disabled={!dlgName.trim() || (dialog.type !== 'addGroup' && dialog.type !== 'editGroup' && !dlgCmd.trim())}
-              >{t('保存')}</button>
-            </div>
-          </div>
+          )}
 
           {/* ── 分组选择器下拉菜单 ── */}
           {showGroupPicker && (
@@ -1842,35 +1645,25 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
                 onClick={() => setShowGroupPicker(false)}
                 style={{ position: 'fixed', inset: 0, zIndex: Z.SUBMENU_BACKDROP, background: 'transparent' }}
               />
-              {/* 下拉列表 */}
-              <div style={{
-                position: 'fixed', left: groupPickerPos.x, top: groupPickerPos.y, zIndex: Z.SUBMENU,
-                minWidth: 160, maxHeight: 220, overflowY: 'auto',
-                background: C.popupBg, border: '1px solid ' + C.btnBorder, borderRadius: 6,
-                boxShadow: 'var(--shadow-md)', padding: '4px 0',
-              }}>
-                {/* 根目录 */}
-                <div
-                  onClick={() => {
-                    setDialog(prev => (prev ? { ...prev, targetChildren: prev.parentList, groupName: '' } : prev));
-                    setShowGroupPicker(false);
-                  }}
-                  style={{
-                    padding: '5px 14px', fontSize: 12, color: C.inputColor, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: 6, userSelect: 'none',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-hover)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                ><Folder size={14} /> {t('根目录')}</div>
-                {/* 所有分组 */}
-                {(() => {
-                  const groups = collectGroups(commands);
-                  return groups.length === 0 ? (
-                    <div style={{ padding: '6px 14px', fontSize: 11, color: C.btnMuted }}>{t('暂无分组')}</div>
-                  ) : groups.map((g, i) => (
-                    <div
-                      key={i}
-                      onClick={() => {
+              <MenuPanel
+                minWidth={160}
+                className="fixed max-h-[220px]"
+                style={{ left: groupPickerPos.x, top: groupPickerPos.y, zIndex: Z.SUBMENU }}
+              >
+                <MenuList
+                  items={[
+                    {
+                      label: t('根目录'),
+                      icon: <Folder size={14} />,
+                      onSelect: () => {
+                        setDialog(prev => (prev ? { ...prev, targetChildren: prev.parentList, groupName: '' } : prev));
+                        setShowGroupPicker(false);
+                      },
+                    },
+                    ...collectGroups(commands).map<MenuItem>((g) => ({
+                      label: g.name,
+                      icon: <Folder size={14} />,
+                      onSelect: () => {
                         setDialog(prev => {
                           if (!prev) return prev;
                           const list = structuredClone(prev.parentList || commands);
@@ -1882,20 +1675,15 @@ const QuickCommands = forwardRef<QuickCommandsHandle, QuickCommandsProps>(functi
                           return prev;
                         });
                         setShowGroupPicker(false);
-                      }}
-                      style={{
-                        padding: '5px 14px', fontSize: 12, color: C.inputColor, cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', gap: 6, userSelect: 'none',
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-hover)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                    ><Folder size={14} /> {g.name}</div>
-                  ));
-                })()}
-              </div>
+                      },
+                    })),
+                  ]}
+                  onClose={() => setShowGroupPicker(false)}
+                />
+              </MenuPanel>
             </>
           )}
-        </>
+        </Modal>
       )}
 
     </div>

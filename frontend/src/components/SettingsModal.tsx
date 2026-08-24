@@ -13,6 +13,8 @@ import { getAppThemeMode, getThemePackageSettings as getStoredThemePackageSettin
 import { loadKeywordRulesFromStorage, saveKeywordRulesToStorage, resetKeywordRulesToDefault, setKeywordRules, type KeywordRule } from '../utils/terminalKeywordHighlight.ts';
 import { syncWithRecoveryPassword } from '../utils/recoveryPasswordSync.ts';
 import { getGlobalAppearanceSettings, notifyGlobalAppearanceChanged } from '../utils/globalAppearance.ts';
+import { Button } from './ui';
+import { cn } from '../utils/cn.ts';
 import AppTab from './settings/AppTab';
 import GeneralTab from './settings/GeneralTab';
 import NetworkTab from './settings/NetworkTab';
@@ -2220,55 +2222,40 @@ export default function SettingsModal({
   const isAnyConfigured = isConfigured || r2Configured || ftpConfigured || sftpConfigured;
 
   return (
-    <div className="modal-overlay" style={{ zIndex: Z.SETTINGS }}>
-      <style>{`[data-settings-highlight="true"]{outline:2px solid var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-rgb),0.18);border-radius:var(--radius-md);}`}</style>
-      <div className="modal modal-xl" style={{ display: 'flex', flexDirection: 'column', height: '80vh', background: 'var(--surface-raised)' }}>
-        
+    <div
+      className="fixed inset-0 flex items-center justify-center bg-black/[0.42] animate-[fadeIn_0.12s_ease]"
+      style={{ zIndex: Z.SETTINGS }}
+    >
+      <div className="relative w-full max-w-[1100px] max-h-[90vh] overflow-y-auto bg-raised border border-line rounded-md shadow-lg animate-[slideUp_0.12s_ease] flex flex-col h-[80vh]">
+
         {/* Settings Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{$t('设置')}</div>
-          <button className="btn btn-ghost btn-icon" onClick={handleClose} style={{ color: 'var(--text-secondary)' }}><X size={16} /></button>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-line-subtle">
+          <div className="text-md font-semibold text-primary">{$t('设置')}</div>
+          <Button variant="ghost" size="icon" onClick={handleClose}><X size={16} /></Button>
         </div>
 
         {/* Settings Body Layout */}
-        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        <div className="flex flex-1 overflow-hidden">
 
           {/* Settings Sidebar */}
           <div className="settings-sidebar">
-            <div style={{ padding: '0 4px 8px' }}>
-              <div style={{ position: 'relative' }}>
+            <div className="px-1 pb-2">
+              <div className="relative">
                 <input
                   id="settings-modal-search"
                   name="settings-modal-search"
                   autoComplete="off"
-                  className="input"
+                  className="input w-full h-[30px] text-sm"
                   value={settingsSearchQuery}
                   onChange={(event) => setSettingsSearchQuery(event.target.value)}
                   placeholder={$t('搜索...')}
-                  style={{ width: '100%', height: 30, fontSize: 12, paddingRight: settingsSearchQuery ? 34 : 12 }}
+                  style={{ paddingRight: settingsSearchQuery ? 34 : 12 }}
                 />
                 {settingsSearchQuery ? (
                   <button
                     type="button"
                     onClick={() => setSettingsSearchQuery('')}
-                    style={{
-                      position: 'absolute',
-                      top: '50%',
-                      right: 7,
-                      transform: 'translateY(-50%)',
-                      width: 16,
-                      height: 16,
-                      padding: 0,
-                      margin: 0,
-                      border: 'none',
-                      background: 'transparent',
-                      color: 'var(--text-tertiary)',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      boxShadow: 'none',
-                    }}
+                    className="absolute top-1/2 -translate-y-1/2 right-[7px] w-4 h-4 p-0 m-0 border-none bg-transparent text-tertiary inline-flex items-center justify-center cursor-pointer shadow-none"
                   >
                     <X size={12} />
                   </button>
@@ -2276,64 +2263,49 @@ export default function SettingsModal({
               </div>
             </div>
             {settingsSearchQuery.trim() ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, overflowY: 'auto', padding: '0 4px 4px' }}>
-                <div style={{ padding: '0 6px', fontSize: 11, color: 'var(--text-tertiary)' }}>{$t('搜索结果')} · {settingsSearchResults.length}</div>
+              <div className="flex flex-col gap-1.5 overflow-y-auto px-1 pb-1">
+                <div className="px-1.5 text-xs text-tertiary">{$t('搜索结果')} · {settingsSearchResults.length}</div>
                 {settingsSearchResults.length > 0 ? settingsSearchResults.map((result) => (
                   <button
                     type="button"
                     key={`${result.id}:${result.targetId}`}
                     onClick={() => handleSelectSettingsSearchResult(result)}
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 4,
-                      width: '100%',
-                      padding: '9px 10px',
-                      borderRadius: 'var(--radius-sm)',
-                      border: '1px solid var(--border)',
-                      background: result.tab === activeTab ? 'var(--surface-overlay)' : 'var(--surface-raised)',
-                      color: 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                    }}
+                    className={cn(
+                      'flex flex-col gap-1 w-full py-[9px] px-2.5 rounded-sm border border-line text-secondary cursor-pointer text-left',
+                      result.tab === activeTab ? 'bg-overlay' : 'bg-raised',
+                    )}
                   >
-                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.4 }}>{result.title}</div>
-                    {result.description ? <div style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>{result.description}</div> : null}
-                    <div style={{ fontSize: 10, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>{result.breadcrumbLabels.length > 0 ? result.breadcrumbLabels.join(' / ') : result.tabLabel}</div>
+                    <div className="text-sm font-semibold text-primary leading-[1.4]">{result.title}</div>
+                    {result.description ? <div className="text-xs text-tertiary leading-[1.5]">{result.description}</div> : null}
+                    <div className="text-[10px] text-tertiary leading-[1.5]">{result.breadcrumbLabels.length > 0 ? result.breadcrumbLabels.join(' / ') : result.tabLabel}</div>
                   </button>
                 )) : (
-                  <div style={{ padding: '10px 12px', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border)', background: 'var(--surface-raised)' }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{$t('未找到结果')}</div>
-                    <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-tertiary)' }}>{$t('尝试其他关键词')}</div>
+                  <div className="py-2.5 px-3 rounded-sm border border-dashed border-line bg-raised">
+                    <div className="text-sm font-semibold text-primary">{$t('未找到结果')}</div>
+                    <div className="mt-1 text-xs text-tertiary">{$t('尝试其他关键词')}</div>
                   </div>
                 )}
               </div>
             ) : TABS.map(tab => (
               <div
                 key={tab.id}
-                className={`sidebar-menu-item ${activeTab === tab.id ? 'active' : ''}`}
                 onClick={() => setActiveTab(tab.id)}
-                style={{
-                  padding: '7px 10px',
-                  borderRadius: 'var(--radius-sm)',
-                  cursor: 'pointer',
-                  color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  background: activeTab === tab.id ? 'var(--surface-overlay)' : 'transparent',
-                  fontWeight: activeTab === tab.id ? 600 : 400,
-                  transition: 'background 0.12s ease, color 0.12s ease',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  fontSize: 13,
-                }}
+                className={cn(
+                  'flex items-center gap-2 py-[7px] px-2.5 rounded-sm cursor-pointer text-base transition-colors duration-[120ms]',
+                  activeTab === tab.id ? 'bg-overlay text-primary font-semibold' : 'text-secondary',
+                )}
               >
-                <span style={{ display: 'inline-flex', alignItems: 'center' }}>{(() => { const IC = TAB_ICON[tab.id]; return IC ? <IC size={15} /> : null; })()}</span> {$t(TAB_LABELS[tab.id])}
+                <span className="inline-flex items-center">{(() => { const IC = TAB_ICON[tab.id]; return IC ? <IC size={15} /> : null; })()}</span> {$t(TAB_LABELS[tab.id])}
               </div>
             ))}
           </div>
 
           {/* Settings Content */}
-          <div className="settings-content-pane">
+          {/* 原 <style> 注入的 [data-settings-highlight] 高亮规则，改为作用域工具类（仅搜索跳转目标会带该属性，均在本面板内） */}
+          <div
+            className="settings-content-pane
+              [&_[data-settings-highlight=true]]:outline [&_[data-settings-highlight=true]]:outline-2 [&_[data-settings-highlight=true]]:outline-accent [&_[data-settings-highlight=true]]:shadow-[0_0_0_3px_rgba(var(--accent-rgb),0.18)] [&_[data-settings-highlight=true]]:rounded-md"
+          >
             
             {activeTab === 'app' && (
               <AppTab
@@ -2637,19 +2609,19 @@ export default function SettingsModal({
       {confirmRestoreProvider && (() => {
         const availableProviders = configuredProviderIds().filter(id => !failedRestoreProviders.includes(id));
         return (
-          <div className="modal-overlay" style={{ zIndex: Z.MODAL }}>
-            <div className="glass-card" style={{ width: 420, padding: 24, animation: 'scaleIn 0.18s ease' }}>
-              <div style={{ fontSize: 18, color: 'var(--text-primary)', marginBottom: 16, fontWeight: 'bold' }}>{$t('选择恢复来源')}</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div className="fixed inset-0 flex items-center justify-center bg-black/[0.42] animate-[fadeIn_0.12s_ease]" style={{ zIndex: Z.MODAL }}>
+            <div className="relative overflow-hidden w-[420px] p-6 bg-canvas border border-line rounded-sm animate-[scaleIn_0.18s_ease]">
+              <div className="text-[18px] text-primary mb-4 font-bold">{$t('选择恢复来源')}</div>
+              <div className="flex flex-col gap-2.5">
                 {availableProviders.map(id => (
-                  <button key={id} className="btn btn-secondary" disabled={loadingBackups} onClick={() => loadRestoreBackups(id)}>
+                  <Button key={id} variant="secondary" disabled={loadingBackups} onClick={() => loadRestoreBackups(id)}>
                     {PROVIDER_LIST.find(p => p.id === id)?.label || id}
-                  </button>
+                  </Button>
                 ))}
-                {availableProviders.length === 0 && <div style={{ color: 'var(--text-secondary)' }}>{$t('没有可用的云端来源')}</div>}
+                {availableProviders.length === 0 && <div className="text-secondary">{$t('没有可用的云端来源')}</div>}
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 20 }}>
-                <button className="btn btn-secondary" disabled={loadingBackups} onClick={() => setConfirmRestoreProvider(false)}>{$t('取消')}</button>
+              <div className="flex justify-end gap-3 mt-5">
+                <Button variant="secondary" disabled={loadingBackups} onClick={() => setConfirmRestoreProvider(false)}>{$t('取消')}</Button>
               </div>
             </div>
           </div>
@@ -2658,36 +2630,33 @@ export default function SettingsModal({
 
       {/* 确认恢复弹窗（含列表选择） */}
       {confirmRestore && (
-        <div className="modal-overlay" style={{ zIndex: Z.MODAL }}>
-          <div className="glass-card" style={{ width: 450, padding: 24, animation: 'scaleIn 0.18s ease' }}>
-            <div style={{ fontSize: 18, color: 'var(--text-primary)', marginBottom: 16, fontWeight: 'bold' }}>{$t('选择要恢复的云端备份')}</div>
-            <div style={{ color: 'var(--text-secondary)', marginBottom: 16, fontSize: 14 }}>
+        <div className="fixed inset-0 flex items-center justify-center bg-black/[0.42] animate-[fadeIn_0.12s_ease]" style={{ zIndex: Z.MODAL }}>
+          <div className="relative overflow-hidden w-[450px] p-6 bg-canvas border border-line rounded-sm animate-[scaleIn_0.18s_ease]">
+            <div className="text-[18px] text-primary mb-4 font-bold">{$t('选择要恢复的云端备份')}</div>
+            <div className="text-secondary mb-4 text-md">
               {$t('此操作将覆盖当前所有的本地服务器配置，且无法撤销。请选择要恢复的备份时间：')}
             </div>
-            
-            <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 20, background: 'var(--surface-base)', borderRadius: 'var(--radius-md)', padding: 8 }}>
+
+            <div className="max-h-[200px] overflow-y-auto mb-5 bg-canvas rounded-md p-2">
               {backupsList.map(bk => (
-                <div 
+                <div
                   key={bk.name as string}
                   onClick={() => setSelectedBackup(bk.name as string)}
-                  style={{
-                    padding: '10px 12px',
-                    borderRadius: 'var(--radius-sm)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    background: selectedBackup === (bk.name as string) ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
-                    border: `1px solid ${selectedBackup === (bk.name as string) ? 'var(--primary)' : 'transparent'}`,
-                    marginBottom: 4,
-                    transition: 'all 0.2s'
-                  }}
+                  className={cn(
+                    'py-2.5 px-3 rounded-sm cursor-pointer flex justify-between items-center border mb-1 transition-all duration-200',
+                    selectedBackup === (bk.name as string) ? 'bg-[rgba(16,185,129,0.10)] border-accent' : 'bg-transparent border-transparent',
+                  )}
                 >
-                  <div style={{ color: selectedBackup === bk.name ? 'var(--primary)' : 'var(--text-primary)' }}>
+                  <div className={selectedBackup === bk.name ? 'text-accent' : 'text-primary'}>
                     {bk.time as string}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: 12 }}>
-                    <span style={{ padding: '2px 6px', borderRadius: 999, border: '1px solid var(--border)', color: getBackupFormatLabel(bk.name as string) === 'LUMIN2' ? 'var(--success)' : 'var(--text-secondary)' }}>
+                  <div className="flex items-center gap-2 text-secondary text-sm">
+                    <span
+                      className={cn(
+                        'py-[2px] px-1.5 rounded-full border border-line',
+                        getBackupFormatLabel(bk.name as string) === 'LUMIN2' ? 'text-success' : 'text-secondary',
+                      )}
+                    >
                       {getBackupFormatLabel(bk.name as string)}
                     </span>
                     <span>{((bk.size as number) / 1024).toFixed(1)} KB</span>
@@ -2696,11 +2665,11 @@ export default function SettingsModal({
               ))}
             </div>
 
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-              <button className="btn btn-secondary" style={{ padding: '0 20px' }} onClick={() => setConfirmRestore(false)}>{$t('取消')}</button>
-              <button className="btn" style={{ backgroundColor: 'var(--danger)', color: '#fff', border: 'none', padding: '0 20px' }} onClick={() => doRestore()} disabled={!selectedBackup || restoring}>
+            <div className="flex gap-3 justify-end">
+              <Button variant="secondary" className="px-5" onClick={() => setConfirmRestore(false)}>{$t('取消')}</Button>
+              <Button variant="danger" className="px-5" onClick={() => doRestore()} disabled={!selectedBackup || restoring}>
                 {restoring ? $t('恢复中...') : $t('确定恢复')}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -2708,29 +2677,28 @@ export default function SettingsModal({
 
       {/* 恢复失败 → 输入密码重试 */}
       {restoreWithPassword && (
-        <div className="modal-overlay" style={{ zIndex: Z.MODAL }}>
-          <div className="glass-card" style={{ width: 420, padding: 24, animation: 'scaleIn 0.18s ease' }}>
-            <div style={{ fontSize: 18, color: 'var(--text-primary)', marginBottom: 12, fontWeight: 'bold' }}>{$t('输入恢复密码')}</div>
-            <div style={{ color: 'var(--text-secondary)', marginBottom: 16, fontSize: 13, lineHeight: 1.6 }}>
+        <div className="fixed inset-0 flex items-center justify-center bg-black/[0.42] animate-[fadeIn_0.12s_ease]" style={{ zIndex: Z.MODAL }}>
+          <div className="relative overflow-hidden w-[420px] p-6 bg-canvas border border-line rounded-sm animate-[scaleIn_0.18s_ease]">
+            <div className="text-[18px] text-primary mb-3 font-bold">{$t('输入恢复密码')}</div>
+            <div className="text-secondary mb-4 text-base leading-[1.6]">
               {$t('常规密钥解密失败。如果此备份是用恢复密码加密的，请输入恢复密码重试：')}
             </div>
             <input
               id="settings-modal-restore-password"
               name="settings-modal-restore-password"
               autoComplete="off"
-              className="input"
+              className="input w-full mb-4"
               type="password"
               placeholder={$t('恢复密码')}
               value={restorePasswordInput}
               onChange={(e) => setRestorePasswordInput(e.target.value)}
               autoFocus
-              style={{ width: '100%', marginBottom: 16 }}
             />
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-              <button className="btn btn-secondary" onClick={() => { setRestoreWithPassword(false); setRestorePasswordInput(''); }}>{$t('取消')}</button>
-              <button className="btn btn-primary" onClick={doRestoreWithPassword} disabled={!restorePasswordInput.trim() || restoring}>
+            <div className="flex gap-3 justify-end">
+              <Button variant="secondary" onClick={() => { setRestoreWithPassword(false); setRestorePasswordInput(''); }}>{$t('取消')}</Button>
+              <Button variant="primary" onClick={doRestoreWithPassword} disabled={!restorePasswordInput.trim() || restoring}>
                 {restoring ? $t('恢复中...') : $t('用密码恢复')}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

@@ -115,22 +115,12 @@ function OptionButton({ active, icon: Icon, label, onClick }: OptionButtonProps)
     <button
       type="button"
       onClick={onClick}
-      style={{
-        minHeight: 36,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 10,
-        padding: '0 10px',
-        borderRadius: 8,
-        border: `1px solid ${active ? 'var(--accent-border)' : 'var(--border)'}`,
-        background: active ? 'rgba(var(--accent-rgb), 0.14)' : 'var(--surface-base)',
-        color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
-        fontSize: 12,
-        fontWeight: active ? 700 : 500,
-        transition: 'var(--transition)',
-      }}>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+      className={`min-h-9 flex items-center justify-between gap-2.5 px-2.5 rounded-lg border text-sm transition-colors duration-100 ${
+        active
+          ? 'border-accent-border bg-[rgba(var(--accent-rgb),0.14)] text-primary font-bold'
+          : 'border-line bg-canvas text-secondary font-medium'
+      }`}>
+      <span className="inline-flex items-center gap-2 min-w-0">
         <Icon size={13} />
         <span>{label}</span>
       </span>
@@ -149,24 +139,17 @@ function CommandChip({ text, onRemove }: CommandChipProps) {
     <button
       type="button"
       onClick={onRemove}
-      style={{
-        minHeight: 30,
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: '0 10px',
-        borderRadius: 999,
-        border: '1px solid var(--border)',
-        background: 'var(--surface-base)',
-        color: 'var(--text-primary)',
-        fontSize: 12,
-        transition: 'var(--transition)',
-      }}>
+      className="min-h-[30px] inline-flex items-center gap-1.5 px-2.5 rounded-full border border-line bg-canvas text-primary text-sm transition-colors duration-100 cursor-pointer">
       <span>{text}</span>
       <X size={12} />
     </button>
   )
 }
+
+const PANEL_SHELL_CLASS = 'border border-line rounded-lg bg-overlay shadow-xl overflow-hidden overflow-x-hidden box-border'
+const SECTION_HINT_CLASS = 'text-xs text-tertiary leading-[1.5]'
+const COMMAND_INPUT_CLASS = 'flex-1 min-w-0 h-[34px] rounded-lg border border-line bg-sunken text-primary px-2.5 box-border outline-none text-sm'
+const ADD_BUTTON_CLASS = 'h-[34px] px-3 rounded-lg border border-line bg-canvas text-primary text-sm font-semibold transition-colors duration-100 cursor-pointer'
 
 
 export interface AIAutoApproveDropdownProps {
@@ -341,35 +324,23 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
   }
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', flexShrink: 0, overflow: 'visible', zIndex: open ? 40 : 'auto' }}>
+    <div ref={containerRef} className="relative shrink-0 overflow-visible" style={{ zIndex: open ? 40 : 'auto' }}>
       <button
         type="button"
         disabled={disabled}
         onClick={() => setOpen((prev) => !prev)}
-        style={{
-          height: 28,
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '0 10px',
-          borderRadius: 8,
-          border: `1px solid ${open ? 'var(--accent-border)' : 'var(--border)'}`,
-          background: open ? 'rgba(var(--accent-rgb), 0.12)' : 'transparent',
-          color: normalizedSettings.autoApprovalEnabled ? 'var(--text-primary)' : 'var(--text-secondary)',
-          fontSize: 12,
-          fontWeight: 500,
-          transition: 'var(--transition)',
-          whiteSpace: 'nowrap',
-          opacity: disabled ? 0.45 : 1,
-          cursor: disabled ? 'not-allowed' : 'pointer',
-        }}>
+        className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg border text-sm font-medium transition-colors duration-100 whitespace-nowrap ${
+          open ? 'border-accent-border bg-[rgba(var(--accent-rgb),0.12)]' : 'border-line bg-transparent'
+        } ${normalizedSettings.autoApprovalEnabled ? 'text-primary' : 'text-secondary'} ${
+          disabled ? 'opacity-45 cursor-not-allowed' : 'cursor-pointer'
+        }`}>
         {normalizedSettings.autoApprovalEnabled ? <CheckCheck size={12} /> : <X size={12} />}
         <span>{buildTriggerLabel(t, normalizedSettings, enabledCount)}</span>
       </button>
       {open && triggerRect ? (
         <div
+          className={`fixed ${PANEL_SHELL_CLASS}`}
           style={{
-            position: 'fixed',
             ...(panelBounds
               ? { left: panelBounds.left }
               : expandLeft
@@ -378,24 +349,17 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
             bottom: window.innerHeight - triggerRect.top + 8,
             width: panelBounds?.width ?? 320,
             maxWidth: panelBounds?.width ? `${panelBounds.width}px` : 'min(320px, calc(100vw - 32px))',
-            border: '1px solid var(--border)',
-            borderRadius: 10,
-            background: 'var(--surface-overlay)',
-            boxShadow: 'var(--shadow-xl)',
-            overflow: 'hidden',
-            overflowX: 'hidden',
-            boxSizing: 'border-box',
             zIndex: 10000,
           }}>
-          <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-subtle)', display: 'grid', gap: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>{t('自动批准')}</div>
+          <div className="px-3 py-2.5 border-b border-line-subtle grid gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="text-sm font-bold text-primary">{t('自动批准')}</div>
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+            <div className={SECTION_HINT_CLASS}>
               {t('当前阶段仅展示并生效读取,写入,执行.')}
             </div>
           </div>
-          <div style={{ padding: 12, display: 'grid', gap: 8, overflowX: 'hidden' }}>
+          <div className="p-3 grid gap-2 overflow-x-hidden">
             {VISIBLE_OPTIONS.map((option) => (
               <OptionButton
                 key={option.key}
@@ -407,12 +371,12 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
             ))}
           </div>
           {normalizedSettings.alwaysAllowExecute ? (
-            <div style={{ padding: '0 12px 12px', display: 'grid', gap: 12, overflowX: 'hidden' }}>
-              <div style={{ padding: 12, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface-base)', display: 'grid', gap: 12, overflowX: 'hidden' }}>
-                <div style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 700 }}>{t('执行')}</div>
-                <div style={{ display: 'grid', gap: 6 }}>
-                  <div style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 600 }}>{t('执行规则')}</div>
-                  <div role="group" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', overflow: 'hidden', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface-sunken)' }}>
+            <div className="px-3 pb-3 grid gap-3 overflow-x-hidden">
+              <div className="p-3 rounded-lg border border-line bg-canvas grid gap-3 overflow-x-hidden">
+                <div className="text-primary text-sm font-bold">{t('执行')}</div>
+                <div className="grid gap-1.5">
+                  <div className="text-primary text-sm font-semibold">{t('执行规则')}</div>
+                  <div role="group" className="grid grid-cols-3 overflow-hidden border border-line rounded-lg bg-sunken">
                     {EXECUTE_APPROVAL_MODE_OPTIONS.map((option, index) => {
                       const active = normalizedSettings.executeApprovalMode === option.value
                       return (
@@ -421,40 +385,28 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
                           type="button"
                           aria-pressed={active}
                           onClick={() => handleExecuteApprovalModeChange(option.value)}
-                          style={{
-                            minWidth: 0,
-                            height: 30,
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            padding: '0 6px',
-                            border: 'none',
-                            borderLeft: index === 0 ? 'none' : '1px solid var(--border)',
-                            background: active ? 'var(--accent)' : 'transparent',
-                            color: active ? '#fff' : 'var(--text-secondary)',
-                            fontSize: 12,
-                            fontWeight: active ? 600 : 500,
-                            transition: 'var(--transition)',
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                          }}>
+                          className={`min-w-0 h-[30px] inline-flex items-center justify-center px-1.5 border-0 text-sm transition-colors duration-100 cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis ${
+                            index === 0 ? '' : 'border-l border-line'
+                          } ${
+                            active
+                              ? 'bg-accent text-white font-semibold'
+                              : 'bg-transparent text-secondary font-medium'
+                          }`}>
                           {t(option.labelKey)}
                         </button>
                       )
                     })}
                   </div>
-                  <div style={{ color: 'var(--text-tertiary)', fontSize: 11, lineHeight: 1.5 }}>
+                  <div className={SECTION_HINT_CLASS}>
                     {t('基本规则按命令白名单执行,只读批准保留变更命令白名单,全部批准自动放行全部命令.')}
                   </div>
                 </div>
-                <div style={{ display: 'grid', gap: 6 }}>
-                  <div style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 600 }}>{t('命令白名单')}</div>
-                  <div style={{ color: 'var(--text-tertiary)', fontSize: 11, lineHeight: 1.5 }}>
+                <div className="grid gap-1.5">
+                  <div className="text-primary text-sm font-semibold">{t('命令白名单')}</div>
+                  <div className={SECTION_HINT_CLASS}>
                     {t('当前启用时可以自动执行的命令前缀.')}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                  <div className="flex items-center gap-2 min-w-0">
                     <input
                       id="ai-auto-approve-allowed"
                       name="ai-auto-approve-allowed"
@@ -468,49 +420,27 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
                         }
                       }}
                       placeholder={t("输入命令前缀(例如 'git')")}
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                        height: 34,
-                        borderRadius: 8,
-                        border: '1px solid var(--border)',
-                        background: 'var(--surface-sunken)',
-                        color: 'var(--text-primary)',
-                        padding: '0 10px',
-                        boxSizing: 'border-box',
-                        outline: 'none',
-                        fontSize: 12,
-                      }}
+                      className={COMMAND_INPUT_CLASS}
                     />
                     <button
                       type="button"
                       onClick={() => void handleAddAllowedCommand()}
-                      style={{
-                        height: 34,
-                        padding: '0 12px',
-                        borderRadius: 8,
-                        border: '1px solid var(--border)',
-                        background: 'var(--surface-base)',
-                        color: 'var(--text-primary)',
-                        fontSize: 12,
-                        fontWeight: 600,
-                        transition: 'var(--transition)',
-                      }}>
+                      className={ADD_BUTTON_CLASS}>
                       {t('添加')}
                     </button>
                   </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, minWidth: 0, overflow: 'hidden' }}>
+                  <div className="flex flex-wrap gap-2 min-w-0 overflow-hidden">
                     {normalizedSettings.allowedCommands.map((command) => (
                       <CommandChip key={command} text={command} onRemove={() => void handleRemoveAllowedCommand(command)} />
                     ))}
                   </div>
                 </div>
-                <div style={{ display: 'grid', gap: 6 }}>
-                  <div style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 600 }}>{t('拒绝的命令')}</div>
-                  <div style={{ color: 'var(--text-tertiary)', fontSize: 11, lineHeight: 1.5 }}>
+                <div className="grid gap-1.5">
+                  <div className="text-primary text-sm font-semibold">{t('拒绝的命令')}</div>
+                  <div className={SECTION_HINT_CLASS}>
                     {t('将自动拒绝的命令前缀,无需用户批准;与许可命令冲突时,最长前缀匹配优先.')}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                  <div className="flex items-center gap-2 min-w-0">
                     <input
                       id="ai-auto-approve-denied"
                       name="ai-auto-approve-denied"
@@ -524,38 +454,16 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
                         }
                       }}
                       placeholder={t("输入要拒绝的命令前缀(例如 'rm -rf')")}
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                        height: 34,
-                        borderRadius: 8,
-                        border: '1px solid var(--border)',
-                        background: 'var(--surface-sunken)',
-                        color: 'var(--text-primary)',
-                        padding: '0 10px',
-                        boxSizing: 'border-box',
-                        outline: 'none',
-                        fontSize: 12,
-                      }}
+                      className={COMMAND_INPUT_CLASS}
                     />
                     <button
                       type="button"
                       onClick={() => void handleAddDeniedCommand()}
-                      style={{
-                        height: 34,
-                        padding: '0 12px',
-                        borderRadius: 8,
-                        border: '1px solid var(--border)',
-                        background: 'var(--surface-base)',
-                        color: 'var(--text-primary)',
-                        fontSize: 12,
-                        fontWeight: 600,
-                        transition: 'var(--transition)',
-                      }}>
+                      className={ADD_BUTTON_CLASS}>
                       {t('添加')}
                     </button>
                   </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, minWidth: 0, overflow: 'hidden' }}>
+                  <div className="flex flex-wrap gap-2 min-w-0 overflow-hidden">
                     {normalizedSettings.deniedCommands.map((command) => (
                       <CommandChip key={command} text={command} onRemove={() => void handleRemoveDeniedCommand(command)} />
                     ))}

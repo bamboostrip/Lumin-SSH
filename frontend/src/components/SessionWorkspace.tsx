@@ -11,6 +11,7 @@ import ProcessPage from './ProcessPage.tsx';
 import QuickCommands, { type QuickCommandsHandle } from './QuickCommands.tsx';
 import SessionAuthCard from './SessionAuthCard.tsx';
 import Terminal from './Terminal.tsx';
+import { Button } from './ui';
 import Tiptop from './Tiptop.tsx';
 import { TERMINAL_PANE_CELL_IDS, getTerminalPaneAbsolutePlacement, type TerminalPaneLayout, type TerminalPaneCellId } from '../utils/terminalPaneLayout.ts';
 import { getTerminalTabDoubleClickAction, isUnsupportedMonitorSession, type SessionLike } from '../utils/sessionWorkspace.ts';
@@ -31,6 +32,8 @@ const AIChangeReviewWorkbench = lazy(() => import('./ai/AIChangeReviewWorkbench.
 
 const FILE_MANAGER_LEFT_MIN = 180;
 const FILE_MANAGER_BOTTOM_MIN = 100;
+
+const TERMINAL_TAB_TOOL_BTN = 'terminal-create-btn inline-flex items-center justify-center gap-1 whitespace-nowrap leading-none font-medium text-xs [transition:color_0.08s_ease,background-color_0.08s_ease,border-color_0.08s_ease,opacity_0.08s_ease]';
 
 /** 工作区终端标签（getSessionWorkspaceTabs 返回） */
 interface WorkspaceTerminalTab {
@@ -429,7 +432,7 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
   }, [closeTerminalList, terminalSubTabOverflow]);
   return (
       <main className="main-area">
-        <div style={{ display: activeSessionId === null ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%' }}>
+        <div className="flex-1 flex-col h-full" style={{ display: activeSessionId === null ? 'flex' : 'none' }}>
           <Dashboard
             editorServer={serverEditor as (config.Connection & { authType?: string }) | null}
             editorShiningFields={editFlyShiningFields}
@@ -496,7 +499,7 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
           />
         </div>
 
-        <div data-ai-workspace-root="true" style={{ display: activeSessionId !== null ? 'flex' : 'none', flexDirection: 'row', height: '100%', flex: 1, overflow: 'hidden', position: 'relative' }}>
+        <div data-ai-workspace-root="true" className="flex-row flex-1 h-full overflow-hidden relative" style={{ display: activeSessionId !== null ? 'flex' : 'none' }}>
           {aiPanelNode && probePanelPosition === 'right' && (
             <>
               {aiPanelNode}
@@ -542,18 +545,12 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
             ) : (
               <>
                 <div
-                  className="probe-panel-wrapper probe-panel-wrapper-left"
+                  className="probe-panel-wrapper probe-panel-wrapper-left relative border-r border-line"
                   style={{
                     width: probePanelWidth,
                     minWidth: probePanelWidth,
-                    height: '100%',
-                    display: 'flex',
-                    flexShrink: 0,
-                    borderLeft: 'none',
-                    borderRight: '1px solid var(--border)',
-                    position: 'relative',
-                    overflow: 'hidden',
                     background: 'var(--surface-base)',
+                    borderLeft: 'none',
                   }}
                 >
                   {collapseDragIntent === 'probe' && (
@@ -578,7 +575,7 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
             )
           )}
           {/* 左侧主区域：标签、终端子标签、会话内容 */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100%', overflow: 'hidden' }}>
+          <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
             {/* ── 终端子标签栏（多终端支持） ──────────────────── */}
             {activeSession && isActiveSessionConnected && (contentTab === 'terminal' || contentTab === 'process' || contentTab === 'network' || contentTab === 'history' || (fileManagerPosition === 'tab' && contentTab === 'files')) && isSessionWorkspaceVisible(activeSession) && activeSession.terminals && activeSession.terminals.length >= 1 && (
               <div className="terminal-sub-tab-bar">
@@ -682,7 +679,7 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                   {fileManagerPosition === 'tab' && !activeSession?.isSerial && (
                     <Tiptop text={terminalToolbarIconOnly ? t('文件管理') : null} placement="bottom">
                       <button
-                        className={`btn btn-ghost btn-sm terminal-create-btn terminal-tool-btn ${contentTab === 'files' ? 'active' : ''}`}
+                        className={`${TERMINAL_TAB_TOOL_BTN} terminal-tool-btn ${contentTab === 'files' ? 'active' : ''}`}
                         onMouseDown={(e) => startDrag(e, 'tab')}
                         onClick={() => {
                           if (shouldIgnoreResizerClick()) return;
@@ -697,7 +694,7 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                   {activeSession?.isSerial || isUnsupportedMonitorSession(activeSession) ? null : (
                     <Tiptop text={terminalToolbarIconOnly ? t('进程管理') : null} placement="bottom">
                       <button
-                        className={`btn btn-ghost btn-sm terminal-create-btn terminal-tool-btn ${contentTab === 'process' ? 'active' : ''}`}
+                        className={`${TERMINAL_TAB_TOOL_BTN} terminal-tool-btn ${contentTab === 'process' ? 'active' : ''}`}
                         onClick={() => setContentTab(contentTab === 'process' ? 'terminal' : 'process')}
                       >
                         <Cpu size={14} />
@@ -708,7 +705,7 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                   {activeSession?.isSerial || isUnsupportedMonitorSession(activeSession) ? null : (
                     <Tiptop text={terminalToolbarIconOnly ? t('网络监控') : null} placement="bottom">
                       <button
-                        className={`btn btn-ghost btn-sm terminal-create-btn terminal-tool-btn ${contentTab === 'network' ? 'active' : ''}`}
+                        className={`${TERMINAL_TAB_TOOL_BTN} terminal-tool-btn ${contentTab === 'network' ? 'active' : ''}`}
                         onClick={() => setContentTab(contentTab === 'network' ? 'terminal' : 'network')}
                       >
                         <Globe size={14} />
@@ -718,7 +715,7 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                   )}
                   <Tiptop text={terminalToolbarIconOnly ? t('历史指令') : null} placement="bottom">
                     <button
-                      className={`btn btn-ghost btn-sm terminal-create-btn terminal-tool-btn ${contentTab === 'history' ? 'active' : ''}`}
+                      className={`${TERMINAL_TAB_TOOL_BTN} terminal-tool-btn ${contentTab === 'history' ? 'active' : ''}`}
                       onClick={() => setContentTab(contentTab === 'history' ? 'terminal' : 'history')}
                     >
                       <ScrollText size={14} />
@@ -729,9 +726,8 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                   {!activeSession?.isSerial && (
                     <Tiptop text={terminalToolbarIconOnly ? t('新建终端') : null} placement="bottom">
                       <button
-                        className={`btn btn-ghost btn-sm terminal-create-btn ${isCreatingTerminal ? 'is-creating' : ''}`}
+                        className={`${TERMINAL_TAB_TOOL_BTN} shrink-0 ml-[2px] ${isCreatingTerminal ? 'is-creating' : ''}`}
                         onClick={() => openNewTerminal(activeSession.id || '')}
-                        style={{ marginLeft: 2, flexShrink: 0 }}
                         disabled={isCreatingTerminal}
                         aria-busy={isCreatingTerminal}
                       >
@@ -794,11 +790,11 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
             )}
 
             {/* Session Content */}
-            <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
+            <div className="flex-1 flex overflow-hidden relative">
               {/* 左侧/上侧主体容器 */}
-              <div id="session-editor-container" style={{ flex: 1, display: 'flex', flexDirection: 'row', height: '100%', position: 'relative', overflow: 'hidden' }}>
+              <div id="session-editor-container" className="flex-1 flex flex-row h-full relative overflow-hidden">
                 {/* 主体视口 */}
-                <div id="editor-main-content" style={{ flex: 1, position: 'relative', overflow: 'hidden', order: 1 }}>
+                <div id="editor-main-content" className="flex-1 relative overflow-hidden order-1">
                   {sessions.map((s) => {
                     const shouldMountFileManager = s.status === 'connected'
                       && mountedSessions.has(s.id || '')
@@ -828,20 +824,16 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                     return (
                       <div
                         key={s.id}
-                        style={{
-                          position: 'absolute',
-                          inset: 0,
-                          display: activeSessionId === s.id ? 'flex' : 'none',
-                          flexDirection: 'column',
-                        }}
+                        className="absolute inset-0 flex-col"
+                        style={{ display: activeSessionId === s.id ? 'flex' : 'none' }}
                       >
                         {showLeftCollapseStrip && (
                           <button
                             type="button"
-                            className="panel-collapse-strip panel-collapse-strip-vertical panel-collapse-strip-left no-drag"
+                            className="panel-collapse-strip panel-collapse-strip-vertical panel-collapse-strip-left no-drag absolute left-0 inset-y-0"
                             onClick={() => setFileManagerCollapsedPersistent(false)}
                             aria-label={t('展开文件管理面板')}
-                            style={{ position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: Z.PANEL_BUTTON + 1 }}
+                            style={{ zIndex: Z.PANEL_BUTTON + 1 }}
                           >
                             <ChevronRight size={14} />
                           </button>
@@ -849,10 +841,10 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                         {showRightCollapseStrip && (
                           <button
                             type="button"
-                            className="panel-collapse-strip panel-collapse-strip-vertical panel-collapse-strip-right no-drag"
+                            className="panel-collapse-strip panel-collapse-strip-vertical panel-collapse-strip-right no-drag absolute right-0 inset-y-0"
                             onClick={() => setFileManagerCollapsedPersistent(false)}
                             aria-label={t('展开文件管理面板')}
-                            style={{ position: 'absolute', right: 0, top: 0, bottom: 0, zIndex: Z.PANEL_BUTTON + 1 }}
+                            style={{ zIndex: Z.PANEL_BUTTON + 1 }}
                           >
                             <ChevronLeft size={14} />
                           </button>
@@ -860,32 +852,21 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                         {showBottomCollapseStrip && (
                           <button
                             type="button"
-                            className="panel-collapse-strip panel-collapse-strip-horizontal panel-collapse-strip-bottom no-drag"
+                            className="panel-collapse-strip panel-collapse-strip-horizontal panel-collapse-strip-bottom no-drag absolute inset-x-0 bottom-0"
                             onClick={() => setFileManagerCollapsedPersistent(false)}
                             aria-label={t('展开文件管理面板')}
                             // 贴在会话区底边细条，zIndex 低于终端输入栏提示，避免挡住「历史/命令」
-                            style={{
-                              position: 'absolute',
-                              left: 0,
-                              right: 0,
-                              bottom: 0,
-                              zIndex: 1,
-                              height: 12,
-                              minHeight: 12,
-                            }}
+                            style={{ zIndex: Z.CONTENT }}
                           >
                             <ChevronUp size={12} />
                           </button>
                         )}
                         {shouldMountFileManager && (
                           <div
+                            className="absolute flex-col overflow-hidden bg-canvas"
                             style={{
-                              position: 'absolute',
                               display: showFileManagerPanel ? 'flex' : 'none',
-                              flexDirection: 'column',
-                              overflow: 'hidden',
-                              background: 'var(--surface-base)',
-                              zIndex: 1,
+                              zIndex: Z.CONTENT,
                               ...(showLeftFileManager ? {
                                 left: 0,
                                 top: 0,
@@ -937,19 +918,12 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                           <div
                             onMouseDown={(e) => e.stopPropagation()}
                             onClick={(e) => e.stopPropagation()}
+                            className="absolute bottom-0 flex flex-col overflow-visible bg-canvas border-t border-line min-h-[100px]"
                             style={{
-                              position: 'absolute',
                               // 侧栏文件管理器打开时，命令面板不盖住文件管理器
                               left: showLeftFileManager ? `${leftSplitWidth}px` : 0,
                               right: showRightFileManager ? `${leftSplitWidth}px` : 0,
-                              bottom: 0,
                               height: `${bottomSplitHeight}px`,
-                              minHeight: `${FILE_MANAGER_BOTTOM_MIN}px`,
-                              display: 'flex',
-                              flexDirection: 'column',
-                              overflow: 'visible',
-                              background: 'var(--surface-base)',
-                              borderTop: '1px solid var(--border)',
                               // 高于终端区，避免输入栏按钮被拖条拦截
                               zIndex: Z.PANEL_BUTTON + 4,
                             }}
@@ -971,9 +945,7 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                                 left: 0,
                                 right: 0,
                                 top: 0,
-                                height: 0,
-                                zIndex: 5,
-                                margin: 0,
+                                zIndex: Z.SCROLLBAR,
                               }}
                             />
                             {collapseDragIntent === 'bottom' && (
@@ -1007,8 +979,6 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                               // 底部有命令面板时，竖拖条不要被底部面板盖住
                               bottom: showBottomQuickCommands ? `${bottomSplitHeight}px` : 0,
                               zIndex: Z.PANEL_BUTTON + 5,
-                              marginLeft: 0,
-                              marginRight: 0,
                             }}
                           />
                         )}
@@ -1027,8 +997,6 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                               top: 0,
                               bottom: showBottomQuickCommands ? `${bottomSplitHeight}px` : 0,
                               zIndex: Z.PANEL_BUTTON + 5,
-                              marginLeft: 0,
-                              marginRight: 0,
                             }}
                           />
                         )}
@@ -1049,20 +1017,13 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                               right: showRightFileManager ? `${leftSplitWidth}px` : 0,
                               bottom: `${bottomSplitHeight}px`,
                               zIndex: Z.PANEL_BUTTON,
-                              marginTop: 0,
-                              marginBottom: 0,
                             }}
                           />
                         )}
                         <div
                           id="terminal-dock-preview-host"
+                          className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden"
                           style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            flex: 1,
-                            minWidth: 0,
-                            minHeight: 0,
-                            overflow: 'hidden',
                             marginLeft: showLeftFileManager ? `${leftSplitWidth}px` : (showLeftCollapseStrip ? 12 : 0),
                             marginRight: showRightFileManager ? `${leftSplitWidth}px` : (showRightCollapseStrip ? 12 : 0),
                             // 底部收起条 12px，给终端输入栏留空，避免挡「历史」按钮
@@ -1071,7 +1032,7 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                               : (showBottomCollapseStrip ? 12 : 0),
                           }}
                         >
-                          <div style={{ display: (contentTab === 'terminal' || s.status !== 'connected') ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0, height: '100%', position: 'relative' }}>
+                          <div className="relative flex-col flex-1 min-h-0 h-full" style={{ display: (contentTab === 'terminal' || s.status !== 'connected') ? 'flex' : 'none' }}>
                             {mountedSessions.has(s.id || '') && (
                               isSessionWorkspaceVisible(s) ? (() => {
                                 const isTerminalViewActive = activeSessionId === s.id && (contentTab === 'terminal' || s.status !== 'connected');
@@ -1110,51 +1071,30 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                                   return (
                                     <div
                                       key={term.id}
+                                      className="absolute flex flex-col min-w-0 min-h-0 overflow-hidden rounded-none bg-canvas"
                                       style={{
-                                        position: 'absolute',
                                         ...getTerminalPaneAbsolutePlacement(placement?.cells || TERMINAL_PANE_CELL_IDS),
-                                        display: 'flex',
-                                        flexDirection: 'column',
                                         visibility: isTermVisible ? 'visible' : 'hidden',
                                         pointerEvents: isTermVisible ? 'auto' : 'none',
                                         contain: isTermVisible ? 'none' : 'strict',
-                                        minWidth: 0,
-                                        minHeight: 0,
-                                        overflow: 'hidden',
                                         border: isGrouped ? '1px solid var(--border)' : 'none',
-                                        borderRadius: 0,
-                                        background: 'var(--surface-base)',
                                       }}
                                     >
                                       {placement?.showHeader && (
-                                        <div
-                                          style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 8,
-                                            minHeight: 32,
-                                            padding: '0 10px',
-                                            borderBottom: '1px solid var(--border-subtle)',
-                                            background: 'var(--surface-raised)',
-                                            color: 'var(--text-secondary)',
-                                            fontSize: 12,
-                                            fontWeight: 600,
-                                            flexShrink: 0,
-                                          }}
-                                        >
+                                        <div className="flex items-center gap-2 min-h-8 px-2.5 border-b border-line-subtle bg-raised text-secondary text-sm font-semibold shrink-0">
                                           <Monitor size={12} />
-                                          <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                          <span className="flex-1 min-w-0 truncate">
                                             {term.label}
                                           </span>
-                                          <button
-                                            type="button"
-                                            className="btn btn-ghost btn-sm no-drag"
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="no-drag px-1.5 py-0"
                                             onClick={(e) => closeTerminalPane(placement.layoutId || '', placement.paneId || '', e)}
                                             aria-label={t('关闭分屏')}
-                                            style={{ minHeight: 24, padding: '0 6px' }}
                                           >
                                             <X size={12} />
-                                          </button>
+                                          </Button>
                                         </div>
                                       )}
                                       <div style={{ flex: 1, minHeight: 0 }}>
@@ -1180,13 +1120,10 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                               })() : (getEffectiveTerminals(s).map((term) => {
                                 const isTermActive = (contentTab === 'terminal' || s.status !== 'connected') && activeTerminalId === term.id;
                                 return (
-                                  <div key={term.id} style={{
-                                    position: 'absolute', inset: 0,
-                                    display: 'flex',
+                                  <div key={term.id} className="absolute inset-0 flex flex-col" style={{
                                     visibility: isTermActive ? 'visible' : 'hidden',
                                     pointerEvents: isTermActive ? 'auto' : 'none',
                                     contain: isTermActive ? 'none' : 'strict',
-                                    flexDirection: 'column',
                                   }}>
                                     <ErrorBoundary label={t('终端 {id} 渲染出错', { id: term.id })}>
                                       <Terminal
@@ -1209,19 +1146,8 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                             )}
                             {restoringWorkspaceSessionIds.has(s.id || '') && (
                               <div
-                                style={{
-                                  position: 'absolute',
-                                  inset: 0,
-                                  zIndex: Z.COMPONENT_OVERLAY,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  gap: 10,
-                                  background: 'var(--surface-base)',
-                                  color: 'var(--text-secondary)',
-                                  fontSize: 13,
-                                  pointerEvents: 'none',
-                                }}
+                                className="absolute inset-0 flex items-center justify-center gap-2.5 bg-canvas text-secondary text-base pointer-events-none"
+                                style={{ zIndex: Z.COMPONENT_OVERLAY }}
                               >
                                 <RefreshCw size={16} className="spin" />
                                 <span>{t('正在恢复终端工作区…')}</span>
@@ -1229,7 +1155,7 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                             )}
                           </div>
                           {s.status === 'connected' && mountedSessions.has(s.id || '') && (
-                            <div style={{ display: contentTab === 'history' ? 'block' : 'none', height: '100%', flex: 1 }}>
+                            <div className="h-full flex-1" style={{ display: contentTab === 'history' ? 'block' : 'none' }}>
                               <CommandHistory
                                 sessionId={s.id || ''}
                                 historyServerId={s.serverId ? String(s.serverId) : ''}
@@ -1239,7 +1165,7 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                             </div>
                           )}
                           {s.status === 'connected' && mountedSessions.has(s.id || '') && !s.isSerial && !isUnsupportedMonitorSession(s) && (
-                            <div style={{ display: contentTab === 'process' ? 'flex' : 'none', height: '100%', flex: 1, minWidth: 0, minHeight: 0 }}>
+                            <div className="h-full flex-1 min-w-0 min-h-0" style={{ display: contentTab === 'process' ? 'flex' : 'none' }}>
                               <ProcessPage
                                 sessionId={s.id || ''}
                                 addToast={addToast}
@@ -1248,7 +1174,7 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                             </div>
                           )}
                           {s.status === 'connected' && mountedSessions.has(s.id || '') && !s.isSerial && !isUnsupportedMonitorSession(s) && (
-                            <div style={{ display: contentTab === 'network' ? 'flex' : 'none', height: '100%', flex: 1, minWidth: 0, minHeight: 0 }}>
+                            <div className="h-full flex-1 min-w-0 min-h-0" style={{ display: contentTab === 'network' ? 'flex' : 'none' }}>
                               <NetworkPage
                                 sessionId={s.id || ''}
                                 active={contentTab === 'network' && activeSessionId === s.id}
@@ -1287,7 +1213,7 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                       <div
                         className="terminal-pane-dock-preview-layer"
                         aria-hidden="true"
-                        style={{ position: 'fixed', inset: 0, zIndex: Z.PANEL_BUTTON + 7 }}
+                        style={{ position: 'fixed', zIndex: Z.PANEL_BUTTON + 7 }}
                       >
                         {(terminalDockDragPreview.zones as Array<{ target: string; style: React.CSSProperties }>).map((zone) => (
                           <div
@@ -1358,7 +1284,7 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                     document.body.style.userSelect = 'none';
                   }}
                 />
-                <div id="editor-split-host" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', order: 2, width: 0, transition: 'width 0.2s ease, height 0.2s ease' }} />
+                <div id="editor-split-host" className="flex flex-col overflow-hidden order-2 w-0 [transition:width_0.2s_ease,height_0.2s_ease]" />
                 {activeChangeReview ? (
                   <Suspense fallback={null}>
                     <AIChangeReviewWorkbench
@@ -1454,16 +1380,10 @@ export default function SessionWorkspace({ dashboard = {}, session = {}, fileMan
                   />
                 </Tiptop>
                 <div
-                  className="probe-panel-wrapper"
+                  className="probe-panel-wrapper relative"
                   style={{
                     width: probePanelWidth,
                     minWidth: probePanelWidth,
-                    height: '100%',
-                    display: 'flex',
-                    flexShrink: 0,
-                    position: 'relative',
-                    overflow: 'hidden',
-                    borderLeft: '1px solid var(--border)',
                     background: 'var(--surface-base)',
                   }}
                 >

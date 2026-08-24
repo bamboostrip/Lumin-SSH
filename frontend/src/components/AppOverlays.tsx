@@ -18,6 +18,7 @@ import type { ToastAction, ToastItem } from '../hooks/useToasts.ts';
 import type { ExportOptions } from '../hooks/useImportExport.ts';
 import type { SessionLike } from '../utils/sessionWorkspace.ts';
 import type { TopbarSession } from './AppTopbar.tsx';
+import { cn } from '../utils/cn.ts';
 
 /** 标签栏右键菜单 */
 export interface TabContextMenuState {
@@ -406,12 +407,15 @@ export default function AppOverlays({ dialogs, importExport, notifications, menu
               return (
                 <div
                   key={item.target}
-                  className={`tab-context-menu-item${occupied ? ' occupied' : ''}`}
+                  className={cn(
+                    'tab-context-menu-item',
+                    occupied && 'occupied',
+                    !enabled && 'opacity-[0.42] pointer-events-none',
+                  )}
                   onClick={() => {
                     if (!session || !enabled) return;
                     moveTerminalToDockTarget(session, terminalTabContextMenu.terminalId, item.target);
                   }}
-                  style={enabled ? undefined : { opacity: 0.42, pointerEvents: 'none' }}
                 >
                   <span className="tab-context-menu-state">{occupied ? '☒' : '☑'}</span> {item.label}
                 </div>
@@ -429,7 +433,7 @@ export default function AppOverlays({ dialogs, importExport, notifications, menu
                 <PenLine size={14} /> {t('重命名标签标题')}
               </div>
             )}
-            <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+            <div className="h-px my-1 bg-line" />
             <div
               className="tab-context-menu-item"
               onClick={(e) => {
@@ -465,7 +469,7 @@ export default function AppOverlays({ dialogs, importExport, notifications, menu
                 >
                   <Copy size={14} /> {t('复制服务器密码')}
                 </div>
-                <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+                <div className="h-px my-1 bg-line" />
               </>
             )}
             <div
@@ -480,7 +484,7 @@ export default function AppOverlays({ dialogs, importExport, notifications, menu
             </div>
             {sessions.length >= 2 && (
               <>
-                <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+                <div className="h-px my-1 bg-line" />
                 <div
                   className="tab-context-menu-item"
                   onClick={() => {
@@ -499,10 +503,10 @@ export default function AppOverlays({ dialogs, importExport, notifications, menu
       {showSessionList && (
         <div
           ref={sessionListRef}
-          className="tab-context-menu"
-          style={{ left: sessionListPos.x - 240, top: sessionListPos.y, minWidth: 240, maxHeight: 400, display: 'flex', flexDirection: 'column' }}
+          className="tab-context-menu max-h-[400px] flex flex-col"
+          style={{ left: sessionListPos.x - 240, top: sessionListPos.y, minWidth: 240 }}
         >
-          <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)', position: 'relative' }}>
+          <div className="relative py-1.5 px-2 border-b border-line">
             <input
               id="app-overlays-session-search"
               name="app-overlays-session-search"
@@ -512,27 +516,27 @@ export default function AppOverlays({ dialogs, importExport, notifications, menu
               onChange={(e) => setSessionListQuery(e.target.value)}
               placeholder={t('搜索服务器')}
               autoFocus
-              style={{ width: '100%', padding: '4px 8px 4px 26px', fontSize: 12, background: 'var(--surface-sunken)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-primary)', outline: 'none' }}
+              className="w-full pt-1 pb-1 pl-[26px] pr-2 text-sm bg-sunken border border-line rounded-sm text-primary outline-none"
             />
-            <Search size={13} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
+            <Search size={13} className="absolute left-[14px] top-1/2 -translate-y-1/2 text-tertiary" />
           </div>
-          <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
+          <div className="overflow-y-auto flex-1 min-h-0">
             {sessions
               .filter(s => !sessionListQuery || (s.serverName || '').toLowerCase().includes(sessionListQuery.toLowerCase()) || (s.host || '').toLowerCase().includes(sessionListQuery.toLowerCase()))
               .map(s => (
                 <div
                   key={s.id}
-                  className="tab-context-menu-item"
+                  className={`tab-context-menu-item ${activeSessionId === s.id ? 'font-bold' : 'font-normal'}`}
                   onClick={() => { handleTabClick(s.id); setShowSessionList(false); }}
-                  style={{ fontWeight: activeSessionId === s.id ? 700 : 400, color: activeSessionId === s.id ? 'var(--accent)' : 'var(--text-secondary)' }}
+                  style={{ color: activeSessionId === s.id ? 'var(--accent)' : 'var(--text-secondary)' }}
                 >
                   <span className={`status-dot ${sessionAuthPrompts[s.id] ? 'attention' : s.status === 'connecting' ? 'connecting' : s.status === 'connected' ? 'online' : 'offline'}`} />
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.serverName}</span>
+                  <span className="flex-1 truncate">{s.serverName}</span>
                   <Tiptop text={t('关闭')} placement="bottom">
                     <span
                       onClick={(e) => { e.stopPropagation(); closeSession(s.id, e); }}
                       aria-label={t('关闭')}
-                      style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', opacity: 0.5, flexShrink: 0 }}
+                      className="cursor-pointer flex items-center opacity-50 shrink-0"
                     >
                       <X size={13} />
                     </span>
@@ -540,7 +544,7 @@ export default function AppOverlays({ dialogs, importExport, notifications, menu
                 </div>
               ))}
             {sessions.filter(s => !sessionListQuery || (s.serverName || '').toLowerCase().includes(sessionListQuery.toLowerCase()) || (s.host || '').toLowerCase().includes(sessionListQuery.toLowerCase())).length === 0 && (
-              <div style={{ padding: '12px 16px', fontSize: 12, color: 'var(--text-tertiary)', textAlign: 'center' }}>{t('无匹配结果')}</div>
+              <div className="py-3 px-4 text-sm text-tertiary text-center">{t('无匹配结果')}</div>
             )}
           </div>
         </div>

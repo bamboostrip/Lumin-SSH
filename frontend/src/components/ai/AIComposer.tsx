@@ -7,6 +7,7 @@ import AIAutoApproveDropdown from './AIAutoApproveDropdown.tsx'
 import AICollaborationPromptDropdown from './AICollaborationPromptDropdown.tsx'
 import AIProviderSelector from './AIProviderSelector.tsx'
 import Tiptop from '../Tiptop.tsx'
+import { Button } from '../ui'
 import { useAIWorkspaceTabContext } from './aiWorkspaceTabContext.ts'
 import {
   buildRemoteFileMention,
@@ -30,6 +31,8 @@ import {
 import { compressImage } from './aiImageCompression.ts'
 import AIChatReasoningBlock from './chat/AIChatReasoningBlock.tsx'
 import AIChatRequestStatusRow from './chat/AIChatRequestStatusRow.tsx'
+import { Z } from '../../constants/zIndex.ts'
+import { cn } from '../../utils/cn.ts'
 
 declare global {
   interface Window {
@@ -144,29 +147,17 @@ function ActionButton({ title, children, primary = false, disabled = false, onCl
 }) {
   return (
     <Tiptop text={title}>
-      <button
+      <Button
         type="button"
         aria-label={title}
         onClick={onClick}
         onContextMenu={onContextMenu}
         disabled={disabled}
-        style={{
-          width: 34,
-          height: 34,
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderRadius: 8,
-          border: `1px solid ${primary ? 'var(--accent-border)' : 'var(--border)'}`,
-          background: primary ? 'rgba(var(--accent-rgb), 0.14)' : 'transparent',
-          color: primary ? 'var(--accent)' : 'var(--text-secondary)',
-          transition: 'var(--transition)',
-          flexShrink: 0,
-          opacity: disabled ? 0.45 : 1,
-          cursor: disabled ? 'not-allowed' : 'pointer',
-        }}>
+        variant={primary ? 'primary' : 'secondary'}
+        className="w-[34px] h-[34px] rounded-lg shrink-0"
+      >
         {children}
-      </button>
+      </Button>
     </Tiptop>
   )
 }
@@ -180,31 +171,18 @@ function ApprovalButton({ icon, label, onClick, primary = false, fullWidth = fal
 }) {
   const Icon = icon
   return (
-    <button
+    <Button
       type="button"
       onClick={onClick}
-      style={{
-        height: 34,
-        width: fullWidth ? '100%' : undefined,
-        flex: fullWidth ? '1 1 0' : '0 0 auto',
-        minWidth: 0,
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 6,
-        padding: '0 12px',
-        borderRadius: 8,
-        border: `1px solid ${primary ? 'var(--accent-border)' : 'var(--border)'}`,
-        background: primary ? 'rgba(var(--accent-rgb), 0.14)' : 'transparent',
-        color: primary ? 'var(--accent)' : 'var(--text-secondary)',
-        fontSize: 13,
-        fontWeight: 600,
-        transition: 'var(--transition)',
-        whiteSpace: 'nowrap',
-      }}>
+      variant={primary ? 'primary' : 'secondary'}
+      className={cn(
+        'h-[34px] min-w-0 gap-1.5 px-3 rounded-lg text-base font-semibold whitespace-nowrap',
+        fullWidth ? 'w-full flex-1' : 'flex-none',
+      )}
+    >
       <Icon size={12} />
       <span>{label}</span>
-    </button>
+    </Button>
   )
 }
 
@@ -1391,32 +1369,14 @@ export default function AIComposer({
   }
 
   return (
-    <div style={{ flexShrink: 0, padding: 0, borderTop: '1px solid var(--border)', background: 'var(--surface-raised)' }}>
+    <div className="shrink-0 p-0 border-t border-line bg-raised">
       {showToolResumeBar ? (
-        <div
-          style={{
-            minHeight: 48,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '10px 12px',
-            borderBottom: '1px solid var(--border)',
-            background: 'var(--surface-overlay)',
-          }}>
+        <div className="min-h-12 flex items-center gap-2 px-3 py-2.5 border-b border-line bg-overlay">
           <ApprovalButton icon={Play} label={t('继续任务')} onClick={onResumeTask} primary={true} fullWidth={true} />
         </div>
       ) : null}
       {(approvalRequired || commandActionRequired || toolRunning || terminalAssignmentRequired) ? (
-        <div
-          style={{
-            minHeight: 48,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '10px 12px',
-            borderBottom: '1px solid var(--border)',
-            background: 'var(--surface-overlay)',
-          }}>
+        <div className="min-h-12 flex items-center gap-2 px-3 py-2.5 border-b border-line bg-overlay">
           {approvalRequired ? approvalButtons.map((button) => (
             <ApprovalButton
               key={button.key}
@@ -1429,67 +1389,56 @@ export default function AIComposer({
           )) : null}
           {terminalAssignmentRequired ? (
             <>
-              <div ref={terminalAssignmentRef} style={{ position: 'relative', display: 'flex', flex: 1, minWidth: 0 }}>
+              <div ref={terminalAssignmentRef} className="relative flex flex-1 min-w-0">
                 {terminalAssignmentOpen ? (
                   <div
-                    style={{
-                      position: 'absolute',
-                      left: 0,
-                      bottom: 'calc(100% + 8px)',
-                      width: 'min(360px, calc(100vw - 40px))',
-                      borderRadius: 10,
-                      border: '1px solid var(--border)',
-                      background: 'var(--surface-overlay)',
-                      boxShadow: 'var(--shadow-xl)',
-                      overflow: 'hidden',
-                      zIndex: 60,
-                    }}>
-                    <div style={{ display: 'grid', gap: 2, padding: '10px 12px', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <div style={{ fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 700 }}>{t('推荐终端')}</div>
+                    className="absolute left-0 bottom-[calc(100%+8px)] w-[min(360px,calc(100vw-40px))] rounded-lg border border-line bg-overlay shadow-xl overflow-hidden"
+                    style={{ zIndex: Z.POPUP + 1 }}>
+                    <div className="grid gap-0.5 px-3 py-2.5 border-b border-line-subtle">
+                      <div className="text-xs text-tertiary font-bold">{t('推荐终端')}</div>
                       {recommendedTerminalCandidate ? (
                         <button
                           type="button"
                           onClick={() => void handleAssignTerminalCandidate(recommendedTerminalCandidate.sessionId)}
                           disabled={terminalAssignmentSubmitting}
-                          style={{
-                            width: '100%',
-                            display: 'grid',
-                            gap: 4,
-                            padding: '10px 12px',
-                            textAlign: 'left',
-                            borderRadius: 8,
-                            border: '1px solid var(--accent-border)',
-                            background: 'rgba(var(--accent-rgb), 0.10)',
-                            color: 'var(--text-primary)',
-                            cursor: terminalAssignmentSubmitting ? 'wait' : 'pointer',
-                          }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0, fontSize: 13, fontWeight: 700 }}>
+                          className={cn(
+                            'w-full grid gap-1 px-3 py-2.5 text-left rounded-lg border',
+                            terminalAssignmentSubmitting ? 'cursor-wait' : 'cursor-pointer',
+                            'border-accent-border bg-[rgba(var(--accent-rgb),0.10)] text-primary',
+                          )}>
+                          <div className="flex items-center justify-between gap-2.5">
+                            <span className="inline-flex items-center gap-2 min-w-0 text-base font-bold">
                               <Monitor size={13} />
-                              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{recommendedTerminalCandidate.label}</span>
+                              <span className="min-w-0 truncate">{recommendedTerminalCandidate.label}</span>
                             </span>
-                            <span style={{ padding: '2px 8px', borderRadius: 999, border: '1px solid var(--border-subtle)', background: recommendedTerminalCandidate.busy ? 'rgba(var(--warning-rgb), 0.10)' : 'rgba(var(--success-rgb), 0.10)', color: recommendedTerminalCandidate.busy ? 'var(--warning)' : 'var(--success)', fontSize: 11, fontWeight: 700 }}>
+                            <span
+                              className={cn(
+                                'px-2 py-0.5 rounded-full border border-line-subtle text-xs font-bold',
+                                recommendedTerminalCandidate.busy
+                                  ? 'bg-[rgba(var(--warning-rgb),0.10)] text-warning'
+                                  : 'bg-[rgba(var(--success-rgb),0.10)] text-success',
+                              )}>
                               {recommendedTerminalCandidate.busy ? t('忙碌') : t('空闲')}
                             </span>
                           </div>
                           {recommendedTerminalCandidate.cwd ? (
-                            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <div className="text-xs text-tertiary font-mono truncate">
                               {recommendedTerminalCandidate.cwd}
                             </div>
                           ) : null}
                         </button>
                       ) : null}
                     </div>
-                    <div style={{ maxHeight: 260, overflowY: 'auto', display: 'grid', gap: 0 }}>
+                    <div className="max-h-[260px] overflow-y-auto grid">
                       {terminalAssignmentLoading ? (
-                        <div style={{ padding: '12px', fontSize: 12, color: 'var(--text-tertiary)' }}>{t('正在加载终端...')}</div>
+                        <div className="p-3 text-sm text-tertiary">{t('正在加载终端...')}</div>
                       ) : null}
                       {!terminalAssignmentLoading && terminalAssignmentError ? (
-                        <div style={{ padding: '12px', fontSize: 12, color: 'var(--danger)' }}>{terminalAssignmentError}</div>
+                        <div className="p-3 text-sm text-danger">{terminalAssignmentError}</div>
                       ) : null}
                       {!terminalAssignmentLoading && !terminalAssignmentError && secondaryTerminalCandidates.length > 0 ? (
                         <>
-                          <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-subtle)', fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 700 }}>{t('其他终端')}</div>
+                          <div className="px-3 py-2 border-b border-line-subtle text-xs text-tertiary font-bold">{t('其他终端')}</div>
                           {secondaryTerminalCandidates.map((candidate) => {
                             const candidateIndex = terminalAssignmentCandidates.findIndex((item) => item.sessionId === candidate.sessionId)
                             const isSelected = candidateIndex === terminalAssignmentSelectedIndex
@@ -1500,29 +1449,29 @@ export default function AIComposer({
                                 onMouseEnter={() => setTerminalAssignmentSelectedIndex(candidateIndex)}
                                 onClick={() => void handleAssignTerminalCandidate(candidate.sessionId)}
                                 disabled={terminalAssignmentSubmitting}
-                                style={{
-                                  width: '100%',
-                                  display: 'grid',
-                                  gap: 4,
-                                  padding: '10px 12px',
-                                  textAlign: 'left',
-                                  border: 'none',
-                                  borderBottom: '1px solid var(--border-subtle)',
-                                  background: isSelected ? 'rgba(var(--accent-rgb), 0.10)' : 'transparent',
-                                  color: 'var(--text-primary)',
-                                  cursor: terminalAssignmentSubmitting ? 'wait' : 'pointer',
-                                }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0, fontSize: 13, fontWeight: 600 }}>
+                                className={cn(
+                                  'w-full grid gap-1 px-3 py-2.5 text-left border-x-0 border-t-0 border-b border-b-line-subtle',
+                                  terminalAssignmentSubmitting ? 'cursor-wait' : 'cursor-pointer',
+                                  isSelected ? 'bg-[rgba(var(--accent-rgb),0.10)]' : 'bg-transparent',
+                                  'text-primary',
+                                )}>
+                                <div className="flex items-center justify-between gap-2.5">
+                                  <span className="inline-flex items-center gap-2 min-w-0 text-base font-semibold">
                                     <Monitor size={13} />
-                                    <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{candidate.label}</span>
+                                    <span className="min-w-0 truncate">{candidate.label}</span>
                                   </span>
-                                  <span style={{ padding: '2px 8px', borderRadius: 999, border: '1px solid var(--border-subtle)', background: candidate.busy ? 'rgba(var(--warning-rgb), 0.10)' : 'rgba(var(--success-rgb), 0.10)', color: candidate.busy ? 'var(--warning)' : 'var(--success)', fontSize: 11, fontWeight: 700 }}>
+                                  <span
+                                    className={cn(
+                                      'px-2 py-0.5 rounded-full border border-line-subtle text-xs font-bold',
+                                      candidate.busy
+                                        ? 'bg-[rgba(var(--warning-rgb),0.10)] text-warning'
+                                        : 'bg-[rgba(var(--success-rgb),0.10)] text-success',
+                                    )}>
                                     {candidate.busy ? t('忙碌') : t('空闲')}
                                   </span>
                                 </div>
                                 {candidate.cwd ? (
-                                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  <div className="text-xs text-tertiary font-mono truncate">
                                     {candidate.cwd}
                                   </div>
                                 ) : null}
@@ -1532,7 +1481,7 @@ export default function AIComposer({
                         </>
                       ) : null}
                       {!terminalAssignmentLoading && !terminalAssignmentError && terminalAssignmentCandidates.length === 0 ? (
-                        <div style={{ padding: '12px', fontSize: 12, color: 'var(--text-tertiary)' }}>{t('没有可指派的终端')}</div>
+                        <div className="p-3 text-sm text-tertiary">{t('没有可指派的终端')}</div>
                       ) : null}
                     </div>
                   </div>
@@ -1563,21 +1512,14 @@ export default function AIComposer({
           ) : null}
         </div>
       ) : null}
-      <div data-ai-composer-root="true" style={{ width: '100%', border: 'none', borderRadius: 0, background: 'var(--surface-raised)', boxShadow: 'none' }}>
+      <div data-ai-composer-root="true" className="w-full border-none rounded-none bg-raised shadow-none">
         {collaborationStatusAssistant ? (
           collaborationStatusReasoning.length > 0 ? (
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-start',
-                gap: 8,
-                padding: '8px 12px 0',
-              }}>
-              <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+            <div className="flex flex-col items-start gap-2 pt-2 px-3">
+              <div className="flex justify-start">
                 <AIChatRequestStatusRow assistant={collaborationStatusAssistant} reasoning={collaborationStatusReasoning} />
               </div>
-              <div style={{ width: '100%', minWidth: 0 }}>
+              <div className="w-full min-w-0">
                 <AIChatReasoningBlock
                   text={collaborationStatusReasoning[0]?.text || ''}
                   duration=""
@@ -1587,14 +1529,7 @@ export default function AIComposer({
               </div>
             </div>
           ) : (
-            <div
-              style={{
-                minHeight: 48,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'flex-end',
-                padding: '0 12px',
-              }}>
+            <div className="min-h-12 flex items-center justify-end px-3">
               <AIChatRequestStatusRow assistant={collaborationStatusAssistant} reasoning={collaborationStatusReasoning} />
             </div>
           )
@@ -1607,7 +1542,7 @@ export default function AIComposer({
           accept="image/*"
           multiple={true}
           onChange={handleImageInputChange}
-          style={{ display: 'none' }}
+          className="hidden"
         />
         <div
           data-ai-composer-input-zone="true"
@@ -1615,31 +1550,18 @@ export default function AIComposer({
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
+          className="flex items-stretch min-h-[124px] relative"
           style={{
-            display: 'flex',
-            alignItems: 'stretch',
-            minHeight: 124,
-            position: 'relative',
             outline: isDraggingOver ? '1px dashed var(--accent)' : 'none',
             background: isDraggingOver ? 'rgba(var(--accent-rgb), 0.06)' : 'transparent',
           }}>
           {activeInlineMenu?.open ? (
             <div
               onMouseDown={(event) => event.preventDefault()}
-              style={{
-                position: 'absolute',
-                left: 12,
-                right: 58,
-                bottom: 'calc(100% - 12px)',
-                zIndex: 40,
-                borderRadius: 12,
-                border: '1px solid var(--border)',
-                background: 'var(--surface-overlay)',
-                boxShadow: 'var(--shadow-lg)',
-                overflow: 'hidden',
-              }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 10px', borderBottom: '1px solid var(--border)', fontSize: 11, color: 'var(--text-tertiary)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              className="absolute left-3 right-[58px] bottom-[calc(100%-12px)] rounded-xl border border-line bg-overlay shadow-lg overflow-hidden"
+              style={{ zIndex: Z.POPUP }}>
+              <div className="flex items-center justify-between gap-2.5 px-2.5 py-2 border-b border-line text-xs text-tertiary">
+                <div className="flex items-center gap-2 min-w-0">
                   <span>
                     {activeInlineMenu.mode === 'slash'
                       ? `/ ${t('斜杠命令')}`
@@ -1650,7 +1572,7 @@ export default function AIComposer({
                           : `@ ${t('上下文')}`}
                   </span>
                   {activeInlineMenu.mode === 'mention' && mentionMenu.loading ? (
-                    <span style={{ color: 'var(--accent)', whiteSpace: 'nowrap' }}>
+                    <span className="text-accent whitespace-nowrap">
                       {t('正在搜索...')}
                     </span>
                   ) : null}
@@ -1663,21 +1585,14 @@ export default function AIComposer({
                       const nextCursorPosition = textarea ? (textarea.selectionStart ?? value.length) : value.length
                       void loadMentionSuggestions(value, nextCursorPosition, null)
                     }}
-                    style={{
-                      border: 'none',
-                      background: 'transparent',
-                      color: 'var(--text-secondary)',
-                      cursor: 'pointer',
-                      padding: 0,
-                      fontSize: 11,
-                    }}>
+                    className="border-none bg-transparent text-secondary cursor-pointer p-0 text-xs">
                     {t('返回')}
                   </button>
                 ) : null}
               </div>
-              <div ref={mentionMenuListRef} style={{ maxHeight: 240, overflowY: 'auto', display: 'grid', gap: 0 }}>
+              <div ref={mentionMenuListRef} className="max-h-[240px] overflow-y-auto grid">
                 {activeInlineMenu.mode === 'mention' && activeInlineMenu.items.length === 0 && mentionMenu.loading ? (
-                  <div style={{ padding: '12px 14px', fontSize: 12, color: 'var(--text-tertiary)' }}>
+                  <div className="px-3.5 py-3 text-sm text-tertiary">
                     {t('正在搜索远端路径...')}
                   </div>
                 ) : null}
@@ -1708,23 +1623,19 @@ export default function AIComposer({
                         event.preventDefault()
                         handleMentionItemSelect(item)
                       }}
-                      style={{
-                        display: 'grid',
-                        gap: 2,
-                        width: '100%',
-                        padding: '9px 12px',
-                        textAlign: 'left',
-                        border: 'none',
-                        borderBottom: index === activeInlineMenu.items.length - 1 && !(activeInlineMenu.mode === 'mention' && mentionMenu.loading) ? 'none' : '1px solid var(--border-subtle)',
-                        background: isSelected ? 'rgba(var(--accent-rgb), 0.12)' : 'transparent',
-                        color: item.kind === 'empty' ? 'var(--text-tertiary)' : 'var(--text-primary)',
-                        cursor: item.kind === 'empty' ? 'default' : 'pointer',
-                      }}>
-                      <span style={{ fontSize: 13, fontWeight: isSelected ? 700 : 600 }}>
+                      className={cn(
+                        'grid gap-0.5 w-full px-3 py-[9px] text-left border-x-0 border-t-0',
+                        index === activeInlineMenu.items.length - 1 && !(activeInlineMenu.mode === 'mention' && mentionMenu.loading)
+                          ? ''
+                          : 'border-b border-b-line-subtle',
+                        isSelected ? 'bg-[rgba(var(--accent-rgb),0.12)]' : 'bg-transparent',
+                        item.kind === 'empty' ? 'text-tertiary cursor-default' : 'text-primary cursor-pointer',
+                      )}>
+                      <span className={cn('text-base', isSelected ? 'font-bold' : 'font-semibold')}>
                         {item.title}
                       </span>
                       {item.description ? (
-                        <span style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+                        <span className="text-xs text-tertiary leading-normal">
                           {item.description}
                         </span>
                       ) : null}
@@ -1732,7 +1643,7 @@ export default function AIComposer({
                   )
                 })}
                 {activeInlineMenu.mode === 'mention' && mentionMenu.loading && activeInlineMenu.items.length > 0 ? (
-                  <div style={{ padding: '8px 12px', fontSize: 11, color: 'var(--text-tertiary)', borderTop: '1px solid var(--border-subtle)' }}>
+                  <div className="px-3 py-2 text-xs text-tertiary border-t border-t-line-subtle">
                     {t('正在刷新结果...')}
                   </div>
                 ) : null}
@@ -1742,33 +1653,13 @@ export default function AIComposer({
           {isQueuedSubmissionBlocked ? (
             <div
               onClick={isCollaborationBlocked ? undefined : (canClickQueuedSubmissionOverlay ? onCancelQueuedSubmission : undefined)}
-              style={{
-                position: 'absolute',
-                inset: 0,
-                zIndex: 30,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: 'rgba(0, 0, 0, 0.18)',
-                padding: '0 24px',
-                textAlign: 'center',
-                color: 'var(--text-primary)',
-                cursor: (!isCollaborationBlocked && canClickQueuedSubmissionOverlay) ? 'pointer' : 'default',
-              }}>
-              <span style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 8,
-                maxWidth: 360,
-                borderRadius: 999,
-                border: '1px solid var(--border)',
-                background: 'var(--surface-overlay)',
-                padding: '8px 12px',
-                fontSize: 12,
-                lineHeight: 1,
-                boxShadow: 'var(--shadow-lg)',
-              }}>
-                <span style={{ color: 'var(--accent)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              className={cn(
+                'absolute inset-0 flex items-center justify-center bg-black/[0.18] px-6 text-center text-primary',
+                (!isCollaborationBlocked && canClickQueuedSubmissionOverlay) ? 'cursor-pointer' : 'cursor-default',
+              )}
+              style={{ zIndex: Z.COMPONENT_OVERLAY }}>
+              <span className="inline-flex items-center gap-2 max-w-[360px] rounded-full border border-line bg-overlay px-3 py-2 text-sm leading-none shadow-lg">
+                <span className="text-accent font-bold whitespace-nowrap overflow-hidden text-ellipsis">
                   {queuedSubmissionVisualLabel}
                 </span>
                 {queuedSubmissionCancelHint ? (
@@ -1780,26 +1671,14 @@ export default function AIComposer({
                         event.stopPropagation()
                         onInterruptCollaboration?.()
                       }}
-                      style={{
-                        borderLeft: '1px solid var(--border-subtle)',
-                        borderTop: 'none',
-                        borderRight: 'none',
-                        borderBottom: 'none',
-                        paddingLeft: 8,
-                        paddingTop: 0,
-                        paddingRight: 0,
-                        paddingBottom: 0,
-                        margin: 0,
-                        background: 'transparent',
-                        color: 'var(--text-tertiary)',
-                        fontSize: 11,
-                        whiteSpace: 'nowrap',
-                        cursor: canClickQueuedSubmissionOverlay ? 'pointer' : 'default',
-                      }}>
+                      className={cn(
+                        'border-y-0 border-r-0 border-l border-l-line-subtle p-0 pl-2 m-0 bg-transparent text-tertiary text-xs whitespace-nowrap',
+                        canClickQueuedSubmissionOverlay ? 'cursor-pointer' : 'cursor-default',
+                      )}>
                       {queuedSubmissionCancelHint}
                     </button>
                   ) : (
-                    <span style={{ borderLeft: '1px solid var(--border-subtle)', paddingLeft: 8, color: 'var(--text-tertiary)', fontSize: 11, whiteSpace: 'nowrap' }}>
+                    <span className="border-l border-l-line-subtle pl-2 text-tertiary text-xs whitespace-nowrap">
                       {queuedSubmissionCancelHint}
                     </span>
                   )
@@ -1809,76 +1688,33 @@ export default function AIComposer({
           ) : null}
           {isComposerInteractionLocked && !isQueuedSubmissionBlocked ? (
             <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                zIndex: 29,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: 'rgba(0, 0, 0, 0.18)',
-                padding: '0 24px',
-                textAlign: 'center',
-                color: 'var(--text-primary)',
-                cursor: 'default',
-              }}>
-              <span style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 8,
-                maxWidth: 360,
-                borderRadius: 999,
-                border: '1px solid var(--border)',
-                background: 'var(--surface-overlay)',
-                padding: '8px 12px',
-                fontSize: 12,
-                lineHeight: 1,
-                boxShadow: 'var(--shadow-lg)',
-              }}>
-                <span style={{ color: 'var(--text-secondary)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              className="absolute inset-0 flex items-center justify-center bg-black/[0.18] px-6 text-center text-primary cursor-default"
+              style={{ zIndex: Z.COMPONENT_OVERLAY - 1 }}>
+              <span className="inline-flex items-center gap-2 max-w-[360px] rounded-full border border-line bg-overlay px-3 py-2 text-sm leading-none shadow-lg">
+                <span className="text-secondary font-bold whitespace-nowrap overflow-hidden text-ellipsis">
                   {composerInteractionLockedLabel}
                 </span>
               </span>
             </div>
           ) : null}
-          <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <div className="flex-1 min-w-0 min-h-0 flex flex-col">
             {editModeLabel ? (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 14px 0', fontSize: 11, color: 'var(--text-tertiary)' }}>
+              <div className="flex items-center justify-between gap-3 pt-2.5 px-3.5 text-xs text-tertiary">
                 <span>{editModeLabel}</span>
                 <button
                   type="button"
                   onClick={onCancelEdit}
-                  style={{
-                    border: 'none',
-                    background: 'transparent',
-                    color: 'var(--text-secondary)',
-                    fontSize: 11,
-                    cursor: 'pointer',
-                    padding: 0,
-                  }}>
+                  className="border-none bg-transparent text-secondary text-xs cursor-pointer p-0">
                   {t('取消')}
                 </button>
               </div>
             ) : null}
-            <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+            <div className="relative flex-1 min-h-0">
               <div
                 ref={highlightLayerRef}
                 aria-hidden="true"
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  padding: composerTextPadding,
-                  overflow: 'hidden',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  overflowWrap: 'anywhere',
-                  fontSize: 14,
-                  lineHeight: 1.5,
-                  fontFamily: 'inherit',
-                  color: 'transparent',
-                  pointerEvents: 'none',
-                  userSelect: 'none',
-                }}
+                className="absolute inset-0 overflow-hidden whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-md leading-normal font-[inherit] text-transparent pointer-events-none select-none"
+                style={{ padding: composerTextPadding }}
               />
               <textarea
                 ref={textareaRef}
@@ -1903,71 +1739,25 @@ export default function AIComposer({
                 placeholder={`@ ${t('支持远端文件,远端文件夹,当前终端输出;右键图片按钮粘贴远端绝对路径;支持粘贴/拖拽本地图片')}`}
                 spellCheck={false}
                 readOnly={isQueuedSubmissionBlocked || isComposerInteractionLocked}
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  minHeight: 0,
-                  resize: 'none',
-                  border: 'none',
-                  outline: 'none',
-                  borderRadius: 0,
-                  background: 'transparent',
-                  color: 'var(--text-primary)',
-                  padding: composerTextPadding,
-                  fontSize: 14,
-                  lineHeight: 1.5,
-                  fontFamily: 'inherit',
-                  position: 'relative',
-                  zIndex: 1,
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  overflowWrap: 'anywhere',
-                }}
+                className="w-full h-full min-h-0 resize-none border-none outline-none rounded-none bg-transparent text-primary text-md leading-normal font-[inherit] relative whitespace-pre-wrap break-words [overflow-wrap:anywhere] placeholder:text-secondary"
+                style={{ padding: composerTextPadding, zIndex: Z.CONTENT }}
               />
             </div>
             {normalizedImages.length > 0 ? (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 72px))', gap: 8, padding: '0 14px 10px' }}>
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(72px,72px))] gap-2 pb-2.5 px-3.5">
                 {normalizedImages.map((image, index) => (
                   <div
                     key={`composer-image-${index}`}
-                    style={{
-                      position: 'relative',
-                      width: 72,
-                      height: 72,
-                      borderRadius: 10,
-                      overflow: 'hidden',
-                      border: '1px solid var(--border)',
-                      background: 'var(--surface-base)',
-                    }}>
+                    className="relative w-[72px] h-[72px] rounded-lg overflow-hidden border border-line bg-canvas">
                     <img
                       src={image}
                       alt=""
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                        display: 'block',
-                      }}
+                      className="w-full h-full object-cover block"
                     />
                     <button
                       type="button"
                       onClick={() => handleRemoveImage(index)}
-                      style={{
-                        position: 'absolute',
-                        top: 4,
-                        right: 4,
-                        width: 20,
-                        height: 20,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        border: '1px solid var(--border)',
-                        borderRadius: 999,
-                        background: 'var(--surface-overlay)',
-                        color: 'var(--text-primary)',
-                        cursor: 'pointer',
-                        padding: 0,
-                      }}>
+                      className="absolute top-1 right-1 w-5 h-5 inline-flex items-center justify-center border border-line rounded-full bg-overlay text-primary cursor-pointer p-0">
                       <X size={12} />
                     </button>
                   </div>
@@ -1975,7 +1765,7 @@ export default function AIComposer({
               </div>
             ) : null}
           </div>
-          <div style={{ width: 50, borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px 8px', flexShrink: 0 }}>
+          <div className="w-[50px] border-l border-line flex flex-col items-center justify-center gap-2 px-2 py-2.5 shrink-0">
             <ActionButton
               title={t('添加图片')}
               disabled={isComposerBlocked}
@@ -2008,8 +1798,8 @@ export default function AIComposer({
             </ActionButton>
           </div>
         </div>
-        <div style={{ height: 40, borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px 0 12px', position: 'relative', zIndex: 20, overflow: 'visible' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '1 1 0', width: 0, minWidth: 0, overflow: 'visible' }}>
+        <div className="h-10 border-t border-line flex items-center gap-2.5 pl-3 pr-2.5 relative overflow-visible" style={{ zIndex: Z.PANEL_BUTTON }}>
+          <div className="flex items-center gap-2 flex-1 w-0 min-w-0 overflow-visible">
             <AIProviderSelector
               currentProviderId={currentProviderId}
               onCurrentProviderChange={onCurrentProviderChange}
@@ -2048,45 +1838,25 @@ export default function AIComposer({
                     setCollaborationPromptOpen((previous) => !previous)
                   }
                 }}
-                style={{
-                  height: 28,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '0 10px',
-                  borderRadius: 8,
-                  border: `1px solid ${alwaysAllowAssistantCollaboration ? 'var(--accent-border)' : 'var(--border)'}`,
-                  background: alwaysAllowAssistantCollaboration ? 'rgba(var(--accent-rgb), 0.12)' : 'transparent',
-                  color: alwaysAllowAssistantCollaboration ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  fontSize: 12,
-                  fontWeight: 500,
-                  transition: 'var(--transition)',
-                  whiteSpace: 'nowrap',
-                  opacity: canToggleAssistantCollaboration ? 1 : 0.45,
-                  cursor: canToggleAssistantCollaboration ? 'pointer' : 'not-allowed',
-                }}>
+                className={cn(
+                  'h-7 inline-flex items-center gap-2 px-2 rounded-lg border text-sm font-medium',
+                  'transition-colors duration-100 whitespace-nowrap',
+                  'disabled:opacity-45 disabled:cursor-not-allowed disabled:pointer-events-none',
+                  alwaysAllowAssistantCollaboration
+                    ? 'border-accent-border bg-accent-dim text-primary cursor-pointer'
+                    : 'border-line bg-transparent text-secondary cursor-pointer',
+                )}>
                 <span>{t('助理协同')}</span>
                 <span
-                  style={{
-                    position: 'relative',
-                    width: 26,
-                    height: 16,
-                    borderRadius: 999,
-                    background: alwaysAllowAssistantCollaboration ? 'var(--accent)' : 'var(--border)',
-                    transition: 'var(--transition)',
-                    flexShrink: 0,
-                  }}>
+                  className={cn(
+                    'relative w-[26px] h-4 rounded-full transition-colors duration-100 shrink-0',
+                    alwaysAllowAssistantCollaboration ? 'bg-accent' : 'bg-line',
+                  )}>
                   <span
-                    style={{
-                      position: 'absolute',
-                      top: 2,
-                      left: alwaysAllowAssistantCollaboration ? 12 : 2,
-                      width: 12,
-                      height: 12,
-                      borderRadius: 999,
-                      background: '#fff',
-                      transition: 'var(--transition)',
-                    }}
+                    className={cn(
+                      'absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-all duration-100',
+                      alwaysAllowAssistantCollaboration && 'left-3',
+                    )}
                   />
                 </span>
               </button>
@@ -2098,26 +1868,17 @@ export default function AIComposer({
                 aria-pressed={temporarySessionEnabled}
                 disabled={typeof onTemporarySessionEnabledChange !== 'function'}
                 onClick={() => onTemporarySessionEnabledChange?.(!temporarySessionEnabled)}
-                style={{
-                  height: 28,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '0 10px',
-                  borderRadius: 8,
-                  border: `1px solid ${temporarySessionEnabled ? 'var(--accent-border)' : 'var(--border)'}`,
-                  background: temporarySessionEnabled ? 'rgba(var(--accent-rgb), 0.12)' : 'transparent',
-                  color: temporarySessionEnabled ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  fontSize: 12,
-                  fontWeight: 500,
-                  transition: 'var(--transition)',
-                  whiteSpace: 'nowrap',
-                  cursor: typeof onTemporarySessionEnabledChange === 'function' ? 'pointer' : 'not-allowed',
-                  opacity: typeof onTemporarySessionEnabledChange === 'function' ? 1 : 0.45,
-                }}>
+                className={cn(
+                  'h-7 inline-flex items-center gap-2 px-2 rounded-lg border text-sm font-medium',
+                  'transition-colors duration-100 whitespace-nowrap',
+                  'disabled:opacity-45 disabled:cursor-not-allowed disabled:pointer-events-none',
+                  temporarySessionEnabled
+                    ? 'border-accent-border bg-accent-dim text-primary cursor-pointer'
+                    : 'border-line bg-transparent text-secondary cursor-pointer',
+                )}>
                 <span>{t('临时会话')}</span>
-                <span style={{ position: 'relative', width: 26, height: 16, borderRadius: 999, background: temporarySessionEnabled ? 'var(--accent)' : 'var(--border)', transition: 'var(--transition)', flexShrink: 0 }}>
-                  <span style={{ position: 'absolute', top: 2, left: temporarySessionEnabled ? 12 : 2, width: 12, height: 12, borderRadius: 999, background: '#fff', transition: 'var(--transition)' }} />
+                <span className={cn('relative w-[26px] h-4 rounded-full transition-colors duration-100 shrink-0', temporarySessionEnabled ? 'bg-accent' : 'bg-line')}>
+                  <span className={cn('absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-all duration-100', temporarySessionEnabled && 'left-3')} />
                 </span>
               </button>
             </Tiptop>

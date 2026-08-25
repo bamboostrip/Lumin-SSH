@@ -33,6 +33,8 @@ import { useTerminalClipboard } from './terminal/useTerminalClipboard.ts';
 import { useTerminalSession } from './terminal/useTerminalSession.ts';
 import { useTerminalQuickCmd } from './terminal/useTerminalQuickCmd.ts';
 import { useTerminalCommandInput } from './terminal/useTerminalCommandInput.ts';
+import { useTerminalHistory } from './terminal/useTerminalHistory.ts';
+import { TerminalHistoryPopup } from './terminal/TerminalHistoryPopup.tsx';
 import { TerminalQuickCmdBar } from './terminal/TerminalQuickCmdBar.tsx';
 import { TerminalInputBar } from './terminal/TerminalInputBar.tsx';
 import { TerminalAutocompletePopup } from './terminal/TerminalAutocompletePopup.tsx';
@@ -85,44 +87,15 @@ export default function Terminal({
   const [justConnected, setJustConnected]     = useState(false);
   const [showHistory, setShowHistory]         = useState(false);
   const [altOpenHistoryEnabled, setAltOpenHistoryEnabled] = useState(localStorage.getItem('altOpenHistory') !== 'false');
-  const [historyList, setHistoryList]         = useState<Array<{ id: string; command: string }>>([]);
-  const historyListRef                        = useRef<Array<{ id: string; command: string }>>([]);
-  useEffect(() => { historyListRef.current = historyList; }, [historyList]);
-  const [historyMode, setHistoryMode]         = useState<'server' | 'global'>('server'); // 'server' | 'global'
-  const [searchQuery, setSearchQuery]         = useState('');
-  const [historySelectedIndex, setHistorySelectedIndex] = useState(0);
   const [showTermSearch, setShowTermSearch]   = useState(false);
   const [termSearchQuery, setTermSearchQuery] = useState('');
   const [termSearchCaseSensitive, setTermSearchCaseSensitive] = useState(false);
   const [termSearchResult, setTermSearchResult] = useState({ resultIndex: -1, resultCount: 0 });
-  const historyBtnRef                         = useRef<HTMLButtonElement | null>(null);
-  const historySearchInputRef                 = useRef<HTMLInputElement | null>(null);
-  const historyScrollRef                      = useRef<HTMLDivElement | null>(null);
   const [historyPopupPos, setHistoryPopupPos] = useState<{ left: number; bottom: number } | null>(null);
   const commandsBtnRef                        = useRef<HTMLButtonElement | null>(null);
-  const historyPopupRef                       = useRef<HTMLDivElement | null>(null);
   const pendingCmdRef                         = useRef('');
   const awaitingPasswordRef                   = useRef(false); // 检测到密码提示后，下一行输入不记入命令历史
   const awaitingCommandFinishRef              = useRef(false); // 按回车提交命令后，等待命令完成（提示符回归）
-
-  // ── 点击历史弹窗外关闭（document 捕获阶段 mousedown） ──
-  // 必须用 capture：命令按钮 / 底部快捷命令面板会 stopPropagation，
-  // 冒泡阶段收不到，历史开着点「命令」或命令面板时就收不起来。
-  useEffect(() => {
-    if (!showHistory) return;
-    const handler = (e: MouseEvent) => {
-      const target = e.target;
-      if (!(target instanceof Node)) return;
-      if (historyPopupRef.current?.contains(target)) return;
-      if (historyBtnRef.current?.contains(target)) return;
-      // 全局对话框（luminDialog，如清空确认）打开时，点确认/取消不应收起历史弹窗
-      if ((target as Element).closest?.('[data-global-dialog-active="true"]')) return;
-      setShowHistory(false);
-      setHistoryPopupPos(null);
-    };
-    document.addEventListener('mousedown', handler, true);
-    return () => document.removeEventListener('mousedown', handler, true);
-  }, [showHistory]);
 
   // 热路径缓存：避免在按键和消息回调中频繁读取 localStorage
   const shortcutsRef = useRef<Record<string, string> | null>(null);
@@ -304,7 +277,23 @@ export default function Terminal({
     setHistoryPopupPos,
     t,
   });
-
+  const {
+    historyList, setHistoryList, historyMode, setHistoryMode, searchQuery, setSearchQuery, historySelectedIndex,
+    historyBtnRef, historySearchInputRef, historyScrollRef, historyPopupRef,
+    filteredHistory, displayHistory, handleHistorySearchKeyDown,
+    toggleHistory, openHistoryAndFocusSearch, toggleCommands, selectHistoryCmd, deleteHistoryItem,
+  } = useTerminalHistory({
+    showHistory,
+    setShowHistory,
+    setHistoryPopupPos,
+    historyServerId,
+    serverId,
+    showCommands,
+    onQuickCommandsOpenChange,
+    quickCmdsRef,
+    setCmdInput,
+    cmdInputRef,
+  });
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -595,8 +584,6 @@ export default function Terminal({
   const statusColor  = isConnected ? 'var(--success)' : isConnecting ? 'var(--warning)' : isError ? 'var(--danger)' : 'var(--text-tertiary)';
   const cmdTrimmed   = cmdInput.trim();
 
-
-
   const toggleMultiLineWrap = useCallback(() => {
     setMultiLineWrapEnabled((previous) => {
       const next = !previous
@@ -617,189 +604,6 @@ export default function Terminal({
       return () => clearTimeout(timer);
     }
   }, [isConnected]);
-
-  // ── 底部命令输入栏逻辑 ──────────────────────────────────────
-
-  const scrollOnNextUpdate = useRef(false);
-  // 加载请求序号：快速切换模式/服务器时丢弃旧结果，避免倒灌
-  const historyLoadSeqRef = useRef(0);
-
-  // 弹窗打开/切换模式/收到变更事件时加载历史数据
-  const reloadHistoryList = useCallback(() => {
-    if (!showHistory) return;
-    const seq = ++historyLoadSeqRef.current;
-    scrollOnNextUpdate.current = true;
-    (async () => {
-      try {
-        const raw = historyMode === 'global'
-          ? await AppGo.GetGlobalCommandHistory()
-          : await AppGo.GetCommandHistory(historyServerId);
-        if (seq !== historyLoadSeqRef.current) return;
-        const entries = JSON.parse(raw);
-        const arr = Array.isArray(entries) ? entries : [];
-        setHistoryList(arr);
-        // 数据为空则无需滚动，直接清空列表
-        if (arr.length === 0) scrollOnNextUpdate.current = false;
-      } catch {
-        if (seq !== historyLoadSeqRef.current) return;
-        setHistoryList([]);
-        scrollOnNextUpdate.current = false;
-      }
-    })();
-  }, [showHistory, historyMode, historyServerId]);
-
-  useEffect(() => {
-    if (!showHistory) return;
-    reloadHistoryList();
-  }, [showHistory, reloadHistoryList]);
-
-  // 监听清空/变更事件：按作用域刷新弹窗列表
-  // - 全局清空/变更：仅当前为全局模式时刷新
-  // - 服务器清空/变更：仅当前为服务器模式且目标服务器匹配时刷新
-  useEffect(() => {
-    if (!showHistory) return;
-    const handler = (e: Event) => {
-      const d = (e as CustomEvent<{ scope?: string; historyServerId?: string }>).detail;
-      const scope = d?.scope || 'server';
-      if (scope !== historyMode) return;
-      if (scope === 'server' && d?.historyServerId && d.historyServerId !== historyServerId) return;
-      reloadHistoryList();
-    };
-    window.addEventListener('ssh-history-cleared', handler);
-    window.addEventListener('ssh-history-changed', handler);
-    return () => {
-      window.removeEventListener('ssh-history-cleared', handler);
-      window.removeEventListener('ssh-history-changed', handler);
-    };
-  }, [showHistory, historyMode, historyServerId, reloadHistoryList]);
-
-  // 数据渲染后定位到底部，默认选中最新一项
-  useEffect(() => {
-    if (!showHistory || !scrollOnNextUpdate.current) return;
-    // 数据还没加载完（空状态），等待下一次更新
-    if (historyList.length === 0) return;
-    const el = historyScrollRef.current;
-    if (el) requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
-    scrollOnNextUpdate.current = false;
-  }, [historyList, showHistory]);
-
-  const filteredHistory = useMemo(() => {
-    if (!searchQuery) return historyList;
-    const q = searchQuery.toLowerCase();
-    return historyList.filter(item => item.command.toLowerCase().includes(q));
-  }, [historyList, searchQuery]);
-
-  // 反转后用于显示：最早的在上边，最新的在底部
-  const displayHistory = useMemo(() => [...filteredHistory].reverse(), [filteredHistory]);
-
-  useEffect(() => {
-    setHistorySelectedIndex(displayHistory.length - 1);
-  }, [displayHistory, showHistory]);
-
-  useEffect(() => {
-    if (!showHistory || historySelectedIndex < 0) return;
-    const selectedRow = historyScrollRef.current?.querySelector(`[data-history-index="${historySelectedIndex}"]`);
-    selectedRow?.scrollIntoView({ block: 'nearest' });
-  }, [historySelectedIndex, showHistory, displayHistory]);
-
-  const handleHistorySearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      event.stopPropagation();
-      setShowHistory(false);
-      setHistoryPopupPos(null);
-      requestAnimationFrame(() => cmdInputRef.current?.focus());
-      return;
-    }
-    if (displayHistory.length === 0) return;
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      setHistorySelectedIndex((current) => (current + 1) % displayHistory.length);
-      return;
-    }
-    if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      setHistorySelectedIndex((current) => (
-        current <= 0 ? displayHistory.length - 1 : current - 1
-      ));
-      return;
-    }
-    if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
-      event.preventDefault();
-      const selectedItem = displayHistory[historySelectedIndex] || displayHistory[0];
-      if (selectedItem) selectHistoryCmd(selectedItem.command);
-    }
-  };
-
-  const toggleHistory = () => {
-    const willShow = !showHistory;
-    if (willShow) {
-      // 数据加载由 useEffect(showHistory) 负责
-      const rect = historyBtnRef.current?.getBoundingClientRect();
-      if (rect) {
-        setHistoryPopupPos({
-          left: Math.max(8, Math.min(rect.right - 480, window.innerWidth - 490)),
-          bottom: window.innerHeight - rect.top + 4,
-        });
-      }
-      // 历史弹窗是浮动层，不再收起底部快捷命令面板
-    } else {
-      setHistoryPopupPos(null);
-    }
-    setShowHistory(willShow);
-  };
-
-  const openHistoryAndFocusSearch = () => {
-    if (!showHistory) toggleHistory();
-    requestAnimationFrame(() => {
-      historySearchInputRef.current?.focus({ preventScroll: true });
-      historySearchInputRef.current?.select();
-    });
-  };
-
-  const toggleCommands = () => {
-    const willShow = !showCommands;
-    if (willShow) {
-      if (showHistory) { setShowHistory(false); setHistoryPopupPos(null); }
-      onQuickCommandsOpenChange?.(true);
-      return;
-    }
-    // 关闭面板时检查是否有未保存的修改
-    if (quickCmdsRef?.current?.isDirty?.()) {
-      quickCmdsRef.current?.showCloseConfirm();
-      return; // 让 onClose 回调来关闭
-    }
-    onQuickCommandsOpenChange?.(false);
-  };
-
-  const selectHistoryCmd = (cmd: string) => {
-    setCmdInput(cmd);
-    setShowHistory(false);
-    setHistoryPopupPos(null);
-    cmdInputRef.current?.focus();
-  };
-
-
-
-  const deleteHistoryItem = async (id: string) => {
-    const scope = historyMode;
-    try {
-      const next = historyListRef.current.filter(item => item.id !== id);
-      if (scope === 'global') {
-        await AppGo.SaveGlobalCommandHistory(JSON.stringify(next));
-      } else {
-        await AppGo.SaveCommandHistory(historyServerId, JSON.stringify(next));
-      }
-      setHistoryList(next);
-      // 通知历史页 / 自动补全刷新，避免继续显示已删除条目
-      window.dispatchEvent(new CustomEvent('ssh-history-changed', {
-        detail: { sessionId: serverId, historyServerId, scope }
-      }));
-    } catch (error) {
-      console.error('[Terminal] 删除历史失败:', error);
-    }
-  };
-
 
   return (
     <div
@@ -1048,147 +852,31 @@ export default function Terminal({
 
       {/* ── 历史指令弹窗（fixed 定位，不受 overflow:hidden 裁剪） ── */}
       {showHistory && historyPopupPos && (
-        <div ref={historyPopupRef} className="term-popup flex flex-col box-border w-[480px] max-w-[calc(100vw-16px)] max-h-[280px] text-sm" style={{
-            left: historyPopupPos.left,
-            bottom: historyPopupPos.bottom,
-            zIndex: Z.POPUP,
-            fontFamily: 'var(--font-terminal)',
-          }}>
-            {/* 弹窗头部（标题 + 操作按钮） */}
-            <div className="flex items-center justify-between px-2.5 py-2 border-b border-[var(--term-separator)] shrink-0">
-              <span className="text-[var(--term-status-color)] text-xs">{t('历史命令')}</span>
-              <div className="flex items-center gap-1.5">
-                <div className="flex items-center gap-[5px]">
-                  <span className="text-[var(--term-muted)] text-xs">{t('Alt 打开历史指令')}</span>
-                  <ToggleSwitch checked={altOpenHistoryEnabled} onChange={() => {
-                    const enabled = !altOpenHistoryEnabled;
-                    setAltOpenHistoryEnabled(enabled);
-                    localStorage.setItem('altOpenHistory', String(enabled));
-                    window.dispatchEvent(new CustomEvent('alt-open-history-changed', { detail: enabled }));
-                  }} />
-                </div>
-                <button
-                  onClick={async () => {
-                    const scope = historyMode;
-                    // 二次确认，与历史页清空行为一致；按作用域给出不同提示
-                    const msg = scope === 'global'
-                      ? t('确定要清空全部服务器的历史指令吗？')
-                      : t('确定要清空该服务器的历史指令吗？');
-                    const result = await window.luminDialog?.confirm(msg);
-                    const confirmed = typeof result === 'object' ? result?.confirmed : result === true;
-                    if (!confirmed) return;
-                    try {
-                      if (scope === 'global') {
-                        await AppGo.SaveGlobalCommandHistory('[]');
-                      } else {
-                        await AppGo.SaveCommandHistory(historyServerId, '[]');
-                      }
-                      setHistoryList([]);
-                      // 通知历史页 / 自动补全按作用域刷新（全局清空不触碰服务器历史）
-                      window.dispatchEvent(new CustomEvent('ssh-history-cleared', {
-                        detail: { sessionId: serverId, historyServerId, scope }
-                      }));
-                    } catch (error) {
-                      console.error('[Terminal] 清空历史失败:', error);
-                    }
-                  }}
-                  className="inline-flex items-center justify-center gap-1 border border-line bg-raised text-danger rounded-xs px-2 py-[2px] text-xs cursor-pointer select-none transition-colors duration-100 hover:bg-hover"
-                >
-                  {t('清空列表')}
-                </button>
-                <button
-                  onClick={() => { setShowHistory(false); setHistoryPopupPos(null); }}
-                  aria-label={t('关闭')}
-                  className="inline-flex items-center justify-center gap-1 border border-line bg-raised text-danger rounded-xs px-2 py-[3px] cursor-pointer select-none transition-colors duration-100 hover:bg-hover"
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            </div>
-
-            {/* 历史列表（可滚动） */}
-            <div ref={historyScrollRef} className="flex-1 overflow-y-auto min-h-0">
-            {filteredHistory.length === 0 ? (
-              <div className="p-5 text-center text-[var(--term-muted)] text-sm">
-                {searchQuery ? t('无匹配结果') : t('暂无历史记录')}
-              </div>
-            ) : displayHistory.map((item, index) => (
-              <div
-                key={item.id}
-                data-history-index={index}
-                role="option"
-                aria-selected={historySelectedIndex === index}
-                onClick={() => selectHistoryCmd(item.command)}
-                className={`flex items-center justify-between px-2.5 py-1.5 cursor-pointer border-b border-[var(--term-separator)] transition-colors duration-100 ${historySelectedIndex === index ? 'bg-active' : 'hover:bg-hover'}`}
-              >
-                <span
-                  className="flex-1 min-w-0 text-[var(--term-input-color)] truncate pr-2"
-                  title={item.command}
-                >
-                  {item.command}
-                </span>
-                <div className="flex items-center gap-[3px] shrink-0">
-                  {/* 执行（绿色） */}
-                  <Tiptop text={t('执行')}>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); executeCommand(item.command); }}
-                      aria-label={t('执行')}
-                      className="inline-flex items-center justify-center w-6 h-6 border border-line bg-raised rounded-xs text-secondary cursor-pointer transition-colors duration-100 hover:text-primary"
-                    >
-                      <Play size={12} />
-                    </button>
-                  </Tiptop>
-                  {/* 复制（蓝色） */}
-                  <Tiptop text={t('复制')}>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(item.command).catch(() => {}); }}
-                      aria-label={t('复制')}
-                      className="inline-flex items-center justify-center w-6 h-6 border border-line bg-raised rounded-xs text-secondary cursor-pointer transition-colors duration-100 hover:text-primary"
-                    >
-                      <Clipboard size={12} />
-                    </button>
-                  </Tiptop>
-                  {/* 删除（红色） */}
-                  <Tiptop text={t('删除')}>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); deleteHistoryItem(item.id); }}
-                      aria-label={t('删除')}
-                      className="inline-flex items-center justify-center w-6 h-6 border border-line bg-[rgba(255,123,114,0.15)] rounded-xs text-danger cursor-pointer transition-colors duration-100 hover:bg-danger-dim"
-                    >
-                      <X size={12} />
-                    </button>
-                  </Tiptop>
-                </div>
-              </div>
-            ))}
-            </div>
-
-            {/* 搜索 + 模式切换 */}
-            <div className="flex gap-1.5 items-center px-2.5 py-1.5 border-t border-[var(--term-separator)] shrink-0">
-              <input
-                ref={historySearchInputRef}
-                name="terminal-history-search"
-                autoComplete="off"
-                aria-label={t('搜索命令历史')}
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                onKeyDown={handleHistorySearchKeyDown}
-                placeholder={t('搜索命令...')}
-                className="flex-1 px-2 py-1 bg-[var(--term-input-bg)] border border-[var(--term-btn-border)] rounded-sm text-sm text-[var(--term-input-color)] outline-none"
-              />
-              <div className="segment-control">
-                <button className={historyMode === 'server' ? 'active' : ''} onClick={() => setHistoryMode('server')}>
-                  {t('当前服务器')}
-                </button>
-                <button className={historyMode === 'global' ? 'active' : ''} onClick={() => setHistoryMode('global')}>
-                  {t('全部服务器')}
-                </button>
-              </div>
-            </div>
-          </div>
+        <TerminalHistoryPopup
+          historyPopupPos={historyPopupPos}
+          historyPopupRef={historyPopupRef}
+          historyScrollRef={historyScrollRef}
+          historySearchInputRef={historySearchInputRef}
+          altOpenHistoryEnabled={altOpenHistoryEnabled}
+          setAltOpenHistoryEnabled={setAltOpenHistoryEnabled}
+          historyMode={historyMode}
+          setHistoryMode={setHistoryMode}
+          setHistoryList={setHistoryList}
+          setShowHistory={setShowHistory}
+          setHistoryPopupPos={setHistoryPopupPos}
+          filteredHistory={filteredHistory}
+          displayHistory={displayHistory}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          historySelectedIndex={historySelectedIndex}
+          handleHistorySearchKeyDown={handleHistorySearchKeyDown}
+          selectHistoryCmd={selectHistoryCmd}
+          executeCommand={executeCommand}
+          deleteHistoryItem={deleteHistoryItem}
+          serverId={serverId}
+          historyServerId={historyServerId}
+          t={t}
+        />
       )}
 
       {/* ── 快捷命令二次确认框（ui/Modal；z 层降到 Z.DIALOG） ── */}
@@ -1308,4 +996,4 @@ export default function Terminal({
       )}
     </div>
   );
-}
+}

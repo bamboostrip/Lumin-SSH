@@ -1,4 +1,3 @@
-import type React from 'react';
 import { useTranslation } from '../../../i18n.ts';
 import {
   PositionSelectorCard,

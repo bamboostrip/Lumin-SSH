@@ -36,7 +36,7 @@ export function useFileManagerTabs(deps: ReturnType<typeof useFileManagerCore> &
     draggingFileManagerTabIdRef, setDraggingFileManagerTabId, setFileManagerTabDropIndicator,
     commitFileManagerWorkspace, publishSharedPinnedTabsFromWorkspace, syncCurrentTabToWorkspace,
     isFileManagerTabLoadSuperseded, openFileManagerPathInNewTabRef,
-    setSortField, setSortDir, setSelectedPaths, lastClickedPathRef, setContextMenu,
+    setSortField, setSortDir, setSelectedPaths, lastClickedPathRef,
     loadDir, applyAnimatedFileListSnapshot,
     items, fileListRef,
   } = deps;

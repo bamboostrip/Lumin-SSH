@@ -20,7 +20,7 @@ export function useFileManagerPaneView(deps: ReturnType<typeof useFileManagerCor
     activePaneKey, fileListRef, fileManagerRootRef,
     inactivePaneListRefs, paneScrollerElementsRef, paneVisibleRangesRef, paneVirtuosoRefs,
     setItems, items, currentPath, currentPathRef, activeVirtualRows, activeFileManagerTab,
-    normalizePath, joinPath,
+    normalizePath,
     fileManagerWorkspaceRef,
   } = deps;
   const paneViewStateRef = useRef({

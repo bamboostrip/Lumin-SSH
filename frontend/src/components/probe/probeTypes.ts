@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import { t } from '../../i18n.ts';
 
 export const HISTORY_SIZE = 30;

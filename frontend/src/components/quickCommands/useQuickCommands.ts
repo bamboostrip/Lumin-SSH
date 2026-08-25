@@ -11,7 +11,6 @@ import {
 } from '../../utils/quickCommandParams.ts';
 import {
   cloneAlongPath,
-  filterTree,
   loadCommands,
   resolvePath,
   saveCommands,

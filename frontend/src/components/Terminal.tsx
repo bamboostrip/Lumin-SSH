@@ -37,7 +37,7 @@ export type { TerminalProps } from './terminal/terminalTypes.ts';
 // 各关注点实现见同名文件（会话主链路 / gutter / 主题 / 剪贴板 / 查找 / 菜单 / 输入栏等）。
 export default function Terminal({
   sessionId, serverId, historyServerId, status, isActive, serverName,
-  connectedSessions = [], showCommands = false, onQuickCommandsOpenChange, quickCmdsRef, wsRebuildKey = 0,
+  connectedSessions: _connectedSessions = [], showCommands = false, onQuickCommandsOpenChange, quickCmdsRef, wsRebuildKey = 0,
 }: TerminalProps) {
   const { t } = useTranslation();
   const containerRef   = useRef<HTMLDivElement | null>(null);
@@ -173,7 +173,7 @@ export default function Terminal({
 
   // ── 历史指令弹窗 ──
   const {
-    historyList, setHistoryList, historyMode, setHistoryMode, searchQuery, setSearchQuery, historySelectedIndex,
+    setHistoryList, historyMode, setHistoryMode, searchQuery, setSearchQuery, historySelectedIndex,
     historyBtnRef, historySearchInputRef, historyScrollRef, historyPopupRef,
     filteredHistory, displayHistory, handleHistorySearchKeyDown,
     toggleHistory, openHistoryAndFocusSearch, toggleCommands, selectHistoryCmd, deleteHistoryItem,
@@ -191,7 +191,7 @@ export default function Terminal({
 
   // ── 右键 / 链接菜单 ──
   const {
-    handleContextMenu, handleInputContextMenu, closeContextMenu, closeLinkMenu,
+    handleContextMenu, handleInputContextMenu, closeContextMenu,
     handleLinkMenuAction, handleMenuAction,
   } = useTerminalMenus({
     termRef, cmdInputRef, setCmdInput, contextMenu, setContextMenu, contextHasSelection, setContextHasSelection,

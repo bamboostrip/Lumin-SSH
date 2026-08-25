@@ -14,7 +14,7 @@ import type { FileManagerVirtualRow } from './fileManagerTypes.ts';
 // 定位输入框匹配、文件列表 typeahead 快速跳转
 export function useFileManagerLocator(deps: ReturnType<typeof useFileManagerCore> & ReturnType<typeof useFileManagerWorkspaceSync> & ReturnType<typeof useFileManagerPaneView>) {
   const {
-    sessionId, t, fileManagerLayoutMode,
+    t, fileManagerLayoutMode,
     fileManagerWorkspace, activeFileManagerTab, activePaneKey,
     currentPath, items, sortField, sortDir,
     getCachedTabItems, getCachedPathItems, normalizePath, fileListRef,

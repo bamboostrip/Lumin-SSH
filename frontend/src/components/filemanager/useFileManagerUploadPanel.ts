@@ -18,7 +18,7 @@ import type { useFileManagerEditorState } from './useFileManagerEditorState.ts';
 // 分块上传并发限速器，以及分栏 host 布局副作用
 export function useFileManagerUploadPanel(deps: ReturnType<typeof useFileManagerCore> & ReturnType<typeof useFileManagerEditorState>) {
   const { sessionId, sessionGroupId, isActive, openEditFiles } = deps;
-  const setTransferInfo = useCallback((info: unknown) => {}, []);
+  const setTransferInfo = useCallback((_info: unknown) => {}, []);
   const [isDragOver, setIsDragOver] = useState(false);
   const dragCounterRef = useRef(0);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);

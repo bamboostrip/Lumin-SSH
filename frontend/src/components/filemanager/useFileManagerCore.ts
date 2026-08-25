@@ -38,7 +38,6 @@ import {
 } from '../../utils/fileWorkbench.ts';
 import type {
   FileManagerFileItem,
-  FileManagerProps,
   FileManagerTabDropIndicator,
   LooseT,
   PaneSelectionRestore,

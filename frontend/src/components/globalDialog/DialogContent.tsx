@@ -4,7 +4,6 @@ import { useTranslation } from '../../i18n.ts';
 import Tiptop from '../Tiptop.tsx';
 import { Button } from '../ui';
 import { cn } from '../../utils/cn.ts';
-import { Z } from '../../constants/zIndex';
 import type { QueuedDialog } from './globalDialogTypes.ts';
 
 interface DialogContentProps {

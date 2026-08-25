@@ -1,4 +1,3 @@
-import type React from 'react';
 import * as AppGo from '../../../wailsjs/go/wailsapp/App.js';
 import Dashboard from '../Dashboard.tsx';
 import type { config } from '../../../wailsjs/go/models.ts';

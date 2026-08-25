@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { t as $t } from '../../i18n.ts';
 import { Lightbulb } from 'lucide-react';
 import { cn } from '../../utils/cn.ts';
 import { Button } from '../ui';
-import { ToggleSwitch, RadioOption, SettingRow, SettingsPanel, SettingsSectionTitle, SettingsTabRoot, type SettingsDefinitionNode } from './SharedComponents';
+import { ToggleSwitch, RadioOption, SettingRow, SettingsPanel, SettingsSectionTitle, SettingsTabRoot } from './SharedComponents';
 import { settings } from './settingDefinitions';
 import { getAIGlobalSettings, saveAIGlobalSettings } from '../ai/aiGlobalSettingsBridge.ts';
 import { getProxyNodes, saveProxyNodes, normalizeProxyNode } from './proxyNodesBridge.ts';

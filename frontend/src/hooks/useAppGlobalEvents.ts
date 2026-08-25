@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { EventsOn } from '../../wailsjs/runtime/runtime.js';
 import { getAIGlobalSettings } from '../components/ai/aiGlobalSettingsBridge.ts';
 import { formatAIQuotedSelection, type SessionLike, type WorkspaceContentTab } from '../utils/sessionWorkspace.ts';

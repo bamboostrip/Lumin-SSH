@@ -322,7 +322,7 @@ export function splitTrailingIncompleteEscapeSequence(input: string) {
   return { complete: input, carry: '' }
 }
 
-export function getTextareaAutocompletePopupPosition(textarea: HTMLTextAreaElement | null, popupWidth = 760, popupHeight = 260) {
+export function getTextareaAutocompletePopupPosition(textarea: HTMLTextAreaElement | null, _popupWidth = 760, _popupHeight = 260) {
   if (!textarea || typeof window === 'undefined' || typeof document === 'undefined') {
     return null
   }

@@ -1,5 +1,4 @@
 import { CheckCheck, X, type LucideIcon } from 'lucide-react';
-import type React from 'react';
 
 export interface OptionButtonProps {
   active: boolean;

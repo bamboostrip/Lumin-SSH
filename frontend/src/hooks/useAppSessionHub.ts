@@ -86,7 +86,7 @@ export interface UseAppSessionHubOptions {
 }
 
 export default function useAppSessionHub({
-  servers,
+  servers: _servers,
   serversRef,
   credentials,
   setCredentials,

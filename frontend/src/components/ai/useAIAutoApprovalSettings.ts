@@ -3,11 +3,11 @@ import type * as React from 'react'
 import { disableAIChatCollaboration } from './aiChatBridge.ts'
 import { normalizeAIConversationTaskSettings } from './aiConversationBridge.ts'
 import { normalizeAIGlobalSettings, saveAIGlobalSettings, type AIGlobalSettings } from './aiGlobalSettingsBridge.ts'
-import type { AIConversationSnapshot, AIPanelProps, PanelState } from './aiChatLogic.ts'
+import type { AIConversationSnapshot, PanelState } from './aiChatLogic.ts'
 
 // 自动审批设置 hook：任务级/全局级补丁写回、协同附加提示词与预设更新。
 // 从 AIConversationTabPanel 原样搬移，闭包依赖经参数同名注入，代码零改动。
-export function useAIAutoApprovalSettings({ activeConversation, globalAISettings, normalizedGlobalAISettings, panelState, panelInstanceKey, saveConversationSnapshot, setPanelState, setGlobalAISettings, setComposerInputValue }: {
+export function useAIAutoApprovalSettings({ activeConversation, globalAISettings, normalizedGlobalAISettings: _normalizedGlobalAISettings, panelState, panelInstanceKey, saveConversationSnapshot, setPanelState, setGlobalAISettings, setComposerInputValue }: {
   activeConversation: AIConversationSnapshot | null
   globalAISettings: AIGlobalSettings | null
   normalizedGlobalAISettings: AIGlobalSettings

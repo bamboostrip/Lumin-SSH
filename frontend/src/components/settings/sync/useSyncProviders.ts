@@ -180,7 +180,7 @@ export function useSyncProviders({ addToast, onRestored, refreshSyncMeta, setSyn
               const data = await p.backup();
               await refreshSyncMeta();
               addToast(`${p.name} ${$t('配置已保存，已上传')} ${data.count} ${$t('个服务器')}`, 'success');
-            } catch (e) {
+            } catch (_) {
               addToast(`${p.name} ${$t('配置已保存，但同步失败，可稍后手动上传')}`, 'warning');
             }
           }
@@ -263,7 +263,7 @@ export function useSyncProviders({ addToast, onRestored, refreshSyncMeta, setSyn
   };
 
   const confirmSecureProviders = async (providerIds: ProviderKey[]) => {
-    for (const providerId of [...new Set(providerIds)]) {
+    for (const providerId of new Set(providerIds)) {
       if (providerId === 'ftp' && providerState.ftp.configured) {
         await confirmFTPConnection({ ...providerState.ftp.form });
       } else if (providerId === 'sftp' && providerState.sftp.configured) {

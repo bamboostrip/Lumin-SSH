@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type * as React from 'react'
 import { cancelAIChat } from './aiChatBridge.ts'
 import { getAIConversation, saveAIConversation, subscribeAIConversationChanges } from './aiConversationBridge.ts'
-import { AI_WORKSPACE_TAB_CLOSE_QUIET_MS, type AIPanelProps } from './aiChatLogic.ts'
+import { AI_WORKSPACE_TAB_CLOSE_QUIET_MS } from './aiChatLogic.ts'
 import {
   clearAIWorkspaceTabPendingLocation,
   createAIWorkspaceTabId,
@@ -12,7 +12,6 @@ import {
   setAIWorkspaceTabGroup,
   setAIWorkspaceTabPendingLocation,
   subscribeAIWorkspaceTabGroup,
-  type AIWorkspaceTab,
   type AIWorkspaceTabGroup,
 } from '../../utils/aiWorkspaceTabs.ts'
 import { type I18nKey } from '../../i18n.ts'

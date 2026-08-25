@@ -720,7 +720,7 @@ export function useTerminalSession(deps: {
     if (!isActive || !containerRef.current || !fitAddonRef.current || !termRef.current) return;
 
     let resizeTimer: ReturnType<typeof setTimeout> | null = null;
-    const observer = new ResizeObserver((entries) => {
+    const observer = new ResizeObserver(() => {
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
         if (!termRef.current || !fitAddonRef.current || !containerRef.current) return;

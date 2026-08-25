@@ -1,4 +1,3 @@
-import type React from 'react';
 import { CommandChip } from './AutoApproveWidgets.tsx';
 import {
   ADD_BUTTON_CLASS,

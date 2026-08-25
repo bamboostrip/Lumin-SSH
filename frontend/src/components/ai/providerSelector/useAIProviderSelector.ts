@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation, type I18nKey } from '../../../i18n.ts';
+import { useTranslation } from '../../../i18n.ts';
 import { getAIProviderState, normalizeAIProviderState, saveAIProviderState } from '../aiProviderBridge.ts';
 import { getAIProviderDefinition } from '../providers/index.ts';
 import {
@@ -16,7 +16,6 @@ import {
   getProviderModelSummary,
   getReasoningEffortLabel,
   isAIProviderBalanceLabelEnabled,
-  normalizeAIProviderBalanceValue,
   normalizeOptionalNumber,
   parseAIProviderBalanceNumber,
   resolveAdaptiveLabelLayout,

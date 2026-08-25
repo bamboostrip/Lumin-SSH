@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { t as $t } from '../../i18n.ts';
 import {
   APP_GITHUB_ANDROID_RELEASES_URL,
@@ -12,7 +12,7 @@ import logoLightImg from '../../assets/logo_q.webp';
 import logoDarkImg from '../../assets/logo_s.webp';
 import { Z } from '../../constants/zIndex';
 import { cn } from '../../utils/cn.ts';
-import { AboutLink, type SettingsDefinitionNode } from './SharedComponents';
+import { AboutLink } from './SharedComponents';
 import { settings } from './settingDefinitions';
 import { getFreshContributorsCache, getResolvedThemeMode, loadContributors, type Contributor } from './appTabContributors';
 

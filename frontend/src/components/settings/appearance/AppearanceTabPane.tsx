@@ -81,10 +81,9 @@ export default function AppearanceTabPane({
     addToast($t('窗口大小已恢复默认'), 'success');
   };
 
+  if (activeTab !== 'appearance') return null;
   return (
-    <>
-      {activeTab === 'appearance' && (
-        <AppearanceTab
+    <AppearanceTab
           programFonts={programFonts}
           programFontSearchQuery={programFontSearchQuery}
           onProgramFontSearchQueryChange={setProgramFontSearchQuery}
@@ -151,8 +150,6 @@ export default function AppearanceTabPane({
           rememberWindowSize={rememberWindowSize}
           onToggleRememberWindowSize={handleToggleRememberWindowSize}
           onResetWindowSize={handleResetWindowSize}
-        />
-      )}
-    </>
+      />
   );
 }

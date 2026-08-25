@@ -9,7 +9,7 @@ const AI_CONVERSATION_CHANGED_EVENT = 'lumin:ai-conversations-changed'
 
 type AIExecuteApprovalMode = 'basic' | 'read_only' | 'all'
 
-const DEFAULT_TASK_SETTINGS = {
+const _DEFAULT_TASK_SETTINGS = {
   currentProviderId: '',
   autoApprovalEnabled: false,
   alwaysAllowReadOnly: false,

@@ -4,7 +4,6 @@ import {
   normalizeAISlashCommands,
 } from '../aiSlashCommands.ts';
 import {
-  mentionRegex,
   mentionRegexGlobal,
 } from '../aiMentions.ts';
 import { compressImage } from '../aiImageCompression.ts';

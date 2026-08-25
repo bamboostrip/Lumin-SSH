@@ -28,7 +28,7 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
     sessionId, addToast, t,
     currentPath, currentPathRef, joinPath, normalizePath,
     updateClipboard,
-    selectedPaths, selectedPathsRef, lastClickedPathRef, setSelectedPaths,
+    selectedPaths, lastClickedPathRef, setSelectedPaths,
     sortedItems, clipboard,
     transferFileManagerItems, refreshDirectoryAfterTransfer,
     pushFileManagerUndoEntry, handleUndoFileManagerAction,

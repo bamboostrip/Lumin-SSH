@@ -34,7 +34,7 @@ export function useTerminalMenus(deps: {
 }) {
   const {
     termRef, cmdInputRef, setCmdInput,
-    contextMenu, setContextMenu, contextHasSelection, setContextHasSelection,
+    contextMenu, setContextMenu, setContextHasSelection,
     linkMenu, setLinkMenu, setLinkToast,
     serverIdRef, sessionId,
     pasteClipboardToTerminal, pasteTerminalSelectionToTerminal, openTermSearch,

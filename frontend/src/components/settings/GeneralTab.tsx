@@ -1,6 +1,6 @@
 import { Fragment } from 'react';
-import { t as $t, type I18nKey } from '../../i18n.ts';
-import { RadioOption, ToggleSwitch, SettingRow, SettingsField, SettingsDivider, SettingsPanel, SettingsSectionTitle, SettingsTabRoot, type SettingsDefinitionNode } from './SharedComponents';
+import { t as $t } from '../../i18n.ts';
+import { RadioOption, ToggleSwitch, SettingRow, SettingsField, SettingsDivider, SettingsPanel, SettingsSectionTitle, SettingsTabRoot } from './SharedComponents';
 import { settings } from './settingDefinitions';
 
 interface GeneralTabProps {

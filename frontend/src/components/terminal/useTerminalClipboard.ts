@@ -22,7 +22,6 @@ export function useTerminalClipboard(deps: {
 }) {
   const {
     termRef, containerRef, wsRef, pendingCmdRef,
-    terminalRightClickPasteOnEmptyRef, terminalRightClickPasteModeRef,
     terminalLeftClickCopyOnSelectionRef, terminalLeftClickCopyOnSelectionModeRef,
     t,
   } = deps;

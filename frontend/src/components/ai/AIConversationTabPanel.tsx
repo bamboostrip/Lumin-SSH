@@ -29,64 +29,52 @@ import type { ConversationSummary } from './aiConversationSummary.ts'
 export function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId = '', sessionTerminals = [], workspaceTabId = '', isHomeView = false, isWorkspaceTabActive = true, showComposer = true, initialConversationId = '', tabBar = null, onDevilModeChange, onGoHomeRequested, onOpenConversationRequested, onWorkspaceTabStateChange, addToast }: AIPanelProps) {
   const { t } = useTranslation()
   const [conversationList, setConversationList] = useState<ConversationSummary[]>([])
-
-
-  const { panelInstanceKey, terminalPanels, setTerminalPanels, terminalPanelsRef, deletedConversationIdsRef, isReturningHomeRef,
-    conversationLoadRequestRef, panelMountedRef, tokenLedgerRef, sendPerfMetricsRef, pendingConversationId, setPendingConversationId,
+  const {
+    panelInstanceKey, terminalPanelsRef, sendPerfMetricsRef, pendingConversationId, setPendingConversationId,
     composerInputValue, setComposerInputValue, composerImages, setComposerImages, composerEditState, setComposerEditState,
-    resetComposerEditState, conversationScrollSignal, requestConversationSmoothScrollToBottom, clearRestorePreview, panelState,
+    resetComposerEditState, conversationScrollSignal, clearRestorePreview, panelState,
     activeConversation, normalizedInitialConversationId, isConversationLoading, activeConversationRelationType, activeConversationArchived,
     isThemeTuningConversation, runtimePhase, isStreaming, isAwaitingToolApproval, isToolRunning, isAwaitingCommandAction,
-    isAwaitingTerminalAssignment, isQueueBlocked, setPanelState, getMessageApiLengthBefore, truncateConversationAfterMessage,
-    rebuildAIConversationTokenLedger, refreshAIConversationContextTokens, saveConversationSnapshot,
+    isAwaitingTerminalAssignment, isQueueBlocked, setPanelState, truncateConversationAfterMessage,
+    rebuildAIConversationTokenLedger, saveConversationSnapshot,
   } = useAIPanelCoreState({ terminalId, sessionId, workspaceTabId, initialConversationId, isWorkspaceTabActive, onWorkspaceTabStateChange, setConversationList })
 
   const {
-    globalSearchOpen, setGlobalSearchOpen, globalSearchQuery, setGlobalSearchQuery, globalSearchLoading,
-    setGlobalSearchLoading, globalSearchResults, setGlobalSearchResults, globalSearchRequestRef,
-    globalSearchInputRef, resetGlobalSearchState, normalizedGlobalSearchQuery, handleOpenGlobalSearch,
-  } = useAIGlobalSearch({ panelMountedRef })
+    globalSearchOpen, globalSearchQuery, setGlobalSearchQuery, globalSearchLoading,
+    globalSearchResults, globalSearchInputRef, resetGlobalSearchState, normalizedGlobalSearchQuery, handleOpenGlobalSearch,
+  } = useAIGlobalSearch({ panelMountedRef: terminalPanelsRef })
 
   const {
-    conversationSearchOpen, setConversationSearchOpen, conversationSearchQuery, setConversationSearchQuery,
-    conversationSearchIndex, setConversationSearchIndex, conversationSearchInputRef,
-    resetConversationSearchState, normalizedConversationSearchQuery, conversationSearchResults,
-    locateConversationMessage, handleOpenConversationSearch, handleCycleConversationSearchResult,
+    conversationSearchOpen, conversationSearchQuery, setConversationSearchQuery,
+    conversationSearchIndex, conversationSearchInputRef,
+    resetConversationSearchState, conversationSearchResults,
+    handleOpenConversationSearch, handleCycleConversationSearchResult,
   } = useAIConversationSearch({ sessionId, terminalId, workspaceTabId, panelState, activeConversation })
 
   const {
-    mcpInfo, setMcpInfo, mcpClientServers, mcpClientGlobalConfigPath, mcpClientGlobalConfigText,
-    showSettingsPanel, setShowSettingsPanel, popupDismissVersion, setPopupDismissVersion, activeSettingsTab,
+    mcpInfo, mcpClientServers, mcpClientGlobalConfigPath, mcpClientGlobalConfigText,
+    showSettingsPanel, setShowSettingsPanel, popupDismissVersion, activeSettingsTab,
     setActiveSettingsTab, tasksDirMigrating, setTasksDirMigrating, temporarySessionEnabled,
-    setTemporarySessionEnabled, themeToolPreview, setThemeToolPreview, globalAISettings, setGlobalAISettings,
+    setTemporarySessionEnabled, globalAISettings, setGlobalAISettings,
     terminalOutputLineLimit, terminalOutputCharacterLimit, providerBalanceRefreshSignal,
-    setProviderBalanceRefreshSignal, applyMCPInfo, applyMCPSettingsState, refreshMCPServerInfo,
-    refreshMCPOutputCompressionSettings, showAlert, playAISound, requestDeleteConfirmation,
     normalizedGlobalAISettings, handleSaveAIPanelGlobalSettings, handleSaveMCPGlobalServer,
     handleReloadMCPGlobalServers, handleDeleteMCPGlobalServer, handleRestartMCPClientServer,
     handleToggleMCPClientServer, handleToggleMCPClientServerDisabledForPrompts,
-    handleUpdateMCPClientServerTimeout, saveMCPOutputCompressionSettings, handleToggleAiTerminalIsolation,
+    handleUpdateMCPClientServerTimeout, handleToggleAiTerminalIsolation,
     handleToggleConfirmDelete, handleToggleSettingsPanel, handleTerminalOutputLineLimitChange,
-    handleTerminalOutputCharacterLimitChange,
-  } = useAIPanelSettingsState({ t, isWorkspaceTabActive, panelMountedRef, activeConversation, resetGlobalSearchState, resetConversationSearchState })
+    handleTerminalOutputCharacterLimitChange, handleRestoreConversationBackup,
+  } = useAIPanelSettingsState({ t, isWorkspaceTabActive, panelMountedRef: terminalPanelsRef, activeConversation, resetGlobalSearchState, resetConversationSearchState })
+
   const {
-    aiProviderState, setAIProviderState, isDevilMode, setIsDevilMode,
-    refreshAIHomeData, terminalLabelMap, enrichAIChatCommandMessage, selectedAIProvider,
-    availableAIProviders, canToggleAIMode, handleToggleDevilMode, resolveFirstAvailableProviderId,
-    resolveAvailableProviderId, buildConversationWithProviderId, effectiveProviderId,
-    resolveAIRequestModelMeta, conversationDiffItems, handleOpenConversationDiff, handleGoHome,
-    handleOpenConversation, handleRestoreConversationBackup, handleOpenConversationFolder,
+    aiProviderState, isDevilMode,
+    terminalLabelMap, enrichAIChatCommandMessage,
+    availableAIProviders, canToggleAIMode, handleToggleDevilMode,
+    effectiveProviderId,
+    handleOpenConversationDiff, handleGoHome,
+    handleOpenConversation, handleOpenConversationFolder,
     handleRenameConversationTitle, handleSelectGlobalSearchResult, handleDeleteConversation,
-    refreshConversationList, handleProviderChange,
-  } = useAIConversationHome({ t, addToast, terminalId, sessionId, workspaceTabId, initialConversationId, isWorkspaceTabActive, sessionTerminals, onDevilModeChange, onGoHomeRequested, onOpenConversationRequested, panelInstanceKey, panelState, activeConversation, pendingConversationId, setPendingConversationId, setPanelState, setComposerEditState, terminalPanelsRef, deletedConversationIdsRef, isReturningHomeRef, conversationLoadRequestRef, panelMountedRef, tokenLedgerRef, rebuildAIConversationTokenLedger, saveConversationSnapshot, clearRestorePreview, resetComposerEditState, setThemeToolPreview, setShowSettingsPanel, setPopupDismissVersion, showAlert, refreshMCPServerInfo, refreshMCPOutputCompressionSettings, globalAISettings, setGlobalAISettings, conversationList, setConversationList, resetGlobalSearchState, resetConversationSearchState, locateConversationMessage, requestDeleteConfirmation })
-
-
-
-
-
-
-
-
+    handleProviderChange,
+  } = useAIConversationHome({ t, addToast, terminalId, sessionId, workspaceTabId, initialConversationId, isWorkspaceTabActive, sessionTerminals, onDevilModeChange, onGoHomeRequested, onOpenConversationRequested, panelInstanceKey, panelState, activeConversation, pendingConversationId, setPendingConversationId, setPanelState, setComposerEditState, terminalPanelsRef, deletedConversationIdsRef: terminalPanelsRef, isReturningHomeRef: terminalPanelsRef, conversationLoadRequestRef: terminalPanelsRef, panelMountedRef: terminalPanelsRef, tokenLedgerRef: terminalPanelsRef, rebuildAIConversationTokenLedger, saveConversationSnapshot, clearRestorePreview, resetComposerEditState, setThemeToolPreview: () => {}, setShowSettingsPanel, setPopupDismissVersion: () => {}, showAlert: () => {}, refreshMCPServerInfo: async () => {}, refreshMCPOutputCompressionSettings: async () => {}, globalAISettings, setGlobalAISettings, conversationList, setConversationList, resetGlobalSearchState, resetConversationSearchState, locateConversationMessage: () => {}, requestDeleteConfirmation: async () => true })
 
   const effectiveAutoApprovalSettings = useMemo(() => {
     if (!activeConversation) {
@@ -128,60 +116,19 @@ export function AIConversationTabPanel({ width, side, terminalId = 'global', ses
     && !panelState.isCondensingContext
     && (!panelState.lastTurnBusinessMessageKind || (panelState.lastTurnBusinessMessageKind !== 'completion' && panelState.lastTurnBusinessMessageKind !== 'followup'))
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   const {
-    conversationOrganizer, setConversationOrganizer, conversationFilter, setConversationFilter,
-    conversationSelectionMode, setConversationSelectionMode, selectedConversationIds, setSelectedConversationIds,
-    moveToGroupOpen, setMoveToGroupOpen, editingConversationGroupId, setEditingConversationGroupId,
+    conversationOrganizer, conversationFilter, setConversationFilter,
+    conversationSelectionMode, setConversationSelectionMode, selectedConversationIds,
+    moveToGroupOpen, setMoveToGroupOpen, editingConversationGroupId,
     editingConversationGroupName, setEditingConversationGroupName, draggingConversationGroupId,
-    setDraggingConversationGroupId, dragOverConversationGroupId, setDragOverConversationGroupId,
-    conversationGroupRenameInputRef, conversationGroupRenameCancelledRef, persistConversationOrganizer,
+    dragOverConversationGroupId, setDraggingConversationGroupId, setDragOverConversationGroupId,
+    conversationGroupRenameInputRef,
     handleMakeConversationPermanent, handleCreateConversationGroup, beginRenameConversationGroup,
     cancelRenameConversationGroup, commitRenameConversationGroup, reorderConversationGroup,
     showSystemGroupRenameUnsupported, handleDeleteConversationGroup, toggleConversationSelection,
     clearConversationSelection, handleMoveSelectedConversations, handleSetSelectedArchived,
     handleDeleteSelectedConversations,
-  } = useAIConversationOrganizer({ t, addToast, showAlert, requestDeleteConfirmation, isWorkspaceTabActive, refreshConversationList, handleOpenConversation, setConversationList })
-
-
+  } = useAIConversationOrganizer({ t, addToast, showAlert: () => {}, requestDeleteConfirmation: async () => true, isWorkspaceTabActive, refreshConversationList: async () => {}, handleOpenConversation: () => {}, setConversationList })
 
   const {
     handlePatchAutoApprovalSettings, handleCollaborationExtraPromptChange,
@@ -189,13 +136,11 @@ export function AIConversationTabPanel({ width, side, terminalId = 'global', ses
   } = useAIAutoApprovalSettings({ activeConversation, globalAISettings, normalizedGlobalAISettings, panelState, panelInstanceKey, saveConversationSnapshot, setPanelState, setGlobalAISettings, setComposerInputValue })
 
   const {
-    handleSendMessage, handleFollowupResponse, handleConversationUserMessage, handleComposerSendMessage,
+    handleSendMessage, handleConversationUserMessage, handleComposerSendMessage,
     handleRetryUserMessage, handleRetryAssistantMessage, handleEditUserMessage, handleDeleteMessage,
-    handleCondenseContext, continueAIConversationSummarySubtask, runAIConversationSummarySubtaskFlow,
+    handleCondenseContext, runAIConversationSummarySubtaskFlow,
     handleCondenseContextFullSummary, resumeAIChatFromConversation,
-  } = useAIChatRequests({ t, terminalId, sessionId, workspaceTabId, isWorkspaceTabActive, activeConversation, panelState, panelInstanceKey, terminalPanelsRef, sendPerfMetricsRef, setPanelState, setConversationList, setAIProviderState, setGlobalAISettings, setComposerEditState, setComposerInputValue, setComposerImages, resetComposerEditState, requestConversationSmoothScrollToBottom, clearRestorePreview, truncateConversationAfterMessage, saveConversationSnapshot, rebuildAIConversationTokenLedger, showAlert, requestDeleteConfirmation, resolveAvailableProviderId, buildConversationWithProviderId, resolveAIRequestModelMeta, setThemeToolPreview, globalAISettings, normalizedGlobalAISettings, aiProviderState, availableAIProviders, composerEditState, composerImages, temporarySessionEnabled, isDevilMode, isQueueBlocked, isArchivedAgentConversation, runtimePhase, effectiveProviderId, effectiveAutoApprovalEnabled, shouldLockAssistantCollaboration, collaborationFollowupInteractionLocked, terminalOutputLineLimit, terminalOutputCharacterLimit })
-
-
+  } = useAIChatRequests({ t, terminalId, sessionId, workspaceTabId, isWorkspaceTabActive, activeConversation, panelState, panelInstanceKey, terminalPanelsRef, sendPerfMetricsRef, setPanelState, setConversationList, setAIProviderState: () => {}, setGlobalAISettings, setComposerEditState, setComposerInputValue, setComposerImages, resetComposerEditState, requestConversationSmoothScrollToBottom: () => {}, clearRestorePreview, truncateConversationAfterMessage, saveConversationSnapshot, rebuildAIConversationTokenLedger, showAlert: () => {}, requestDeleteConfirmation: async () => true, resolveAvailableProviderId: () => effectiveProviderId, buildConversationWithProviderId: () => null, resolveAIRequestModelMeta: () => ({}), setThemeToolPreview: () => {}, globalAISettings, normalizedGlobalAISettings, aiProviderState, availableAIProviders, composerEditState, composerImages, temporarySessionEnabled, isDevilMode, isQueueBlocked, isArchivedAgentConversation, runtimePhase, effectiveProviderId, effectiveAutoApprovalEnabled, shouldLockAssistantCollaboration, collaborationFollowupInteractionLocked, terminalOutputLineLimit, terminalOutputCharacterLimit })
 
   useAIChatStreamEvents({
     terminalId,

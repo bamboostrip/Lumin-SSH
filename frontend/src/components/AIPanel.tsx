@@ -8,9 +8,9 @@ import type { AIPanelProps } from './ai/aiChatLogic.ts'
 export default function AIPanel({ width, side, sessionId, terminalId, sessionTerminals = [], isPanelVisible = true, onDevilModeChange, onActiveTabChange, onActivateWorkspaceTab, addToast }: AIPanelProps) {
   const { t } = useTranslation()
   const {
-    tabGroup, tabRequestIds, setTabRequestIds, activeTabId, tabGroupRef, aiWorkspaceTabRuntimeRef, aiWorkspaceTabScrollRef,
+    tabGroup, tabRequestIds, activeTabId, tabGroupRef, aiWorkspaceTabScrollRef,
     aiWorkspaceTabCloseLockRef, aiWorkspaceTabOverflow, aiWorkspaceTabCanScrollLeft, aiWorkspaceTabCanScrollRight,
-    updateTabGroup, clearAIWorkspaceTabCloseUnlockTimer, suppressAIWorkspaceTabCloseInteraction, scrollAIWorkspaceTabs,
+    clearAIWorkspaceTabCloseUnlockTimer, suppressAIWorkspaceTabCloseInteraction, scrollAIWorkspaceTabs,
     handleAIWorkspaceTabScroll, handleAIWorkspaceTabWheel, createWorkspaceTab, returnWorkspaceTabHome, activateWorkspaceTab,
     closeWorkspaceTab, forkWorkspaceTabConversation, openConversationInWorkspaceTab, handleWorkspaceTabStateChange,
   } = useAIWorkspaceTabs({ t, terminalId, sessionId, onActiveTabChange, onActivateWorkspaceTab })

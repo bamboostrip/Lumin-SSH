@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type * as React from 'react'
 import { buildAIConversationSearchSnippet, extractAIConversationSearchText, normalizeAIConversationSearchQuery } from './aiChatLogic.ts'
-import { normalizeAIConversationMessageSearchResult, type AIConversationMessageSearchResult } from './aiConversationBridge.ts'
+import { normalizeAIConversationMessageSearchResult } from './aiConversationBridge.ts'
 import type { AIConversationSnapshot, PanelState } from './aiChatLogic.ts'
 
 // 当前对话内搜索状态簇：搜索框开关/关键词/命中索引、结果过滤、输入聚焦与命中定位。

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import type * as React from 'react';
-import type { Terminal as XTerm } from '@xterm/xterm';
 import { Z } from '../../constants/zIndex';
 import defaultTermBg from '../../assets/term_bg.webp';
 import { isDarkTerminalSurface, type TerminalTheme } from '../../utils/theme.ts';

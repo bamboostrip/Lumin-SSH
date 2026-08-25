@@ -25,8 +25,15 @@
     "use-isnan": "error",
     "valid-typeof": "error",
     "no-control-regex": "off",
-    "max-depth": ["warn", 4],
-    "max-params": ["warn", 5],
+    "max-depth": ["warn", 5],
+    "max-params": ["warn", 6],
+    "no-unused-expressions": [
+      "warn",
+      {
+        "allowShortCircuit": true,
+        "allowTernary": true
+      }
+    ],
     "no-unused-vars": [
       "warn",
       {
@@ -55,7 +62,8 @@
     "unicorn/no-nested-ternary": "off",
     "unicorn/no-useless-fallback-in-spread": "off",
     "unicorn/no-empty-file": "warn",
-    "unicorn/no-new-array": "warn",
+    "unicorn/no-new-array": "off",
+    "oxc/only-used-in-recursion": "off",
     "typescript/no-duplicate-enum-values": "error",
     "typescript/no-extra-non-null-assertion": "warn",
     "typescript/no-misused-new": "error",

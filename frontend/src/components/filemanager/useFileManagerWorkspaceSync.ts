@@ -18,8 +18,7 @@ import type { ContextMenuState, SyncTabOverrides } from './fileManagerTypes.ts';
 // 当前标签状态回写（syncCurrentTabToWorkspace）与选中态恢复数据
 export function useFileManagerWorkspaceSync(deps: ReturnType<typeof useFileManagerCore> & ReturnType<typeof useFileManagerTabScroll>) {
   const {
-    sessionId, sessionGroupId, isActive,
-    fileManagerWorkspace, setFileManagerWorkspaceState, fileManagerWorkspaceRef,
+    setFileManagerWorkspaceState, fileManagerWorkspaceRef,
     cwdSystemTabHighlightTimerRef, setCwdSystemTabHighlight,
     sortField, sortDir, draggingFileManagerTabIdRef, draggingFileManagerTabId,
     currentPathHydratedRef, preserveWorkspacePathRef,

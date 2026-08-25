@@ -1,4 +1,3 @@
-import type React from 'react';
 import type { config } from '../../../wailsjs/go/models.ts';
 import FileManager from '../FileManager.tsx';
 import type { SessionLike } from '../../utils/sessionWorkspace.ts';

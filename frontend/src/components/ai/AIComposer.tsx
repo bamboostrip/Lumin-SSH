@@ -1,6 +1,5 @@
 import { Check, ListEnd, X } from 'lucide-react';
-import React, { useMemo } from 'react';
-import { useTranslation, type I18nKey } from '../../i18n.ts';
+import { useTranslation } from '../../i18n.ts';
 import { useAIWorkspaceTabContext } from './aiWorkspaceTabContext.ts';
 import AIChatReasoningBlock from './chat/AIChatReasoningBlock.tsx';
 import AIChatRequestStatusRow from './chat/AIChatRequestStatusRow.tsx';
@@ -133,7 +132,7 @@ export default function AIComposer({
     isDraggingOver,
     mentionMenu,
     setMentionMenu,
-    slashCommandMenu,
+    slashCommandMenu: _slashCommandMenu,
     setSlashCommandMenu,
     currentCwd,
     activeInlineMenu,

@@ -1,5 +1,4 @@
 import { ArrowRightLeft } from 'lucide-react';
-import type React from 'react';
 import Tiptop from '../../Tiptop.tsx';
 
 export function formatTokenCountInMillions(value: number) {

@@ -118,7 +118,7 @@ export default function useAIReview({ sessionsRef, addToast, t }: UseAIReviewOpt
     });
   }, []);
 
-  const removeChangeReviewById = useCallback((reviewId: string) => {
+  const _removeChangeReviewById = useCallback((reviewId: string) => {
     const normalizedId = typeof reviewId === 'string' ? reviewId.trim() : '';
     if (!normalizedId) {
       return;

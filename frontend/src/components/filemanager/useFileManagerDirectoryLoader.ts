@@ -22,7 +22,7 @@ import type { TransferQueueItem } from '../../utils/fileWorkbench.ts';
 import type { useFileManagerCore } from './useFileManagerCore.ts';
 import type { useFileManagerWorkspaceSync } from './useFileManagerWorkspaceSync.ts';
 import type { useFileManagerPaneView } from './useFileManagerPaneView.ts';
-import type { FileManagerFileItem, LooseT } from './fileManagerTypes.ts';
+import type { FileManagerFileItem } from './fileManagerTypes.ts';
 import type { FileManagerProps, LoadDirOptions } from './fileManagerTypes.ts';
 import type { FileManagerPaneState, FileManagerWorkspaceState } from '../../utils/fileWorkbench.ts';
 
@@ -236,7 +236,7 @@ export function useFileManagerDirectoryLoader(deps: ReturnType<typeof useFileMan
     return candidates[candidates.length - 1] || '/';
   }, [buildNonRememberedInitialPathCandidates, sessionId]);
 
-  const ensureForcedInitialFileManagerTab = useCallback((workspace: FileManagerWorkspaceState, forcedPath: unknown, cwdPath = ''): FileManagerWorkspaceState => {
+  const ensureForcedInitialFileManagerTab = useCallback((workspace: FileManagerWorkspaceState, forcedPath: unknown, _cwdPath = ''): FileManagerWorkspaceState => {
     const normalizedForcedPath = normalizePath(forcedPath) || '/';
     const currentTabs = Array.isArray(workspace?.tabs) ? workspace.tabs.filter((tab) => tab && typeof tab === 'object') : [];
     const currentActiveTabId = typeof workspace?.activeTabId === 'string' ? workspace.activeTabId : '';

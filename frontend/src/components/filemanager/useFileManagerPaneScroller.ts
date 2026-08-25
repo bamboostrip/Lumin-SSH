@@ -14,10 +14,10 @@ export function useFileManagerPaneScroller(deps: ReturnType<typeof useFileManage
     fileListRef, inactivePaneListRefs,
     paneScrollerElementsRef, paneScrollerCleanupRef,
     paneScrollerRefCallbacksRef, paneScrollerRefOptionsRef,
-    paneVirtuosoRefCallbacksRef, paneVirtuosoRefs, paneVisibleRangesRef,
+    paneVirtuosoRefCallbacksRef, paneVirtuosoRefs,
     handleFileListScrollRef, handleFileListKeyDownRef,
     commitFileManagerWorkspace,
-    applyPanePendingRestoreIfReady, flushPendingRowEffects, captureFileListViewAnchor,
+    applyPanePendingRestoreIfReady, flushPendingRowEffects,
     leftFileManagerPane, rightFileManagerPane,
   } = deps;
   const syncFileManagerPaneScrollTop = useCallback((paneKey: unknown, listElement: HTMLElement | null) => {

@@ -47,10 +47,9 @@ export default function FileManagerTabPane({ activeTab, addToast }: FileManagerT
     transferApplyToSharedClient, handleToggleTransferApplyToSharedClient,
   } = useFileManagerSettings({ addToast });
 
+  if (activeTab !== 'fileManager') return null;
   return (
-    <>
-      {activeTab === 'fileManager' && (
-        <FileManagerTab
+    <FileManagerTab
           fileManagerCompressedTransfer={fileManagerCompressedTransfer}
           onToggleFileManagerCompressedTransfer={handleToggleFileManagerCompressedTransfer}
           fileManagerAutoOpenTransferQueue={fileManagerAutoOpenTransferQueue}
@@ -118,7 +117,5 @@ export default function FileManagerTabPane({ activeTab, addToast }: FileManagerT
           transferApplyToSharedClient={transferApplyToSharedClient}
           onToggleTransferApplyToSharedClient={handleToggleTransferApplyToSharedClient}
         />
-      )}
-    </>
   );
 }

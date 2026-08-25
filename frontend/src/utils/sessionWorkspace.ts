@@ -1,4 +1,3 @@
-import { getAllSessionFileManagerWorkspaces } from './fileWorkbench.ts';
 import { sortTerminalPaneCells, type TerminalPaneLayout } from './terminalPaneLayout.ts';
 
 /** 会话对象（宽松形状，来自连接状态） */

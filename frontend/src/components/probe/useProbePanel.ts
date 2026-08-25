@@ -4,7 +4,6 @@ import * as AppGo from '../../../wailsjs/go/wailsapp/App.js';
 import { useTranslation } from '../../i18n.ts';
 import {
   createEmptyHist,
-  DEFAULT_PROBE_CARD_ORDER,
   HISTORY_SIZE,
   normalizeProbeCardOrder,
   persistProbeCardOrder,

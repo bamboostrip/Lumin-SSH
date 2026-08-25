@@ -1,5 +1,5 @@
 import { Z } from '../../../constants/zIndex.ts';
-import { useTranslation, type I18nKey } from '../../../i18n.ts';
+import { useTranslation } from '../../../i18n.ts';
 import { getReasoningEffortLabel, type RectLike } from './providerSelectorTypes.ts';
 
 export interface AIProviderSummaryTooltipProps {

@@ -5,8 +5,6 @@ import type { AIConversationSnapshot, AIPanelProps, PanelState } from './aiChatL
 import { t as translate, type I18nKey } from '../../i18n.ts'
 import type { AIGlobalSettings } from './aiGlobalSettingsBridge.ts'
 
-type LooseT = (key: I18nKey, vars?: Record<string, unknown>) => string
-
 // AI 请求动作 hook：取消/停止并恢复/恢复任务、工具批准/拒绝/继续/终止、
 // 还原预览与应用、命令终端候选与指派、跳过下次自动请求、协同中断、
 // 排队提交取消与队列冲刷 effect。
@@ -216,12 +214,11 @@ export function useAIChatActions({ addToast, terminalId, workspaceTabId, activeC
     })
 
     void (async () => {
-      let accepted = false
       try {
         if (queuedSubmission.kind === 'retry_assistant') {
-          accepted = await handleRetryAssistantMessage(queuedSubmission.targetMessageId) === true
+          await handleRetryAssistantMessage(queuedSubmission.targetMessageId);
         } else {
-          accepted = await handleSendMessage(
+          await handleSendMessage(
             queuedSubmission.text,
             { images: queuedSubmission.images },
             queuedSubmission.kind === 'chat'
@@ -237,7 +234,7 @@ export function useAIChatActions({ addToast, terminalId, workspaceTabId, activeC
               toolScopeSlot: queuedSubmission.toolScopeSlot,
               forceNewConversation: queuedSubmission.forceNewConversation === true,
             },
-          ) !== false
+          );
         }
       } finally {
         if (!disposed || panelMountedRef.current) {

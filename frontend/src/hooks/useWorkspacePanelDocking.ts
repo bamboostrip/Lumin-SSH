@@ -57,11 +57,11 @@ export interface UseWorkspacePanelDockingResult {
 }
 
 export default function useWorkspacePanelDocking({
-  bottomSplitHeight,
+  bottomSplitHeight: _bottomSplitHeight,
   bottomSplitHeightRef,
   contentTab,
   fileManagerPosition: initialPosition,
-  leftSplitWidth,
+  leftSplitWidth: _leftSplitWidth,
   leftSplitWidthRef,
   aiPanelWidthRef,
   probePanelPosition,

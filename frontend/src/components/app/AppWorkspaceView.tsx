@@ -1,4 +1,3 @@
-import type React from 'react';
 import SessionWorkspace from '../SessionWorkspace.tsx';
 import AppProbePanelHost from './AppProbePanelHost.tsx';
 import AppAIPanelHost from './AppAIPanelHost.tsx';

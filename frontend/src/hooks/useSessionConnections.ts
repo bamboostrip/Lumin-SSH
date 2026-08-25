@@ -344,7 +344,7 @@ export default function useSessionConnections(deps: UseSessionConnectionsDeps): 
     try {
       const data = await AppGo.GetConnectionsMasked();
       setServers(data || []);
-    } catch (e) {
+    } catch (_) {
       addToast(t('加载服务器配置失败'), 'error');
     }
     try {

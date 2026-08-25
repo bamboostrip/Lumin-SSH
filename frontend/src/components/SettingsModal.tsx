@@ -16,7 +16,7 @@ import { cn } from '../utils/cn.ts';
 import AppTab from './settings/AppTab';
 import GeneralTab from './settings/GeneralTab';
 import NetworkTab from './settings/NetworkTab';
-import AppearanceTab from './settings/AppearanceTab';
+import AppearanceTabPane from './settings/appearance/AppearanceTabPane';
 import FileManagerTab from './settings/FileManagerTab';
 import RuntimeEnvironmentTab from './settings/RuntimeEnvironmentTab';
 import ShortcutsTab from './settings/ShortcutsTab';
@@ -149,57 +149,7 @@ export default function SettingsModal({
   const [pingInterval, setPingInterval] = useState(parseInt(localStorage.getItem('pingInterval') || '2', 10));
   const [pingMode, setPingMode] = useState(localStorage.getItem('pingMode') || 'auto');
 
-  // Appearance state
-  const [themePackageSettings, setThemePackageSettings] = useState(() => getStoredThemePackageSettings());
-  const [themePackages, setThemePackages] = useState(() => listThemePackages());
-  const [themePackageBusy, setThemePackageBusy] = useState(false);
-  const [themeMode, setThemeMode] = useState(getStoredThemePackageSettings().themeMode || 'dark');
   const [language, setLanguage] = useState(localStorage.getItem('appLanguage') || 'zh-CN');
-  const [terminalFontSize, setTerminalFontSize] = useState(parseInt(localStorage.getItem('terminalFontSize') || '13', 10));
-  const [termBgImage, setTermBgImage] = useState(localStorage.getItem('termBgImage') || '');
-  const [termBgOpacity, setTermBgOpacity] = useState(parseFloat(localStorage.getItem('termBgOpacity') || '0.15'));
-  const [globalBgImage, setGlobalBgImage] = useState(() => getGlobalAppearanceSettings().backgroundImage);
-  const [globalBgOpacity, setGlobalBgOpacity] = useState(() => getGlobalAppearanceSettings().backgroundOpacity);
-  const [globalIconOpacity, setGlobalIconOpacity] = useState(() => getGlobalAppearanceSettings().iconOpacity);
-  const [bgTargetMode, setBgTargetMode] = useState<'global' | 'terminal'>(() => {
-    const stored = localStorage.getItem('bgTargetMode');
-    if (stored === 'terminal' || stored === 'global') return stored;
-    // 无记录时推断：仅有终端壁纸则默认终端，否则全局
-    return localStorage.getItem('termBgImage') && !localStorage.getItem('globalBgImage') ? 'terminal' : 'global';
-  });
-  const [terminalLocalEcho, setTerminalLocalEcho] = useState(localStorage.getItem('terminalLocalEcho') === 'true');
-  const [terminalTimestamps, setTerminalTimestamps] = useState(localStorage.getItem('terminalTimestamps') === 'true');
-  const [terminalCommandBlocks, setTerminalCommandBlocks] = useState(localStorage.getItem('terminalCommandBlocks') === 'true');
-  const [terminalKeywordHighlight, setTerminalKeywordHighlight] = useState(localStorage.getItem('terminalKeywordHighlight') === 'true');
-  const [keywordRules, setKeywordRulesState] = useState<KeywordRule[]>(() => loadKeywordRulesFromStorage());
-  const [terminalDefaultMouseCursor, setTerminalDefaultMouseCursor] = useState(localStorage.getItem('terminalOutputDefaultMouseCursor') === 'true');
-  const [terminalRightClickPasteOnEmpty, setTerminalRightClickPasteOnEmpty] = useState(localStorage.getItem('terminalRightClickPasteOnEmpty') === 'true');
-  const [terminalRightClickPasteMode, setTerminalRightClickPasteMode] = useState(localStorage.getItem('terminalRightClickPasteMode') === 'always' ? 'always' : 'empty');
-  const [terminalLeftClickCopyOnSelection, setTerminalLeftClickCopyOnSelection] = useState(localStorage.getItem('terminalLeftClickCopyOnSelection') === 'true');
-  const [terminalLeftClickCopyOnSelectionMode, setTerminalLeftClickCopyOnSelectionMode] = useState(localStorage.getItem('terminalLeftClickCopyOnSelectionMode') === 'mouseup' ? 'mouseup' : 'click');
-  const [terminalTabDoubleClickActionEnabled, setTerminalTabDoubleClickActionEnabled] = useState(() => {
-    const stored = localStorage.getItem('terminalTabDoubleClickActionEnabled');
-    if (stored === 'true' || stored === 'false') {
-      return stored === 'true';
-    }
-    return localStorage.getItem('terminalTabDoubleClickDuplicate') === 'true';
-  });
-  const [terminalTabDoubleClickAction, setTerminalTabDoubleClickAction] = useState(() => {
-    const stored = localStorage.getItem('terminalTabDoubleClickAction');
-    if (stored === 'close' || stored === 'duplicate') {
-      return stored;
-    }
-    return 'duplicate';
-  });
-  const [rememberWindowSize, setRememberWindowSize] = useState(localStorage.getItem('rememberWindowSize') !== 'false');
-  const [showThemeQuickEntry, setShowThemeQuickEntry] = useState(localStorage.getItem('showThemeQuickEntry') !== 'false');
-  const [terminalToolbarIconOnly, setTerminalToolbarIconOnly] = useState(localStorage.getItem('terminalToolbarIconOnly') === 'true');
-  const [programFonts, setProgramFonts] = useState<Array<{ fileName: string; displayName?: string }>>([]);
-  const [programFontSearchQuery, setProgramFontSearchQuery] = useState('');
-  const [programFontAssignments, setProgramFontAssignments] = useState(() => getProgramFontAssignmentSnapshot());
-  const [programFontImporting, setProgramFontImporting] = useState(false);
-  const [programFontDeleting, setProgramFontDeleting] = useState(false);
-  const [activeProgramFontDropTarget, setActiveProgramFontDropTarget] = useState('');
   // Shortcuts state
   const defaultShortcuts = {
     copy: 'Ctrl+C',
@@ -372,167 +322,6 @@ export default function SettingsModal({
     return () => window.cancelAnimationFrame(frameId);
   }, [activeTab, pendingSettingsScrollTargetId, syncProvider]);
 
-  const refreshThemePackages = useCallback(async () => {
-    await loadThemePackages();
-    const nextSettings = getStoredThemePackageSettings();
-    setThemePackageSettings(nextSettings);
-    setThemePackages(listThemePackages());
-    setThemeMode(nextSettings.themeMode || 'dark');
-  }, []);
-
-  const handleThemeChange = async (mode: string) => {
-    if (forceDarkTheme) {
-      return;
-    }
-    setThemePackageBusy(true);
-    try {
-      const nextSettings = await saveThemePackageSettings({
-        ...themePackageSettings,
-        themeMode: mode,
-      });
-      setThemePackageSettings(nextSettings);
-      setThemePackages(listThemePackages());
-      setThemeMode(nextSettings.themeMode || 'dark');
-    } catch (err) {
-      addToast($t('主题包设置保存失败') + `: ${err}`, 'error');
-    } finally {
-      setThemePackageBusy(false);
-    }
-  };
-
-  const handleToggleThemeQuickEntry = () => {
-    const next = !showThemeQuickEntry;
-    setShowThemeQuickEntry(next);
-    localStorage.setItem('showThemeQuickEntry', String(next));
-    window.dispatchEvent(new CustomEvent('theme-quick-entry-changed'));
-  };
-
-  const handleToggleTerminalToolbarIconOnly = () => {
-    const next = !terminalToolbarIconOnly;
-    setTerminalToolbarIconOnly(next);
-    localStorage.setItem('terminalToolbarIconOnly', String(next));
-    window.dispatchEvent(new CustomEvent('terminal-toolbar-icon-only-changed'));
-  };
-
-  const handleSelectThemePackage = async (slot: 'light' | 'dark', packageId: string) => {
-    if (!packageId) {
-      return;
-    }
-    setThemePackageBusy(true);
-    try {
-      const nextSettings = await saveThemePackageSettings({
-        ...themePackageSettings,
-        ...(slot === 'light'
-          ? { lightThemePackageId: packageId }
-          : { darkThemePackageId: packageId }),
-      });
-      setThemePackageSettings(nextSettings);
-      setThemePackages(listThemePackages());
-      setThemeMode(nextSettings.themeMode || 'dark');
-    } catch (err) {
-      addToast($t('主题包设置保存失败') + `: ${err}`, 'error');
-    } finally {
-      setThemePackageBusy(false);
-    }
-  };
-
-  const handleReloadThemePackages = async () => {
-    setThemePackageBusy(true);
-    try {
-      await refreshThemePackages();
-      addToast($t('主题包已重新扫描'), 'success');
-    } catch (err) {
-      addToast($t('重新扫描主题包失败') + `: ${err}`, 'error');
-    } finally {
-      setThemePackageBusy(false);
-    }
-  };
-
-  const handleOpenThemePackagesDirectory = async () => {
-    try {
-      const dirPath = await AppGo.GetThemePackagesDirectory();
-      if (!dirPath) {
-        return;
-      }
-      await AppGo.OpenLocalPathInExplorer(dirPath, true);
-    } catch (err) {
-      addToast($t('打开主题包目录失败') + `: ${err}`, 'error');
-    }
-  };
-
-  const handleImportThemePackages = async () => {
-    try {
-      const selectedPaths = await AppGo.SelectThemePackageFiles();
-      if (!Array.isArray(selectedPaths) || selectedPaths.length === 0) {
-        return;
-      }
-      setThemePackageBusy(true);
-      await AppGo.ImportThemePackageFiles(selectedPaths);
-      await refreshThemePackages();
-      addToast($t('主题包已导入'), 'success');
-    } catch (err) {
-      addToast($t('主题包导入失败') + `: ${err}`, 'error');
-    } finally {
-      setThemePackageBusy(false);
-    }
-  };
-
-  const handleDeleteThemePackage = async (themePackage: ThemePackage) => {
-    if (!themePackage?.id || themePackage.source === 'builtin') {
-      return;
-    }
-    // 主题包 name 是动态显示名，不是 i18n key，t() 内部对未知 key 原样兜底
-    const ok = await settingsConfirm(`${$t('确定删除')}${$t(themePackage.name as I18nKey)}${$t('？此操作不可撤销')}`);
-    if (!ok) {
-      return;
-    }
-    setThemePackageBusy(true);
-    try {
-      await AppGo.DeleteThemePackage(themePackage.id);
-      await refreshThemePackages();
-      addToast($t('主题包已删除'), 'success');
-    } catch (err) {
-      addToast($t('主题包删除失败') + `: ${err}`, 'error');
-    } finally {
-      setThemePackageBusy(false);
-    }
-  };
-
-  const handleCopyThemePackageToMode = async (themePackage: ThemePackage, targetMode: string) => {
-    if (!themePackage?.id || (targetMode !== 'light' && targetMode !== 'dark')) {
-      return;
-    }
-    setThemePackageBusy(true);
-    try {
-      const copied = await AppGo.CopyThemePackageToMode(themePackage.id, targetMode);
-      await refreshThemePackages();
-      const copiedId = String(copied?.id || '').trim();
-      if (copiedId) {
-        await handleSelectThemePackage(targetMode, copiedId);
-      }
-      addToast(targetMode === 'light' ? $t('主题包已复制到浅色') : $t('主题包已复制到深色'), 'success');
-    } catch (err) {
-      addToast($t('主题包复制失败') + `: ${err}`, 'error');
-    } finally {
-      setThemePackageBusy(false);
-    }
-  };
-
-  const handleStartAIThemeTuning = useCallback((slot?: string) => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-    const normalizedSlot = slot === 'light' || slot === 'dark'
-      ? slot
-      : (getAppThemeMode() === 'light' ? 'light' : 'dark');
-    window.dispatchEvent(new CustomEvent('ai-theme-tuning-request', {
-      detail: {
-        slot: normalizedSlot,
-      },
-    }));
-    handleClose();
-  }, [handleClose]);
-
   const handleLanguageChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const lang = e.target.value;
     setLanguage(lang);
@@ -540,55 +329,24 @@ export default function SettingsModal({
     await setGlobalLanguage(lang as LanguageCode);
   };
 
-  const handleTerminalFontChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const size = parseInt(e.target.value, 10);
-    setTerminalFontSize(size);
-    localStorage.setItem('terminalFontSize', String(size));
-    window.dispatchEvent(new CustomEvent('terminal-font-size-changed', { detail: size }));
-  };
-
-  const handleTerminalLocalEchoChange = (enabled: boolean) => {
-    setTerminalLocalEcho(enabled);
-    localStorage.setItem('terminalLocalEcho', String(enabled));
-    window.dispatchEvent(new CustomEvent('terminal-local-echo-changed', { detail: enabled }));
-  };
-
-  const handleTerminalTimestampsChange = (enabled: boolean) => {
-    setTerminalTimestamps(enabled);
-    localStorage.setItem('terminalTimestamps', String(enabled));
-    window.dispatchEvent(new CustomEvent('terminal-timestamps-changed', { detail: enabled }));
-  };
-
-  const handleTerminalCommandBlocksChange = (enabled: boolean) => {
-    setTerminalCommandBlocks(enabled);
-    localStorage.setItem('terminalCommandBlocks', String(enabled));
-    window.dispatchEvent(new CustomEvent('terminal-command-blocks-changed', { detail: enabled }));
-  };
-
-  const handleTerminalKeywordHighlightChange = (enabled: boolean) => {
-    setTerminalKeywordHighlight(enabled);
-    localStorage.setItem('terminalKeywordHighlight', String(enabled));
-    window.dispatchEvent(new CustomEvent('terminal-keyword-highlight-changed', { detail: enabled }));
-  };
-
-  const handleKeywordRulesChange = (rules: KeywordRule[]) => {
-    setKeywordRulesState(rules);
-    setKeywordRules(rules);
-    saveKeywordRulesToStorage(rules);
-    window.dispatchEvent(new CustomEvent('terminal-keyword-rules-changed', { detail: rules }));
-  };
-
-  const handleKeywordRulesReset = () => {
-    const defaults = resetKeywordRulesToDefault();
-    setKeywordRulesState(defaults);
-    window.dispatchEvent(new CustomEvent('terminal-keyword-rules-changed', { detail: defaults }));
-  };
-
-  const handleTerminalDefaultMouseCursorChange = (enabled: boolean) => {
-    setTerminalDefaultMouseCursor(enabled);
-    localStorage.setItem('terminalOutputDefaultMouseCursor', String(enabled));
-    window.dispatchEvent(new CustomEvent('terminal-output-default-mouse-cursor-changed', { detail: enabled }));
-  };
+  const [terminalRightClickPasteOnEmpty, setTerminalRightClickPasteOnEmpty] = useState(localStorage.getItem('terminalRightClickPasteOnEmpty') === 'true');
+  const [terminalRightClickPasteMode, setTerminalRightClickPasteMode] = useState(localStorage.getItem('terminalRightClickPasteMode') === 'always' ? 'always' : 'empty');
+  const [terminalLeftClickCopyOnSelection, setTerminalLeftClickCopyOnSelection] = useState(localStorage.getItem('terminalLeftClickCopyOnSelection') === 'true');
+  const [terminalLeftClickCopyOnSelectionMode, setTerminalLeftClickCopyOnSelectionMode] = useState(localStorage.getItem('terminalLeftClickCopyOnSelectionMode') === 'mouseup' ? 'mouseup' : 'click');
+  const [terminalTabDoubleClickActionEnabled, setTerminalTabDoubleClickActionEnabled] = useState(() => {
+    const stored = localStorage.getItem('terminalTabDoubleClickActionEnabled');
+    if (stored === 'true' || stored === 'false') {
+      return stored === 'true';
+    }
+    return localStorage.getItem('terminalTabDoubleClickDuplicate') === 'true';
+  });
+  const [terminalTabDoubleClickAction, setTerminalTabDoubleClickAction] = useState(() => {
+    const stored = localStorage.getItem('terminalTabDoubleClickAction');
+    if (stored === 'close' || stored === 'duplicate') {
+      return stored;
+    }
+    return 'duplicate';
+  });
 
   const handleTerminalRightClickPasteOnEmptyChange = (enabled: boolean) => {
     setTerminalRightClickPasteOnEmpty(enabled);
@@ -627,220 +385,6 @@ export default function SettingsModal({
     const next = action === 'close' ? 'close' : 'duplicate';
     setTerminalTabDoubleClickAction(next);
     localStorage.setItem('terminalTabDoubleClickAction', next);
-  };
-
-  const handleBgTargetModeChange = (mode: 'global' | 'terminal') => {
-    if (mode === bgTargetMode) return;
-    localStorage.setItem('bgTargetMode', mode);
-    // 切换背景类型：将当前背景图迁移到新目标（图像保留，仅切换应用范围）
-    // 先删旧键再写新键，避免大图在 localStorage 中瞬时双份导致配额溢出
-    try {
-      if (mode === 'terminal') {
-        // 全局 → 终端：图像迁移到终端
-        localStorage.removeItem('globalBgImage');
-        if (globalBgImage) {
-          localStorage.setItem('termBgImage', globalBgImage);
-        } else {
-          localStorage.removeItem('termBgImage');
-        }
-        setTermBgImage(globalBgImage);
-        localStorage.setItem('termBgOpacity', String(globalBgOpacity));
-        setTermBgOpacity(globalBgOpacity);
-        setGlobalBgImage('');
-      } else {
-        // 终端 → 全局：图像迁移到全局
-        localStorage.removeItem('termBgImage');
-        if (termBgImage) {
-          localStorage.setItem('globalBgImage', termBgImage);
-        } else {
-          localStorage.removeItem('globalBgImage');
-        }
-        setGlobalBgImage(termBgImage);
-        const opacity = Math.min(0.5, Math.max(0, termBgOpacity));
-        localStorage.setItem('globalBgOpacity', String(opacity));
-        setGlobalBgOpacity(opacity);
-        setTermBgImage('');
-      }
-    } catch {
-      addToast($t('图片过大，无法保存，请使用较小的图片'), 'error');
-      return;
-    }
-    setBgTargetMode(mode);
-    notifyGlobalAppearanceChanged();
-    window.dispatchEvent(new CustomEvent('terminal-bg-changed'));
-    addToast(mode === 'global' ? $t('全局背景已更新') : $t('终端壁纸已更新'), 'success');
-  };
-
-  const handleBgUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const base64 = typeof ev.target?.result === 'string' ? ev.target.result : '';
-      try {
-        if (bgTargetMode === 'global') {
-          localStorage.removeItem('termBgImage');
-          localStorage.setItem('globalBgImage', base64);
-          setGlobalBgImage(base64);
-          setTermBgImage('');
-          notifyGlobalAppearanceChanged();
-          window.dispatchEvent(new CustomEvent('terminal-bg-changed'));
-          addToast($t('全局背景已更新'), 'success');
-        } else {
-          localStorage.removeItem('globalBgImage');
-          localStorage.setItem('termBgImage', base64);
-          setTermBgImage(base64);
-          setGlobalBgImage('');
-          notifyGlobalAppearanceChanged();
-          window.dispatchEvent(new CustomEvent('terminal-bg-changed'));
-          addToast($t('终端壁纸已更新'), 'success');
-        }
-      } catch {
-        addToast($t('图片过大，无法保存，请使用较小的图片'), 'error');
-      }
-    };
-    reader.onerror = () => addToast($t('读取图片失败'), 'error');
-    reader.readAsDataURL(file);
-  };
-
-  const handleBgReset = () => {
-    if (bgTargetMode === 'global') {
-      localStorage.removeItem('globalBgImage');
-      setGlobalBgImage('');
-      notifyGlobalAppearanceChanged();
-      addToast($t('已恢复默认背景'), 'success');
-    } else {
-      localStorage.removeItem('termBgImage');
-      setTermBgImage('');
-      window.dispatchEvent(new CustomEvent('terminal-bg-changed'));
-      addToast($t('已恢复默认壁纸'), 'success');
-    }
-  };
-
-  const handleBgOpacityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (bgTargetMode === 'global') {
-      const value = Math.min(0.5, Math.max(0, Number.parseFloat(e.target.value) || 0));
-      localStorage.setItem('globalBgOpacity', String(value));
-      setGlobalBgOpacity(value);
-      notifyGlobalAppearanceChanged();
-    } else {
-      const val = Math.min(1, Math.max(0, Number.parseFloat(e.target.value) || 0));
-      localStorage.setItem('termBgOpacity', String(val));
-      setTermBgOpacity(val);
-      window.dispatchEvent(new CustomEvent('terminal-bg-changed'));
-    }
-  };
-
-  const handleGlobalIconOpacityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = Math.min(1, Math.max(0.4, Number.parseFloat(e.target.value) || 1));
-    localStorage.setItem('globalIconOpacity', String(value));
-    setGlobalIconOpacity(value);
-    notifyGlobalAppearanceChanged();
-  };
-
-  const handleToggleRememberWindowSize = () => {
-    const next = !rememberWindowSize;
-    setRememberWindowSize(next);
-    localStorage.setItem('rememberWindowSize', String(next));
-    if (!next) localStorage.removeItem('windowSize');
-  };
-
-  const handleResetWindowSize = () => {
-    localStorage.removeItem('windowSize');
-    WindowUnmaximise();
-    const w = Math.min(1440, Math.floor(screen.width * 0.9));
-    const h = Math.min(900, Math.floor(screen.height * 0.9));
-    WindowSetSize(w, h);
-    addToast($t('窗口大小已恢复默认'), 'success');
-  };
-
-  const refreshProgramFonts = async () => {
-    try {
-      const fonts = await listProgramFonts();
-      setProgramFonts(Array.isArray(fonts) ? fonts : []);
-    } catch {
-      setProgramFonts([]);
-    }
-    setProgramFontAssignments(getProgramFontAssignmentSnapshot());
-  };
-
-  const handleAddProgramFonts = async () => {
-    setProgramFontImporting(true);
-    try {
-      const importedFonts = await selectAndImportProgramFontFiles();
-      await refreshProgramFonts();
-      if (Array.isArray(importedFonts) && importedFonts.length > 0) {
-        addToast($t('字体已添加到字体目录'), 'success');
-      }
-    } catch (err) {
-      addToast($t('字体导入失败') + ': ' + err, 'error');
-    } finally {
-      setProgramFontImporting(false);
-    }
-  };
-
-  const handleDeleteProgramFont = async (fileName: string) => {
-    const normalizedFileName = typeof fileName === 'string' ? fileName.trim() : '';
-    if (!normalizedFileName || programFontDeleting) {
-      return;
-    }
-    setProgramFontDeleting(true);
-    try {
-      await deleteProgramFont(normalizedFileName);
-      await refreshProgramFonts();
-      addToast($t('字体已删除'), 'success');
-    } catch (err) {
-      addToast($t('字体删除失败') + ': ' + String(err), 'error');
-    } finally {
-      setProgramFontDeleting(false);
-    }
-  };
-
-  const handleProgramFontDragStart = (event: React.DragEvent, fileName: string) => {
-    event.dataTransfer.effectAllowed = 'copy';
-    event.dataTransfer.setData('text/plain', fileName);
-  };
-
-  const handleProgramFontDragEnd = () => {
-    setActiveProgramFontDropTarget('');
-  };
-
-  const handleProgramFontDragEnter = (target: string) => {
-    setActiveProgramFontDropTarget(target);
-  };
-
-  const handleProgramFontDragLeave = (target: string) => {
-    setActiveProgramFontDropTarget((current) => current === target ? '' : current);
-  };
-
-  const handleProgramFontDrop = async (target: string, fileName: string) => {
-    const normalizedTarget = typeof target === 'string' ? target.trim() : '';
-    const normalizedFileName = typeof fileName === 'string' ? fileName.trim() : '';
-    setActiveProgramFontDropTarget('');
-    if (!normalizedTarget || !normalizedFileName) {
-      return;
-    }
-    try {
-      await setProgramFontPreference(normalizedTarget, normalizedFileName);
-      setProgramFontAssignments(getProgramFontAssignmentSnapshot());
-      addToast($t('字体分配已更新'), 'success');
-    } catch (err) {
-      addToast($t('字体分配失败') + ': ' + String(err), 'error');
-    }
-  };
-
-  const handleProgramFontReset = async (target: string) => {
-    const normalizedTarget = typeof target === 'string' ? target.trim() : '';
-    if (!normalizedTarget) {
-      return;
-    }
-    try {
-      await setProgramFontPreference(normalizedTarget, '');
-      setProgramFontAssignments(getProgramFontAssignmentSnapshot());
-      addToast($t('已恢复默认字体'), 'success');
-    } catch (err) {
-      addToast($t('恢复默认字体失败') + ': ' + String(err), 'error');
-    }
   };
 
   // 操作确认开关
@@ -1349,49 +893,6 @@ export default function SettingsModal({
     return () => { cancelled = true; };
   }, []);
 
-  useEffect(() => {
-    refreshThemePackages().catch(() => {});
-  }, [refreshThemePackages]);
-
-  useEffect(() => {
-    const handleThemeRuntimeChanged = () => {
-      const nextSettings = getStoredThemePackageSettings();
-      setThemePackageSettings(nextSettings);
-      setThemePackages(listThemePackages());
-      setThemeMode(nextSettings.themeMode || 'dark');
-    };
-    window.addEventListener('theme-package-changed', handleThemeRuntimeChanged);
-    window.addEventListener('theme-mode-changed', handleThemeRuntimeChanged);
-    return () => {
-      window.removeEventListener('theme-package-changed', handleThemeRuntimeChanged);
-      window.removeEventListener('theme-mode-changed', handleThemeRuntimeChanged);
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    listProgramFonts()
-      .then((fonts) => {
-        if (cancelled) return;
-        setProgramFonts(Array.isArray(fonts) ? fonts : []);
-        setProgramFontAssignments(getProgramFontAssignmentSnapshot());
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setProgramFonts([]);
-        setProgramFontAssignments(getProgramFontAssignmentSnapshot());
-      });
-    return () => { cancelled = true; };
-  }, []);
-
-  useEffect(() => {
-    const handleProgramFontSettingsChange = () => {
-      setProgramFontAssignments(getProgramFontAssignmentSnapshot());
-    };
-    window.addEventListener('program-font-settings-changed', handleProgramFontSettingsChange);
-    return () => window.removeEventListener('program-font-settings-changed', handleProgramFontSettingsChange);
-  }, []);
-
   // ── Tab prop wrappers ──
   const handleTogglePingEnabled = () => {
     const next = !pingEnabled;
@@ -1649,76 +1150,14 @@ export default function SettingsModal({
             {activeTab === 'runtimeEnvironment' && (
               <RuntimeEnvironmentTab />
             )}
-            {activeTab === 'appearance' && (
-              <AppearanceTab
-                programFonts={programFonts}
-                programFontSearchQuery={programFontSearchQuery}
-                onProgramFontSearchQueryChange={setProgramFontSearchQuery}
-                onAddProgramFonts={handleAddProgramFonts}
-                programFontImporting={programFontImporting}
-                onDeleteProgramFont={(fileName) => { void handleDeleteProgramFont(fileName); }}
-                programFontAssignments={programFontAssignments}
-                onProgramFontDragStart={handleProgramFontDragStart}
-                onProgramFontDragEnd={handleProgramFontDragEnd}
-                onProgramFontDragEnter={handleProgramFontDragEnter}
-                onProgramFontDragLeave={handleProgramFontDragLeave}
-                onProgramFontDrop={(target, fileName) => { void handleProgramFontDrop(target, fileName); }}
-                onProgramFontReset={(target) => { void handleProgramFontReset(target); }}
-                activeProgramFontDropTarget={activeProgramFontDropTarget || null}
-                // AppearanceTab 的 programFontDeleting 为 string | null，仅作 truthiness 使用
-                programFontDeleting={programFontDeleting ? 'busy' : null}
-                terminalFontSize={terminalFontSize}
-                onTerminalFontSizeChange={handleTerminalFontChange}
-                terminalLocalEcho={terminalLocalEcho}
-                onTerminalLocalEchoChange={handleTerminalLocalEchoChange}
-                terminalTimestamps={terminalTimestamps}
-                onTerminalTimestampsChange={handleTerminalTimestampsChange}
-                terminalCommandBlocks={terminalCommandBlocks}
-                onTerminalCommandBlocksChange={handleTerminalCommandBlocksChange}
-                terminalDefaultMouseCursor={terminalDefaultMouseCursor}
-                onTerminalDefaultMouseCursorChange={handleTerminalDefaultMouseCursorChange}
-                terminalKeywordHighlight={terminalKeywordHighlight}
-                onTerminalKeywordHighlightChange={handleTerminalKeywordHighlightChange}
-                keywordRules={keywordRules}
-                onKeywordRulesChange={handleKeywordRulesChange}
-                onKeywordRulesReset={handleKeywordRulesReset}
-                terminalBgColor={(() => { try { return getTerminalTheme()?.container?.containerBg || ''; } catch (_) { return ''; } })()}
-                themePackages={themePackages}
-                // AppearanceTab 本地 ThemePackageSettings 带索引签名（宽松形状），theme.ts 接口无索引签名，桥接
-                themePackageSettings={themePackageSettings as unknown as { lightThemePackageId?: string; darkThemePackageId?: string; [key: string]: unknown }}
-                themeMode={forceDarkTheme ? 'dark' : themeMode}
-                onThemeChange={forceDarkTheme ? () => {} : handleThemeChange}
-                onSelectLightThemePackage={(packageId) => { void handleSelectThemePackage('light', packageId); }}
-                onSelectDarkThemePackage={(packageId) => { void handleSelectThemePackage('dark', packageId); }}
-                onReloadThemePackages={() => { void handleReloadThemePackages(); }}
-                onOpenThemePackagesDirectory={() => { void handleOpenThemePackagesDirectory(); }}
-                onImportThemePackages={() => { void handleImportThemePackages(); }}
-                onTuneActiveThemeWithAI={() => { handleStartAIThemeTuning(); }}
-                onDeleteThemePackage={(themePackage) => { void handleDeleteThemePackage(themePackage); }}
-                onCopyThemePackageToMode={(themePackage, targetMode) => { void handleCopyThemePackageToMode(themePackage, targetMode); }}
-                themePackageBusy={themePackageBusy}
-                showThemeQuickEntry={showThemeQuickEntry}
-                onToggleThemeQuickEntry={handleToggleThemeQuickEntry}
-                probePanelPosition={probePanelPosition}
-                onProbePanelPositionChange={onProbePanelPositionChange}
-                terminalToolbarIconOnly={terminalToolbarIconOnly}
-                onToggleTerminalToolbarIconOnly={handleToggleTerminalToolbarIconOnly}
-                termBgImage={termBgImage}
-                globalBgImage={globalBgImage}
-                bgTargetMode={bgTargetMode}
-                onBgTargetModeChange={handleBgTargetModeChange}
-                onBgUpload={handleBgUpload}
-                onBgReset={handleBgReset}
-                termBgOpacity={termBgOpacity}
-                globalBgOpacity={globalBgOpacity}
-                onBgOpacityChange={handleBgOpacityChange}
-                globalIconOpacity={globalIconOpacity}
-                onGlobalIconOpacityChange={handleGlobalIconOpacityChange}
-                rememberWindowSize={rememberWindowSize}
-                onToggleRememberWindowSize={handleToggleRememberWindowSize}
-                onResetWindowSize={handleResetWindowSize}
-              />
-            )}
+            <AppearanceTabPane
+              activeTab={activeTab}
+              addToast={addToast}
+              forceDarkTheme={forceDarkTheme}
+              handleClose={handleClose}
+              probePanelPosition={probePanelPosition}
+              onProbePanelPositionChange={onProbePanelPositionChange}
+            />
 
             {activeTab === 'shortcuts' && (
               <ShortcutsTab

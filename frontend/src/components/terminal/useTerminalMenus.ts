@@ -111,7 +111,9 @@ export function useTerminalMenus(deps: {
       setLinkMenu(null);
     };
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+    };
   }, [contextMenu, linkMenu]);
 
   const handleMenuAction = (action: string) => {

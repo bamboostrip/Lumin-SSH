@@ -188,9 +188,9 @@ export function useAIWorkspaceTabs({ t, terminalId, sessionId, onActiveTabChange
     const edgePadding = 6
     const delta = tabRect.left < scrollRect.left + edgePadding
       ? tabRect.left - scrollRect.left - edgePadding
-      : tabRect.right > scrollRect.right - edgePadding
+      : (tabRect.right > scrollRect.right - edgePadding
         ? tabRect.right - scrollRect.right + edgePadding
-        : 0
+        : 0)
     if (delta) {
       element.scrollBy({ left: delta, behavior: 'smooth' })
     }

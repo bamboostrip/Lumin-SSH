@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { FileEditorFile } from '../FileEditor.tsx';
 import type { useFileManagerCore } from './useFileManagerCore.ts';
 import type { FileManagerChmodTarget, FileManagerFileItem } from './fileManagerTypes.ts';

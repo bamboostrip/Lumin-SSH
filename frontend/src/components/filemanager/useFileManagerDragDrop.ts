@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback } from 'react';
 import {
   FILE_MANAGER_INTERNAL_DRAG_MIME,
   FILE_MANAGER_LAYOUT_MODE_SIDEBAR_DUAL,
@@ -10,7 +10,7 @@ import type { useFileManagerCore } from './useFileManagerCore.ts';
 import type { useFileManagerWorkspaceSync } from './useFileManagerWorkspaceSync.ts';
 import type { useFileManagerUploadPanel } from './useFileManagerUploadPanel.ts';
 import type { useFileManagerTransfers } from './useFileManagerTransfers.ts';
-import type { FileManagerDualPaneDragItem, FileManagerDualPaneDragPayload, FileManagerPaneStateLike, LooseT } from './fileManagerTypes.ts';
+import type { FileManagerDualPaneDragItem, FileManagerDualPaneDragPayload, FileManagerPaneStateLike } from './fileManagerTypes.ts';
 
 // 拖放传输：浏览器拖入上传（含 webkit 条目遍历）、双面板内部拖拽 payload、
 // 拖拽跟随提示与复制/移动模式解析

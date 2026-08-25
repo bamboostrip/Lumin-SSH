@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import type { useFileManagerCore } from './useFileManagerCore.ts';
 
 // 跨实例共享剪贴板（挂在 window.__luminClipboards，按 sessionGroup 隔离）

@@ -119,7 +119,7 @@ export function useServerList(props: ServerListProps) {
     return m;
   }, [sessions]);
 
-  const mask = (text: string) => (hideSensitive ? String(text || '').replace(/[^@.:\/\s-]/g, '*') : text);
+  const mask = (text: string) => (hideSensitive ? String(text || '').replace(/[^@.:/\s-]/g, '*') : text);
 
   const getEditAnimationPayload = (server: config.Connection, sourceRoot: HTMLElement | null) => {
     const root = sourceRoot || null;

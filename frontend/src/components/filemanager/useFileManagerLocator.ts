@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useCallback, useMemo } from 'react';
 import {
   FILE_MANAGER_LAYOUT_MODE_SIDEBAR_DUAL,
   FILE_MANAGER_VIRTUAL_ROW_ITEM,
   buildFileManagerVirtualRows,
-  normalizeFileManagerPaneKey,
   sortFileManagerItems,
 } from '../../utils/fileManagerHelpers.tsx';
 import type { useFileManagerCore } from './useFileManagerCore.ts';

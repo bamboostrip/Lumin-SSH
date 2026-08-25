@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import * as AppGo from '../../../wailsjs/go/wailsapp/App.js';
 import { EventsOn } from '../../../wailsjs/runtime/runtime.js';
 import {
@@ -10,8 +10,6 @@ import {
   DOWNLOAD_CONFLICT_STRATEGY_PROMPT,
   MAX_CHUNK_UPLOAD_RETRIES,
   UPLOAD_ABORT_SENTINEL,
-  buildDownloadConflictOptionsPayload,
-  computeCompressedOverallProgress,
   createLocalItemShell,
   downloadConflictKindLabel,
   fmtDate,
@@ -22,7 +20,6 @@ import {
   parsePositiveInt,
   readBlobAsBase64,
   runWithLimitSettled,
-  traverseEntry,
   uploadChunkWithRetry,
   upsertLocalItem,
 } from '../../utils/fileManagerHelpers.tsx';
@@ -42,7 +39,7 @@ import type { useFileManagerEditorState } from './useFileManagerEditorState.ts';
 import type { useFileManagerUploadPanel } from './useFileManagerUploadPanel.ts';
 import type { useFileManagerDirectoryLoader } from './useFileManagerDirectoryLoader.ts';
 import type { FileManagerDownloadConflict, FileManagerFileItem, FileManagerProps } from './fileManagerTypes.ts';
-import type { DownloadConflictSettings, FileManagerDownloadConflictSettings } from '../../utils/fileManagerTransfer.ts';
+import type { FileManagerDownloadConflictSettings } from '../../utils/fileManagerTransfer.ts';
 
 // 传输引擎：上传（原生路径/浏览器条目分块）、下载（含同名冲突向导）、
 // 远端条目移动/复制、中止/恢复目录、撤销栈与传输队列事件

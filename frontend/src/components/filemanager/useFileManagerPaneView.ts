@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import * as AppGo from '../../../wailsjs/go/wailsapp/App.js';
 import {
-  FILE_MANAGER_VIRTUAL_ROW_ITEM,
   createFileManagerPaneEffectState,
   createFileManagerPaneViewState,
   findFileManagerVirtualRowIndex,
@@ -10,7 +9,7 @@ import {
 } from '../../utils/fileManagerHelpers.tsx';
 import type { FileListViewAnchor, FileManagerVirtualRow, RowEffectState } from '../../utils/fileManagerItems.ts';
 import type { useFileManagerCore } from './useFileManagerCore.ts';
-import type { FileManagerFileItem, LooseT } from './fileManagerTypes.ts';
+import type { FileManagerFileItem } from './fileManagerTypes.ts';
 import type { useFileManagerWorkspaceSync } from './useFileManagerWorkspaceSync.ts';
 
 // 面板视图状态：可视锚点捕获/恢复（防跳动）、行动画效果队列、

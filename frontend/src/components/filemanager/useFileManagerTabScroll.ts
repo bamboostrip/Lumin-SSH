@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback } from 'react';
 import type { useFileManagerCore } from './useFileManagerCore.ts';
 
 // 标签栏横向滚动：溢出检测、惯性滚动动画与滚轮/滚动事件处理

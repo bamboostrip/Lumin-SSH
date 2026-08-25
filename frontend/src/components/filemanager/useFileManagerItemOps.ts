@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import * as AppGo from '../../../wailsjs/go/wailsapp/App.js';
 import {
   getParentPath,

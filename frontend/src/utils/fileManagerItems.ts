@@ -74,7 +74,7 @@ export function createLocalItemShell(name: unknown, isDirectory: boolean, source
   return {
     name: normalizedName,
     isDirectory: Boolean(isDirectory),
-    size: Boolean(isDirectory) ? 0 : Number(sourceItem?.size || 0),
+    size: isDirectory ? 0 : Number(sourceItem?.size || 0),
     permission: String(sourceItem?.permission || '').trim(),
     mode: String(sourceItem?.mode || '').trim(),
     modifyTime: typeof sourceItem?.modifyTime === 'number' ? sourceItem.modifyTime : Date.now(),
@@ -198,7 +198,7 @@ export function isFileManagerVirtualRangeVisible(range: FileManagerVirtualRange,
 
 // Check if a file name is a hidden/system file that should be skipped
 export function isHiddenFile(name: string) {
-  return /^\./.test(name) || /^Thumbs\.db$/i.test(name) || /^desktop\.ini$/i.test(name);
+  return name.startsWith('.') || /^Thumbs\.db$/i.test(name) || /^desktop\.ini$/i.test(name);
 }
 
 // Recursively traverse a FileSystemEntry to collect all File objects

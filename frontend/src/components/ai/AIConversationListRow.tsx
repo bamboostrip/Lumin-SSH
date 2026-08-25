@@ -57,7 +57,7 @@ export function renderAIConversationListRow({
             key={item.id}
             className="w-full flex items-center border-b border-line transition-[color,background-color,border-color,opacity,box-shadow] duration-[120ms]"
             style={{
-              background: selected ? 'rgba(var(--accent-rgb), 0.12)' : panelState.activeConversationId === item.id ? 'rgba(var(--accent-rgb), 0.08)' : 'transparent',
+              background: selected ? 'rgba(var(--accent-rgb), 0.12)' : (panelState.activeConversationId === item.id ? 'rgba(var(--accent-rgb), 0.08)' : 'transparent'),
               borderLeft: panelState.activeConversationId === item.id ? '2px solid var(--accent)' : '2px solid transparent',
               opacity: item.archived === true ? 0.72 : 1,
               contentVisibility: 'auto',

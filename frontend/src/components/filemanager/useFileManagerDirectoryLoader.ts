@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useCallback } from 'react';
 import * as AppGo from '../../../wailsjs/go/wailsapp/App.js';
 import { EventsOn } from '../../../wailsjs/runtime/runtime.js';
 import {
-  FILE_MANAGER_LAYOUT_MODE_SIDEBAR_DUAL,
   FILE_MANAGER_NEW_TAB_PATH_MODE_ROOT,
   FILE_MANAGER_NEW_TAB_PATH_MODE_SESSION_INITIAL_PATH,
   FILE_MANAGER_NEW_TAB_PATH_MODE_TERMINAL_CWD,

@@ -603,9 +603,9 @@ export function useAIProviderSelector({
       try {
         const models = bridge?.RequestAIProviderModelsWithProfile
           ? await bridge.RequestAIProviderModelsWithProfile(JSON.stringify(requestProfile))
-          : bridge?.RequestAIProviderModels
+          : (bridge?.RequestAIProviderModels
             ? await bridge.RequestAIProviderModels(baseUrl, apiKey)
-            : [];
+            : []);
         if (cancelled) {
           return;
         }

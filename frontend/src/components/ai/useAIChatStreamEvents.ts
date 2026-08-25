@@ -1274,9 +1274,9 @@ export function useAIChatStreamEvents({
     }
     const hasRenderedPendingCard = pendingMode === 'followup'
       ? panelState.messages.some((message) => message?.kind === 'followup' && typeof message?.requestId === 'string' && message.requestId.trim() === pendingRequestId)
-      : pendingMode === 'completion'
+      : (pendingMode === 'completion'
         ? panelState.messages.some((message) => message?.kind === 'completion' && message?.turnId === panelState.activeAssistantMessageId && normalizeAIMessageStatus(message?.status) === '等待处理')
-        : false
+        : false)
     if (!hasRenderedPendingCard) {
       return undefined
     }

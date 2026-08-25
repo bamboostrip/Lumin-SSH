@@ -79,7 +79,7 @@ export interface SparklineSeries {
 }
 
 export const clampPct = (value: number) => Math.min(Math.max(Number(value) || 0, 0), 100);
-export const pctColor = (pct: number, warn = 60, danger = 85) => (pct >= danger ? 'var(--danger)' : pct >= warn ? 'var(--warning)' : 'var(--success)');
+export const pctColor = (pct: number, warn = 60, danger = 85) => (pct >= danger ? 'var(--danger)' : (pct >= warn ? 'var(--warning)' : 'var(--success)'));
 export const createEmptyHist = (): ProbeHist => ({ cpu: Array(HISTORY_SIZE).fill(0), up: Array(HISTORY_SIZE).fill(0), down: Array(HISTORY_SIZE).fill(0) });
 
 export const PROBE_CARD_ORDER_KEY = 'probePanelCardOrder';

@@ -41,7 +41,7 @@ export function ServerGroupHeader({
     <>
       {selectionMode && (
         <div
-          className={cn('custom-checkbox', isGroupSelected(groupName) ? 'checked' : isGroupPartiallySelected(groupName) ? 'indeterminate' : '')}
+          className={cn('custom-checkbox', isGroupSelected(groupName) ? 'checked' : (isGroupPartiallySelected(groupName) ? 'indeterminate' : ''))}
           onClick={(e) => {
             e.stopPropagation();
             handleGroupToggleSelect(groupName);
@@ -51,11 +51,11 @@ export function ServerGroupHeader({
             <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="20 6 9 17 4 12" />
             </svg>
-          ) : isGroupPartiallySelected(groupName) ? (
+          ) : (isGroupPartiallySelected(groupName) ? (
             <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
               <line x1="4" y1="12" x2="20" y2="12" />
             </svg>
-          ) : null}
+          ) : null)}
         </div>
       )}
       <span onClick={() => toggleGroup(groupName)} className={cn('items-center gap-1.5 cursor-pointer flex-1', isTableView ? 'inline-flex' : 'flex')}>

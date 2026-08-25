@@ -106,8 +106,7 @@ export default function UploadQueueCard({ item, isAbortable, onAbortItem, onRemo
       </div>
 
       {isCompressed ? (
-        <>
-          <div className="rounded-lg border border-line-subtle bg-sunken p-2 flex flex-col gap-[7px]">
+        <div className="rounded-lg border border-line-subtle bg-sunken p-2 flex flex-col gap-[7px]">
             <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2.5 text-xs text-tertiary">
               <span>{t('当前阶段')}: <span className={cn(item.status === 'failed' && 'text-danger', item.status === 'completed' && 'text-success', item.status !== 'failed' && item.status !== 'completed' && 'text-accent')}>{phaseLabel}</span></span>
               <span className="text-center font-mono truncate">
@@ -155,7 +154,6 @@ export default function UploadQueueCard({ item, isAbortable, onAbortItem, onRemo
               </div>
             ) : null}
           </div>
-        </>
       ) : (
         <>
           <div className="h-1 bg-hover rounded-full overflow-hidden">

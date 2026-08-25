@@ -44,13 +44,13 @@ export function useTerminalGutter(deps: {
     const t = String(text || '').replace(/\s+$/g, '');
     if (!t || t.length < 2 || isCollapseSummaryLine(t)) return false;
     // user@host:path# cmd  /  user@host:path$ cmd
-    if (/^[\w.-]+@[\w.-]+:[^\n]*?[#\$](?:\s+|$)/.test(t)) return true;
+    if (/^[\w.-]+@[\w.-]+:[^\n]*?[#$](?:\s+|$)/.test(t)) return true;
     // [user@host dir]$ cmd
-    if (/^\[[^\]]+\][#\$%](?:\s+|$)/.test(t)) return true;
+    if (/^\[[^\]]+\][#$%](?:\s+|$)/.test(t)) return true;
     // root@host ~]# cmd  一类
-    if (/^[\w.-]+@[\w.-]+\s+[^\n]*[#\$%](?:\s+|$)/.test(t)) return true;
+    if (/^[\w.-]+@[\w.-]+\s+[^\n]*[#$%](?:\s+|$)/.test(t)) return true;
     // 极简：以 #/$ 单独起命令（少见）
-    if (/^[#\$]\s+\S/.test(t)) return true;
+    if (/^[#$]\s+\S/.test(t)) return true;
     return false;
   };
   // 空提示符可以显示时间；真正执行（回车）时再更新该行时间戳
@@ -128,9 +128,9 @@ export function useTerminalGutter(deps: {
     const normalized = (Array.isArray(lines) ? lines : []).map((line) => String(line ?? ''));
     const body = normalized.length === 0
       ? ''
-      : normalized.length === 1
+      : (normalized.length === 1
         ? normalized[0]
-        : `${normalized.slice(0, -1).join('\r\n')}\r\n${normalized[normalized.length - 1]}`;
+        : `${normalized.slice(0, -1).join('\r\n')}\r\n${normalized[normalized.length - 1]}`);
     // \x1b[3J 清 scrollback，\x1b[2J 清屏，\x1b[H 光标回原点
     const payload = `\x1b[3J\x1b[2J\x1b[H${body}`;
 

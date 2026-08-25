@@ -109,9 +109,9 @@ export function useTerminalQuickCmd(deps: {
     const lineCount = text.split('\n').length;
     const payload = pending.item.addCR === false
       ? text
-      : multiLineWrapEnabled && lineCount > 1
+      : (multiLineWrapEnabled && lineCount > 1
         ? buildWrappedMultiLineCommand(text)
-        : text + '\r';
+        : text + '\r');
     if (pending.item.addCR !== false) {
       prepareScreenScrollbackRef.current(text);
     }

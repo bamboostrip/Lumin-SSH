@@ -67,7 +67,7 @@ export function AIComposerMentionMenu({
           <div className="p-3 text-center text-xs text-tertiary">
             {t('加载中...')}
           </div>
-        ) : mentionMenu.items.length === 0 ? (
+        ) : (mentionMenu.items.length === 0 ? (
           <div className="p-3 text-center text-xs text-tertiary">
             {t('未找到结果')}
           </div>
@@ -101,7 +101,7 @@ export function AIComposerMentionMenu({
               </button>
             );
           })
-        )}
+        ))}
       </div>
     );
   }

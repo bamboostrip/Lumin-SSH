@@ -224,7 +224,7 @@ export default function useWorkspacePanelDocking({
     updateCollapseDragIntent(null);
     updateFileManagerDockPreview(isFileManagerDockDrag ? direction : null);
     updateFileManagerDockConfirmTarget(null);
-    document.body.style.cursor = direction === 'bottom' ? 'row-resize' : direction === 'tab' ? 'grabbing' : 'col-resize';
+    document.body.style.cursor = direction === 'bottom' ? 'row-resize' : (direction === 'tab' ? 'grabbing' : 'col-resize');
     document.body.style.userSelect = 'none';
 
     const getSnapshot = (clientX: number, clientY: number): { clampedSize: number; armed: boolean } => {

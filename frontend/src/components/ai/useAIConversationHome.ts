@@ -293,9 +293,9 @@ export function useAIConversationHome({ t, addToast, terminalId, sessionId, work
       const fileCountRaw = Number(message?.extra?.conversationDiffFileCount)
       const fileCount = Number.isFinite(fileCountRaw) && fileCountRaw > 0 ? Math.trunc(fileCountRaw) : 0
       const title = primaryPath
-        ? fileCount > 1
+        ? (fileCount > 1
           ? translate('{path} 等 {count} 个文件', { path: primaryPath, count: fileCount })
-          : primaryPath
+          : primaryPath)
         : extractAIConversationDiffPrimaryPath(copyContent, summaryText)
       return [{
         id: typeof message.id === 'string' && message.id.trim() ? message.id.trim() : `conversation-diff-${index}`,
@@ -376,7 +376,7 @@ export function useAIConversationHome({ t, addToast, terminalId, sessionId, work
             apiMessages: Array.isArray(previousPanel?.apiMessages) ? previousPanel.apiMessages : [],
           }).then((saved) => { upsertTemporaryAIConversation(saved); return saved })
         })()
-      : previousConversation && !deletedConversationIdsRef.current.has(previousConversation.id)
+      : (previousConversation && !deletedConversationIdsRef.current.has(previousConversation.id)
       ? (() => {
           const assistantMessageId = previousPanel?.activeAssistantMessageId || previousRequestId
           const messages = (Array.isArray(previousPanel?.messages) ? previousPanel.messages : []).filter((message) => (
@@ -393,7 +393,7 @@ export function useAIConversationHome({ t, addToast, terminalId, sessionId, work
             apiMessages: Array.isArray(previousPanel?.apiMessages) ? previousPanel.apiMessages : [],
           }).catch(() => {})
         })()
-      : Promise.resolve()
+      : Promise.resolve())
     setPanelState(panelInstanceKey, (current) => ({
       ...current,
       activeConversationId: '',

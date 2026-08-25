@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { OnFileDrop, OnFileDropOff } from '../../../wailsjs/runtime/runtime.js';
 import { isCompressedTransferEnabled } from '../../utils/fileManagerHelpers.tsx';
 import type { useFileManagerCore } from './useFileManagerCore.ts';

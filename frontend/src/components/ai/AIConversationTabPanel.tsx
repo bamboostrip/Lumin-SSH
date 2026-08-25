@@ -1,25 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Archive, ArchiveRestore, Bot, CheckSquare, ChevronLeft, ChevronRight, FolderOpen, FolderPlus, Loader2, Pencil, Scissors, Search, Trash2 } from 'lucide-react'
-import { EventsOn } from '../../../wailsjs/runtime/runtime.js'
-import * as AppGo from '../../../wailsjs/go/wailsapp/App.js'
-import { useTranslation, t as translate, getLanguage, type I18nKey } from '../../i18n.ts'
+import { useMemo, useState } from 'react'
+import { Loader2 } from 'lucide-react'
+import { useTranslation, getLanguage } from '../../i18n.ts'
 import { Z } from '../../constants/zIndex'
-import { Button } from '../ui'
-import { cn } from '../../utils/cn.ts'
 import AIPanelHeader from './AIPanelHeader.tsx'
-import AIConversationBackupSettings from './AIConversationBackupSettings.tsx'
-import AIPanelSettingsOverlay from './AIPanelSettingsOverlay.tsx'
-import AIComposer from './AIComposer.tsx'
-import { approveAIChatTools, assignAIChatToolTerminal, cancelAIChat, continueAIChatTool, disableAIChatCollaboration, listAIChatCommandTerminalCandidates, previewAIChatToolDiff, previewAIChatToolRestore, rejectAIChatTools, rejectAIChatToolsForQueuedSubmission, resolveAIChatFollowup, restoreAIChatTool, setAIChatSkipNextAutomaticRequest, startAIChat, startAIChatCollaboration, terminateAIChatTool } from './aiChatBridge.ts'
-import { buildAIConversationTokenLedger, condenseAIConversationContext, countAIConversationAPIMessageRawTokens, createAIConversation, createAIConversationSummarySubtask, deleteAIConversation, deleteTemporaryAIConversation, getAIAssistantFirstReply, getAIConversation, getTemporaryAIConversation, listAIConversations, listTemporaryAIConversations as listTemporaryAIConversationsFromDisk, normalizeAIConversationMessageSearchResult, normalizeAIConversationSnapshot, normalizeAIConversationTaskSettings, openAIConversationFolder, preprocessAIConversationLongText, readAIConversationWrappedFile, saveAIConversation, saveTemporaryAIConversation, searchAIConversationMessages, subscribeAIConversationChanges, type AIConversationMessageSearchResult } from './aiConversationBridge.ts'
-import { buildExecutionContextDetails, getExecutionContextSnapshot } from './aiExecutionContext.ts'
-import { getAIGlobalSettings, normalizeAIGlobalSettings, saveAIGlobalSettings, type AIGlobalSettings } from './aiGlobalSettingsBridge.ts'
-import { getAIProviderState, getAIProviderTokenGroup, type AIProviderState } from './aiProviderBridge.ts'
-import type { AIProviderLike } from './AIProviderSelector.tsx'
-import { clearThemeToolPreviewPackage, loadThemePackages, setThemeToolPreviewPackage } from '../../utils/theme.ts'
-import { getMCPSettingsState, saveMCPGlobalServer, reloadMCPGlobalServers, deleteMCPGlobalServer, restartMCPClientServer, toggleMCPClientServer, toggleMCPClientServerDisabledForPrompts, updateMCPClientServerTimeout } from './mcpClientBridge.ts'
-import { processRemoteFileMentions } from './aiMentions.ts'
-import { expandFirstSlashCommandForPrompt } from './aiSlashCommands.ts'
+import { normalizeAIConversationTaskSettings } from './aiConversationBridge.ts'
 import { useAIChatStreamEvents } from './useAIChatStreamEvents.ts'
 import { useAIPanelCoreState } from './useAIPanelCoreState.ts'
 import { useAIPanelSettingsState } from './useAIPanelSettingsState.ts'
@@ -33,36 +17,13 @@ import { useAIChatActions } from './useAIChatActions.ts'
 import { renderAIHomeView } from './AIHomeView.tsx'
 import { renderAIConversationStage } from './AIConversationStage.tsx'
 import { renderAIComposerSection, renderAISettingsOverlaySection } from './AIConversationPanelSections.tsx'
-import AIChatConversation from './chat/AIChatConversation.tsx'
-import { getConversationBranchAnchor } from './chat/aiChatMessageTopology.ts'
-import { isCallMyVipProviderHost } from './providerSpecialHosts.ts'
-import { getAIProviderDefinition } from './providers/index.ts'
-import {
-  clearAIWorkspaceTabPendingLocation,
-  createAIWorkspaceTabId,
-  findAIWorkspaceConversationTab,
-  getAIWorkspaceTabGroup,
-  getAIWorkspaceTabPendingLocation,
-  setAIWorkspaceTabGroup,
-  setAIWorkspaceTabPendingLocation,
-  subscribeAIWorkspaceTabGroup,
-  type AIWorkspaceTab,
-  type AIWorkspaceTabGroup,
-} from '../../utils/aiWorkspaceTabs.ts'
 import { AIWorkspaceTabProvider } from './aiWorkspaceTabContext.ts'
-import { openGlobalContextMenu } from '../../utils/contextMenu.ts'
-import assistantThinkingActiveImg from '../../assets/assistant-thinking-active.webm'
-import Tiptop from '../Tiptop.tsx'
-import { createAIConversationGroup, loadAIConversationOrganizer, saveAIConversationOrganizer, type AIConversationOrganizerState } from '../../utils/aiConversationOrganizer.ts'
-import { AI_COLLABORATION_COMPRESSION_PREFIX, AI_COLLABORATION_CONTINUE_PREFIX, AI_COLLABORATION_DONE_PREFIX, AI_COLLABORATION_RETRY_PREFIX, AI_CONVERSATION_DIFF_SUCCESS_STATUSES, AI_CONVERSATION_DIFF_TOOL_NAMES, AI_FOLLOWUP_COMPLETED_STATUS_KEY, AI_FOLLOWUP_PENDING_STATUS_KEY, AI_WORKSPACE_TAB_CLOSE_QUIET_MS, AIPanelProps, buildAIConversationDisplayList, buildAIConversationSearchSnippet, buildAIFollowupAnswerPayload, buildAIQueuedSubmission, buildAIRequestModelMeta, buildMetrics, buildReasoningDuration, buildRequestMessages, cloneAIConversationCacheObjects, collectTurnUiMessageIds, computeAILastAssistantTurnState, createAPIHistoryMessage, createEmptyPanelState, extractAIConversationDiffPrimaryPath, extractAIConversationSearchText, findApiAnchorIndexByUiMessageId, findLatestAIFollowupMessageByRequestId, getAIBridge, insertMessageBeforeAssistant, isAIBusinessTurnMessageKind, isAIQueueBlocked, normalizeAICollaborationDecision, normalizeAICollaborationMode, normalizeAIContextTokensValue, normalizeAIConversationSearchQuery, normalizeAIMessageStatus, normalizeAIRuntimePhase, normalizeMessageImages, parseAICollaborationStreamBuffer, resolveAIEventSound, shouldUseAssistantFirstReplyForConversation, trimLatestAssistantAPIHistoryMessage, truncateConversationTitle, updateAILastAssistantTurnState, upsertAPIHistoryMessage, upsertMessageBeforeAssistant } from './aiChatLogic.ts';
-import type { AIAPIHistoryMessageLike, AIConversationSnapshot, AIEventPayloadShape, AIMessage, AIMetricsPayload, AIPanelSettings, AIQueuedSubmission, AIRequestMessage, AIToolExecution, APIHistoryMessage, ComposerEditState, DisplayConversationItem, McpInfoState, PanelState, PerfRecord, TokenLedger } from './aiChatLogic.ts';
-import { compressTerminalOutputForPrompt } from './aiTerminalScreen.ts'
-import { buildAIHistoryDisplayTimeParts, buildAIConversationSummarySubtaskContinuePrompt, formatMessageTime, getAIHistoryRelativeTimeToneStyle } from './aiTimeFormat.ts'
-import { upsertConversationSummary, type ConversationSummary } from './aiConversationSummary.ts'
-import { getTemporaryAIConversationSummary, listTemporaryAIConversations as listInMemoryTemporaryAIConversations, removeTemporaryAIConversation, seedTemporaryAIConversations, upsertTemporaryAIConversation, TEMPORARY_AI_CONVERSATIONS_CHANGED_EVENT } from './aiTemporaryConversations.ts'
+import type { AIPanelProps } from './aiChatLogic.ts'
+import type { ConversationSummary } from './aiConversationSummary.ts'
 
 // ============================================================
 // AIConversationTabPanel：单个工作区标签页的对话面板（外壳见 ../../AIPanel.tsx）。
+// ============================================================
 // ============================================================
 
 export function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId = '', sessionTerminals = [], workspaceTabId = '', isHomeView = false, isWorkspaceTabActive = true, showComposer = true, initialConversationId = '', tabBar = null, onDevilModeChange, onGoHomeRequested, onOpenConversationRequested, onWorkspaceTabStateChange, addToast }: AIPanelProps) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createLimiter, shouldAutoOpenTransferQueue, UPLOAD_PANEL_CLOSE_ANIMATION_MS } from '../../utils/fileManagerHelpers.tsx';
 import {
   getSessionUploadPanelState,

@@ -291,9 +291,9 @@ export function renderAIHomeView({
                     'h-[26px] px-[9px] rounded-md border text-xs whitespace-nowrap shrink-0 transition-[color,background-color,border-color,opacity] duration-[80ms]',
                     dragOver
                       ? 'border-accent'
-                      : selected
+                      : (selected
                         ? 'border-accent-border'
-                        : 'border-line-subtle',
+                        : 'border-line-subtle'),
                     selected ? 'bg-[rgba(var(--accent-rgb),0.10)] text-accent' : 'bg-transparent text-secondary',
                   )}
                   style={{

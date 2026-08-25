@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback } from 'react';
 import { normalizeFileManagerPaneKey } from '../../utils/fileManagerHelpers.tsx';
 import type { FileManagerPaneState, FileManagerWorkspaceState } from '../../utils/fileWorkbench.ts';
 import type { useFileManagerCore } from './useFileManagerCore.ts';

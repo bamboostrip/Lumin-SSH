@@ -206,9 +206,9 @@ export default function AIAutoApproveDropdown({ settings, onPatchSettings, disab
           style={{
             ...(panelBounds
               ? { left: panelBounds.left }
-              : expandLeft
+              : (expandLeft
                 ? { right: window.innerWidth - triggerRect.right }
-                : { left: triggerRect.left }),
+                : { left: triggerRect.left })),
             bottom: window.innerHeight - triggerRect.top + 8,
             width: panelBounds?.width ?? 320,
             maxWidth: panelBounds?.width ? `${panelBounds.width}px` : 'min(320px, calc(100vw - 32px))',

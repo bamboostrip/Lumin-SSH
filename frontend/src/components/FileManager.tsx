@@ -1,6 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import { useTranslation } from '../i18n.ts';
-import { FILE_LIST_ACTIONS_COLUMN_WIDTH, FILE_LIST_NAME_MIN_WIDTH } from '../utils/fileManagerHelpers.tsx';
 import { useFileManagerCore } from './filemanager/useFileManagerCore.ts';
 import { useFileManagerTabScroll } from './filemanager/useFileManagerTabScroll.ts';
 import { useFileManagerWorkspaceSync } from './filemanager/useFileManagerWorkspaceSync.ts';

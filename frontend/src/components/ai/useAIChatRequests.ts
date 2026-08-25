@@ -169,7 +169,7 @@ export function useAIChatRequests({ t, terminalId, sessionId, workspaceTabId, is
 
     if (runtimeOptions?.forceImmediate !== true && isQueueBlocked) {
       const queuedSubmission = buildAIQueuedSubmission({
-        kind: isEditingExistingMessage ? 'edit' : isRetryingMessage ? 'retry_user' : 'chat',
+        kind: isEditingExistingMessage ? 'edit' : (isRetryingMessage ? 'retry_user' : 'chat'),
         text: nextText,
         images: messageImages,
         targetMessageId: typeof activeComposerState?.targetMessageId === 'string' ? activeComposerState.targetMessageId : '',

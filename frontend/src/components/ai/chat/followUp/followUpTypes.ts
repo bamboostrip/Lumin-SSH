@@ -66,9 +66,9 @@ export function normalizeFollowUpQuestions(question: unknown, questions: unknown
         const id = typeof item?.id === 'string' && item.id.trim() ? item.id.trim() : `question-${questionIndex + 1}`;
         const text = typeof item?.text === 'string' && item.text.trim()
           ? item.text.trim()
-          : questionIndex === 0 && typeof question === 'string' && question.trim()
+          : (questionIndex === 0 && typeof question === 'string' && question.trim()
             ? question.trim()
-            : `Question ${questionIndex + 1}`;
+            : `Question ${questionIndex + 1}`);
         const type = normalizeFollowUpQuestionType(item?.type);
         const options: FollowUpOption[] = Array.isArray(item?.options)
           ? (item.options as Array<Record<string, unknown>>)

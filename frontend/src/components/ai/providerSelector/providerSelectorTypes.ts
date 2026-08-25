@@ -378,7 +378,7 @@ export function formatAIProviderBalanceDeltaLabel(value: number) {
   const absValue = Math.abs(value);
   const formattedValue = absValue >= 1000
     ? absValue.toLocaleString('en-US', { maximumFractionDigits: 2 })
-    : absValue.toFixed(absValue >= 100 ? 0 : absValue >= 1 ? 2 : 4).replace(/\.?0+$/u, '');
+    : absValue.toFixed(absValue >= 100 ? 0 : (absValue >= 1 ? 2 : 4)).replace(/\.?0+$/u, '');
   return `${sign}${formattedValue}`;
 }
 

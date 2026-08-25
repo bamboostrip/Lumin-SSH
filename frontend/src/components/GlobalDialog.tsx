@@ -113,9 +113,9 @@ export default function GlobalDialog({ suspendDefault = false }: GlobalDialogPro
   const currentSuspended = suspendDefault && current.priority === DIALOG_PRIORITY.default;
   const dialogZIndex = current.priority === DIALOG_PRIORITY.system
     ? Z.SYSTEM_DIALOG
-    : current.priority === DIALOG_PRIORITY.settings
+    : (current.priority === DIALOG_PRIORITY.settings
       ? Z.SETTINGS_DIALOG
-      : Z.GLOBAL_DIALOG;
+      : Z.GLOBAL_DIALOG);
 
   return (
     <div

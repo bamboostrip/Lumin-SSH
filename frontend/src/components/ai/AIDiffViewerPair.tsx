@@ -71,9 +71,9 @@ export function DiffEditorPair({ block, index = 0, path = '', reviewId = '', sho
   const modifiedModelPath = useMemo(() => buildModelPath(path, reviewId, index, 'modified'), [index, path, reviewId]);
   const focusLine = Number.isFinite(matchedStartLine) && matchedStartLine > 0
     ? matchedStartLine
-    : Number.isFinite(declaredStartLine) && declaredStartLine > 0
+    : (Number.isFinite(declaredStartLine) && declaredStartLine > 0
       ? declaredStartLine
-      : 1;
+      : 1);
   const showMetaBar = showBlockBadge || (Number.isFinite(matchedStartLine) && matchedStartLine > 0);
   const editorOptions = useMemo(() => ({
     ...DIFF_EDITOR_BASE_OPTIONS,

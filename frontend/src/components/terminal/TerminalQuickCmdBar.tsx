@@ -49,7 +49,7 @@ export function TerminalQuickCmdBar({
       <div className="term-quick-cmd-list">
         {quickCmdBarItems.length === 0 ? (
           <span className="term-quick-cmd-empty">{t('暂无快捷命令, 可在「命令」面板添加')}</span>
-        ) : filteredQuickCmdItems.length === 0 ? (
+        ) : (filteredQuickCmdItems.length === 0 ? (
           <span className="term-quick-cmd-empty">{t('无匹配结果')}</span>
         ) : filteredQuickCmdItems.map((item, i) => (
           <Tiptop key={`${item.name}-${i}`} text={item.groupPath ? `${item.command} · ${item.groupPath}` : item.command}>
@@ -63,7 +63,7 @@ export function TerminalQuickCmdBar({
               {item.name}
             </button>
           </Tiptop>
-        ))}
+        )))}
       </div>
       {quickCmdBarItems.length > 0 && (
         <div className="term-quick-cmd-search-area">

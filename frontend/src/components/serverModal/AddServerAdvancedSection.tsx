@@ -69,9 +69,9 @@ export function AddServerAdvancedSection({
             renderOptionLabel={(item) => (
               item.value === 'utf-8'
                 ? 'UTF-8'
-                : item.value === 'gb18030'
+                : (item.value === 'gb18030'
                   ? t('GB18030(兼容 GBK/GB2312)')
-                  : (item.label || '')
+                  : (item.label || ''))
             )}
           />
           <div className="text-tertiary text-xs mt-1.5">

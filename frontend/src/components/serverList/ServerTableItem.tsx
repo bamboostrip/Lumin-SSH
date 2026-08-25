@@ -126,11 +126,11 @@ export function ServerTableItem({
           <div className="flex items-center gap-1.5">
             <div className={cn(
               'w-2 h-2 rounded-full',
-              latClass === 'good' ? 'bg-success' : latClass === 'warn' ? 'bg-warning' : 'bg-danger',
+              latClass === 'good' ? 'bg-success' : (latClass === 'warn' ? 'bg-warning' : 'bg-danger'),
             )} />
             <span className={cn(
               'text-sm font-mono',
-              latClass === 'good' ? 'text-success' : latClass === 'warn' ? 'text-warning' : 'text-danger',
+              latClass === 'good' ? 'text-success' : (latClass === 'warn' ? 'text-warning' : 'text-danger'),
             )}>
               {ping.latency === -1 ? t('<1毫秒') : `${ping.latency}${t('毫秒')}`}
             </span>

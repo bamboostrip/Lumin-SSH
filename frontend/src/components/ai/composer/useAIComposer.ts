@@ -287,9 +287,9 @@ export function useAIComposer({
 
   const activeInlineMenu = slashCommandMenu.open
     ? { mode: 'slash' as const, ...slashCommandMenu }
-    : mentionMenu.open
+    : (mentionMenu.open
       ? { mode: 'mention' as const, ...mentionMenu }
-      : null;
+      : null);
 
   useLayoutEffect(() => {
     if (!activeInlineMenu?.open || !mentionMenuListRef.current || activeInlineMenu.selectedIndex < 0) {
@@ -580,7 +580,7 @@ export function useAIComposer({
       selectedType,
       items: shouldSearchRemote
         ? previous.items.filter((item) => item.kind === 'result' || item.kind === 'empty')
-        : previous.selectedType === selectedType ? previous.items : [],
+        : (previous.selectedType === selectedType ? previous.items : []),
       loading: true,
       selectedIndex: 0,
     }));
@@ -719,9 +719,9 @@ export function useAIComposer({
 
     const mentionValue = item.kind === 'terminal'
       ? buildTerminalMention()
-      : item.mentionType === 'folder'
+      : (item.mentionType === 'folder'
         ? buildRemoteFolderMention(item.path)
-        : buildRemoteFileMention(item.path);
+        : buildRemoteFileMention(item.path));
 
     if (!mentionValue) {
       return;

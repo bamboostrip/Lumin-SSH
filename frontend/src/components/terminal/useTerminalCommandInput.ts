@@ -109,9 +109,9 @@ export function useTerminalCommandInput(deps: {
     const lineCount = normalizedText.split('\n').length;
     const finalPayload = isBlankSubmit
       ? '\r'
-      : multiLineWrapEnabled && lineCount > 1
+      : (multiLineWrapEnabled && lineCount > 1
         ? buildWrappedMultiLineCommand(normalizedText)
-        : text + '\r';
+        : text + '\r');
     prepareScreenScrollbackRef.current(text);
     AppGo.WriteTerminal(sessionId, finalPayload).catch((err) => {
       console.error('WriteTerminal failed:', err);

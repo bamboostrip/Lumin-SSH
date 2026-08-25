@@ -238,7 +238,7 @@ export function DialogContent({ current, active, onClose, onConfirm, onChoice }:
       
       {current.type === 'prompt' && (
         <>
-          <div className={`relative ${inputError ? 'mb-2' : current.checkboxLabel ? 'mb-3' : 'mb-7'}`}>
+          <div className={`relative ${inputError ? 'mb-2' : (current.checkboxLabel ? 'mb-3' : 'mb-7')}`}>
             <input 
               id={`${controlId}-input`}
               name="global-dialog-input"
@@ -379,7 +379,7 @@ export function DialogContent({ current, active, onClose, onConfirm, onChoice }:
             current.type === 'confirm' && focusAction === 'confirm' && 'outline outline-2 outline-offset-2 outline-accent',
           )}
         >
-          {current.type === 'alert' ? t('我知道了') : current.type === 'confirm' ? `${t('确定')}(Y)` : t('确定')}
+          {current.type === 'alert' ? t('我知道了') : (current.type === 'confirm' ? `${t('确定')}(Y)` : t('确定'))}
         </Button>
       </div>
       </>

@@ -39,7 +39,7 @@ export function PortForwardListTab({
       </div>
       {loading ? (
         <div>{t('加载中...')}</div>
-      ) : portForwards.length === 0 ? (
+      ) : (portForwards.length === 0 ? (
         <div className="text-tertiary">{t('当前会话没有端口映射。')}</div>
       ) : (
         <div className="grid gap-y-3">
@@ -88,7 +88,7 @@ export function PortForwardListTab({
             );
           })}
         </div>
-      )}
+      ))}
     </div>
   );
 }

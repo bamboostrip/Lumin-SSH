@@ -102,8 +102,8 @@ const CODE_URL_RE = /\bhttps?:\/\/[^\s]+/g
 
 function renderCodeChildren(children: ReactNode): ReactNode {
   const text = typeof children === 'string' ? children
-    : Array.isArray(children) ? children.map((c) => (typeof c === 'string' ? c : '')).join('')
-    : ''
+    : (Array.isArray(children) ? children.map((c) => (typeof c === 'string' ? c : '')).join('')
+    : '')
   if (!text) return children
   CODE_URL_RE.lastIndex = 0
   const parts: ReactNode[] = []

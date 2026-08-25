@@ -351,7 +351,7 @@ export function buildRequestMessages(apiMessages: unknown): AIRequestMessage[] {
     ? apiMessages
         .filter((message) => message && typeof message === 'object')
         .map((message) => ({
-          role: message.role === 'assistant' ? 'assistant' : message.role === 'system' ? 'system' : 'user',
+          role: message.role === 'assistant' ? 'assistant' : (message.role === 'system' ? 'system' : 'user'),
           content: typeof message.content === 'string' ? message.content.trim() : '',
           images: normalizeMessageImages(message.images),
           cacheObjects: cloneAIConversationCacheObjects(message.cacheObjects),
@@ -458,7 +458,7 @@ export function findApiAnchorIndexByUiMessageId(apiMessages: unknown, uiMessageI
 }
 
 export function upsertAPIHistoryMessage(apiMessages: unknown, rawMessage: AIAPIHistoryMessageLike, currentMessages: unknown = []): APIHistoryMessage[] {
-  const role = rawMessage?.role === 'assistant' ? 'assistant' : rawMessage?.role === 'system' ? 'system' : 'user'
+  const role = rawMessage?.role === 'assistant' ? 'assistant' : (rawMessage?.role === 'system' ? 'system' : 'user')
   const content = typeof rawMessage?.content === 'string' ? rawMessage.content.trim() : ''
   const images = normalizeMessageImages(rawMessage?.images)
   if (!content && images.length === 0) {
@@ -769,7 +769,7 @@ export function computeAILastAssistantTurnState(messages: unknown): { lastAssist
     }
     lastAssistantTurnId = typeof message?.turnId === 'string' && message.turnId.trim()
       ? message.turnId.trim()
-      : typeof message?.id === 'string' ? message.id.trim() : ''
+      : (typeof message?.id === 'string' ? message.id.trim() : '')
     break
   }
   if (!lastAssistantTurnId) {

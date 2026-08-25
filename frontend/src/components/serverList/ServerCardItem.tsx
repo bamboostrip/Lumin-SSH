@@ -132,13 +132,13 @@ export function ServerCardItem({
             <>
               <span className={cn(
                 'text-xs font-mono',
-                latClass === 'good' ? 'text-success' : latClass === 'warn' ? 'text-warning' : 'text-danger',
+                latClass === 'good' ? 'text-success' : (latClass === 'warn' ? 'text-warning' : 'text-danger'),
               )}>
                 {ping.latency === -1 ? t('<1毫秒') : `${ping.latency}${t('毫秒')}`}
               </span>
               <div className={cn(
                 'w-[7px] h-[7px] rounded-full',
-                latClass === 'good' ? 'bg-success' : latClass === 'warn' ? 'bg-warning' : 'bg-danger',
+                latClass === 'good' ? 'bg-success' : (latClass === 'warn' ? 'bg-warning' : 'bg-danger'),
               )} />
             </>
           ) : (

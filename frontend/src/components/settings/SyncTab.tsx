@@ -85,7 +85,7 @@ export default function SyncTab({
                 {$t('关闭加密')}
               </Button>
             </>
-          ) : recoveryPasswordEditing ? (
+          ) : (recoveryPasswordEditing ? (
             <>
               <input id="sync-recovery-password" name="sync-recovery-password" className="input w-[200px] h-[34px] text-base" type="password" autoComplete="new-password" placeholder={$t('请输入恢复密码')} value={recoveryPasswordInput} disabled={recoveryPasswordChanging} onChange={(e) => setRecoveryPasswordInput(e.target.value)} autoFocus />
               <Button variant="primary" onClick={onSaveRecoveryPassword} disabled={!recoveryPasswordInput.trim() || recoveryPasswordChanging}>
@@ -104,7 +104,7 @@ export default function SyncTab({
                 <Lock size={14} /> {$t('加密同步')}
               </Button>
             </>
-          )}
+          ))}
         </div>
         {hasRecoveryPassword && recoveryPasswordEditing ? (
           <div className="flex items-center gap-2 flex-wrap">

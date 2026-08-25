@@ -30,10 +30,9 @@ export function renderFileManagerTabBar(fm: FileManagerController) {
     showFileManagerTabIcons, hideFileManagerTabCloseButton,
     handleCreateFileManagerTab,
   } = fm;
+  if (isDualPaneLayout) return null;
   return (
-    <>
-      {!isDualPaneLayout && (
-      <div className="terminal-sub-tab-bar">
+    <div className="terminal-sub-tab-bar">
         {fileManagerTabOverflow && (
           <button
             type="button"
@@ -295,7 +294,5 @@ export function renderFileManagerTabBar(fm: FileManagerController) {
           </Button>
         </div>
       </div>
-      )}
-    </>
   );
 }

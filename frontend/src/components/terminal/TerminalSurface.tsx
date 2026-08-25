@@ -131,7 +131,7 @@ export function TerminalViewport({
         display: (timestampsVisible || commandBlocksVisible) && !alternateBufferActive ? 'block' : 'none',
         // 时间戳约 72px；命令块约 16px；两者同时开约 96px
         // 时间戳列 70 + 命令块 14 + padding ≈ 90；仅时间戳 75；仅命令块 22
-        width: timestampsVisible && commandBlocksVisible ? 90 : timestampsVisible ? 75 : 22,
+        width: timestampsVisible && commandBlocksVisible ? 90 : (timestampsVisible ? 75 : 22),
       }} />
       <div
         className={terminalDefaultMouseCursorEnabled ? 'terminal-output-default-mouse-cursor relative flex-1 min-h-0' : 'relative flex-1 min-h-0'}

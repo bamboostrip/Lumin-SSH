@@ -1,15 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
-import { getAvailableLanguages, setLanguage as setGlobalLanguage, t as $t, type LanguageCode } from '../i18n.ts';
+import { setLanguage as setGlobalLanguage, t as $t, type LanguageCode } from '../i18n.ts';
 import { APP_BUILD_TIME, APP_VERSION } from '../config.ts';
 import { formatUpdateError, useUpdateChecker, type UpdateCheckResult } from '../hooks/useUpdateChecker.ts';
 import { X } from 'lucide-react';
 import { Z } from '../constants/zIndex';
-import { WindowSetSize, WindowUnmaximise } from '../../wailsjs/runtime/runtime.js';
-import { deleteProgramFont, getProgramFontAssignmentSnapshot, listProgramFonts, selectAndImportProgramFontFiles, setProgramFontPreference } from '../utils/programFonts.ts';
-import { getAppThemeMode, getThemePackageSettings as getStoredThemePackageSettings, getTerminalTheme, listThemePackages, loadThemePackages, saveThemePackageSettings, type ThemePackage } from '../utils/theme.ts';
-import { loadKeywordRulesFromStorage, saveKeywordRulesToStorage, resetKeywordRulesToDefault, setKeywordRules, type KeywordRule } from '../utils/terminalKeywordHighlight.ts';
-import { getGlobalAppearanceSettings, notifyGlobalAppearanceChanged } from '../utils/globalAppearance.ts';
 import { Button } from './ui';
 import AppTab from './settings/AppTab';
 import GeneralTab from './settings/GeneralTab';
@@ -23,9 +17,6 @@ import SettingsSidebar from './settings/SettingsSidebar';
 import { useSettingsGeneralState } from './settings/useSettingsGeneralState';
 import { useSettingsSearch } from './settings/useSettingsSearch';
 import { useSettingsShortcuts } from './settings/useSettingsShortcuts';
-import { settingsConfirm } from './settings/settingsDialogs.ts';
-
-const AVAILABLE_LANGUAGES = getAvailableLanguages();
 
 export interface SettingsModalProps {
   onClose: () => void;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback } from 'react';
 import {
   FILE_MANAGER_LAYOUT_MODE_SIDEBAR_DUAL,
   extractManualPinnedTabsFromWorkspace,

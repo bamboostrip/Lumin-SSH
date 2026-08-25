@@ -115,7 +115,7 @@ export function ProcessDetailDrawer({
             <DetailRow
               label="CPU"
               value={(
-                <span style={{ color: (activeProcess?.cpu || 0) > 50 ? 'var(--danger)' : (activeProcess?.cpu || 0) > 10 ? 'var(--warning)' : 'inherit' }}>
+                <span style={{ color: (activeProcess?.cpu || 0) > 50 ? 'var(--danger)' : ((activeProcess?.cpu || 0) > 10 ? 'var(--warning)' : 'inherit') }}>
                   {activeProcess?.cpu?.toFixed(1)}%
                 </span>
               )}

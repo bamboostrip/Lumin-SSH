@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback } from 'react';
 import * as AppGo from '../../../wailsjs/go/wailsapp/App.js';
 import {
   FILE_MANAGER_LAYOUT_MODE_SIDEBAR_DUAL,

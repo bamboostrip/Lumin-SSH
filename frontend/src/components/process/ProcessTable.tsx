@@ -173,7 +173,7 @@ export function ProcessTable({
                 </div>
                 <div
                   className="px-1.5 py-1.5 text-right border-r border-line-light"
-                  style={{ color: (p.cpu || 0) > 50 ? 'var(--danger)' : (p.cpu || 0) > 10 ? 'var(--warning)' : 'var(--text-primary)' }}
+                  style={{ color: (p.cpu || 0) > 50 ? 'var(--danger)' : ((p.cpu || 0) > 10 ? 'var(--warning)' : 'var(--text-primary)') }}
                   onClick={() => onRowClick(p)}
                 >
                   {p.cpu?.toFixed(1)}%

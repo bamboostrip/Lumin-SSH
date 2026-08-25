@@ -172,7 +172,7 @@ export function TreeNode({
         onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const pos = calcDropPos(e, false); setDropPos(null); onDropItem && onDropItem(path, pos || 'after'); }}
         {...commonDragProps}
         className={`flex items-center px-2 py-[5px] cursor-pointer rounded-xs text-sm select-none transition-colors duration-100 ${
-          isSelected ? 'bg-active text-primary' : hover ? 'bg-hover text-primary' : 'text-secondary'
+          isSelected ? 'bg-active text-primary' : (hover ? 'bg-hover text-primary' : 'text-secondary')
         }`}
       >
         <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">

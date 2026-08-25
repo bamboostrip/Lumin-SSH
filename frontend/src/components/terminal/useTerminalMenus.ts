@@ -45,6 +45,9 @@ export function useTerminalMenus(deps: {
   } = deps;
 
   const handleContextMenu = (e: React.MouseEvent) => {
+    if ((e.target as Element | null)?.closest?.('.term-command-input, input, textarea, button, select, [contenteditable="true"]')) {
+      return;
+    }
     e.preventDefault();
     setLinkMenu(null);
     const hasSelection = !!(termRef.current && termRef.current.getSelection());

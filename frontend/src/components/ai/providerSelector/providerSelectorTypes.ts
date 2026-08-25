@@ -243,7 +243,7 @@ export function resolveAdaptiveLabelLayout({
       })
     : 0;
   const fallbackModelWidth = normalizedAvailableWidth > 0 && normalizedModelText
-    ? Math.max(32, Math.min(rawModelWidth, normalizedAvailableWidth - fallbackProviderWidth - fixedWidth))
+    ? Math.max(0, Math.min(rawModelWidth, normalizedAvailableWidth - fallbackProviderWidth - fixedWidth))
     : rawModelWidth;
 
   return {

@@ -264,7 +264,7 @@ export default function AppTopbar({
                     style={{
                       transform: resolvedQuickThemeMode === 'light'
                         ? 'translateY(-50%) translateX(0)'
-                        : 'translateY(-50%) translateX(24px)'
+                        : 'translateY(-50%) translateX(22px)'
                     }}
                   />
                   <span

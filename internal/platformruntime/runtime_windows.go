@@ -562,7 +562,10 @@ func AttachFramelessWindowFix() {
 	for _, hwnd := range hwnds {
 		if _, loaded := attachedSubclassHandles.LoadOrStore(hwnd, struct{}{}); !loaded {
 			const subclassID = 1001
-			procSetWindowSubclass.Call(uintptr(hwnd), subclassCallback, subclassID, 0)
+			ret, _, _ := procSetWindowSubclass.Call(uintptr(hwnd), subclassCallback, subclassID, 0)
+			if ret == 0 {
+				attachedSubclassHandles.Delete(hwnd)
+			}
 		}
 	}
 }

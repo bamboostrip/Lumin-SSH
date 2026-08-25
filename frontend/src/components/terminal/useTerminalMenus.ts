@@ -45,7 +45,9 @@ export function useTerminalMenus(deps: {
   } = deps;
 
   const handleContextMenu = (e: React.MouseEvent) => {
-    if ((e.target as Element | null)?.closest?.('.term-command-input, input, textarea, button, select, [contenteditable="true"]')) {
+    const target = e.target as Element | null;
+    if (!target?.closest?.('.xterm-helper-textarea')
+      && target?.closest?.('.term-command-input, input, textarea, button, select, [contenteditable="true"]')) {
       return;
     }
     e.preventDefault();

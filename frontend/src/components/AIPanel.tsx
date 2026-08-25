@@ -21,6 +21,8 @@ import { getMCPSettingsState, saveMCPGlobalServer, reloadMCPGlobalServers, delet
 import { processRemoteFileMentions } from './ai/aiMentions.ts'
 import { expandFirstSlashCommandForPrompt } from './ai/aiSlashCommands.ts'
 import { useAIChatStreamEvents } from './ai/useAIChatStreamEvents.ts'
+import { useAIPanelCoreState } from './ai/useAIPanelCoreState.ts'
+import { useAIPanelSettingsState } from './ai/useAIPanelSettingsState.ts'
 import AIChatConversation from './ai/chat/AIChatConversation.tsx'
 import { getConversationBranchAnchor } from './ai/chat/aiChatMessageTopology.ts'
 import { isCallMyVipProviderHost } from './ai/providerSpecialHosts.ts'
@@ -62,30 +64,9 @@ const AI_ROW_ACTION_HOVER_DANGER =
 
 function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId = '', sessionTerminals = [], workspaceTabId = '', isHomeView = false, isWorkspaceTabActive = true, showComposer = true, initialConversationId = '', tabBar = null, onDevilModeChange, onGoHomeRequested, onOpenConversationRequested, onWorkspaceTabStateChange, addToast }: AIPanelProps) {
   const { t } = useTranslation()
-  const audioPlayersRef = useRef<Map<string, HTMLAudioElement>>(new Map())
-  const [mcpInfo, setMcpInfo] = useState<McpInfoState>({ url: '', transport: 'streamable-http', endpoint: '/mcp', instructions: '', logs: '', tools: [] })
   const [aiProviderState, setAIProviderState] = useState<AIProviderState>({ currentProviderId: '', providers: [] })
-  const [mcpClientServers, setMCPClientServers] = useState<unknown[]>([])
-  const [mcpClientGlobalConfigPath, setMCPClientGlobalConfigPath] = useState('')
-  const [mcpClientGlobalConfigText, setMCPClientGlobalConfigText] = useState('{\n  "mcpServers": {}\n}')
-  const [showSettingsPanel, setShowSettingsPanel] = useState(false)
-  const [popupDismissVersion, setPopupDismissVersion] = useState(0)
-  const [activeSettingsTab, setActiveSettingsTab] = useState('')
-  const [tasksDirMigrating, setTasksDirMigrating] = useState(false)
   const [isDevilMode, setIsDevilMode] = useState(false)
-  const [temporarySessionEnabled, setTemporarySessionEnabled] = useState(false)
-  const [themeToolPreview, setThemeToolPreview] = useState<unknown>(null)
-  const [pendingConversationId, setPendingConversationId] = useState('')
   const [conversationList, setConversationList] = useState<ConversationSummary[]>([])
-  const [globalAISettings, setGlobalAISettings] = useState<AIGlobalSettings | null>(null)
-  const [terminalOutputLineLimit, setTerminalOutputLineLimit] = useState(500)
-  const [terminalOutputCharacterLimit, setTerminalOutputCharacterLimit] = useState(35000)
-  const [terminalPanels, setTerminalPanels] = useState<Record<string, PanelState>>({})
-  const [composerInputValue, setComposerInputValue] = useState('')
-  const [composerImages, setComposerImages] = useState<string[]>([])
-  const [composerEditState, setComposerEditState] = useState<ComposerEditState>({ mode: 'new', targetMessageId: '', targetMessageText: '' })
-  const [conversationScrollSignal, setConversationScrollSignal] = useState(0)
-  const [providerBalanceRefreshSignal, setProviderBalanceRefreshSignal] = useState(0)
   const [conversationOrganizer, setConversationOrganizer] = useState<AIConversationOrganizerState>(() => loadAIConversationOrganizer())
   const [conversationFilter, setConversationFilter] = useState('all')
   const [conversationSelectionMode, setConversationSelectionMode] = useState(false)
@@ -104,14 +85,6 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
   const [conversationSearchOpen, setConversationSearchOpen] = useState(false)
   const [conversationSearchQuery, setConversationSearchQuery] = useState('')
   const [conversationSearchIndex, setConversationSearchIndex] = useState(0)
-  const terminalPanelsRef = useRef<Record<string, PanelState>>({})
-  const deletedConversationIdsRef = useRef<Set<string>>(new Set())
-  const isReturningHomeRef = useRef(false)
-  const conversationLoadRequestRef = useRef(0)
-  const panelMountedRef = useRef(true)
-  const tokenLedgerRef = useRef<Map<string, TokenLedger>>(new Map())
-  const sendPerfMetricsRef = useRef<Map<string, PerfRecord>>(new Map())
-  const panelInstanceKey = `${sessionId || 'session'}::${terminalId || 'terminal'}`
   const globalSearchRequestRef = useRef(0)
   const globalSearchInputRef = useRef<HTMLInputElement | null>(null)
   const conversationSearchInputRef = useRef<HTMLInputElement | null>(null)
@@ -128,55 +101,35 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
     setConversationSearchIndex(0)
   }, [])
 
-  const applyMCPInfo = useCallback((info: unknown) => {
-    const rawInfo = info && typeof info === 'object' ? info as Record<string, unknown> : null
-    if (!panelMountedRef.current || !rawInfo) {
-      return
-    }
-    setMcpInfo({
-      url: typeof rawInfo.url === 'string' ? rawInfo.url : '',
-      transport: typeof rawInfo.transport === 'string' ? rawInfo.transport : 'streamable-http',
-      endpoint: typeof rawInfo.endpoint === 'string' ? rawInfo.endpoint : '/mcp',
-      instructions: typeof rawInfo.instructions === 'string' ? rawInfo.instructions : '',
-      logs: typeof rawInfo.logs === 'string' ? rawInfo.logs : '',
-      tools: Array.isArray(rawInfo.tools) ? rawInfo.tools : [],
-    })
-  }, [])
-  const applyMCPSettingsState = useCallback((state: unknown) => {
-    const rawState = state && typeof state === 'object' ? state as Record<string, unknown> : null
-    if (!panelMountedRef.current || !rawState) {
-      return
-    }
-    applyMCPInfo(rawState.service || {})
-    const rawClient = rawState.client && typeof rawState.client === 'object' ? rawState.client as Record<string, unknown> : null
-    setMCPClientServers(Array.isArray(rawClient?.servers) ? rawClient.servers : [])
-    setMCPClientGlobalConfigPath(typeof rawClient?.globalConfigPath === 'string' ? rawClient.globalConfigPath : '')
-    setMCPClientGlobalConfigText(typeof rawClient?.globalConfigText === 'string' && rawClient.globalConfigText.trim() ? rawClient.globalConfigText : '{\n  "mcpServers": {}\n}')
-  }, [applyMCPInfo])
-  const refreshMCPServerInfo = useCallback(async () => {
-    try {
-      const state = await getMCPSettingsState()
-      applyMCPSettingsState(state)
-      return state
-    } catch {
-      return null
-    }
-  }, [applyMCPSettingsState])
-  const refreshMCPOutputCompressionSettings = useCallback(async () => {
-    try {
-      const settings = await AppGo.GetMCPOutputCompressionSettings()
-      if (!panelMountedRef.current || !settings) {
-        return null
-      }
-      const nextLineLimit = Math.max(10, Math.min(5000, settings.terminalOutputLineLimit || 0))
-      const nextCharacterLimit = Math.max(1000, Math.min(500000, settings.terminalOutputCharacterLimit || 0))
-      setTerminalOutputLineLimit(nextLineLimit)
-      setTerminalOutputCharacterLimit(nextCharacterLimit)
-      return settings
-    } catch {
-      return null
-    }
-  }, [])
+  const {
+    panelInstanceKey, terminalPanels, setTerminalPanels, terminalPanelsRef, deletedConversationIdsRef,
+    isReturningHomeRef, conversationLoadRequestRef, panelMountedRef, tokenLedgerRef, sendPerfMetricsRef,
+    pendingConversationId, setPendingConversationId, composerInputValue, setComposerInputValue,
+    composerImages, setComposerImages, composerEditState, setComposerEditState, resetComposerEditState,
+    conversationScrollSignal, requestConversationSmoothScrollToBottom, clearRestorePreview, panelState,
+    activeConversation, normalizedInitialConversationId, isConversationLoading, activeConversationRelationType,
+    activeConversationArchived, isThemeTuningConversation, runtimePhase, isStreaming, isAwaitingToolApproval,
+    isToolRunning, isAwaitingCommandAction, isAwaitingTerminalAssignment, isQueueBlocked, setPanelState,
+    getMessageApiLengthBefore, truncateConversationAfterMessage, rebuildAIConversationTokenLedger,
+    refreshAIConversationContextTokens, saveConversationSnapshot,
+  } = useAIPanelCoreState({ terminalId, sessionId, workspaceTabId, initialConversationId, isWorkspaceTabActive, onWorkspaceTabStateChange, setConversationList })
+
+  const {
+    mcpInfo, setMcpInfo, mcpClientServers, mcpClientGlobalConfigPath, mcpClientGlobalConfigText,
+    showSettingsPanel, setShowSettingsPanel, popupDismissVersion, setPopupDismissVersion, activeSettingsTab,
+    setActiveSettingsTab, tasksDirMigrating, setTasksDirMigrating, temporarySessionEnabled,
+    setTemporarySessionEnabled, themeToolPreview, setThemeToolPreview, globalAISettings, setGlobalAISettings,
+    terminalOutputLineLimit, terminalOutputCharacterLimit, providerBalanceRefreshSignal,
+    setProviderBalanceRefreshSignal, applyMCPInfo, applyMCPSettingsState, refreshMCPServerInfo,
+    refreshMCPOutputCompressionSettings, showAlert, playAISound, requestDeleteConfirmation,
+    normalizedGlobalAISettings, handleSaveAIPanelGlobalSettings, handleSaveMCPGlobalServer,
+    handleReloadMCPGlobalServers, handleDeleteMCPGlobalServer, handleRestartMCPClientServer,
+    handleToggleMCPClientServer, handleToggleMCPClientServerDisabledForPrompts,
+    handleUpdateMCPClientServerTimeout, saveMCPOutputCompressionSettings, handleToggleAiTerminalIsolation,
+    handleToggleConfirmDelete, handleToggleSettingsPanel, handleTerminalOutputLineLimitChange,
+    handleTerminalOutputCharacterLimitChange,
+  } = useAIPanelSettingsState({ t, isWorkspaceTabActive, panelMountedRef, activeConversation, resetGlobalSearchState, resetConversationSearchState })
+
   const refreshAIHomeData = useCallback(async () => {
     void getAIGlobalSettings()
       .then((value) => {
@@ -232,93 +185,11 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
     return () => window.removeEventListener(TEMPORARY_AI_CONVERSATIONS_CHANGED_EVENT, syncTemporaryConversations)
   }, [])
 
-  const showAlert = useCallback(async (message: string) => {
-    // message 为动态内容（可能不在翻译表），t() 内部有兜底
-    const finalMessage = typeof message === 'string' && message.trim() ? translate(message.trim() as I18nKey) : translate('当前状态不支持还原')
-    if (window?.luminDialog?.alert) {
-      await window.luminDialog.alert(finalMessage, t('提示'))
-      return
-    }
-    window.alert(finalMessage)
-  }, [t])
 
-  const clearRestorePreview = useCallback(() => {
-    if (typeof window === 'undefined') {
-      return
-    }
-    window.dispatchEvent(new CustomEvent('ai-change-review-preview-clear', {
-      detail: { sessionId: terminalId, tabId: workspaceTabId },
-    }))
-  }, [terminalId, workspaceTabId])
 
-  useEffect(() => {
-    if (!isWorkspaceTabActive) {
-      return
-    }
-    if (themeToolPreview) {
-      setThemeToolPreviewPackage(themeToolPreview)
-    } else {
-      clearThemeToolPreviewPackage()
-    }
-    return () => {
-      clearThemeToolPreviewPackage()
-    }
-  }, [isWorkspaceTabActive, themeToolPreview])
 
-  useEffect(() => {
-    if (isWorkspaceTabActive) {
-      return
-    }
-    setShowSettingsPanel(false)
-    setPopupDismissVersion((current) => current + 1)
-    resetGlobalSearchState()
-    resetConversationSearchState()
-  }, [isWorkspaceTabActive, resetConversationSearchState, resetGlobalSearchState])
 
-  useEffect(() => {
-    terminalPanelsRef.current = terminalPanels
-  }, [terminalPanels])
 
-  useEffect(() => {
-    panelMountedRef.current = true
-    return () => {
-      panelMountedRef.current = false
-    }
-  }, [])
-
-  useEffect(() => {
-    const handleAppendComposerText = (event: Event) => {
-      const detail = (event as CustomEvent).detail || {}
-      const targetSessionId = typeof detail?.sessionId === 'string' ? detail.sessionId.trim() : ''
-      const targetTerminalId = typeof detail?.terminalId === 'string' ? detail.terminalId.trim() : ''
-      const targetTabId = typeof detail?.tabId === 'string' ? detail.tabId.trim() : ''
-      const preserveWhitespace = detail?.preserveWhitespace === true
-      const rawAppendedText = typeof detail?.text === 'string' ? detail.text : ''
-      const appendedText = preserveWhitespace ? rawAppendedText : rawAppendedText.trim()
-      if (!(preserveWhitespace ? rawAppendedText.trim() : appendedText)) {
-        return
-      }
-      if (
-        !isWorkspaceTabActive
-        || (targetTabId && targetTabId !== workspaceTabId)
-        || targetSessionId !== (sessionId || '').trim()
-        || targetTerminalId !== (terminalId || '').trim()
-      ) {
-        return
-      }
-      setComposerInputValue((current) => {
-        const currentValue = typeof current === 'string' ? current : ''
-        if (!currentValue.trim()) {
-          return appendedText
-        }
-        return currentValue.endsWith('\n') ? `${currentValue}${appendedText}` : `${currentValue}\n${appendedText}`
-      })
-    }
-    window.addEventListener('ai-composer-append', handleAppendComposerText)
-    return () => window.removeEventListener('ai-composer-append', handleAppendComposerText)
-  }, [isWorkspaceTabActive, sessionId, terminalId, workspaceTabId])
-
-  const panelState = terminalPanels[panelInstanceKey] || createEmptyPanelState()
   const terminalLabelMap = useMemo(() => {
     const map = new Map()
     ;(Array.isArray(sessionTerminals) ? sessionTerminals : []).forEach((terminal) => {
@@ -346,45 +217,6 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
       ? { ...message, extra: nextExtra }
       : message
   }, [terminalLabelMap])
-  const activeConversation = panelState.conversation
-  useLayoutEffect(() => {
-    const normalizedTabId = workspaceTabId.trim()
-    const normalizedInitialConversationId = initialConversationId.trim()
-    if (!normalizedTabId) {
-      return
-    }
-    if (isReturningHomeRef.current) {
-      if (activeConversation) {
-        return
-      }
-      isReturningHomeRef.current = false
-    }
-    if (normalizedInitialConversationId && activeConversation?.id !== normalizedInitialConversationId) {
-      return
-    }
-    onWorkspaceTabStateChange?.(normalizedTabId, {
-      conversationId: activeConversation?.id || '',
-      title: activeConversation?.title || '',
-      activeRequestId: panelState.activeRequestId,
-      transient: activeConversation?.transient === true,
-    })
-  }, [activeConversation?.id, activeConversation?.title, initialConversationId, onWorkspaceTabStateChange, panelState.activeRequestId, workspaceTabId])
-  const normalizedInitialConversationId = initialConversationId.trim()
-  const isConversationLoading = Boolean(
-    pendingConversationId
-    || (normalizedInitialConversationId && activeConversation?.id !== normalizedInitialConversationId),
-  )
-  const activeConversationRelationType = typeof activeConversation?.relationType === 'string' ? activeConversation.relationType.trim() : ''
-  const activeConversationArchived = activeConversation?.archived === true
-  const isThemeTuningConversation = activeConversation?.toolScope === 'theme_tuning'
-  const runtimePhase = normalizeAIRuntimePhase(panelState.runtimePhase)
-  const isStreaming = panelState.requestPhase === 'streaming'
-  const isAwaitingToolApproval = panelState.requestPhase === 'awaiting_tool_approval'
-  const isToolRunning = panelState.requestPhase === 'running_tool'
-  const isAwaitingCommandAction = panelState.requestPhase === 'awaiting_command_action'
-  const isAwaitingTerminalAssignment = panelState.requestPhase === 'awaiting_terminal_assignment'
-  const isQueueBlocked = isAIQueueBlocked(runtimePhase) || isStreaming || isAwaitingToolApproval || isToolRunning || isAwaitingCommandAction || isAwaitingTerminalAssignment
-  const normalizedGlobalAISettings = useMemo(() => normalizeAIGlobalSettings(globalAISettings), [globalAISettings])
   const selectedAIProvider = useMemo(() => {
     const currentProviderId = typeof aiProviderState?.currentProviderId === 'string' ? aiProviderState.currentProviderId.trim() : ''
     if (!currentProviderId) {
@@ -507,38 +339,6 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
     && !collaborationActive
     && !panelState.isCondensingContext
     && (!panelState.lastTurnBusinessMessageKind || (panelState.lastTurnBusinessMessageKind !== 'completion' && panelState.lastTurnBusinessMessageKind !== 'followup'))
-  const playAISound = useCallback((type: string) => {
-    if (normalizedGlobalAISettings.soundEnabled === false) {
-      return
-    }
-    const parsedVolume = Number(normalizedGlobalAISettings.soundVolume)
-    const volume = Number.isFinite(parsedVolume) ? Math.max(0, Math.min(1, parsedVolume)) : 0.06
-    if (volume <= 0) {
-      return
-    }
-    const soundKey = typeof type === 'string' ? type.trim() : ''
-    const audioPathByType: Record<string, string> = {
-      completion: '/audio/celebration.wav',
-      notification: '/audio/notification.wav',
-      progress: '/audio/progress_loop.wav',
-    }
-    const audioPath = audioPathByType[soundKey]
-    if (!audioPath) {
-      return
-    }
-    try {
-      let audio = audioPlayersRef.current.get(soundKey)
-      if (!(audio instanceof Audio)) {
-        audio = new Audio(audioPath)
-        audio.preload = 'auto'
-        audioPlayersRef.current.set(soundKey, audio)
-      }
-      audio.pause()
-      audio.currentTime = 0
-      audio.volume = volume
-      void audio.play().catch(() => {})
-    } catch {}
-  }, [normalizedGlobalAISettings.soundEnabled, normalizedGlobalAISettings.soundVolume])
   const normalizedGlobalSearchQuery = useMemo(() => normalizeAIConversationSearchQuery(globalSearchQuery), [globalSearchQuery])
   const normalizedConversationSearchQuery = useMemo(() => normalizeAIConversationSearchQuery(conversationSearchQuery), [conversationSearchQuery])
   const conversationSearchResults = useMemo(() => {
@@ -561,15 +361,6 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
       })]
     })
   }, [activeConversation, normalizedConversationSearchQuery, panelState.messages])
-  const requestConversationSmoothScrollToBottom = useCallback(() => {
-    setConversationScrollSignal((current) => current + 1)
-  }, [])
-
-  useEffect(() => {
-    if (!activeConversation && activeSettingsTab === 'backup') {
-      setActiveSettingsTab('')
-    }
-  }, [activeConversation, activeSettingsTab])
 
   useEffect(() => {
     if (!globalSearchOpen || !globalSearchInputRef.current) {
@@ -654,253 +445,14 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
     return () => window.clearTimeout(timer)
   }, [globalSearchOpen, normalizedGlobalSearchQuery])
 
-  const resetComposerEditState = useCallback(() => {
-    setComposerEditState({ mode: 'new', targetMessageId: '', targetMessageText: '' })
-    setComposerInputValue('')
-    setComposerImages([])
-  }, [])
 
-  const setPanelState = useCallback((panelKey: string, updater: ((current: PanelState) => PanelState) | Partial<PanelState>) => {
-    const previousPanels = terminalPanelsRef.current || {}
-    const current = previousPanels[panelKey] || createEmptyPanelState()
-    const nextState = typeof updater === 'function' ? updater(current) : {
-      ...current,
-      ...(updater || {}),
-    }
-    const nextPanels = {
-      ...previousPanels,
-      [panelKey]: nextState,
-    }
-    terminalPanelsRef.current = nextPanels
-    setTerminalPanels(nextPanels)
-    return nextState
-  }, [])
 
-  const getMessageApiLengthBefore = useCallback((message: AIMessage) => {
-    const rawValue = message?.extra?.apiLengthBefore
-    const parsedValue = Number(rawValue)
-    return Number.isFinite(parsedValue) && parsedValue >= 0 ? parsedValue : 0
-  }, [])
 
-  const truncateConversationAfterMessage = useCallback((conversation: AIConversationSnapshot, messageId: string) => {
-    if (!conversation || !Array.isArray(conversation.messages)) {
-      return conversation
-    }
-
-    const messages = conversation.messages
-    const messageIndex = messages.findIndex((message) => message.id === messageId)
-    if (messageIndex === -1) {
-      return conversation
-    }
-
-    const { cutIndex, turnId: targetTurnId } = getConversationBranchAnchor(messages, messageId)
-    const anchorMessage = messages[cutIndex]
-    const nextMessages = messages.slice(0, cutIndex)
-    // Assistant-turn child messages truncate from their owning assistant turn.
-    // Plain user messages remain independent round boundaries.
-    const apiAnchorUIMessageId = targetTurnId || anchorMessage?.id || messageId
-    let apiCutIndex = findApiAnchorIndexByUiMessageId(conversation.apiMessages, apiAnchorUIMessageId)
-
-    if (apiCutIndex < 0) {
-      apiCutIndex = getMessageApiLengthBefore(anchorMessage)
-    }
-    if (apiCutIndex < 0) {
-      apiCutIndex = 0
-    }
-
-    return {
-      ...conversation,
-      updatedAt: Date.now(),
-      status: 'idle',
-      messages: nextMessages,
-      apiMessages: Array.isArray(conversation.apiMessages) ? conversation.apiMessages.slice(0, apiCutIndex) : [],
-    }
-  }, [getMessageApiLengthBefore])
-
-  const applyAITokenFudgeFactor = useCallback((rawTokens: unknown) => {
-    if (!Number.isFinite(Number(rawTokens)) || Number(rawTokens) <= 0) {
-      return 0
-    }
-    return Math.trunc(Number(rawTokens))
-  }, [])
-
-  const computeAITokenLedgerContextTokens = useCallback((ledger: { systemRawTokens?: unknown; entries?: unknown[] }) => {
-    if (!ledger || typeof ledger !== 'object') {
-      return 0
-    }
-    const systemRawTokens = Number(ledger.systemRawTokens) || 0
-    let totalRawTokens = systemRawTokens
-    ledger.entries?.forEach((rawTokens) => {
-      totalRawTokens += Number(rawTokens) || 0
-    })
-    return applyAITokenFudgeFactor(totalRawTokens)
-  }, [applyAITokenFudgeFactor])
-
-  const buildAIConversationCurrentApiMessageIds = useCallback((snapshot: AIConversationSnapshot) => {
-    const apiMessages = Array.isArray(snapshot?.apiMessages) ? snapshot.apiMessages : []
-    return apiMessages
-      .map((message) => (typeof message?.messageId === 'string' ? message.messageId.trim() : ''))
-      .filter((messageId) => messageId)
-  }, [])
-
-  // 全量重建账本: 进入任务/恢复备份/压缩后调用,对每个节点逐条重算 raw token 并持久化到内存账本
-  const rebuildAIConversationTokenLedger = useCallback(async (snapshot: AIConversationSnapshot, targetPanelKey = panelInstanceKey) => {
-    if (!snapshot?.id) {
-      return 0
-    }
-    try {
-      const ledger = await buildAIConversationTokenLedger(terminalId, snapshot)
-      if (!ledger) {
-        return 0
-      }
-      const entryMap = new Map<string, number>()
-      ledger.entries.forEach((entry) => {
-        if (entry.messageId) {
-          entryMap.set(entry.messageId, entry.rawTokens)
-        }
-      })
-      const nextLedger = {
-        systemRawTokens: ledger.systemRawTokens,
-        entries: entryMap,
-      }
-      tokenLedgerRef.current.set(snapshot.id, nextLedger)
-      const contextTokens = ledger.contextTokens || computeAITokenLedgerContextTokens({
-        systemRawTokens: nextLedger.systemRawTokens,
-        entries: Array.from(entryMap.values()),
-      })
-      setPanelState(targetPanelKey, (current) => {
-        if (current.activeConversationId !== snapshot.id) {
-          return current
-        }
-        return {
-          ...current,
-          contextTokens,
-        }
-      })
-      return contextTokens
-    } catch {
-      return 0
-    }
-  }, [computeAITokenLedgerContextTokens, panelInstanceKey, setPanelState, terminalId])
-
-  // 增量刷新账本: 只对账本里尚未记录的新增节点算 raw token, 已删除节点从账本移除, 然后按剩余节点求和
-  const refreshAIConversationContextTokens = useCallback(async (snapshot: AIConversationSnapshot, targetPanelKey = panelInstanceKey) => {
-    if (!snapshot?.id) {
-      return 0
-    }
-    const existingLedger = tokenLedgerRef.current.get(snapshot.id)
-    if (!existingLedger) {
-      return rebuildAIConversationTokenLedger(snapshot, targetPanelKey)
-    }
-    const currentApiMessageIds = buildAIConversationCurrentApiMessageIds(snapshot)
-    const currentIdSet = new Set(currentApiMessageIds)
-    // 删除/编辑/重试导致的节点消失: 从账本移除
-    const nextEntries = new Map<string, number>()
-    existingLedger.entries.forEach((rawTokens, messageId) => {
-      if (currentIdSet.has(messageId)) {
-        nextEntries.set(messageId, rawTokens)
-      }
-    })
-    // 追加的新节点: 只算账本里没有的那几条
-    const apiMessages = Array.isArray(snapshot.apiMessages) ? snapshot.apiMessages : []
-    const missingMessages = apiMessages.filter((message) => {
-      const messageId = typeof message?.messageId === 'string' ? message.messageId.trim() : ''
-      return messageId && !nextEntries.has(messageId)
-    })
-    if (missingMessages.length > 0) {
-      try {
-        const entries = await countAIConversationAPIMessageRawTokens(terminalId, snapshot.id, missingMessages)
-        entries.forEach((entry) => {
-          if (entry.messageId) {
-            nextEntries.set(entry.messageId, entry.rawTokens)
-          }
-        })
-      } catch {
-        return rebuildAIConversationTokenLedger(snapshot, targetPanelKey)
-      }
-    }
-    const nextLedger = {
-      systemRawTokens: existingLedger.systemRawTokens,
-      entries: nextEntries,
-    }
-    tokenLedgerRef.current.set(snapshot.id, nextLedger)
-    const contextTokens = computeAITokenLedgerContextTokens({
-      systemRawTokens: nextLedger.systemRawTokens,
-      entries: Array.from(nextEntries.values()),
-    })
-    setPanelState(targetPanelKey, (current) => {
-      if (current.activeConversationId !== snapshot.id) {
-        return current
-      }
-      return {
-        ...current,
-        contextTokens,
-      }
-    })
-    return contextTokens
-  }, [buildAIConversationCurrentApiMessageIds, computeAITokenLedgerContextTokens, panelInstanceKey, rebuildAIConversationTokenLedger, setPanelState, terminalId])
-
-  const saveConversationSnapshot = useCallback(async (snapshot: AIConversationSnapshot, targetPanelKey = panelInstanceKey, options: { hydrate?: boolean } = {}) => {
-    // 已删除会话不允许被并发保存请求写回（避免流式输出中删除后被重新创建）
-    if (deletedConversationIdsRef.current.has(snapshot.id)) {
-      return
-    }
-    const shouldHydrate = options?.hydrate === true
-    const isTransientConversation = snapshot?.transient === true
-    const saved = isTransientConversation
-      ? await saveTemporaryAIConversation(snapshot)
-      : await saveAIConversation(snapshot)
-    if (isTransientConversation) upsertTemporaryAIConversation(saved)
-    setConversationList((prev) => upsertConversationSummary(prev, saved))
-    setPanelState(targetPanelKey, (current) => {
-      if (current.activeConversationId !== saved.id) {
-        return current
-      }
-      if (!shouldHydrate) {
-        return {
-          ...current,
-          conversation: {
-            ...saved,
-            messages: current.messages,
-            apiMessages: current.apiMessages,
-          },
-        }
-      }
-      return {
-        ...current,
-        conversation: saved,
-        messages: saved.messages || [],
-        apiMessages: saved.apiMessages || [],
-      }
-    })
-    void refreshAIConversationContextTokens(saved, targetPanelKey)
-    return saved
-  }, [panelInstanceKey, refreshAIConversationContextTokens, setPanelState])
-
-  useEffect(() => {
-    if (terminalPanelsRef.current[panelInstanceKey]) {
-      return
-    }
-    setTerminalPanels((prev) => ({
-      ...prev,
-      [panelInstanceKey]: createEmptyPanelState(),
-    }))
-  }, [panelInstanceKey])
 
   useEffect(() => {
     void refreshAIHomeData()
   }, [refreshAIHomeData])
 
-  // 代理节点变更时刷新 AI 设置中的代理列表
-  useEffect(() => {
-    const handler = (event: Event) => {
-      const newProxyNodes = (event as CustomEvent).detail
-      if (!Array.isArray(newProxyNodes)) return
-      setGlobalAISettings((prev) => prev ? { ...prev, proxyNodes: newProxyNodes } : prev)
-    }
-    window.addEventListener('lumin:proxy-nodes-changed', handler)
-    return () => window.removeEventListener('lumin:proxy-nodes-changed', handler)
-  }, [])
 
   useEffect(() => subscribeAIConversationChanges((change: unknown) => {
     const rawChange = change && typeof change === 'object' ? change as Record<string, unknown> : null
@@ -948,26 +500,7 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
     }
   }), [clearRestorePreview, panelInstanceKey, resetComposerEditState, resetConversationSearchState, resetGlobalSearchState, setPanelState])
 
-  useEffect(() => () => {
-    audioPlayersRef.current.forEach((audio) => {
-      try {
-        audio.pause()
-        audio.src = ''
-      } catch {}
-    })
-    audioPlayersRef.current.clear()
-  }, [])
 
-  useEffect(() => {
-    if (!showSettingsPanel) {
-      return
-    }
-    getAIGlobalSettings()
-      .then((settings) => {
-        setGlobalAISettings(settings)
-      })
-      .catch(() => {})
-  }, [showSettingsPanel])
 
 
   const conversationDiffItems = useMemo(() => {
@@ -1126,35 +659,6 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
     await persistCurrentConversation
     await refreshAIHomeData()
   }, [clearRestorePreview, onGoHomeRequested, panelInstanceKey, refreshAIHomeData, resetComposerEditState, sessionId, setPanelState, terminalId, workspaceTabId])
-
-  // ponytail: unmount/会话关闭时取消未决的 AI 请求，避免后端 aiPendingToolBatches 等 map 残留
-  useEffect(() => {
-    return () => {
-      const panel = terminalPanelsRef.current[panelInstanceKey]
-      const requestId = panel?.activeRequestId
-      if (!requestId) {
-        return
-      }
-      const conversation = panel.conversation
-      if (conversation && !conversation.transient && !deletedConversationIdsRef.current.has(conversation.id)) {
-        const assistantMessageId = panel.activeAssistantMessageId || requestId
-        const messages = (Array.isArray(panel.messages) ? panel.messages : []).filter((message) => (
-          !(
-            (message.id === assistantMessageId || message.id === `${assistantMessageId}-reasoning`)
-            && (message.kind === 'assistant' || message.kind === 'reasoning')
-          )
-        ))
-        void saveAIConversation({
-          ...conversation,
-          updatedAt: Date.now(),
-          status: 'idle',
-          messages,
-          apiMessages: Array.isArray(panel.apiMessages) ? panel.apiMessages : [],
-        }).catch(() => {})
-      }
-      void cancelAIChat(requestId)
-    }
-  }, [panelInstanceKey])
 
   const handleOpenConversation = useCallback(async (conversationId: string, delegateToWorkspace = true) => {
     const normalizedConversationId = typeof conversationId === 'string' ? conversationId.trim() : ''
@@ -1817,95 +1321,6 @@ function AIConversationTabPanel({ width, side, terminalId = 'global', sessionId 
     setGlobalAISettings(nextGlobalSettings)
   }, [globalAISettings])
 
-  const handleSaveAIPanelGlobalSettings = useCallback(async (patch: Record<string, unknown>) => {
-    const nextSettings = await saveAIGlobalSettings({
-      ...normalizedGlobalAISettings,
-      ...patch,
-    })
-    setGlobalAISettings(nextSettings)
-    await refreshMCPServerInfo()
-    return nextSettings
-  }, [normalizedGlobalAISettings, refreshMCPServerInfo])
-  const handleSaveMCPGlobalServer = useCallback(async (name: string, configText: string) => {
-    await saveMCPGlobalServer(name, configText)
-    await refreshMCPServerInfo()
-  }, [refreshMCPServerInfo])
-  const handleReloadMCPGlobalServers = useCallback(async () => {
-    await reloadMCPGlobalServers()
-    await refreshMCPServerInfo()
-  }, [refreshMCPServerInfo])
-  const handleDeleteMCPGlobalServer = useCallback(async (name: string) => {
-    await deleteMCPGlobalServer(name)
-    await refreshMCPServerInfo()
-  }, [refreshMCPServerInfo])
-  const handleRestartMCPClientServer = useCallback(async (name: string, source: string) => {
-    await restartMCPClientServer(name, source)
-    await refreshMCPServerInfo()
-  }, [refreshMCPServerInfo])
-  const handleToggleMCPClientServer = useCallback(async (name: string, source: string, disabled: boolean) => {
-    await toggleMCPClientServer(name, source, disabled)
-    await refreshMCPServerInfo()
-  }, [refreshMCPServerInfo])
-  const handleToggleMCPClientServerDisabledForPrompts = useCallback(async (name: string, source: string, disabledForPrompts: boolean) => {
-    await toggleMCPClientServerDisabledForPrompts(name, source, disabledForPrompts)
-    await refreshMCPServerInfo()
-  }, [refreshMCPServerInfo])
-  const handleUpdateMCPClientServerTimeout = useCallback(async (name: string, source: string, timeout: number) => {
-    await updateMCPClientServerTimeout(name, source, timeout)
-    await refreshMCPServerInfo()
-  }, [refreshMCPServerInfo])
-
-  const saveMCPOutputCompressionSettings = useCallback(async (lineLimit: number, characterLimit: number) => {
-    const nextLineLimit = Math.max(10, Math.min(5000, lineLimit || 0))
-    const nextCharacterLimit = Math.max(1000, Math.min(500000, characterLimit || 0))
-    setTerminalOutputLineLimit(nextLineLimit)
-    setTerminalOutputCharacterLimit(nextCharacterLimit)
-    await AppGo.SaveMCPOutputCompressionSettings(nextLineLimit, nextCharacterLimit)
-  }, [])
-
-  async function requestDeleteConfirmation(message: string) {
-    if (!normalizedGlobalAISettings.confirmDelete) {
-      return true
-    }
-    const confirm = window?.luminDialog?.confirm
-    if (typeof confirm !== 'function') {
-      return true
-    }
-    const result = await confirm(message, t('操作确认'))
-    return result === true || (typeof result === 'object' && result !== null && result.confirmed === true)
-  }
-
-  const handleToggleAiTerminalIsolation = useCallback(async () => {
-    await handleSaveAIPanelGlobalSettings({
-      terminalIsolation: !normalizedGlobalAISettings.terminalIsolation,
-    })
-  }, [handleSaveAIPanelGlobalSettings, normalizedGlobalAISettings.terminalIsolation])
-
-  const handleToggleConfirmDelete = useCallback(async () => {
-    await handleSaveAIPanelGlobalSettings({
-      confirmDelete: !normalizedGlobalAISettings.confirmDelete,
-    })
-  }, [handleSaveAIPanelGlobalSettings, normalizedGlobalAISettings.confirmDelete])
-
-  const handleToggleSettingsPanel = useCallback(() => {
-    setShowSettingsPanel((previous) => {
-      const next = !previous
-      if (next) {
-        setActiveSettingsTab('')
-      }
-      return next
-    })
-  }, [])
-
-  const handleTerminalOutputLineLimitChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseInt(event.target.value, 10) || 0
-    saveMCPOutputCompressionSettings(value, terminalOutputCharacterLimit).catch(() => {})
-  }, [saveMCPOutputCompressionSettings, terminalOutputCharacterLimit])
-
-  const handleTerminalOutputCharacterLimitChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseInt(event.target.value, 10) || 0
-    saveMCPOutputCompressionSettings(terminalOutputLineLimit, value).catch(() => {})
-  }, [saveMCPOutputCompressionSettings, terminalOutputLineLimit])
 
   const handleSendMessage = useCallback(async (text: string, sendOptionsOrEditState: Record<string, unknown> | null = null, explicitEditState: Record<string, unknown> | null = null, runtimeOptions: Record<string, unknown> = {}) => {
     const perfStages: Array<{ label: string; ms: number }> = []

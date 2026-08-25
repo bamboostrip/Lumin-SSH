@@ -76,12 +76,12 @@ export default function ProbePanel(props: ProbePanelProps) {
           </div>
           <div className="probe-welcome-list">
             {[
-              [<Cpu size={14} />, t('CPU 每核心实时占用')],
-              [<MemoryStick size={14} />, t('内存甜甜圈图分析')],
-              [<Globe size={14} />, t('网络速率折线图')],
-              [<HardDrive size={14} />, t('磁盘分区挂载表')],
-              [<ClipboardList size={14} />, t('进程热点排行')],
-            ].map(([icon, text]) => (
+              { icon: <Cpu size={14} />, text: t('CPU 每核心实时占用') },
+              { icon: <MemoryStick size={14} />, text: t('内存甜甜圈图分析') },
+              { icon: <Globe size={14} />, text: t('网络速率折线图') },
+              { icon: <HardDrive size={14} />, text: t('磁盘分区挂载表') },
+              { icon: <ClipboardList size={14} />, text: t('进程热点排行') },
+            ].map(({ icon, text }) => (
               <div key={String(text)}><span>{icon}</span><span>{text}</span></div>
             ))}
           </div>

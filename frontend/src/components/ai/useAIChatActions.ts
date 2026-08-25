@@ -240,22 +240,21 @@ export function useAIChatActions({ addToast, terminalId, workspaceTabId, activeC
           ) !== false
         }
       } finally {
-        if (disposed && !panelMountedRef.current) {
-          return
-        }
-        setPanelState(panelInstanceKey, (current) => {
-          if (!current.queuedSubmission || current.queuedSubmission.id !== queuedSubmission.id) {
+        if (!disposed || panelMountedRef.current) {
+          setPanelState(panelInstanceKey, (current) => {
+            if (!current.queuedSubmission || current.queuedSubmission.id !== queuedSubmission.id) {
+              return {
+                ...current,
+                isFlushingQueuedSubmission: false,
+              }
+            }
             return {
               ...current,
+              queuedSubmission: null,
               isFlushingQueuedSubmission: false,
             }
-          }
-          return {
-            ...current,
-            queuedSubmission: null,
-            isFlushingQueuedSubmission: false,
-          }
-        })
+          })
+        }
       }
     })()
 

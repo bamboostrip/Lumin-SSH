@@ -166,6 +166,25 @@ async function copyTextToClipboard(text: string) {
   } catch {}
 }
 
+function MarkdownCode({ children }: { children?: React.ReactNode }) {
+  const isBlock = useContext(PreContext)
+  const content = renderCodeChildren(children)
+  if (!isBlock) {
+    return (
+      <code
+        className="rounded-md bg-[rgba(var(--accent-rgb),0.08)] px-1.5 py-0.5 font-mono text-sm text-primary"
+      >
+        {content}
+      </code>
+    )
+  }
+  return (
+    <code className="font-mono text-sm">
+      {content}
+    </code>
+  )
+}
+
 const markdownComponents: Components = {
   p: ({ children }) => <p className="m-0 whitespace-pre-wrap leading-[1.7]">{children}</p>,
   ul: ({ children }) => <ul className="mb-2.5 pl-5">{children}</ul>,
@@ -182,24 +201,7 @@ const markdownComponents: Components = {
       {children}
     </a>
   ),
-  code: ({ children }) => {
-    const isBlock = useContext(PreContext)
-    const content = renderCodeChildren(children)
-    if (!isBlock) {
-      return (
-        <code
-          className="rounded-md bg-[rgba(var(--accent-rgb),0.08)] px-1.5 py-0.5 font-mono text-sm text-primary"
-        >
-          {content}
-        </code>
-      )
-    }
-    return (
-      <code className="font-mono text-sm">
-        {content}
-      </code>
-    )
-  },
+  code: MarkdownCode,
   pre: ({ children }) => (
     <PreContext.Provider value={true}>
       <pre

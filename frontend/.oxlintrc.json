@@ -25,15 +25,9 @@
     "use-isnan": "error",
     "valid-typeof": "error",
     "no-control-regex": "off",
-    "max-depth": ["warn", 5],
-    "max-params": ["warn", 6],
-    "no-unused-expressions": [
-      "warn",
-      {
-        "allowShortCircuit": true,
-        "allowTernary": true
-      }
-    ],
+    "max-depth": ["error", 4],
+    "max-params": ["error", 5],
+    "no-unused-expressions": "error",
     "no-unused-vars": [
       "warn",
       {

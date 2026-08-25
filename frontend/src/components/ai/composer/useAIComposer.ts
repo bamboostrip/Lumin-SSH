@@ -473,7 +473,9 @@ export function useAIComposer({
       }
       if (event.key === 'Enter') {
         event.preventDefault();
-        activeTerminalAssignmentCandidate?.sessionId && void handleAssignTerminalCandidate(activeTerminalAssignmentCandidate.sessionId);
+        if (activeTerminalAssignmentCandidate?.sessionId) {
+          void handleAssignTerminalCandidate(activeTerminalAssignmentCandidate.sessionId);
+        }
       }
     };
     window.addEventListener('pointerdown', handlePointerDown);

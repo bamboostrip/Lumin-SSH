@@ -185,15 +185,11 @@ export function useTerminalGutter(deps: {
       let end = start;
       if (pIdx >= 0 && pIdx + 1 < prompts.length) {
         end = prompts[pIdx + 1] - 1;
+      } else if (isCollapseSummaryLine(lines[start + 1])) {
+        end = start + 1;
       } else {
-        // 最后一个提示符：若下一行是摘要则用摘要；否则跟到末尾有内容的行
-        if (isCollapseSummaryLine(lines[start + 1])) {
-          end = start + 1;
-        } else {
-          end = start;
-          for (let i = start + 1; i < lines.length; i += 1) {
-            if (String(lines[i] || '').trim()) end = i;
-          }
+        for (let i = start + 1; i < lines.length; i += 1) {
+          if (String(lines[i] || '').trim()) end = i;
         }
       }
       if (end <= start) return;

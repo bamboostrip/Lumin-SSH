@@ -1,5 +1,31 @@
 import { splitTrailingIncompleteEscapeSequence } from '../../utils/terminalHelpers.ts';
 
+function skipEscapeSequence(text: string, startIndex: number): number {
+  let j = startIndex + 1;
+  if (j >= text.length) return j;
+  if (text[j] === '[') {
+    // CSI 序列
+    j++;
+    while (j < text.length) {
+      const c = text.charCodeAt(j);
+      if (c >= 0x40 && c <= 0x7E) { j++; break; }
+      j++;
+    }
+  } else if (text[j] === ']') {
+    // OSC 序列 (如 Window Title)
+    j++;
+    while (j < text.length) {
+      if (text[j] === '\x07') { j++; break; }
+      if (text[j] === '\x1b' && j + 1 < text.length && text[j+1] === '\\') { j += 2; break; }
+      j++;
+    }
+  } else {
+    // 其他 ESC 序列（跳过后面一个字符）
+    j++;
+  }
+  return j;
+}
+
 // 本地回显预测过滤：记录 onData 推入的预测回显字符，在 onmessage 中匹配并丢弃
 // 服务器回显，遇到脱轨输出时清空预测队列。状态机从 Terminal.tsx 原样搬移。
 export function createTerminalLocalEchoFilter() {
@@ -43,30 +69,10 @@ export function createTerminalLocalEchoFilter() {
       while (i < text.length) {
         // 1. 强大且健壮的 ANSI 转义序列跳过逻辑 (CSI、OSC 及其他单字符转义)
         if (text[i] === '\x1b') {
-          let j = i + 1;
-          if (j >= text.length) { parts.push(text[i]); i++; continue; }
-          if (text[j] === '[') {
-             // CSI 序列
-             j++;
-             while (j < text.length) {
-               const c = text.charCodeAt(j);
-               if (c >= 0x40 && c <= 0x7E) { j++; break; }
-               j++;
-             }
-          } else if (text[j] === ']') {
-             // OSC 序列 (如 Window Title)
-             j++;
-             while (j < text.length) {
-               if (text[j] === '\x07') { j++; break; }
-               if (text[j] === '\x1b' && j + 1 < text.length && text[j+1] === '\\') { j += 2; break; }
-               j++;
-             }
-          } else {
-             // 其他 ESC 序列（跳过后面一个字符）
-             j++;
-          }
-          parts.push(text.substring(i, j));
-          i = j;
+          if (i + 1 >= text.length) { parts.push(text[i]); i++; continue; }
+          const nextIndex = skipEscapeSequence(text, i);
+          parts.push(text.substring(i, nextIndex));
+          i = nextIndex;
           continue;
         }
 

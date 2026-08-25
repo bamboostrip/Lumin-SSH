@@ -79,15 +79,14 @@ const fieldNode = (id: string, alias: string, titleKey: I18nKey | '', descriptio
   targetId: extra.targetId || id,
   ...extra,
 });
-const fieldGroupNode = (id: string, alias: string, titleKey: I18nKey | '', descriptionKey: I18nKey | '' = '', children: SettingsTreeNode[] = [], extra: Record<string, unknown> = {}): SettingsTreeNode => createSettingsNode({
+const fieldGroupNode = (id: string, alias: string, titleKey: I18nKey | '', descriptionKey: I18nKey | '' = '', children: SettingsTreeNode[] = []): SettingsTreeNode => createSettingsNode({
   type: 'field-group',
   id,
   alias,
   titleKey,
   descriptionKey,
   children,
-  targetId: extra.targetId || id,
-  ...extra,
+  targetId: id,
 });
 const optionNode = (id: string, alias: string, titleKey: I18nKey | '', descriptionKey: I18nKey | '' = '', extra: Record<string, unknown> = {}): SettingsTreeNode => createSettingsNode({
   type: 'option',

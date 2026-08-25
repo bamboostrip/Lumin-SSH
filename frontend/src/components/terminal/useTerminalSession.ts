@@ -707,11 +707,14 @@ export function useTerminalSession(deps: {
   // ── 状态变化提示 ─────────────────────────────────────────────────
   useEffect(() => {
     if (!termRef.current) return;
-    const sw = smartWriteRef.current;
+    const writeMsg = (msg: string) => {
+      if (sw) sw(msg);
+      else termRef.current?.write(msg);
+    };
     if (status === 'error') {
-      sw ? sw('\r\n\x1b[31m✗ ' + t('连接失败') + '\x1b[0m\r\n') : termRef.current.write('\r\n\x1b[31m✗ ' + t('连接失败') + '\x1b[0m\r\n');
+      writeMsg('\r\n\x1b[31m✗ ' + t('连接失败') + '\x1b[0m\r\n');
     } else if (status === 'closed') {
-      sw ? sw('\r\n\x1b[33m⚠ ' + t('已断开') + '\x1b[0m\r\n') : termRef.current.write('\r\n\x1b[33m⚠ ' + t('已断开') + '\x1b[0m\r\n');
+      writeMsg('\r\n\x1b[33m⚠ ' + t('已断开') + '\x1b[0m\r\n');
     }
   }, [status]);
 

@@ -47,7 +47,7 @@ export function TreeNode({
   const arrowBtn = (dir: number) => (
     <Tiptop text={dir === -1 ? t('上移') : t('下移')}>
       <span
-        onClick={(e) => { e.stopPropagation(); onMove && onMove(path, dir); }}
+        onClick={(e) => { e.stopPropagation(); onMove?.(path, dir); }}
         className="text-[10px] cursor-pointer text-muted px-[3px] leading-[14px] select-none"
         style={{ visibility: hover ? 'visible' : 'hidden' }}
       >
@@ -62,9 +62,9 @@ export function TreeNode({
       e.stopPropagation();
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', path);
-      onDragStart && onDragStart(path);
+      onDragStart?.(path);
     },
-    onDragEnd: (e: React.DragEvent) => { e.stopPropagation(); onDragEnd && onDragEnd(); },
+    onDragEnd: (e: React.DragEvent) => { e.stopPropagation(); onDragEnd?.(); },
   };
 
   const calcDropPos = (e: React.DragEvent, allowInside: boolean): 'before' | 'inside' | 'after' => {
@@ -98,7 +98,7 @@ export function TreeNode({
           onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDropPos(calcDropPos(e, true)); }}
           onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDropPos(calcDropPos(e, true)); }}
           onDragLeave={(e) => { e.stopPropagation(); setDropPos(null); }}
-          onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const pos = dropPos; setDropPos(null); onDropItem && onDropItem(path, pos || 'inside'); }}
+          onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const pos = dropPos; setDropPos(null); onDropItem?.(path, pos || 'inside'); }}
         >
           <div
             onClick={() => onSelect(path)}
@@ -169,7 +169,7 @@ export function TreeNode({
         onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDropPos(calcDropPos(e, false)); }}
         onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setDropPos(calcDropPos(e, false)); }}
         onDragLeave={(e) => { e.stopPropagation(); setDropPos(null); }}
-        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const pos = calcDropPos(e, false); setDropPos(null); onDropItem && onDropItem(path, pos || 'after'); }}
+        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const pos = calcDropPos(e, false); setDropPos(null); onDropItem?.(path, pos || 'after'); }}
         {...commonDragProps}
         className={`flex items-center px-2 py-[5px] cursor-pointer rounded-xs text-sm select-none transition-colors duration-100 ${
           isSelected ? 'bg-active text-primary' : (hover ? 'bg-hover text-primary' : 'text-secondary')

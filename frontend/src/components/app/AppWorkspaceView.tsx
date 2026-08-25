@@ -4,7 +4,7 @@ import AppProbePanelHost from './AppProbePanelHost.tsx';
 import AppAIPanelHost from './AppAIPanelHost.tsx';
 import AppSessionFileManagers from './AppSessionFileManagers.tsx';
 import type { useAppOrchestratorResult } from '../../hooks/useAppOrchestrator.ts';
-import type { SessionLike } from '../../utils/sessionWorkspace.ts';
+import { isUnsupportedMonitorSession, type SessionLike } from '../../utils/sessionWorkspace.ts';
 
 export interface AppWorkspaceViewProps {
   orchestrator: useAppOrchestratorResult;
@@ -26,7 +26,15 @@ export default function AppWorkspaceView({ orchestrator }: AppWorkspaceViewProps
     openPortForwardDialog,
   } = orchestrator;
 
-  const probePanelNode = (
+  const activeSession = sessionState.sessions.find((s) => s.id === sessionState.activeSessionId);
+  const shouldShowProbePanel = Boolean(
+    activeSession
+    && !activeSession.isSerial
+    && !isUnsupportedMonitorSession(activeSession)
+    && (activeSession.status === 'connected' || (activeSession.status === 'closed' && panelLayout.monitoringEnabled[activeSession.id || '']))
+  );
+
+  const probePanelNode = shouldShowProbePanel ? (
     <AppProbePanelHost
       sessions={sessionState.sessions}
       activeSessionId={sessionState.activeSessionId}
@@ -39,7 +47,7 @@ export default function AppWorkspaceView({ orchestrator }: AppWorkspaceViewProps
       openPortForwardDialog={(sId: string, initialMapping?: unknown, initialTab?: string) => openPortForwardDialog(sId, initialMapping as string | number | null | undefined, initialTab)}
       addToast={shared.addToast}
     />
-  );
+  ) : null;
 
   const aiPanelNode = (
     <AppAIPanelHost

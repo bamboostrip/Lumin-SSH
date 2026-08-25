@@ -2,7 +2,7 @@ import type React from 'react';
 import { useTranslation } from '../../i18n.ts';
 import { cn } from '../../utils/cn.ts';
 import { Button } from '../ui';
-import { formatTransferTotal } from '../probeFormatting.ts';
+import { formatTransferTotal } from '../../utils/probeFormatting.ts';
 import type { NetworkConnection } from './networkTypes.ts';
 
 export interface NetworkDetailDrawerProps {

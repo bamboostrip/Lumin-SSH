@@ -10,7 +10,7 @@ import {
   MemoryStick,
 } from 'lucide-react';
 import type { I18nKey } from '../../i18n.ts';
-import { formatCapacity, formatRate, formatTransferTotal } from '../probeFormatting.ts';
+import { formatCapacity, formatRate, formatTransferTotal } from '../../utils/probeFormatting.ts';
 import {
   Card,
   CoreHeatGrid,

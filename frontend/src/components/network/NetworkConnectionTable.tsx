@@ -4,7 +4,7 @@ import { Z } from '../../constants/zIndex.ts';
 import { useTranslation } from '../../i18n.ts';
 import { cn } from '../../utils/cn.ts';
 import Tiptop from '../Tiptop.tsx';
-import { formatTransferTotal } from '../probeFormatting.ts';
+import { formatTransferTotal } from '../../utils/probeFormatting.ts';
 import type { NetworkConnection } from './networkTypes.ts';
 
 export interface NetworkConnectionTableProps {

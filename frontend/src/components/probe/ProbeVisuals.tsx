@@ -1,7 +1,7 @@
 import React, { useMemo, type CSSProperties, type ReactNode } from 'react';
 import { GripVertical } from 'lucide-react';
 import { cn } from '../../utils/cn.ts';
-import { formatCapacity, formatPartitionCapacity } from '../probeFormatting.ts';
+import { formatCapacity, formatPartitionCapacity } from '../../utils/probeFormatting.ts';
 import { clampPct, pctColor, type DragHandleProps, type SparklineSeries } from './probeTypes.ts';
 
 export const ProgressBar = React.memo(function ProgressBar({ value, color }: { value: number; color?: string }) {

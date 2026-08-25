@@ -173,11 +173,21 @@ export function normalizeWorkspaceContentTab(value: unknown): WorkspaceContentTa
     : 'terminal';
 }
 
-// Windows-native local shells cannot run the POSIX probe backend.
+// Windows-native local shells and serial sessions cannot run the POSIX probe backend.
 export function isUnsupportedMonitorSession(session: SessionLike | null | undefined): boolean {
-  if (!session?.isLocal) return false;
-  const shell = (session.shellPath || '').toLowerCase();
-  return shell.includes('powershell') || shell.includes('pwsh') || shell.includes('cmd');
+  if (!session) return false;
+  if (session.isSerial) return true;
+  if (!session.isLocal) return false;
+  const shell = String(session.shellPath || '').toLowerCase();
+  const name = String(session.serverName || '').toLowerCase();
+  return (
+    shell.includes('powershell')
+    || shell.includes('pwsh')
+    || shell.includes('cmd')
+    || name.includes('powershell')
+    || name.includes('pwsh')
+    || name.includes('cmd')
+  );
 }
 
 export function remapSessionWorkspaceLayouts(

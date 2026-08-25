@@ -2,7 +2,7 @@ import { ArrowDown, ArrowUp, Info } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from '../../i18n.ts';
 import { cn } from '../../utils/cn.ts';
-import { formatRate, formatTransferTotal } from '../probeFormatting.ts';
+import { formatRate, formatTransferTotal } from '../../utils/probeFormatting.ts';
 import { CARD_SHELL, type NetworkInterfaceInfo, type NetworkState } from './networkTypes.ts';
 
 interface SparklineProps {

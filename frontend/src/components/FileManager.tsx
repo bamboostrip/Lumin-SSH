@@ -21,6 +21,7 @@ import { renderFileManagerContent } from './filemanager/FileManagerContent.tsx';
 import { renderFileManagerOverlays } from './filemanager/FileManagerOverlays.tsx';
 import type { FileManagerController } from './filemanager/fileManagerController.ts';
 import type { FileManagerProps } from './filemanager/fileManagerTypes.ts';
+import { FILE_LIST_NAME_MIN_WIDTH, FILE_LIST_ACTIONS_COLUMN_WIDTH } from '../utils/fileManagerFormat.ts';
 
 // FileManager 编排层：按声明顺序组合各领域 hook（保证 effect 执行顺序与
 // 拆分前一致），并把控制器对象分发给各渲染段（Toolbar/TabBar/Content/Overlays）。

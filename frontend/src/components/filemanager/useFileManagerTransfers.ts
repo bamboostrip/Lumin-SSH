@@ -39,7 +39,7 @@ import type { useFileManagerEditorState } from './useFileManagerEditorState.ts';
 import type { useFileManagerUploadPanel } from './useFileManagerUploadPanel.ts';
 import type { useFileManagerDirectoryLoader } from './useFileManagerDirectoryLoader.ts';
 import type { FileManagerDownloadConflict, FileManagerFileItem, FileManagerProps } from './fileManagerTypes.ts';
-import type { FileManagerDownloadConflictSettings } from '../../utils/fileManagerTransfer.ts';
+import { buildDownloadConflictOptionsPayload, type FileManagerDownloadConflictSettings } from '../../utils/fileManagerTransfer.ts';
 
 // 传输引擎：上传（原生路径/浏览器条目分块）、下载（含同名冲突向导）、
 // 远端条目移动/复制、中止/恢复目录、撤销栈与传输队列事件

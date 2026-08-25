@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { setLanguage as setGlobalLanguage, t as $t, type LanguageCode } from '../i18n.ts';
+import { getAvailableLanguages, setLanguage as setGlobalLanguage, t as $t, type LanguageCode } from '../i18n.ts';
 import { APP_BUILD_TIME, APP_VERSION } from '../config.ts';
 import { formatUpdateError, useUpdateChecker, type UpdateCheckResult } from '../hooks/useUpdateChecker.ts';
 import { X } from 'lucide-react';
@@ -17,6 +17,8 @@ import SettingsSidebar from './settings/SettingsSidebar';
 import { useSettingsGeneralState } from './settings/useSettingsGeneralState';
 import { useSettingsSearch } from './settings/useSettingsSearch';
 import { useSettingsShortcuts } from './settings/useSettingsShortcuts';
+
+const AVAILABLE_LANGUAGES = getAvailableLanguages();
 
 export interface SettingsModalProps {
   onClose: () => void;

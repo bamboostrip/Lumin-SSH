@@ -4,7 +4,7 @@ import { addOpeningFile, removeOpeningFile } from '../../utils/fileManagerHelper
 import type { useFileManagerCore } from './useFileManagerCore.ts';
 import type { useFileManagerEditorState } from './useFileManagerEditorState.ts';
 import type { useFileManagerTransfers } from './useFileManagerTransfers.ts';
-import type { FileManagerFileItem, FileManagerProps } from './fileManagerTypes.ts';
+import type { FileManagerFileItem, FileManagerFileLike, FileManagerProps } from './fileManagerTypes.ts';
 
 // 文件打开/编辑：内置编辑器缓冲、系统编辑器与指定外部编辑器打开、保存与关闭
 export function useFileManagerEditors(deps: ReturnType<typeof useFileManagerCore> & ReturnType<typeof useFileManagerEditorState> & ReturnType<typeof useFileManagerTransfers> & {

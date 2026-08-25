@@ -111,9 +111,9 @@ export function renderFileManagerVirtualRow(fm: FileManagerController, row: VRow
       }
       fileListRef.current?.focus();
       if (event.ctrlKey || event.metaKey) {
-        setSelectedPaths((previousSelectedPaths) => (
+        setSelectedPaths((previousSelectedPaths: string[]) => (
           previousSelectedPaths.includes(itemPath)
-            ? previousSelectedPaths.filter((path) => path !== itemPath)
+            ? previousSelectedPaths.filter((path: string) => path !== itemPath)
             : [...previousSelectedPaths, itemPath]
         ));
         lastClickedPathRef.current = itemPath;

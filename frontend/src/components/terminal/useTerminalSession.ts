@@ -707,6 +707,7 @@ export function useTerminalSession(deps: {
   // ── 状态变化提示 ─────────────────────────────────────────────────
   useEffect(() => {
     if (!termRef.current) return;
+    const sw = smartWriteRef.current;
     const writeMsg = (msg: string) => {
       if (sw) sw(msg);
       else termRef.current?.write(msg);

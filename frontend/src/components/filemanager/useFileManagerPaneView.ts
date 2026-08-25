@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react';
 import * as AppGo from '../../../wailsjs/go/wailsapp/App.js';
 import {
   createFileManagerPaneEffectState,
@@ -146,7 +146,7 @@ export function useFileManagerPaneView(deps: ReturnType<typeof useFileManagerCor
     throw new Error(`${isDirectory ? t('未找到文件夹') : t('未找到文件')}: ${trimmedName}`);
   }, [normalizePath, sessionId, t]);
 
-  React.useLayoutEffect(() => {
+  useLayoutEffect(() => {
     applyPanePendingRestoreIfReady(activePaneKey, fileListRef.current);
   }, [activePaneKey, applyPanePendingRestoreIfReady, items]);
 

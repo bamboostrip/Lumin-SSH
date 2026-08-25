@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Check, ListEnd, X } from 'lucide-react';
 import { useTranslation } from '../../i18n.ts';
 import { useAIWorkspaceTabContext } from './aiWorkspaceTabContext.ts';

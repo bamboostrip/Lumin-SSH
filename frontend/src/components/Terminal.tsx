@@ -31,6 +31,12 @@ import { useTerminalTheme } from './terminal/useTerminalTheme.ts';
 import { useTerminalSettingsEvents } from './terminal/useTerminalSettingsEvents.ts';
 import { useTerminalClipboard } from './terminal/useTerminalClipboard.ts';
 import { useTerminalSession } from './terminal/useTerminalSession.ts';
+import { useTerminalQuickCmd } from './terminal/useTerminalQuickCmd.ts';
+import { useTerminalCommandInput } from './terminal/useTerminalCommandInput.ts';
+import { TerminalQuickCmdBar } from './terminal/TerminalQuickCmdBar.tsx';
+import { TerminalInputBar } from './terminal/TerminalInputBar.tsx';
+import { TerminalAutocompletePopup } from './terminal/TerminalAutocompletePopup.tsx';
+import { TerminalQuickCmdConfirm } from './terminal/TerminalQuickCmdConfirm.tsx';
 import type { TerminalProps } from './terminal/terminalTypes.ts';
 import { ToggleSwitch } from './settings/SharedComponents.tsx';
 import type { QuickCommandsHandle } from './QuickCommands.tsx';
@@ -77,7 +83,6 @@ export default function Terminal({
   const [linkToast, setLinkToast]             = useState('');
   const [contextHasSelection, setContextHasSelection] = useState(false);
   const [justConnected, setJustConnected]     = useState(false);
-  const [cmdInput, setCmdInput]               = useState('');
   const [showHistory, setShowHistory]         = useState(false);
   const [altOpenHistoryEnabled, setAltOpenHistoryEnabled] = useState(localStorage.getItem('altOpenHistory') !== 'false');
   const [historyList, setHistoryList]         = useState<Array<{ id: string; command: string }>>([]);
@@ -90,22 +95,6 @@ export default function Terminal({
   const [termSearchQuery, setTermSearchQuery] = useState('');
   const [termSearchCaseSensitive, setTermSearchCaseSensitive] = useState(false);
   const [termSearchResult, setTermSearchResult] = useState({ resultIndex: -1, resultCount: 0 });
-  const cmdInputRef                           = useRef<HTMLTextAreaElement | null>(null);
-  const [cmdInputWidth, setCmdInputWidth]     = useState<number>(600);
-
-  useEffect(() => {
-    const el = cmdInputRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.contentRect && entry.contentRect.width > 0) {
-          setCmdInputWidth(entry.contentRect.width);
-        }
-      }
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
   const historyBtnRef                         = useRef<HTMLButtonElement | null>(null);
   const historySearchInputRef                 = useRef<HTMLInputElement | null>(null);
   const historyScrollRef                      = useRef<HTMLDivElement | null>(null);
@@ -115,68 +104,6 @@ export default function Terminal({
   const pendingCmdRef                         = useRef('');
   const awaitingPasswordRef                   = useRef(false); // 检测到密码提示后，下一行输入不记入命令历史
   const awaitingCommandFinishRef              = useRef(false); // 按回车提交命令后，等待命令完成（提示符回归）
-  const [terminalCwd, setTerminalCwd]         = useState('/');
-  const [commandAutocomplete, setCommandAutocomplete] = useState(createCommandAutocompleteState());
-  // 命令输入快捷键提示浮层开关（F1 切换；关闭持久化到 localStorage）
-  const [cmdInputHintsHidden, setCmdInputHintsHidden] = useState(() => localStorage.getItem('terminalCmdInputHintsHidden') === 'true');
-  const commandAutocompleteRequestRef         = useRef(0);
-  const commandAutocompleteFocusedRef         = useRef(false);
-  const commandAutocompleteKeyboardNavigationRef = useRef(false);
-  const commandAutocompleteDebounceRef        = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const commandAutocompleteBlurTimerRef       = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const commandAutocompleteDataRef            = useRef<AutocompleteSources & {
-    historyServerId: string;
-    serverLoaded: boolean;
-    globalLoaded: boolean;
-    quickLoaded: boolean;
-  }>({
-    historyServerId: '',
-    serverHistory: [],
-    globalHistory: [],
-    quickCommands: [],
-    serverLoaded: false,
-    globalLoaded: false,
-    quickLoaded: false,
-  });
-  const commandAutocompleteListRef            = useRef<HTMLDivElement | null>(null);
-  const [commandAutocompletePopupPos, setCommandAutocompletePopupPos] = useState<{ left: number; top: number; width: number; maxHeight: number } | null>(null);
-  // ── 快捷命令条：输入框上方一排按钮，点击后弹确认框再发送（对齐安卓端） ──
-  const [quickCmdBarVisible, setQuickCmdBarVisible] = useState(
-    () => localStorage.getItem('terminalQuickCmdBar') === 'true'
-  );
-  const [quickCmdBarItems, setQuickCmdBarItems] = useState<FlattenedQuickCommand[]>([]);
-  const [quickCmdSearch, setQuickCmdSearch] = useState('');
-  const [quickCmdSearchOpen, setQuickCmdSearchOpen] = useState(false);
-  const quickCmdSearchRef = useRef<HTMLInputElement | null>(null);
-  // 待确认命令：{ item, values } 或 null（点命令条按钮后弹确认框，对齐安卓端）
-  const [pendingQuickCmd, setPendingQuickCmd] = useState<{ item: FlattenedQuickCommand; values: Record<string, string> } | null>(null);
-  const [quickCmdHistoryParam, setQuickCmdHistoryParam] = useState<number | null>(null);
-  const [quickCmdHistoryPosition, setQuickCmdHistoryPosition] = useState({ left: 0, top: 0 });
-  const [quickCmdHistorySearch, setQuickCmdHistorySearch] = useState('');
-  const [quickCmdParamHistory, setQuickCmdParamHistory] = useState<QuickCommandParamHistory>({});
-  const quickCmdParamHistoryRef = useRef<QuickCommandParamHistory>({});
-  useEffect(() => {
-    if (quickCmdHistoryParam === null) return;
-    const closeHistory = (event: MouseEvent) => {
-      if ((event.target as HTMLElement).closest('[data-terminal-quick-cmd-history]')) return;
-      setQuickCmdHistoryParam(null);
-      setQuickCmdHistorySearch('');
-    };
-    document.addEventListener('click', closeHistory, true);
-    return () => document.removeEventListener('click', closeHistory, true);
-  }, [quickCmdHistoryParam]);
-  useEffect(() => {
-    let cancelled = false;
-    AppGo.GetParamHistory().then((raw) => {
-      if (cancelled) return;
-      try {
-        const history = normalizeQuickCommandParamHistory(JSON.parse(raw));
-        quickCmdParamHistoryRef.current = history;
-        setQuickCmdParamHistory(history);
-      } catch (_) {}
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
 
   // ── 点击历史弹窗外关闭（document 捕获阶段 mousedown） ──
   // 必须用 capture：命令按钮 / 底部快捷命令面板会 stopPropagation，
@@ -328,6 +255,54 @@ export default function Terminal({
     scheduleLinkUnderlineSync,
     handleClearScreen,
     pasteTerminalSelectionToTerminal,
+  });
+
+  const isConnected  = status === 'connected';
+  const isClosed     = status === 'closed';
+  const isError      = status === 'error';
+  const [multiLineWrapEnabled, setMultiLineWrapEnabled] = useState(() => localStorage.getItem('terminalMultiLineWrapEnabled') !== 'false');
+  const {
+    quickCmdBarVisible, quickCmdBarItems, quickCmdSearch, setQuickCmdSearch, quickCmdSearchOpen, setQuickCmdSearchOpen,
+    closeQuickCmdSearch, filteredQuickCmdItems, pendingQuickCmd, setPendingQuickCmd,
+    quickCmdHistoryParam, setQuickCmdHistoryParam, quickCmdHistoryPosition, setQuickCmdHistoryPosition,
+    quickCmdHistorySearch, setQuickCmdHistorySearch, quickCmdParamHistory, setQuickCmdParamHistory, quickCmdParamHistoryRef,
+    openQuickCmdConfirm, sendQuickCmdConfirmed,
+  } = useTerminalQuickCmd({
+    isConnected,
+    sessionId,
+    serverId,
+    multiLineWrapEnabled,
+    prepareScreenScrollbackRef,
+    awaitingPasswordRef,
+    awaitingCommandFinishRef,
+    termRef,
+  });
+  const {
+    cmdInput, setCmdInput, cmdInputRef,
+    commandAutocomplete, setCommandAutocomplete, commandAutocompletePopupPos, commandAutocompleteListRef,
+    commandAutocompleteFocusedRef, commandAutocompleteKeyboardNavigationRef, commandAutocompleteBlurTimerRef,
+    cmdInputHintsHidden, toggleCommandInputHints,
+    closeCommandAutocomplete, scheduleCommandAutocompleteSuggestions, loadCommandAutocompleteSuggestions,
+    applyCommandAutocompleteItem, updateCommandAutocompletePopupPosition, clearCommandAutocompleteBlurTimer,
+    syncCommandInputHeight, executeCommand, copyCommand,
+  } = useTerminalCommandInput({
+    sessionId,
+    serverId,
+    historyServerId,
+    showHistory,
+    showCommands,
+    isConnected,
+    isClosed,
+    isError,
+    multiLineWrapEnabled,
+    prepareScreenScrollbackRef,
+    awaitingPasswordRef,
+    awaitingCommandFinishRef,
+    termRef,
+    openQuickCmdConfirm,
+    setShowHistory,
+    setHistoryPopupPos,
+    t,
   });
 
 
@@ -616,47 +591,11 @@ export default function Terminal({
     }
   };
 
-  const isConnected  = status === 'connected';
   const isConnecting = status === 'connecting';
-  const isError      = status === 'error';
-  const isClosed     = status === 'closed';
   const statusColor  = isConnected ? 'var(--success)' : isConnecting ? 'var(--warning)' : isError ? 'var(--danger)' : 'var(--text-tertiary)';
   const cmdTrimmed   = cmdInput.trim();
 
-  // 命令条搜索：收起时一并清空关键词，避免留下不可见的过滤条件
-  const closeQuickCmdSearch = useCallback(() => {
-    setQuickCmdSearchOpen(false);
-    setQuickCmdSearch('');
-  }, []);
 
-  // 命令条搜索：按名称/命令/分组过滤，大小写不敏感
-  const filteredQuickCmdItems = useMemo(() => {
-    const kw = quickCmdSearch.trim().toLowerCase();
-    if (!kw) return quickCmdBarItems;
-    return quickCmdBarItems.filter((item) => (
-      item.name.toLowerCase().includes(kw)
-      || item.command.toLowerCase().includes(kw)
-      || (item.groupPath || '').toLowerCase().includes(kw)
-    ));
-  }, [quickCmdBarItems, quickCmdSearch]);
-  const [multiLineWrapEnabled, setMultiLineWrapEnabled] = useState(() => localStorage.getItem('terminalMultiLineWrapEnabled') !== 'false');
-
-  const syncCommandInputHeight = useCallback(() => {
-    const element = cmdInputRef.current
-    if (!element) return
-    element.style.height = '36px'
-    element.style.overflowY = 'hidden'
-    element.scrollTop = 0
-    if (!element.value) {
-      return
-    }
-    const scrollHeight = Math.max(element.scrollHeight, 36)
-    const nextHeight = Math.min(scrollHeight, 132)
-    element.style.height = `${nextHeight}px`
-    if (scrollHeight > 132) {
-      element.style.overflowY = 'auto'
-    }
-  }, [])
 
   const toggleMultiLineWrap = useCallback(() => {
     setMultiLineWrapEnabled((previous) => {
@@ -840,97 +779,7 @@ export default function Terminal({
     cmdInputRef.current?.focus();
   };
 
-  const executeCommand = (directCmd?: string) => {
-    const rawCommand = directCmd ?? cmdInput;
-    if (!isConnected) {
-      if (isClosed || isError) {
-        window.dispatchEvent(new CustomEvent('ssh-reconnect-trigger', { detail: sessionId }));
-      }
-      return;
-    }
-    const normalizedText = String(rawCommand ?? '').replace(/\r\n?/g, '\n');
-    const text = normalizedText.trim();
-    const isBlankSubmit = !text;
-    const lineCount = normalizedText.split('\n').length;
-    const finalPayload = isBlankSubmit
-      ? '\r'
-      : multiLineWrapEnabled && lineCount > 1
-        ? buildWrappedMultiLineCommand(normalizedText)
-        : text + '\r';
-    prepareScreenScrollbackRef.current(text);
-    AppGo.WriteTerminal(sessionId, finalPayload).catch((err) => {
-      console.error('WriteTerminal failed:', err);
-    });
-    termRef.current?.scrollToBottom();
-    if (!isBlankSubmit && text.length > 1 && !/^\d+$/.test(text) && !isInteractivePromptText(text) && !awaitingPasswordRef.current) {
-      window.dispatchEvent(new CustomEvent('ssh-command-history', {
-        detail: { sessionId: serverId, command: text, time: new Date().toISOString(), source: 'input' }
-      }));
-    }
-    awaitingPasswordRef.current = false;
-    // 快捷命令/输入框提交：与 onData 回车路径一致，进入等待命令完成状态
-    awaitingCommandFinishRef.current = !isBlankSubmit && text.length > 0;
-    setCmdInput('');
-    setShowHistory(false);
-    setHistoryPopupPos(null);
-  };
 
-  const copyCommand = () => {
-    if (!cmdTrimmed) return;
-    navigator.clipboard.writeText(cmdInput).catch(() => {});
-  };
-
-  // ── 快捷命令条：点按钮先弹确认框（对齐安卓端 QuickCommandConfirmDialog） ──
-  const openQuickCmdConfirm = (item: FlattenedQuickCommand) => {
-    if (!item?.command) return;
-    const values: Record<string, string> = {};
-    const history = quickCmdParamHistoryRef.current[item.command] || {};
-    extractQuickCommandParams(item.command).forEach((p) => { values[p.num] = history[p.num]?.[0] || ''; });
-    setPendingQuickCmd({ item, values });
-  };
-
-  // 确认后发送：addCR 语义对齐安卓端 sendQuickCommand
-  const sendQuickCmdConfirmed = () => {
-    const pending = pendingQuickCmd;
-    if (!pending || !isConnected) return;
-    const filled = fillQuickCommandParams(pending.item.command, pending.values);
-    const text = filled.replace(/\r\n?/g, '\n').trim();
-    if (!text) return;
-    const nextParamHistory: QuickCommandParamHistory = {
-      ...quickCmdParamHistoryRef.current,
-      [pending.item.command]: { ...(quickCmdParamHistoryRef.current[pending.item.command] || {}) },
-    };
-    Object.entries(pending.values).forEach(([num, value]) => {
-      if (!value) return;
-      const values = nextParamHistory[pending.item.command][num] || [];
-      nextParamHistory[pending.item.command][num] = [value, ...values.filter((entry) => entry !== value)].slice(0, 20);
-    });
-    const normalizedParamHistory = normalizeQuickCommandParamHistory(nextParamHistory);
-    quickCmdParamHistoryRef.current = normalizedParamHistory;
-    setQuickCmdParamHistory(normalizedParamHistory);
-    AppGo.SaveParamHistory(JSON.stringify(normalizedParamHistory)).catch(() => {});
-    setPendingQuickCmd(null);
-    const lineCount = text.split('\n').length;
-    const payload = pending.item.addCR === false
-      ? text
-      : multiLineWrapEnabled && lineCount > 1
-        ? buildWrappedMultiLineCommand(text)
-        : text + '\r';
-    if (pending.item.addCR !== false) {
-      prepareScreenScrollbackRef.current(text);
-    }
-    AppGo.WriteTerminal(sessionId, payload).catch((err) => {
-      console.error('WriteTerminal failed:', err);
-    });
-    termRef.current?.scrollToBottom();
-    if (text.length > 1 && !/^\d+$/.test(text) && !isInteractivePromptText(text)) {
-      window.dispatchEvent(new CustomEvent('ssh-command-history', {
-        detail: { sessionId: serverId, command: text, time: new Date().toISOString(), source: 'input' }
-      }));
-    }
-    awaitingPasswordRef.current = false;
-    awaitingCommandFinishRef.current = pending.item.addCR !== false;
-  };
 
   const deleteHistoryItem = async (id: string) => {
     const scope = historyMode;
@@ -951,397 +800,6 @@ export default function Terminal({
     }
   };
 
-  const clearCommandAutocompleteDebounce = useCallback(() => {
-    if (commandAutocompleteDebounceRef.current) {
-      clearTimeout(commandAutocompleteDebounceRef.current);
-      commandAutocompleteDebounceRef.current = null;
-    }
-  }, []);
-
-  const clearCommandAutocompleteBlurTimer = useCallback(() => {
-    if (commandAutocompleteBlurTimerRef.current) {
-      clearTimeout(commandAutocompleteBlurTimerRef.current);
-      commandAutocompleteBlurTimerRef.current = null;
-    }
-  }, []);
-
-  const closeCommandAutocomplete = useCallback(() => {
-    commandAutocompleteRequestRef.current += 1;
-    commandAutocompleteKeyboardNavigationRef.current = false;
-    clearCommandAutocompleteDebounce();
-    clearCommandAutocompleteBlurTimer();
-    setCommandAutocompletePopupPos(null);
-    setCommandAutocomplete(createCommandAutocompleteState());
-  }, [clearCommandAutocompleteBlurTimer, clearCommandAutocompleteDebounce]);
-
-  const updateCommandAutocompletePopupPosition = useCallback(() => {
-    const nextPopupPos = getTextareaAutocompletePopupPosition(cmdInputRef.current)
-    if (nextPopupPos) {
-      setCommandAutocompletePopupPos(nextPopupPos)
-    }
-  }, [])
-
-  // F1 切换命令输入快捷键提示；开启/关闭均二次确认，并告知再次切换的方式
-  const toggleCommandInputHints = useCallback(async () => {
-    const detail = cmdInputHintsHidden
-      ? `${t('开启后将在命令输入框显示快捷键提示')}\n${t('随时按 {shortcut} 可再次关闭').replace('{shortcut}', 'F1')}`
-      : `${t('关闭后将不再显示命令输入快捷键提示')}\n${t('随时按 {shortcut} 可重新开启').replace('{shortcut}', 'F1')}`;
-    let confirmed = false;
-    try {
-      confirmed = Boolean(await window.luminDialog?.confirm(detail, t('提示')));
-    } catch {
-      confirmed = false;
-    }
-    if (!confirmed) return;
-    setCmdInputHintsHidden((previous) => {
-      const next = !previous;
-      localStorage.setItem('terminalCmdInputHintsHidden', String(next));
-      return next;
-    });
-  }, [cmdInputHintsHidden, t]);
-
-  const ensureCommandAutocompleteData = useCallback(async () => {
-    const cache = commandAutocompleteDataRef.current;
-    const normalizedHistoryId = String(historyServerId || '').trim();
-
-    if (cache.historyServerId !== normalizedHistoryId) {
-      cache.historyServerId = normalizedHistoryId;
-      cache.serverHistory = [];
-      cache.serverLoaded = false;
-    }
-
-    if (!normalizedHistoryId) {
-      cache.serverHistory = [];
-      cache.serverLoaded = true;
-    }
-
-    const tasks = [];
-
-    if (!cache.quickLoaded) {
-      tasks.push(
-        AppGo.GetQuickCommands()
-          .then((raw) => {
-            cache.quickCommands = normalizeQuickCommandItems(raw);
-            cache.quickLoaded = true;
-          })
-          .catch(() => {
-            cache.quickCommands = [];
-            cache.quickLoaded = true;
-          }),
-      );
-    }
-
-    if (!cache.globalLoaded) {
-      tasks.push(
-        AppGo.GetGlobalCommandHistory()
-          .then((raw) => {
-            cache.globalHistory = normalizeHistoryCommands(raw);
-            cache.globalLoaded = true;
-          })
-          .catch(() => {
-            cache.globalHistory = [];
-            cache.globalLoaded = true;
-          }),
-      );
-    }
-
-    if (normalizedHistoryId && !cache.serverLoaded) {
-      tasks.push(
-        AppGo.GetCommandHistory(normalizedHistoryId)
-          .then((raw) => {
-            cache.serverHistory = normalizeHistoryCommands(raw);
-            cache.serverLoaded = true;
-          })
-          .catch(() => {
-            cache.serverHistory = [];
-            cache.serverLoaded = true;
-          }),
-      );
-    }
-
-    if (tasks.length > 0) {
-      await Promise.all(tasks);
-    }
-
-    return cache;
-  }, [historyServerId]);
-
-  const loadCommandAutocompleteSuggestions = useCallback(async (nextValue: string) => {
-    if (!commandAutocompleteFocusedRef.current || showHistory || showCommands) {
-      closeCommandAutocomplete();
-      return [];
-    }
-
-    updateCommandAutocompletePopupPosition();
-
-    const normalizedValue = String(nextValue || '');
-    if (!normalizedValue.trim()) {
-      closeCommandAutocomplete();
-      return [];
-    }
-
-    const cursorPosition = cmdInputRef.current ? (cmdInputRef.current.selectionStart ?? normalizedValue.length) : normalizedValue.length
-    const requestId = commandAutocompleteRequestRef.current + 1;
-    commandAutocompleteRequestRef.current = requestId;
-
-    const cache = await ensureCommandAutocompleteData();
-    if (commandAutocompleteRequestRef.current !== requestId) {
-      return [];
-    }
-
-    const staticItems = buildStaticAutocompleteItems(normalizedValue, cache, {
-      cursorPosition,
-      currentCwd: terminalCwd,
-    })
-    const shouldLoadPathItems = Boolean(buildPathAutocompleteContext(normalizedValue, terminalCwd, { cursorPosition }))
-
-    if (!shouldLoadPathItems) {
-      setCommandAutocomplete(createCommandAutocompleteState({
-        open: staticItems.length > 0,
-        items: staticItems,
-        selectedIndex: staticItems.length > 0 ? 0 : -1,
-      }));
-      return staticItems;
-    }
-
-    setCommandAutocomplete(createCommandAutocompleteState({
-      open: true,
-      loading: true,
-      items: staticItems,
-      selectedIndex: staticItems.length > 0 ? 0 : -1,
-    }));
-
-    const pathItems = await loadPathAutocompleteItems({
-      sessionId,
-      inputValue: normalizedValue,
-      currentCwd: terminalCwd,
-      cursorPosition,
-      listDir: (activeSessionId, remotePath) => AppGo.ListDir(activeSessionId, remotePath),
-    })
-    if (commandAutocompleteRequestRef.current !== requestId) {
-      return [];
-    }
-
-    const resolvedItems = [...pathItems, ...staticItems].slice(0, 10)
-    setCommandAutocomplete(createCommandAutocompleteState({
-      open: resolvedItems.length > 0,
-      items: resolvedItems,
-      loading: false,
-      selectedIndex: resolvedItems.length > 0 ? 0 : -1,
-    }));
-    return resolvedItems;
-  }, [closeCommandAutocomplete, ensureCommandAutocompleteData, sessionId, showCommands, showHistory, terminalCwd, updateCommandAutocompletePopupPosition]);
-
-  const scheduleCommandAutocompleteSuggestions = useCallback((nextValue: string) => {
-    clearCommandAutocompleteDebounce();
-    commandAutocompleteDebounceRef.current = setTimeout(() => {
-      void loadCommandAutocompleteSuggestions(nextValue);
-    }, 140);
-  }, [clearCommandAutocompleteDebounce, loadCommandAutocompleteSuggestions]);
-
-  const applyCommandAutocompleteItem = useCallback((item: AutocompleteItem) => {
-    if (!item || !item.value) {
-      return;
-    }
-    if (item.quickCommand && extractQuickCommandParams(item.quickCommand.command).length > 0) {
-      openQuickCmdConfirm({
-        name: item.quickCommand.name,
-        command: item.quickCommand.command,
-        groupPath: item.quickCommand.groupPath,
-        addCR: item.quickCommand.addCR,
-      });
-      closeCommandAutocomplete();
-      return;
-    }
-    const nextValue = String(item.value);
-    setCmdInput(nextValue);
-    closeCommandAutocomplete();
-    requestAnimationFrame(() => {
-      if (!cmdInputRef.current) {
-        return;
-      }
-      cmdInputRef.current.focus();
-      cmdInputRef.current.setSelectionRange(nextValue.length, nextValue.length);
-      commandAutocompleteFocusedRef.current = true;
-      void loadCommandAutocompleteSuggestions(nextValue);
-    });
-  }, [closeCommandAutocomplete, loadCommandAutocompleteSuggestions, openQuickCmdConfirm]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setTerminalCwd('/');
-
-    if (!sessionId) {
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    if (typeof AppGo.GetTerminalCwd === 'function') {
-      AppGo.GetTerminalCwd(sessionId)
-        .then((cwd) => {
-          if (!cancelled) {
-            setTerminalCwd(normalizeRemoteAbsolutePath(cwd) || '/');
-          }
-        })
-        .catch(() => {
-          if (!cancelled) {
-            setTerminalCwd('/');
-          }
-        });
-    }
-
-    const off = EventsOn(`ssh-terminal-cwd-${sessionId}`, (cwd) => {
-      if (cancelled) {
-        return;
-      }
-      const normalizedCwd = normalizeRemoteAbsolutePath(cwd);
-      if (normalizedCwd) {
-        setTerminalCwd(normalizedCwd);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-      off?.();
-    };
-  }, [sessionId]);
-
-  useEffect(() => {
-    const invalidate = () => {
-      const cache = commandAutocompleteDataRef.current;
-      cache.serverLoaded = false;
-      cache.globalLoaded = false;
-    };
-
-    window.addEventListener('ssh-command-history', invalidate);
-    window.addEventListener('ssh-history-cleared', invalidate);
-    window.addEventListener('ssh-history-changed', invalidate);
-    return () => {
-      window.removeEventListener('ssh-command-history', invalidate);
-      window.removeEventListener('ssh-history-cleared', invalidate);
-      window.removeEventListener('ssh-history-changed', invalidate);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!showCommands) {
-      commandAutocompleteDataRef.current.quickLoaded = false;
-    }
-  }, [showCommands]);
-
-  useEffect(() => {
-    if (showHistory || showCommands) {
-      closeCommandAutocomplete();
-    }
-  }, [closeCommandAutocomplete, showCommands, showHistory]);
-
-  // ── 快捷命令条：可见时加载列表，命令增删改后刷新 ──
-  useEffect(() => {
-    const handleBarToggle = (e: Event) => setQuickCmdBarVisible((e as CustomEvent<unknown>).detail !== false);
-    window.addEventListener('quick-cmd-bar-changed', handleBarToggle);
-    return () => window.removeEventListener('quick-cmd-bar-changed', handleBarToggle);
-  }, []);
-
-  // 确认框：Esc 关闭（挂 document，焦点丢失时也能关）
-  useEffect(() => {
-    if (!pendingQuickCmd) return undefined;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        setPendingQuickCmd(null);
-      }
-    };
-    document.addEventListener('keydown', onKeyDown, true);
-    return () => document.removeEventListener('keydown', onKeyDown, true);
-  }, [pendingQuickCmd]);
-
-  // 搜索框展开后自动聚焦，省去再点一次
-  useEffect(() => {
-    if (quickCmdSearchOpen) quickCmdSearchRef.current?.focus();
-  }, [quickCmdSearchOpen]);
-
-  useEffect(() => {
-    if (!quickCmdBarVisible) {
-      setQuickCmdBarItems([]);
-      setQuickCmdSearch('');
-      setQuickCmdSearchOpen(false);
-      return undefined;
-    }
-    let alive = true;
-    const load = () => {
-      AppGo.GetQuickCommands()
-        .then((raw) => {
-          if (alive) setQuickCmdBarItems(normalizeQuickCommandItems(raw));
-        })
-        .catch(() => {
-          if (alive) setQuickCmdBarItems([]);
-        });
-    };
-    load();
-    window.addEventListener('quick-commands-changed', load);
-    return () => {
-      alive = false;
-      window.removeEventListener('quick-commands-changed', load);
-    };
-  }, [quickCmdBarVisible]);
-
-  useEffect(() => {
-    if (!cmdInput.trim()) {
-      closeCommandAutocomplete();
-    }
-  }, [closeCommandAutocomplete, cmdInput]);
-
-  useEffect(() => () => {
-    clearCommandAutocompleteDebounce();
-    clearCommandAutocompleteBlurTimer();
-  }, [clearCommandAutocompleteBlurTimer, clearCommandAutocompleteDebounce]);
-
-  useLayoutEffect(() => {
-    syncCommandInputHeight()
-    if (commandAutocomplete.open || commandAutocomplete.loading) {
-      updateCommandAutocompletePopupPosition()
-    }
-  }, [cmdInput, commandAutocomplete.loading, commandAutocomplete.open, syncCommandInputHeight, updateCommandAutocompletePopupPosition])
-
-  useEffect(() => {
-    if (!commandAutocomplete.open && !commandAutocomplete.loading) {
-      return undefined
-    }
-    const handleWindowChange = () => {
-      updateCommandAutocompletePopupPosition()
-    }
-    window.addEventListener('resize', handleWindowChange)
-    window.addEventListener('scroll', handleWindowChange, true)
-    return () => {
-      window.removeEventListener('resize', handleWindowChange)
-      window.removeEventListener('scroll', handleWindowChange, true)
-    }
-  }, [commandAutocomplete.loading, commandAutocomplete.open, updateCommandAutocompletePopupPosition])
-
-  useLayoutEffect(() => {
-    syncCommandInputHeight()
-  }, [cmdInput, syncCommandInputHeight])
-
-  useLayoutEffect(() => {
-    if (!commandAutocompleteKeyboardNavigationRef.current) {
-      return;
-    }
-    if (!commandAutocomplete.open || !commandAutocompleteListRef.current || commandAutocomplete.selectedIndex < 0) {
-      commandAutocompleteKeyboardNavigationRef.current = false;
-      return;
-    }
-    const selectedNode = commandAutocompleteListRef.current.querySelector('[data-command-autocomplete-selected="true"]');
-    if (!selectedNode || typeof selectedNode.scrollIntoView !== 'function') {
-      commandAutocompleteKeyboardNavigationRef.current = false;
-      return;
-    }
-    selectedNode.scrollIntoView({
-      block: 'center',
-      inline: 'nearest',
-    });
-    commandAutocompleteKeyboardNavigationRef.current = false;
-  }, [commandAutocomplete.open, commandAutocomplete.selectedIndex, commandAutocomplete.items.length]);
 
   return (
     <div
@@ -1526,411 +984,66 @@ export default function Terminal({
 
       {/* ── 快捷命令条（输入框上方，横向滚动，点击后弹确认框） ── */}
       {quickCmdBarVisible && (
-        <div
-          className="term-quick-cmd-bar"
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          <div className="term-quick-cmd-list">
-            {quickCmdBarItems.length === 0 ? (
-              <span className="term-quick-cmd-empty">{t('暂无快捷命令, 可在「命令」面板添加')}</span>
-            ) : filteredQuickCmdItems.length === 0 ? (
-              <span className="term-quick-cmd-empty">{t('无匹配结果')}</span>
-            ) : filteredQuickCmdItems.map((item, i) => (
-              <Tiptop key={`${item.name}-${i}`} text={item.groupPath ? `${item.command} · ${item.groupPath}` : item.command}>
-                <button
-                  type="button"
-                  className="term-quick-cmd-btn"
-                  onClick={() => openQuickCmdConfirm(item)}
-                  disabled={!isConnected}
-                  aria-label={item.name}
-                >
-                  {item.name}
-                </button>
-              </Tiptop>
-            ))}
-          </div>
-          {quickCmdBarItems.length > 0 && (
-            <div className="term-quick-cmd-search-area">
-              {quickCmdSearchOpen ? (
-                <div className="term-quick-cmd-search">
-                  <Search size={12} />
-                  <input
-                    name="terminal-quick-cmd-search"
-                    autoComplete="off"
-                    ref={quickCmdSearchRef}
-                    type="text"
-                    value={quickCmdSearch}
-                    onChange={(e) => setQuickCmdSearch(e.target.value)}
-                    onKeyDown={(e) => {
-                      // 有内容先清空，已空再收起：Esc 不会一下丢掉搜索框
-                      if (e.key !== 'Escape') return;
-                      e.stopPropagation();
-                      if (quickCmdSearch) setQuickCmdSearch('');
-                      else closeQuickCmdSearch();
-                    }}
-                    onBlur={() => { if (!quickCmdSearch) closeQuickCmdSearch(); }}
-                    placeholder={t('搜索')}
-                    spellCheck={false}
-                    aria-label={t('搜索命令...')}
-                  />
-                  <button
-                    type="button"
-                    onClick={closeQuickCmdSearch}
-                    aria-label={t('关闭')}
-                  ><X size={11} /></button>
-                </div>
-              ) : (
-                <Tiptop text={t('搜索命令...')}>
-                  <button
-                    type="button"
-                    className="term-quick-cmd-search-btn"
-                    onClick={() => setQuickCmdSearchOpen(true)}
-                    aria-label={t('搜索命令...')}
-                    aria-expanded={false}
-                  ><Search size={13} /></button>
-                </Tiptop>
-              )}
-            </div>
-          )}
-        </div>
+        <TerminalQuickCmdBar
+          quickCmdBarItems={quickCmdBarItems}
+          filteredQuickCmdItems={filteredQuickCmdItems}
+          quickCmdSearch={quickCmdSearch}
+          setQuickCmdSearch={setQuickCmdSearch}
+          quickCmdSearchOpen={quickCmdSearchOpen}
+          setQuickCmdSearchOpen={setQuickCmdSearchOpen}
+          closeQuickCmdSearch={closeQuickCmdSearch}
+          openQuickCmdConfirm={openQuickCmdConfirm}
+          isConnected={isConnected}
+          t={t}
+        />
       )}
 
       {/* ── 底部命令输入栏 ── */}
-      <div className="term-input-bar">
-        {/* 命令输入框 */}
-        <Tiptop
-          text={!cmdInputHintsHidden && !cmdInput && !commandAutocomplete.open ? (
-            <div className="flex flex-col gap-[5px] px-1 py-0.5 text-xs leading-[1.5] text-left min-w-[190px]">
-              <div className="flex items-center gap-[5px] font-semibold text-primary border-b border-line-subtle pb-1 mb-0.5">
-                <span>{t('命令输入快捷键')}</span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-secondary">{t('执行命令')}</span>
-                <kbd className="bg-overlay border border-line rounded-xs px-[5px] py-px text-[10px] font-mono">Enter</kbd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-secondary">{t('换行多行输入')}</span>
-                <kbd className="bg-overlay border border-line rounded-xs px-[5px] py-px text-[10px] font-mono">Shift + Enter</kbd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-secondary">{t('快捷命令列表')}</span>
-                <kbd className="bg-overlay border border-line rounded-xs px-[5px] py-px text-[10px] font-mono">/</kbd>
-              </div>
-              {altOpenHistoryEnabled && (
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-secondary">{t('搜索历史指令')}</span>
-                  <kbd className="bg-overlay border border-line rounded-xs px-[5px] py-px text-[10px] font-mono">Alt</kbd>
-                </div>
-              )}
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-secondary">{t('补全候选项')}</span>
-                <kbd className="bg-overlay border border-line rounded-xs px-[5px] py-px text-[10px] font-mono">Tab</kbd>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-secondary">{t('关闭此提示')}</span>
-                <kbd className="bg-overlay border border-line rounded-xs px-[5px] py-px text-[10px] font-mono">F1</kbd>
-              </div>
-            </div>
-          ) : undefined}
-          placement="top"
-          style={{ flex: 1, display: 'flex', minWidth: 0 }}
-        >
-          <textarea
-            ref={cmdInputRef}
-            className="input term-command-input w-full text-sm py-2 px-[11px] h-9 min-h-9 bg-[var(--term-input-bg)] text-[var(--term-input-color)]"
-            name="terminalCommand"
-            value={cmdInput}
-            rows={1}
-            spellCheck={false}
-            autoComplete="off"
-            onContextMenu={handleInputContextMenu}
-            onChange={e => {
-              const nextValue = e.target.value;
-              setCmdInput(nextValue);
-              if (commandAutocompleteFocusedRef.current) {
-                scheduleCommandAutocompleteSuggestions(nextValue);
-              }
-            }}
-            onFocus={() => {
-              commandAutocompleteFocusedRef.current = true;
-              clearCommandAutocompleteBlurTimer();
-              updateCommandAutocompletePopupPosition();
-              if (cmdInput.trim()) {
-                scheduleCommandAutocompleteSuggestions(cmdInput);
-              }
-            }}
-            onBlur={() => {
-              commandAutocompleteFocusedRef.current = false;
-              clearCommandAutocompleteBlurTimer();
-              commandAutocompleteBlurTimerRef.current = setTimeout(() => {
-                closeCommandAutocomplete();
-              }, 120);
-            }}
-            onScroll={() => {
-              if (commandAutocomplete.open || commandAutocomplete.loading) {
-                updateCommandAutocompletePopupPosition();
-              }
-            }}
-            onSelect={() => {
-              if (commandAutocomplete.open || commandAutocomplete.loading) {
-                updateCommandAutocompletePopupPosition();
-              }
-              if (commandAutocompleteFocusedRef.current && cmdInput.trim()) {
-                scheduleCommandAutocompleteSuggestions(cmdInput);
-              }
-            }}
-            onKeyDown={async (e) => {
-              if (e.key === 'F1' && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
-                e.preventDefault();
-                e.stopPropagation();
-                void toggleCommandInputHints();
-                return;
-              }
-
-              if (e.key === 'Alt' && !e.ctrlKey && !e.shiftKey && !e.metaKey && !e.repeat) {
-                if (!altOpenHistoryEnabled) return;
-                e.preventDefault();
-                e.stopPropagation();
-                closeCommandAutocomplete();
-                openHistoryAndFocusSearch();
-                return;
-              }
-
-              if (commandAutocomplete.open && e.key === 'ArrowDown') {
-                e.preventDefault();
-                if (commandAutocomplete.items.length === 0) {
-                  return;
-                }
-                commandAutocompleteKeyboardNavigationRef.current = true;
-                setCommandAutocomplete((previous) => ({
-                  ...previous,
-                  selectedIndex: previous.selectedIndex < 0
-                    ? 0
-                    : (previous.selectedIndex + 1) % previous.items.length,
-                }));
-                return;
-              }
-
-              if (commandAutocomplete.open && e.key === 'ArrowUp') {
-                e.preventDefault();
-                if (commandAutocomplete.items.length === 0) {
-                  return;
-                }
-                commandAutocompleteKeyboardNavigationRef.current = true;
-                setCommandAutocomplete((previous) => ({
-                  ...previous,
-                  selectedIndex: previous.selectedIndex < 0
-                    ? previous.items.length - 1
-                    : (previous.selectedIndex - 1 + previous.items.length) % previous.items.length,
-                }));
-                return;
-              }
-
-              if (e.key === 'Tab' && cmdInput.trim()) {
-                e.preventDefault();
-                let items = commandAutocomplete.items;
-                if (items.length === 0) {
-                  items = await loadCommandAutocompleteSuggestions(cmdInput);
-                }
-                const selectedIndex = commandAutocomplete.selectedIndex >= 0 ? commandAutocomplete.selectedIndex : 0;
-                const selectedItem = items[selectedIndex] || items[0];
-                if (selectedItem) {
-                  applyCommandAutocompleteItem(selectedItem);
-                }
-                return;
-              }
-
-              if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
-                requestAnimationFrame(() => {
-                  if (commandAutocompleteFocusedRef.current && cmdInputRef.current) {
-                    updateCommandAutocompletePopupPosition();
-                    void loadCommandAutocompleteSuggestions(cmdInputRef.current.value);
-                  }
-                });
-              }
-
-              if (e.key === 'Escape') {
-                if (commandAutocomplete.open) {
-                  e.preventDefault();
-                  closeCommandAutocomplete();
-                  return;
-                }
-                setShowHistory(false);
-              }
-
-              if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-                if (e.shiftKey) {
-                  return;
-                }
-                e.preventDefault();
-                closeCommandAutocomplete();
-                executeCommand();
-              }
-            }}
-            placeholder={(() => {
-              if (cmdInputWidth >= 520) {
-                return altOpenHistoryEnabled
-                  ? `${t('输入命令')} (/ ${t('快捷命令')}) · Shift+Enter ${t('换行')} · Alt → ${t('历史指令')}`
-                  : `${t('输入命令')} (/ ${t('快捷命令')}) · Shift+Enter ${t('换行')}`;
-              }
-              if (cmdInputWidth >= 360) {
-                return `${t('输入命令')} (/ ${t('快捷命令')}) · Shift+Enter ${t('换行')}`;
-              }
-              if (cmdInputWidth >= 240) {
-                return `${t('输入命令')} (/ ${t('快捷命令')})`;
-              }
-              return `${t('输入命令')}...`;
-            })()}
-            style={{
-              fontFamily: 'var(--font-terminal)',
-              borderColor: cmdInput ? 'var(--border-focus)' : 'var(--term-btn-border)',
-            }}
-          />
-        </Tiptop>
-
-        {/* 历史按钮 */}
-        <Tiptop text={t('历史指令')}>
-          <button
-            ref={historyBtnRef}
-            type="button"
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleHistory();
-            }}
-            aria-label={t('历史指令')}
-            className={`term-btn${showHistory ? ' active' : ''}`}
-          >
-            <Clock size={13} />
-            <span>{t('历史')}</span>
-          </button>
-        </Tiptop>
-
-        {/* 快捷命令按钮 */}
-        <Tiptop text={t('快捷命令')}>
-          <button
-            ref={commandsBtnRef}
-            type="button"
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleCommands();
-            }}
-            aria-label={t('快捷命令')}
-            className={`term-btn${showCommands ? ' active' : ''}`}
-          >
-            <span className="inline-flex items-center"><Zap size={13} /></span>
-            <span>{t('命令')}</span>
-          </button>
-        </Tiptop>
-
-        {/* 执行按钮（绿色） */}
-        <Tiptop text={t('执行')}>
-          <button
-            onClick={() => executeCommand()}
-            disabled={!cmdTrimmed || !isConnected}
-            aria-label={t('执行')}
-            className={`term-btn-icon success${(cmdTrimmed && isConnected) ? ' enabled' : ''}`}
-          >
-            <Play size={13} />
-          </button>
-        </Tiptop>
-
-        {/* 复制按钮（蓝色） */}
-        <Tiptop text={t('复制')}>
-          <button
-            onClick={copyCommand}
-            disabled={!cmdTrimmed}
-            aria-label={t('复制')}
-            className={`term-btn-icon accent${cmdTrimmed ? ' enabled' : ''}`}
-          >
-            <Clipboard size={13} />
-          </button>
-        </Tiptop>
-
-        <Tiptop text={multiLineWrapEnabled ? t('函数/变量作用域:命令内部') : t('函数/变量作用域:终端会话')}>
-          <button
-            onClick={toggleMultiLineWrap}
-            aria-label={multiLineWrapEnabled ? t('函数/变量作用域:命令内部') : t('函数/变量作用域:终端会话')}
-            className={`term-btn${multiLineWrapEnabled ? ' active' : ''} p-0 w-9 min-w-9 h-9 min-h-9 justify-center`}
-          >
-            <span className="inline-flex items-center justify-center w-3.5 font-mono text-xs font-bold">
-              &gt;_
-            </span>
-          </button>
-        </Tiptop>
-      </div>
+      <TerminalInputBar
+        cmdInput={cmdInput}
+        setCmdInput={setCmdInput}
+        cmdInputRef={cmdInputRef}
+        cmdInputHintsHidden={cmdInputHintsHidden}
+        commandAutocomplete={commandAutocomplete}
+        setCommandAutocomplete={setCommandAutocomplete}
+        commandAutocompleteFocusedRef={commandAutocompleteFocusedRef}
+        commandAutocompleteKeyboardNavigationRef={commandAutocompleteKeyboardNavigationRef}
+        scheduleCommandAutocompleteSuggestions={scheduleCommandAutocompleteSuggestions}
+        clearCommandAutocompleteBlurTimer={clearCommandAutocompleteBlurTimer}
+        commandAutocompleteBlurTimerRef={commandAutocompleteBlurTimerRef}
+        updateCommandAutocompletePopupPosition={updateCommandAutocompletePopupPosition}
+        closeCommandAutocomplete={closeCommandAutocomplete}
+        loadCommandAutocompleteSuggestions={loadCommandAutocompleteSuggestions}
+        applyCommandAutocompleteItem={applyCommandAutocompleteItem}
+        toggleCommandInputHints={toggleCommandInputHints}
+        altOpenHistoryEnabled={altOpenHistoryEnabled}
+        openHistoryAndFocusSearch={openHistoryAndFocusSearch}
+        handleInputContextMenu={handleInputContextMenu}
+        setShowHistory={setShowHistory}
+        showHistory={showHistory}
+        showCommands={showCommands}
+        historyBtnRef={historyBtnRef}
+        toggleHistory={toggleHistory}
+        toggleCommands={toggleCommands}
+        executeCommand={executeCommand}
+        cmdTrimmed={cmdTrimmed}
+        isConnected={isConnected}
+        copyCommand={copyCommand}
+        multiLineWrapEnabled={multiLineWrapEnabled}
+        toggleMultiLineWrap={toggleMultiLineWrap}
+        t={t}
+      />
       </div>
 
       {(commandAutocomplete.open || commandAutocomplete.loading) && !showHistory && !showCommands && commandAutocompletePopupPos && (
-        <div
-          className="term-popup flex flex-col overflow-hidden"
-          onMouseDown={(e) => e.preventDefault()}
-          style={{
-            position: 'fixed',
-            left: commandAutocompletePopupPos.left,
-            top: commandAutocompletePopupPos.top,
-            width: commandAutocompletePopupPos.width,
-            maxHeight: commandAutocompletePopupPos.maxHeight ?? 260,
-            zIndex: Z.POPUP,
-          }}
-        >
-          <div className="flex items-center justify-between gap-2.5 px-2.5 py-[7px] border-b border-[var(--term-separator)] text-xs text-[var(--term-status-color)]">
-            <span>{t('命令')}</span>
-            <span className="text-[var(--term-muted)] font-mono">Tab</span>
-          </div>
-          <div ref={commandAutocompleteListRef} className="max-h-[220px] overflow-y-auto overflow-x-hidden">
-            {commandAutocomplete.loading && commandAutocomplete.items.length === 0 ? (
-              <div className="px-3 py-2.5 text-sm text-[var(--term-muted)]">
-                {t('正在搜索...')}
-              </div>
-            ) : commandAutocomplete.items.map((item, index) => {
-              const isSelected = index === commandAutocomplete.selectedIndex;
-              return (
-                <button
-                  key={`${item.source}-${item.value}-${index}`}
-                  data-command-autocomplete-selected={isSelected ? 'true' : 'false'}
-                  type="button"
-                  onMouseEnter={() => {
-                    setCommandAutocomplete((previous) => ({
-                      ...previous,
-                      selectedIndex: index,
-                    }));
-                  }}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    applyCommandAutocompleteItem(item);
-                  }}
-                  className={`w-full min-w-0 grid gap-1 px-3 py-[9px] text-left cursor-pointer overflow-hidden border-x-0 border-t-0 ${
-                    index === commandAutocomplete.items.length - 1 && !commandAutocomplete.loading ? '' : 'border-b border-b-[var(--term-separator)]'
-                  } ${isSelected ? 'bg-[rgba(59,130,246,0.12)]' : 'bg-transparent'} text-[var(--term-input-color)]`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="flex-1 min-w-0 text-sm truncate"
-                      style={{ fontFamily: 'var(--font-terminal)' }}
-                    >
-                      {item.label}
-                    </span>
-                    <span className="shrink-0 px-1.5 py-0.5 rounded-full border border-[var(--term-btn-border)] text-[var(--term-status-color)] text-[10px] leading-[1.2]">
-                      {item.badge}
-                    </span>
-                  </div>
-                  {item.description ? (
-                    <span className="text-xs text-[var(--term-muted)] truncate">
-                      {item.description}
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
-            {commandAutocomplete.loading && commandAutocomplete.items.length > 0 ? (
-              <div className="px-3 py-2 text-xs text-[var(--term-muted)] border-t border-[var(--term-separator)]">
-                {t('正在刷新结果...')}
-              </div>
-            ) : null}
-          </div>
-        </div>
+        <TerminalAutocompletePopup
+          commandAutocomplete={commandAutocomplete}
+          setCommandAutocomplete={setCommandAutocomplete}
+          commandAutocompletePopupPos={commandAutocompletePopupPos}
+          commandAutocompleteListRef={commandAutocompleteListRef}
+          applyCommandAutocompleteItem={applyCommandAutocompleteItem}
+          t={t}
+        />
       )}
 
       {/* ── 历史指令弹窗（fixed 定位，不受 overflow:hidden 裁剪） ── */}
@@ -2079,190 +1192,24 @@ export default function Terminal({
       )}
 
       {/* ── 快捷命令二次确认框（ui/Modal；z 层降到 Z.DIALOG） ── */}
-      {pendingQuickCmd && (() => {
-        const params = extractQuickCommandParams(pendingQuickCmd.item.command);
-        const filled = fillQuickCommandParams(pendingQuickCmd.item.command, pendingQuickCmd.values);
-        return (
-          // 遮罩不响应点击：只能用「取消」/ 右上 X / Esc 关闭，避免误点丢失已填参数
-          <Modal
-            open
-            onClose={() => setPendingQuickCmd(null)}
-            title={pendingQuickCmd.item.name || t('发送快捷命令')}
-            icon={<Zap size={16} />}
-            size="sm"
-            zIndex={Z.DIALOG}
-            closeOnOverlay={false}
-            closeOnEscape={false}
-            footer={<>
-              <Button variant="secondary" onClick={() => setPendingQuickCmd(null)}>
-                {t('取消')}
-              </Button>
-              <Button
-                variant="primary"
-                onClick={sendQuickCmdConfirmed}
-                disabled={!isConnected || !filled.trim()}
-                autoFocus={params.length === 0}
-                className="min-w-20"
-              >
-                <Play size={14} className="mr-1.5" />{t('发送')}
-              </Button>
-            </>}
-          >
-            {params.map((p, i) => (
-              <div key={p.num} className="form-group">
-                <label className="form-label" htmlFor={`quick-cmd-param-${p.num}`}>
-                  {p.label || `${t('参数')}${p.num}`}
-                </label>
-                <div className="flex items-center gap-1.5">
-                <input
-                  name={`terminal-quick-cmd-param-${p.num}`}
-                  autoComplete="off"
-                  aria-label={p.label || `${t('参数')}${p.num}`}
-                  id={`quick-cmd-param-${p.num}`}
-                  type="text"
-                  className="input"
-                  value={pendingQuickCmd.values[p.num] || ''}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setPendingQuickCmd((prev) => (prev
-                      ? { ...prev, values: { ...prev.values, [p.num]: value } }
-                      : prev));
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-                      e.preventDefault();
-                      sendQuickCmdConfirmed();
-                    }
-                  }}
-                  autoFocus={i === 0}
-                  placeholder={p.label || `p#${p.num}`}
-                  style={{ flex: 1, minWidth: 0, fontFamily: 'var(--font-mono)' }}
-                />
-                <Button
-                  variant="secondary"
-                  data-terminal-quick-cmd-history="true"
-                  aria-expanded={quickCmdHistoryParam === p.num}
-                  onClick={(event) => {
-                    setQuickCmdHistorySearch('');
-                    if (quickCmdHistoryParam === p.num) {
-                      setQuickCmdHistoryParam(null);
-                      return;
-                    }
-                    const rect = event.currentTarget.getBoundingClientRect();
-                    setQuickCmdHistoryPosition({
-                      left: Math.max(8, Math.min(rect.left, window.innerWidth - 228)),
-                      top: Math.min(rect.bottom + 4, window.innerHeight - 228),
-                    });
-                    setQuickCmdHistoryParam(p.num);
-                  }}
-                >
-                  {t('历史')}
-                </Button>
-                </div>
-                {quickCmdHistoryParam === p.num && createPortal((() => {
-                  const history = quickCmdParamHistory[pendingQuickCmd.item.command]?.[p.num] || [];
-                  const filteredHistory = quickCmdHistorySearch
-                    ? history.filter((value) => value.toLowerCase().includes(quickCmdHistorySearch.toLowerCase()))
-                    : history;
-                  const saveHistory = (values: string[]) => {
-                    const command = pendingQuickCmd.item.command;
-                    const nextHistory = {
-                      ...quickCmdParamHistoryRef.current,
-                      [command]: { ...(quickCmdParamHistoryRef.current[command] || {}), [p.num]: values },
-                    };
-                    quickCmdParamHistoryRef.current = nextHistory;
-                    setQuickCmdParamHistory(nextHistory);
-                    AppGo.SaveParamHistory(JSON.stringify(nextHistory)).catch(() => {});
-                  };
-                  return (
-                    <div
-                      data-terminal-quick-cmd-history="true"
-                      onMouseDown={(event) => event.stopPropagation()}
-                      onClick={(event) => event.stopPropagation()}
-                      className="fixed w-[220px] max-h-[220px] flex flex-col box-border overflow-hidden bg-raised border border-line rounded-md shadow-md"
-                      style={{
-                        left: quickCmdHistoryPosition.left,
-                        top: quickCmdHistoryPosition.top,
-                        zIndex: Z.SUBMENU,
-                      }}
-                    >
-                      <div className="p-1.5 shrink-0 border-b border-line-subtle">
-                        <input
-                          type="text"
-                          className="input"
-                          name={`terminal-quick-cmd-history-search-${p.num}`}
-                          autoComplete="off"
-                          autoFocus
-                          value={quickCmdHistorySearch}
-                          onChange={(event) => setQuickCmdHistorySearch(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Escape') {
-                              setQuickCmdHistoryParam(null);
-                              setQuickCmdHistorySearch('');
-                            }
-                          }}
-                          placeholder={t('搜索历史...')}
-                          aria-label={t('搜索历史...')}
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          saveHistory([]);
-                          setQuickCmdHistoryParam(null);
-                          setQuickCmdHistorySearch('');
-                        }}
-                        className="w-full shrink-0 flex items-center gap-1 min-h-7 py-1 px-2 text-sm font-medium leading-none whitespace-nowrap select-none cursor-pointer outline-none border-0 border-b border-line-subtle rounded-none bg-transparent text-danger transition-colors duration-100 hover:bg-danger-dim"
-                      >
-                        {t('清空列表')}
-                      </button>
-                      <div className="flex-1 overflow-y-auto">
-                        {filteredHistory.length === 0 ? (
-                          <div className="px-3 py-2 text-muted text-sm">
-                            {quickCmdHistorySearch ? t('无匹配结果') : t('暂无历史')}
-                          </div>
-                        ) : filteredHistory.map((value) => (
-                          <div
-                            key={value}
-                            className="flex items-center border-b border-line-subtle"
-                          >
-                            <button
-                              type="button"
-                              title={value}
-                              onClick={() => {
-                                setPendingQuickCmd((prev) => prev ? { ...prev, values: { ...prev.values, [p.num]: value } } : prev);
-                                setQuickCmdHistoryParam(null);
-                                setQuickCmdHistorySearch('');
-                              }}
-                              className="flex-1 min-w-0 flex items-center gap-1 min-h-7 py-1 px-2 text-sm font-medium text-left leading-none select-none cursor-pointer outline-none border-0 rounded-none bg-transparent text-secondary transition-colors duration-100 font-mono overflow-hidden text-ellipsis whitespace-nowrap hover:bg-hover hover:text-primary"
-                            >
-                              {value}
-                            </button>
-                            <button
-                              type="button"
-                              title={t('删除')}
-                              aria-label={t('删除')}
-                              onClick={() => saveHistory(history.filter((entry) => entry !== value))}
-                              className="shrink-0 self-stretch inline-flex items-center justify-center w-[26px] min-w-[26px] p-0 text-sm font-medium leading-none select-none cursor-pointer outline-none border-0 rounded-none bg-transparent text-danger transition-colors duration-100 hover:bg-hover"
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })(), document.body)}
-              </div>
-            ))}
-
-            <div className="form-group">
-              <div className="form-label">{t('将要发送')}</div>
-              <div className="term-quick-cmd-preview">{filled}</div>
-            </div>
-          </Modal>
-        );
-      })()}
+      {pendingQuickCmd && (
+        <TerminalQuickCmdConfirm
+          pendingQuickCmd={pendingQuickCmd}
+          setPendingQuickCmd={setPendingQuickCmd}
+          sendQuickCmdConfirmed={sendQuickCmdConfirmed}
+          isConnected={isConnected}
+          quickCmdHistoryParam={quickCmdHistoryParam}
+          setQuickCmdHistoryParam={setQuickCmdHistoryParam}
+          quickCmdHistoryPosition={quickCmdHistoryPosition}
+          setQuickCmdHistoryPosition={setQuickCmdHistoryPosition}
+          quickCmdHistorySearch={quickCmdHistorySearch}
+          setQuickCmdHistorySearch={setQuickCmdHistorySearch}
+          quickCmdParamHistory={quickCmdParamHistory}
+          setQuickCmdParamHistory={setQuickCmdParamHistory}
+          quickCmdParamHistoryRef={quickCmdParamHistoryRef}
+          t={t}
+        />
+      )}
 
       {/* ── 右键上下文菜单（ui/ContextMenu，items 按 source 组装） ── */}
       {contextMenu && (

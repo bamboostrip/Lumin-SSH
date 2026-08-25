@@ -37,8 +37,10 @@ export interface UseAIProviderSelectorOptions {
   dismissSignal?: number;
 }
 
+const EMPTY_PROVIDERS: AIProviderLike[] = [];
+
 export function useAIProviderSelector({
-  providers = [],
+  providers = EMPTY_PROVIDERS,
   currentProviderId,
   onCurrentProviderChange,
   balanceRefreshSignal = 0,
@@ -46,6 +48,8 @@ export function useAIProviderSelector({
   dismissSignal = 0,
 }: UseAIProviderSelectorOptions) {
   const { t, lang } = useTranslation();
+  const providersRef = useRef(providers);
+  providersRef.current = providers;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const tooltipTimerRef = useRef<number | null>(null);
   const providerLabelRef = useRef<HTMLSpanElement | null>(null);
@@ -238,10 +242,11 @@ export function useAIProviderSelector({
 
   const resolveProviderRegistryState = useCallback(async () => {
     const state = await getAIProviderState();
+    const currentPropsProviders = providersRef.current;
     const hasPersistedProviders = Array.isArray(state.providers) && state.providers.length > 0;
     const nextState = hasPersistedProviders
       ? state
-      : normalizeAIProviderState({ currentProviderId: providers[0]?.id || '', providers });
+      : normalizeAIProviderState({ currentProviderId: currentPropsProviders[0]?.id || '', providers: currentPropsProviders });
     const nextProviders = sortProviders(nextState.providers);
     const nextSelectedId = nextState.currentProviderId || nextProviders[0]?.id || '';
     return {
@@ -249,7 +254,7 @@ export function useAIProviderSelector({
       nextProviders,
       nextSelectedId,
     };
-  }, [providers]);
+  }, []);
 
   const notifySelectionChange = useCallback(async (providerId: string) => {
     if (typeof onCurrentProviderChange === 'function') {
@@ -464,7 +469,8 @@ export function useAIProviderSelector({
         if (cancelled) {
           return;
         }
-        const nextState = normalizeAIProviderState({ currentProviderId: providers[0]?.id || '', providers });
+        const currentPropsProviders = providersRef.current;
+        const nextState = normalizeAIProviderState({ currentProviderId: currentPropsProviders[0]?.id || '', providers: currentPropsProviders });
         const nextProviders = sortProviders(nextState.providers);
         const nextSelectedId = nextState.currentProviderId || nextProviders[0]?.id || '';
         setProviderList(nextProviders);
@@ -475,7 +481,7 @@ export function useAIProviderSelector({
     return () => {
       cancelled = true;
     };
-  }, [persistRegistryState, providers, resolveProviderRegistryState]);
+  }, [persistRegistryState, resolveProviderRegistryState]);
 
   useLayoutEffect(() => {
     updateAdaptiveLabelFontSizes();
@@ -840,6 +846,9 @@ export function useAIProviderSelector({
   }, [editingState.open, modelMenuOpen, open, reasoningMenuOpen]);
 
   useEffect(() => {
+    if (dismissSignal <= 0) {
+      return undefined;
+    }
     let cancelled = false;
     closeTooltip();
     setOpen(false);
@@ -857,12 +866,6 @@ export function useAIProviderSelector({
     setPanelBounds(null);
     setEditingState({ open: false, mode: 'edit', provider: null });
 
-    if (dismissSignal <= 0) {
-      return () => {
-        cancelled = true;
-      };
-    }
-
     resolveProviderRegistryState()
       .then(({ nextProviders, nextSelectedId }) => {
         if (cancelled) {
@@ -875,7 +878,8 @@ export function useAIProviderSelector({
         if (cancelled) {
           return;
         }
-        const nextState = normalizeAIProviderState({ currentProviderId: providers[0]?.id || '', providers });
+        const currentPropsProviders = providersRef.current;
+        const nextState = normalizeAIProviderState({ currentProviderId: currentPropsProviders[0]?.id || '', providers: currentPropsProviders });
         const nextProviders = sortProviders(nextState.providers);
         const nextSelectedId = nextState.currentProviderId || nextProviders[0]?.id || '';
         setProviderList(nextProviders);
@@ -885,7 +889,7 @@ export function useAIProviderSelector({
     return () => {
       cancelled = true;
     };
-  }, [closeTooltip, dismissSignal, providers, resolveProviderRegistryState]);
+  }, [closeTooltip, dismissSignal, resolveProviderRegistryState]);
 
   const handleTriggerMouseEnter = useCallback(() => {
     if (open || editingState.open || modelMenuOpen || reasoningMenuOpen) {

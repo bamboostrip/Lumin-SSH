@@ -47,8 +47,6 @@ export default function useAppOrchestrator() {
   const { toasts, addToast, removeToast, handleToastAction } = useToasts();
   const looseAddToast = addToast as (message: string | Error, type?: string, duration?: number, actions?: unknown[]) => number;
   const looseT = t as (key: string, vars?: Record<string, unknown>) => string;
-
-  const [monitoringEnabled, setMonitoringEnabled] = useState<Record<string, boolean>>({});
   const [probeSnapshots, setProbeSnapshots] = useState<Record<string, ProbeSnapshot>>({});
   const [showQuickCommands, setShowQuickCommands] = useState(false);
   const quickCmdsRef = useRef<QuickCommandsHandle>(null);
@@ -366,10 +364,10 @@ export default function useAppOrchestrator() {
       probePanelCollapsed,
       aiPanelWidth,
       showAIPanel,
-      monitoringEnabled,
+      monitoringEnabled: sessionState.monitoringEnabled,
       probeSnapshots,
       setProbeSnapshots,
-      setMonitoringEnabled,
+      setMonitoringEnabled: sessionState.setMonitoringEnabled,
       setAIPanelVisibility,
       setProbePanelCollapsedPersistent,
     },

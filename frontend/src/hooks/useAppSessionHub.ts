@@ -786,5 +786,7 @@ export default function useAppSessionHub({
     handleTerminalSubTabWheel,
     terminalSubTabScrollStyle,
     connectedSessions,
+    monitoringEnabled,
+    setMonitoringEnabled,
   };
 }

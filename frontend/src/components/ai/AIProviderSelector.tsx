@@ -20,8 +20,10 @@ export interface AIProviderSelectorProps {
   dismissSignal?: number;
 }
 
+const EMPTY_PROVIDERS: AIProviderLike[] = [];
+
 export default function AIProviderSelector({
-  providers = [],
+  providers = EMPTY_PROVIDERS,
   currentProviderId,
   onCurrentProviderChange,
   balanceRefreshSignal = 0,

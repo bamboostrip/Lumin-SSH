@@ -6,11 +6,10 @@ import { APP_BUILD_TIME, APP_VERSION } from '../config.ts';
 import { formatUpdateError, useUpdateChecker, type UpdateCheckResult } from '../hooks/useUpdateChecker.ts';
 import { Keyboard, Cloud, Info, Database, Folder, X, Globe, Palette, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import { Z } from '../constants/zIndex';
-import { EventsOn, WindowSetSize, WindowUnmaximise } from '../../wailsjs/runtime/runtime.js';
+import { WindowSetSize, WindowUnmaximise } from '../../wailsjs/runtime/runtime.js';
 import { deleteProgramFont, getProgramFontAssignmentSnapshot, listProgramFonts, selectAndImportProgramFontFiles, setProgramFontPreference } from '../utils/programFonts.ts';
 import { getAppThemeMode, getThemePackageSettings as getStoredThemePackageSettings, getTerminalTheme, listThemePackages, loadThemePackages, saveThemePackageSettings, type ThemePackage } from '../utils/theme.ts';
 import { loadKeywordRulesFromStorage, saveKeywordRulesToStorage, resetKeywordRulesToDefault, setKeywordRules, type KeywordRule } from '../utils/terminalKeywordHighlight.ts';
-import { syncWithRecoveryPassword } from '../utils/recoveryPasswordSync.ts';
 import { getGlobalAppearanceSettings, notifyGlobalAppearanceChanged } from '../utils/globalAppearance.ts';
 import { Button } from './ui';
 import { cn } from '../utils/cn.ts';
@@ -21,31 +20,11 @@ import AppearanceTab from './settings/AppearanceTab';
 import FileManagerTab from './settings/FileManagerTab';
 import RuntimeEnvironmentTab from './settings/RuntimeEnvironmentTab';
 import ShortcutsTab from './settings/ShortcutsTab';
-import SyncTab from './settings/SyncTab';
+import SyncTabPane from './settings/sync/SyncTabPane';
 import { DEFAULT_RUNTIME_ENVIRONMENT_SETTINGS, getRuntimeEnvironmentSettings, saveRuntimeEnvironmentSettings } from './settings/runtimeEnvironmentBridge.ts';
-import { settingsConfirm, settingsChoice, settingsPrompt } from './settings/settingsDialogs.ts';
-import {
-  PROVIDERS,
-  PROVIDER_LIST,
-  defaultFTPForm,
-  defaultR2Form,
-  defaultSFTPForm,
-  defaultWebdavForm,
-  getBackupFormatLabel,
-  parseConnectionTestPort,
-  type FTPForm,
-  type ProviderFormMap,
-  type ProviderKey,
-  type ProviderStateEntry,
-  type ProviderTestResult,
-  type R2Form,
-  type SFTPForm,
-  type SummaryField,
-  type WebdavForm,
-} from './settings/sync/syncProviders.ts';
+import { settingsConfirm } from './settings/settingsDialogs.ts';
+import { PROVIDER_LIST } from './settings/sync/syncProviders.ts';
 import { SETTINGS_SEARCH_DEFINITIONS, SETTINGS_SECTIONS } from './settings/settingDefinitions';
-import type { config } from '../../wailsjs/go/models.ts';
-import type { LuminDialogPromptOptions } from '../types/luminDialog.js';
 
 const TAB_ICON: Record<string, LucideIcon> = { general: SlidersHorizontal, network: Globe, fileManager: Folder, runtimeEnvironment: Database, appearance: Palette, shortcuts: Keyboard, sync: Cloud, app: Info };
 
@@ -146,32 +125,9 @@ export default function SettingsModal({
   const [pendingSettingsScrollTargetId, setPendingSettingsScrollTargetId] = useState('');
   const [supportsWebviewGpuDisable, setSupportsWebviewGpuDisable] = useState(false);
 
-  // WebDAV state
-  const [webdavForm, setWebdavForm] = useState(defaultWebdavForm);
-  const [isConfigured, setIsConfigured] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [restoring, setRestoring] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [confirmRestore, setConfirmRestore] = useState(false);
-  const [confirmRestoreProvider, setConfirmRestoreProvider] = useState(false);
-  // 备份列表来自 AppGo.List*Backups()（wailsjs 生成类型为 Record<string, any>）
-  const [backupsList, setBackupsList] = useState<Array<Record<string, unknown>>>([]);
-  const [selectedBackup, setSelectedBackup] = useState<string | null>(null);
-  const [restoreProvider, setRestoreProvider] = useState<ProviderKey | null>(null);
-  const [failedRestoreProviders, setFailedRestoreProviders] = useState<ProviderKey[]>([]);
-  const [loadingBackups, setLoadingBackups] = useState(false);
-  const [testResult, setTestResult] = useState<ProviderTestResult>(null); // null | 'ok' | 'fail'
-  const [lastSyncTime, setLastSyncTime] = useState(0);
-  const [syncTombstoneStats, setSyncTombstoneStats] = useState({ connections: 0, credentials: 0 });
-  const [pruningTombstones, setPruningTombstones] = useState(false);
-
   // Recovery password (for cloud backup restore fallback)
-  const [hasRecoveryPassword, setHasRecoveryPassword] = useState(false);
   const [recoveryPasswordEditing, setRecoveryPasswordEditing] = useState(false);
   const [recoveryPasswordInput, setRecoveryPasswordInput] = useState('');
-  const [recoveryPasswordChanging, setRecoveryPasswordChanging] = useState(false);
   // 恢复失败时的密码兜底
   const [restoreWithPassword, setRestoreWithPassword] = useState(false);
   const [restorePasswordInput, setRestorePasswordInput] = useState('');
@@ -184,59 +140,8 @@ export default function SettingsModal({
     onClose();
   }, [onClose]);
 
-  const refreshLastSyncTime = useCallback(async () => {
-    try {
-      const value = Number(await AppGo.GetLastSyncTime());
-      if (Number.isSafeInteger(value) && value > 0) setLastSyncTime(value);
-    } catch (_) {}
-  }, []);
-
-  const refreshSyncTombstoneStats = useCallback(async () => {
-    try {
-      const stats = await AppGo.GetSyncTombstoneStats();
-      const connections = Number(stats?.connections || 0);
-      const credentials = Number(stats?.credentials || 0);
-      setSyncTombstoneStats({
-        connections: Number.isSafeInteger(connections) && connections > 0 ? connections : 0,
-        credentials: Number.isSafeInteger(credentials) && credentials > 0 ? credentials : 0,
-      });
-    } catch (_) {}
-  }, []);
-
-  const refreshSyncMeta = useCallback(async () => {
-    await Promise.all([refreshLastSyncTime(), refreshSyncTombstoneStats()]);
-  }, [refreshLastSyncTime, refreshSyncTombstoneStats]);
-
   // Sync provider selection
   const [syncProvider, setSyncProvider] = useState('webdav');
-
-  // Auto sync mode
-  const [syncMode, setSyncMode] = useState('webdav');
-  const [autoSyncEnabled, setAutoSyncEnabled] = useState(false);
-
-  // R2 state
-  const [r2Form, setR2Form] = useState(defaultR2Form);
-  const [r2Configured, setR2Configured] = useState(false);
-  const [r2Editing, setR2Editing] = useState(false);
-  const [r2Loading, setR2Loading] = useState(false);
-  const [r2Testing, setR2Testing] = useState(false);
-  const [r2TestResult, setR2TestResult] = useState<ProviderTestResult>(null);
-
-  // FTP state
-  const [ftpForm, setFtpForm] = useState<FTPForm>(defaultFTPForm);
-  const [ftpConfigured, setFtpConfigured] = useState(false);
-  const [ftpEditing, setFtpEditing] = useState(false);
-  const [ftpLoading, setFtpLoading] = useState(false);
-  const [ftpTesting, setFtpTesting] = useState(false);
-  const [ftpTestResult, setFtpTestResult] = useState<ProviderTestResult>(null);
-
-  // SFTP state
-  const [sftpForm, setSftpForm] = useState<SFTPForm>(defaultSFTPForm);
-  const [sftpConfigured, setSftpConfigured] = useState(false);
-  const [sftpEditing, setSftpEditing] = useState(false);
-  const [sftpLoading, setSftpLoading] = useState(false);
-  const [sftpTesting, setSftpTesting] = useState(false);
-  const [sftpTestResult, setSftpTestResult] = useState<ProviderTestResult>(null);
 
   // Network/Ping state
   const [pingEnabled, setPingEnabled] = useState(localStorage.getItem('pingEnabled') !== 'false');
@@ -1370,68 +1275,6 @@ export default function SettingsModal({
 
   useEffect(() => {
     let cancelled = false;
-    let hasWebdav = false;
-    let hasR2 = false;
-
-    Promise.all([
-      AppGo.GetWebdavConfig().then((data) => {
-        if (cancelled || !data) return;
-        setWebdavForm((f) => ({
-          ...f,
-          url: data.url || f.url,
-          username: data.username || '',
-          password: data.password || '',
-          remotePath: data.remotePath || f.remotePath,
-          maxBackups: data.maxBackups || '',
-        }));
-        if (data.username) {
-          setIsConfigured(true);
-          hasWebdav = true;
-        }
-      }).catch(() => {}),
-      AppGo.GetR2Config().then((data) => {
-        if (cancelled || !data) return;
-        setR2Form((f) => ({
-          ...f,
-          accessKeyId: data.accessKeyId || '',
-          secretAccessKey: data.secretAccessKey || '',
-          bucket: data.bucket || '',
-          endpoint: data.endpoint || '',
-          region: data.region || f.region,
-          prefix: data.prefix || f.prefix,
-          maxBackups: data.maxBackups || '',
-        }));
-        if (data.bucket && data.endpoint) {
-          setR2Configured(true);
-          hasR2 = true;
-        }
-      }).catch(() => {}),
-    ]).then(() => {
-      if (cancelled) return;
-      // Auto-select provider: R2 if only R2 configured, else WebDAV
-      if (hasR2 && !hasWebdav) {
-        setSyncProvider('r2');
-      }
-    });
-
-    void refreshSyncMeta();
-
-    // Load sync mode
-    AppGo.GetSyncMode()
-      .then((mode) => {
-        if (!cancelled && mode) setSyncMode(mode);
-      })
-      .catch(() => {});
-    Promise.resolve(window?.go?.wailsapp?.App?.GetAutoSyncEnabled?.())
-      .then((enabled) => {
-        if (!cancelled && typeof enabled === 'boolean') setAutoSyncEnabled(enabled);
-      })
-      .catch(() => {});
-
-    // Load recovery password status without exposing plaintext to React.
-    AppGo.HasRecoveryPassword()
-      .then((configured) => { if (!cancelled) setHasRecoveryPassword(!!configured); })
-      .catch(() => {});
 
     Promise.resolve(window?.go?.wailsapp?.App?.GetProgramDirectory?.())
       .then((dir) => {
@@ -1503,22 +1346,8 @@ export default function SettingsModal({
       })
       .catch(() => {});
 
-    // Load FTP config
-    Promise.all([
-      AppGo.GetFTPConfig().then(c => {
-        if (cancelled || !c || !c.host) return;
-        setFtpForm(prev => ({ ...prev, mode: c.mode || 'explicit_tls', host: c.host, port: c.port, username: c.username, password: c.password, remoteDir: c.remoteDir, maxBackups: c.maxBackups || '' }));
-        setFtpConfigured(true);
-      }).catch(() => {}),
-      AppGo.GetSFTPConfig().then(c => {
-        if (cancelled || !c || !c.host) return;
-        setSftpForm(prev => ({ ...prev, host: c.host, port: c.port, username: c.username, password: c.password, authMethod: c.authMethod || 'password', privateKey: c.privateKey || '', remoteDir: c.remoteDir, maxBackups: c.maxBackups || '' }));
-        setSftpConfigured(true);
-      }).catch(() => {}),
-    ]);
-
     return () => { cancelled = true; };
-  }, [refreshSyncMeta]);
+  }, []);
 
   useEffect(() => {
     refreshThemePackages().catch(() => {});
@@ -1538,11 +1367,6 @@ export default function SettingsModal({
       window.removeEventListener('theme-mode-changed', handleThemeRuntimeChanged);
     };
   }, []);
-
-  useEffect(() => {
-    const unbind = EventsOn('sync-completed', () => { void refreshSyncMeta(); });
-    return () => { if (unbind) unbind(); };
-  }, [refreshSyncMeta]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1567,341 +1391,6 @@ export default function SettingsModal({
     window.addEventListener('program-font-settings-changed', handleProgramFontSettingsChange);
     return () => window.removeEventListener('program-font-settings-changed', handleProgramFontSettingsChange);
   }, []);
-
-  const setWebdav = (key: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setWebdavForm((f) => ({ ...f, [key]: e.target.value }));
-  const setR2 = (key: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setR2Form((f) => ({ ...f, [key]: e.target.value }));
-  const setFTP = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setFtpForm((f) => ({ ...f, [field]: e.target.value }));
-  const setSFTP = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setSftpForm((f) => ({ ...f, [field]: e.target.value }));
-
-  // ────────────────────── Cloud Sync Handlers ──────────────────────
-  const providerState: { [K in ProviderKey]: ProviderStateEntry<ProviderFormMap[K]> } = {
-    webdav: { form: webdavForm, setForm: setWebdavForm, configured: isConfigured, setConfigured: setIsConfigured, editing: isEditing, setEditing: setIsEditing, loading, setLoading, testing, setTesting, testResult, setTestResult },
-    r2: { form: r2Form, setForm: setR2Form, configured: r2Configured, setConfigured: setR2Configured, editing: r2Editing, setEditing: setR2Editing, loading: r2Loading, setLoading: setR2Loading, testing: r2Testing, setTesting: setR2Testing, testResult: r2TestResult, setTestResult: setR2TestResult },
-    ftp: { form: ftpForm, setForm: setFtpForm, configured: ftpConfigured, setConfigured: setFtpConfigured, editing: ftpEditing, setEditing: setFtpEditing, loading: ftpLoading, setLoading: setFtpLoading, testing: ftpTesting, setTesting: setFtpTesting, testResult: ftpTestResult, setTestResult: setFtpTestResult },
-    sftp: { form: sftpForm, setForm: setSftpForm, configured: sftpConfigured, setConfigured: setSftpConfigured, editing: sftpEditing, setEditing: setSftpEditing, loading: sftpLoading, setLoading: setSftpLoading, testing: sftpTesting, setTesting: setSftpTesting, testResult: sftpTestResult, setTestResult: setSftpTestResult },
-  };
-  const configuredProviderIds = () => PROVIDER_LIST.map(p => p.id).filter((id): id is ProviderKey => providerState[id as ProviderKey]?.configured);
-
-  function makeTestHandler<K extends ProviderKey>(key: K) {
-    const p = PROVIDERS[key];
-    const s = providerState[key];
-    return async () => {
-      s.setTesting(true);
-      s.setTestResult(null);
-      try {
-        await p.test(s.form);
-        s.setTestResult('ok');
-        addToast(`${p.name} ${$t('连接测试成功 ✓')}`, 'success');
-      } catch (err) {
-        s.setTestResult('fail');
-        addToast(`${p.name} ` + $t('连接测试失败') + `: ${err}`, 'error');
-      } finally {
-        s.setTesting(false);
-      }
-    };
-  }
-
-  function makeSaveHandler<K extends ProviderKey>(key: K, beforeSave?: (form: ProviderFormMap[K]) => Promise<void> | void) {
-    const p = PROVIDERS[key];
-    const s = providerState[key];
-    return async () => {
-      const form = { ...s.form };
-      s.setLoading(true);
-      try {
-        await beforeSave?.(form);
-        await p.save(form);
-        if (p.isConfigured(form)) {
-          s.setConfigured(true);
-          s.setEditing(false);
-          try {
-            const res = await p.sync();
-            await refreshSyncMeta();
-            addToast(`${p.name} ${$t('同步成功！本地')} ${res.localCount} ${$t('个 + 云端')} ${res.remoteCount} ${$t('个 =')} ${res.mergedCount} ${$t('个')}`, 'success');
-            onRestored?.();
-          } catch (_) {
-            try {
-              const data = await p.backup();
-              await refreshSyncMeta();
-              addToast(`${p.name} ${$t('配置已保存，已上传')} ${data.count} ${$t('个服务器')}`, 'success');
-            } catch (e) {
-              addToast(`${p.name} ${$t('配置已保存，但同步失败，可稍后手动上传')}`, 'warning');
-            }
-          }
-        } else {
-          addToast(`${p.name} ${$t('配置已保存')}`, 'success');
-        }
-      } catch (err) {
-        addToast(err instanceof Error ? err : String(err), 'error');
-      } finally {
-        s.setLoading(false);
-      }
-    };
-  }
-
-  const confirmFTPConnection = async (form: FTPForm) => {
-    const port = parseConnectionTestPort(form.port);
-    // ProviderDefinition.test 声明为 Promise<unknown>，此处按 wailsjs 模型收窄
-    const result = await PROVIDERS.ftp.test(form) as config.FTPConnectionTestResult;
-    const certificate = result?.certificateApprovalRequired;
-    if (!certificate) return;
-
-    const names = [...(certificate.dnsNames || []), ...(certificate.ipAddresses || [])].join(', ') || '-';
-    const action = await settingsChoice(
-      [
-        $t('FTPS 服务器证书不受系统信任。'),
-        $t('请先通过可信渠道核对证书指纹，再决定是否接受。'),
-        '',
-        `${$t('主机:')} ${certificate.endpoint}`,
-        `${$t('证书指纹:')} ${certificate.fingerprint}`,
-        `${$t('证书主题:')} ${certificate.subject}`,
-        `${$t('证书签发者:')} ${certificate.issuer}`,
-        `${$t('证书名称:')} ${names}`,
-        `${$t('有效期:')} ${certificate.notBefore} — ${certificate.notAfter}`,
-        ...(certificate.pinnedFingerprint ? ['', `${$t('旧证书指纹:')} ${certificate.pinnedFingerprint}`] : []),
-      ].join('\n'),
-      $t('FTPS 证书确认'),
-      [
-        { label: $t('接受并保存'), value: 1, primary: true },
-        { label: $t('取消'), value: 0, secondary: true },
-      ]
-    );
-    if (action !== 1) throw new Error($t('已取消证书信任'));
-    await AppGo.TestFTPConnectionWithCertificateApproval(
-      form.host, port, form.username, form.password, form.mode,
-      certificate.fingerprint, certificate.pinnedFingerprint || ''
-    );
-  };
-
-  const confirmSFTPConnection = async (form: SFTPForm) => {
-    const port = parseConnectionTestPort(form.port);
-    // ProviderDefinition.test 声明为 Promise<unknown>，此处按 wailsjs 模型收窄
-    const result = await PROVIDERS.sftp.test(form) as config.SFTPConnectionTestResult;
-    const mismatch = result?.hostKeyMismatch;
-    if (!mismatch) return;
-
-    const action = await settingsChoice(
-      [
-        $t('远程主机密钥已变更，可能存在中间人攻击！'),
-        '',
-        `${$t('主机:')} ${form.host}:${port}`,
-        '',
-        $t('新密钥指纹:'),
-        mismatch.newFingerprint,
-        '',
-        $t('旧密钥指纹:'),
-        ...(mismatch.oldFingerprints || []),
-        '',
-        $t('请先通过可信渠道核对新指纹。确认这是预期变更后，才能接受并保存。'),
-      ].join('\n'),
-      $t('SFTP 主机密钥已变更'),
-      [
-        { label: $t('接受并保存'), value: 1, primary: true },
-        { label: $t('取消'), value: 0, secondary: true },
-      ]
-    );
-    if (action !== 1) throw new Error($t('已取消主机密钥更新'));
-    await AppGo.TestSFTPConnectionWithHostKeyApproval(
-      form.host, port, form.username, form.password, form.authMethod, form.privateKey, '', mismatch.newFingerprint
-    );
-  };
-
-  const confirmSecureProviders = async (providerIds: ProviderKey[]) => {
-    for (const providerId of [...new Set(providerIds)]) {
-      if (providerId === 'ftp' && providerState.ftp.configured) {
-        await confirmFTPConnection({ ...providerState.ftp.form });
-      } else if (providerId === 'sftp' && providerState.sftp.configured) {
-        await confirmSFTPConnection({ ...providerState.sftp.form });
-      }
-    }
-  };
-
-  function makeSecureTestHandler<K extends ProviderKey>(key: K, confirmConnection: (form: ProviderFormMap[K]) => Promise<void>) {
-    const p = PROVIDERS[key];
-    const s = providerState[key];
-    return async () => {
-      const form = { ...s.form };
-      s.setTesting(true);
-      s.setTestResult(null);
-      try {
-        await confirmConnection(form);
-        s.setTestResult('ok');
-        addToast(`${p.name} ${$t('连接测试成功 ✓')}`, 'success');
-      } catch (err) {
-        s.setTestResult('fail');
-        addToast(`${p.name} ${$t('连接测试失败')}: ${err}`, 'error');
-      } finally {
-        s.setTesting(false);
-      }
-    };
-  }
-
-  const handleTest = makeTestHandler('webdav');
-  const handleSave = makeSaveHandler('webdav');
-  const handleR2Test = makeTestHandler('r2');
-  const handleR2Save = makeSaveHandler('r2');
-  const handleTestFTP = makeSecureTestHandler('ftp', confirmFTPConnection);
-  const handleSaveFTP = makeSaveHandler('ftp', confirmFTPConnection);
-  const handleTestSFTP = makeSecureTestHandler('sftp', confirmSFTPConnection);
-  const handleSaveSFTP = makeSaveHandler('sftp', confirmSFTPConnection);
-
-  const loadRestoreBackups = async (providerId: string) => {
-    // PROVIDERS 仅含 4 个 key；运行期 providerId 均来自 configuredProviderIds()/syncMode 选项
-    const providerKey = providerId as ProviderKey;
-    setLoadingBackups(true);
-    try {
-      const p = PROVIDERS[providerKey];
-      await confirmSecureProviders([providerKey]);
-      const list = await p.list();
-      if (!list || list.length === 0) {
-        setFailedRestoreProviders(prev => [...new Set([...prev, providerKey])]);
-        addToast($t('云端未找到任何备份文件') + '，' + $t('请重新选择'), 'error');
-        if (syncMode === 'all') setConfirmRestoreProvider(true);
-        return;
-      }
-      list.sort((a, b) => new Date(b.time as string | number).getTime() - new Date(a.time as string | number).getTime());
-      setRestoreProvider(providerKey);
-      setBackupsList(list);
-      setSelectedBackup(list[0].name as string);
-      setConfirmRestoreProvider(false);
-      setConfirmRestore(true);
-    } catch (err) {
-      setFailedRestoreProviders(prev => [...new Set([...prev, providerKey])]);
-      addToast($t('获取备份列表失败') + ': ' + String(err) + '，' + $t('请重新选择'), 'error');
-      if (syncMode === 'all') setConfirmRestoreProvider(true);
-    } finally {
-      setLoadingBackups(false);
-    }
-  };
-
-  const handleRestore = async () => {
-    setFailedRestoreProviders([]);
-    if (syncMode === 'all') {
-      const availableProviders = configuredProviderIds();
-      if (availableProviders.length === 1) {
-        await loadRestoreBackups(availableProviders[0]);
-      } else {
-        setConfirmRestoreProvider(true);
-      }
-    } else {
-      await loadRestoreBackups(syncMode);
-    }
-  };
-
-  const doRestore = async (password?: string) => {
-    if (!selectedBackup || !restoreProvider) return;
-    setRestoring(true);
-    try {
-      const p = PROVIDERS[restoreProvider];
-      await confirmSecureProviders(syncMode === 'all' ? configuredProviderIds() : [restoreProvider]);
-      if (password && p.restoreWithPassword) {
-        await p.restoreWithPassword(selectedBackup, password);
-      } else {
-        await p.restore(selectedBackup);
-      }
-      if (syncMode === 'all') {
-        await AppGo.SyncAllProviders();
-      } else {
-        await p.sync();
-      }
-      await refreshSyncMeta();
-      addToast($t('恢复成功'), 'success');
-      onRestored?.();
-      setConfirmRestore(false);
-      setRestoreWithPassword(false);
-      setRestorePasswordInput('');
-    } catch (err) {
-      setFailedRestoreProviders(prev => [...new Set([...prev, restoreProvider])]);
-      const errStr = String(err);
-      if (errStr.includes('解密失败') && !password) {
-        // 解密失败 → 弹密码输入框兜底
-        setConfirmRestore(false);
-        setRestoreWithPassword(true);
-      } else {
-        addToast($t('恢复失败') + `: ${err}，` + $t('请重新选择'), 'error');
-        setConfirmRestore(false);
-        setRestoreWithPassword(false);
-        if (syncMode === 'all') setConfirmRestoreProvider(true);
-      }
-    } finally {
-      setRestoring(false);
-    }
-  };
-
-  const doRestoreWithPassword = async () => {
-    await doRestore(restorePasswordInput);
-  };
-
-  const handleSync = async () => {
-    setSyncing(true);
-    try {
-      // syncMode 非 'all' 时必为 4 个 provider key 之一
-      await confirmSecureProviders(syncMode === 'all' ? configuredProviderIds() : [syncMode as ProviderKey]);
-
-      // 先读目标云，再决定是否应用本地删除墓碑（不是点切换模式就弹）
-      try {
-        const preview = await AppGo.PreviewTombstoneConflicts();
-        const delConns = preview?.wouldDeleteConnections || [];
-        const delCreds = preview?.wouldDeleteCredentials || [];
-        if (delConns.length > 0 || delCreds.length > 0) {
-          const connNames = delConns.map((x) => x.name || x.host || x.id).filter(Boolean);
-          const credNames = delCreds.map((x) => x.name || x.id).filter(Boolean);
-          const lines = [];
-          if (connNames.length) lines.push(`${$t('服务器')}：${connNames.slice(0, 8).join('、')}${connNames.length > 8 ? '…' : ''}`);
-          if (credNames.length) lines.push(`${$t('凭据')}：${credNames.slice(0, 8).join('、')}${credNames.length > 8 ? '…' : ''}`);
-          const body = `${$t('目标云上仍存在以下项，本地删除记录同步后将删除它们：')}\n${lines.join('\n')}\n\n${$t('请选择：删除它们，或保留它们并与本地合并。')}`;
-          const action = await settingsChoice(
-            body,
-            $t('同步删除确认'),
-            [
-              { label: $t('保留并合并'), value: 'keep', primary: true },
-              { label: $t('删除'), value: 'apply', secondary: true },
-              { label: $t('取消'), value: 'cancel', secondary: true },
-            ],
-          );
-          if (action === 'cancel' || action == null) return;
-          if (action === 'keep') {
-            await AppGo.ClearTombstoneConflicts(
-              delConns.map((x) => x.id).filter(Boolean),
-              delCreds.map((x) => x.id).filter(Boolean),
-            );
-          }
-        }
-      } catch (previewErr) {
-        const cont = await settingsChoice(
-          `${$t('无法检查删除冲突，仍继续同步可能按本地删除记录静默删除目标云上的项。')}\n${previewErr}`,
-          $t('预检失败'),
-          [
-            { label: $t('仍继续同步'), value: 'continue', primary: true },
-            { label: $t('取消'), value: 'cancel', secondary: true },
-          ],
-        );
-        if (cont !== 'continue') return;
-      }
-
-      const sync = syncMode === 'all'
-        ? () => AppGo.SyncAllProviders()
-        : () => (PROVIDERS[syncMode as ProviderKey] || PROVIDERS.webdav).sync();
-      const { result: res, cancelled } = await syncWithRecoveryPassword({
-        sync,
-        retry: (password) => AppGo.SyncWithRecoveryPassword(password),
-        // 保持原 spread 语义（按位置透传）；无 checkbox 场景恒为 string | null，非 string 视作取消
-        prompt: async (title, placeholder, message, okLabel, options) => {
-          const value = await settingsPrompt(title, placeholder, message, okLabel, options as LuminDialogPromptOptions);
-          return typeof value === 'string' ? value : null;
-        },
-        // $t 是严格 key 签名（I18nKey），此处逃生为宽松 (key: string)
-        t: (key: string) => $t(key as I18nKey),
-      });
-      if (cancelled || !res) return;
-      await refreshSyncMeta();
-      addToast(`${$t('合并同步成功！本地')} ${res.localCount} ${$t('个 + 云端')} ${res.remoteCount} ${$t('个 =')} ${res.mergedCount} ${$t('个')}`, 'success');
-      onRestored?.();
-    } catch (err) {
-      addToast($t('合并同步失败') + ': ' + err, 'error');
-    } finally {
-      setSyncing(false);
-    }
-  };
 
   // ── Tab prop wrappers ──
   const handleTogglePingEnabled = () => {
@@ -1933,72 +1422,7 @@ export default function SettingsModal({
       }
     }
   };
-  const handleSyncModeChange = async (mode: string) => { setSyncMode(mode); try { await AppGo.SetSyncMode(mode); } catch (_) {} };
-  const handleAutoSyncEnabledChange = async (enabled: boolean) => { setAutoSyncEnabled(enabled); try { await AppGo.SetAutoSyncEnabled(enabled); } catch (_) {} };
-  const handlePruneSyncTombstones = async (days: number) => {
-    const total = (syncTombstoneStats?.connections || 0) + (syncTombstoneStats?.credentials || 0);
-    if (total <= 0) return;
-    const dayNum = Number(days);
-    const label = dayNum > 0 ? `${$t('清理超过')} ${dayNum} ${$t('天的删除记录')}` : $t('清理全部删除记录');
-    const action = await settingsChoice(
-      $t('将清理本地并上传到当前同步模式对应的云端，避免下次同步再次合并回来。确定？'),
-      label,
-      [
-        { label: $t('清理删除记录'), value: 'clear', primary: true },
-        { label: $t('取消'), value: 'cancel', secondary: true },
-      ]
-    );
-    if (action !== 'clear') return;
-    setPruningTombstones(true);
-    try {
-      const res = await AppGo.PruneSyncTombstones(Number.isFinite(dayNum) ? dayNum : 0);
-      await refreshSyncMeta();
-      const removed = Number(res?.removedConnections || 0) + Number(res?.removedCredentials || 0);
-      if (removed <= 0) {
-        addToast($t('没有可清理的删除记录'), 'info');
-      } else {
-        addToast(`${$t('已清理删除记录')} ${removed}${$t('条')}`, 'success');
-      }
-    } catch (e) {
-      addToast($t('清理删除记录失败') + ': ' + e, 'error');
-    } finally {
-      setPruningTombstones(false);
-    }
-  };
 
-  const changeRecoveryPassword = async (password: string) => {
-    setRecoveryPasswordChanging(true);
-    try {
-      try {
-        await AppGo.ChangeRecoveryPassword(password);
-      } catch (e) {
-        if (!String(e).includes('RECOVERY_PASSWORD_RESET_REQUIRED')) throw e;
-        const action = await settingsChoice(
-          $t('旧密码和新密码都无法解密云端备份。继续将不读取或合并云端数据，而是以本机当前数据覆盖所有已配置的云端同步目标。旧备份会保留，但其他设备尚未同步到本机的数据可能丢失。'),
-          $t('确认强制重置恢复密码'),
-          [
-            { label: $t('以本机数据覆盖云端'), value: 'reset', primary: true },
-            { label: $t('取消'), value: 'cancel', secondary: true },
-          ]
-        );
-        if (action !== 'reset') return;
-        await AppGo.ResetRecoveryPassword(password);
-      }
-      await refreshSyncMeta();
-      setHasRecoveryPassword(!!password.trim());
-      setRecoveryPasswordEditing(false);
-      setRecoveryPasswordInput('');
-      addToast(password.trim() ? $t('恢复密码已保存') : $t('恢复密码已清除'), 'success');
-    } catch (e) {
-      addToast((password.trim() ? $t('保存恢复密码失败') : $t('清除恢复密码失败')) + ': ' + e, 'error');
-    } finally {
-      setRecoveryPasswordChanging(false);
-    }
-  };
-  const handleSaveRecoveryPassword = () => changeRecoveryPassword(recoveryPasswordInput);
-  const handleClearRecoveryPassword = () => changeRecoveryPassword('');
-
-  const isAnyConfigured = isConfigured || r2Configured || ftpConfigured || sftpConfigured;
 
   return (
     <div
@@ -2305,183 +1729,27 @@ export default function SettingsModal({
               />
             )}
 
-            {activeTab === 'sync' && (
-              <SyncTab
-                syncProvider={syncProvider}
-                onSyncProviderChange={setSyncProvider}
-                syncMode={syncMode}
-                onSyncModeChange={handleSyncModeChange}
-                autoSyncEnabled={autoSyncEnabled}
-                onAutoSyncEnabledChange={handleAutoSyncEnabledChange}
-                providers={PROVIDERS}
-                providerList={PROVIDER_LIST}
-                webdavForm={webdavForm}
-                setWebdavField={setWebdav}
-                webdavConfigured={isConfigured}
-                webdavEditing={isEditing}
-                setWebdavEditing={setIsEditing}
-                webdavLoading={loading}
-                webdavTesting={testing}
-                webdavTestResult={testResult}
-                onWebdavTest={handleTest}
-                onWebdavSave={handleSave}
-                r2Form={r2Form}
-                setR2Field={setR2}
-                r2Configured={r2Configured}
-                r2Editing={r2Editing}
-                setR2Editing={setR2Editing}
-                r2Loading={r2Loading}
-                r2Testing={r2Testing}
-                r2TestResult={r2TestResult}
-                onR2Test={handleR2Test}
-                onR2Save={handleR2Save}
-                ftpForm={ftpForm}
-                setFTPField={setFTP}
-                ftpConfigured={ftpConfigured}
-                ftpEditing={ftpEditing}
-                setFtpEditing={setFtpEditing}
-                ftpLoading={ftpLoading}
-                ftpTesting={ftpTesting}
-                ftpTestResult={ftpTestResult}
-                onTestFTP={handleTestFTP}
-                onSaveFTP={handleSaveFTP}
-                sftpForm={sftpForm}
-                setSFTPField={setSFTP}
-                sftpConfigured={sftpConfigured}
-                sftpEditing={sftpEditing}
-                setSftpEditing={setSftpEditing}
-                sftpLoading={sftpLoading}
-                sftpTesting={sftpTesting}
-                sftpTestResult={sftpTestResult}
-                onTestSFTP={handleTestSFTP}
-                onSaveSFTP={handleSaveSFTP}
-                // SyncTab 期待宽松 ProviderForm（Record<string, string|number>），Dispatch 逆变不兼容需桥接
-                setSftpForm={setSftpForm as React.Dispatch<React.SetStateAction<Record<string, string | number>>>}
-                lastSyncTime={lastSyncTime}
-                syncTombstoneStats={syncTombstoneStats}
-                onPruneSyncTombstones={handlePruneSyncTombstones}
-                pruningTombstones={pruningTombstones}
-                syncing={syncing}
-                onSync={handleSync}
-                loadingBackups={loadingBackups}
-                restoring={restoring}
-                onRestore={handleRestore}
-                isAnyConfigured={isConfigured || r2Configured || ftpConfigured || sftpConfigured}
-                addToast={addToast}
-                hasRecoveryPassword={hasRecoveryPassword}
-                recoveryPasswordEditing={recoveryPasswordEditing}
-                setRecoveryPasswordEditing={setRecoveryPasswordEditing}
-                recoveryPasswordInput={recoveryPasswordInput}
-                setRecoveryPasswordInput={setRecoveryPasswordInput}
-                recoveryPasswordChanging={recoveryPasswordChanging}
-                onSaveRecoveryPassword={handleSaveRecoveryPassword}
-                onClearRecoveryPassword={handleClearRecoveryPassword}
-              />
-            )}
-
+            <SyncTabPane
+              activeTab={activeTab}
+              addToast={addToast}
+              onRestored={onRestored}
+              syncProvider={syncProvider}
+              setSyncProvider={setSyncProvider}
+              recoveryPasswordEditing={recoveryPasswordEditing}
+              setRecoveryPasswordEditing={setRecoveryPasswordEditing}
+              recoveryPasswordInput={recoveryPasswordInput}
+              setRecoveryPasswordInput={setRecoveryPasswordInput}
+              restoreWithPassword={restoreWithPassword}
+              setRestoreWithPassword={setRestoreWithPassword}
+              restorePasswordInput={restorePasswordInput}
+              setRestorePasswordInput={setRestorePasswordInput}
+            />
 
           </div>
         </div>
 
       </div>
-      {/* 选择恢复来源 */}
-      {confirmRestoreProvider && (() => {
-        const availableProviders = configuredProviderIds().filter(id => !failedRestoreProviders.includes(id));
-        return (
-          <div className="fixed inset-0 flex items-center justify-center bg-black/[0.42] animate-[fadeIn_0.12s_ease]" style={{ zIndex: Z.MODAL }}>
-            <div className="relative overflow-hidden w-[420px] p-6 bg-canvas border border-line rounded-sm animate-[scaleIn_0.18s_ease]">
-              <div className="text-[18px] text-primary mb-4 font-bold">{$t('选择恢复来源')}</div>
-              <div className="flex flex-col gap-2.5">
-                {availableProviders.map(id => (
-                  <Button key={id} variant="secondary" disabled={loadingBackups} onClick={() => loadRestoreBackups(id)}>
-                    {PROVIDER_LIST.find(p => p.id === id)?.label || id}
-                  </Button>
-                ))}
-                {availableProviders.length === 0 && <div className="text-secondary">{$t('没有可用的云端来源')}</div>}
-              </div>
-              <div className="flex justify-end gap-3 mt-5">
-                <Button variant="secondary" disabled={loadingBackups} onClick={() => setConfirmRestoreProvider(false)}>{$t('取消')}</Button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* 确认恢复弹窗（含列表选择） */}
-      {confirmRestore && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black/[0.42] animate-[fadeIn_0.12s_ease]" style={{ zIndex: Z.MODAL }}>
-          <div className="relative overflow-hidden w-[450px] p-6 bg-canvas border border-line rounded-sm animate-[scaleIn_0.18s_ease]">
-            <div className="text-[18px] text-primary mb-4 font-bold">{$t('选择要恢复的云端备份')}</div>
-            <div className="text-secondary mb-4 text-md">
-              {$t('此操作将覆盖当前所有的本地服务器配置，且无法撤销。请选择要恢复的备份时间：')}
-            </div>
-
-            <div className="max-h-[200px] overflow-y-auto mb-5 bg-canvas rounded-md p-2">
-              {backupsList.map(bk => (
-                <div
-                  key={bk.name as string}
-                  onClick={() => setSelectedBackup(bk.name as string)}
-                  className={cn(
-                    'py-2.5 px-3 rounded-sm cursor-pointer flex justify-between items-center border mb-1 transition-all duration-200',
-                    selectedBackup === (bk.name as string) ? 'bg-[rgba(16,185,129,0.10)] border-accent' : 'bg-transparent border-transparent',
-                  )}
-                >
-                  <div className={selectedBackup === bk.name ? 'text-accent' : 'text-primary'}>
-                    {bk.time as string}
-                  </div>
-                  <div className="flex items-center gap-2 text-secondary text-sm">
-                    <span
-                      className={cn(
-                        'py-[2px] px-1.5 rounded-full border border-line',
-                        getBackupFormatLabel(bk.name as string) === 'LUMIN2' ? 'text-success' : 'text-secondary',
-                      )}
-                    >
-                      {getBackupFormatLabel(bk.name as string)}
-                    </span>
-                    <span>{((bk.size as number) / 1024).toFixed(1)} KB</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex gap-3 justify-end">
-              <Button variant="secondary" className="px-5" onClick={() => setConfirmRestore(false)}>{$t('取消')}</Button>
-              <Button variant="danger" className="px-5" onClick={() => doRestore()} disabled={!selectedBackup || restoring}>
-                {restoring ? $t('恢复中...') : $t('确定恢复')}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 恢复失败 → 输入密码重试 */}
-      {restoreWithPassword && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black/[0.42] animate-[fadeIn_0.12s_ease]" style={{ zIndex: Z.MODAL }}>
-          <div className="relative overflow-hidden w-[420px] p-6 bg-canvas border border-line rounded-sm animate-[scaleIn_0.18s_ease]">
-            <div className="text-[18px] text-primary mb-3 font-bold">{$t('输入恢复密码')}</div>
-            <div className="text-secondary mb-4 text-base leading-[1.6]">
-              {$t('常规密钥解密失败。如果此备份是用恢复密码加密的，请输入恢复密码重试：')}
-            </div>
-            <input
-              id="settings-modal-restore-password"
-              name="settings-modal-restore-password"
-              autoComplete="off"
-              className="input w-full mb-4"
-              type="password"
-              placeholder={$t('恢复密码')}
-              value={restorePasswordInput}
-              onChange={(e) => setRestorePasswordInput(e.target.value)}
-              autoFocus
-            />
-            <div className="flex gap-3 justify-end">
-              <Button variant="secondary" onClick={() => { setRestoreWithPassword(false); setRestorePasswordInput(''); }}>{$t('取消')}</Button>
-              <Button variant="primary" onClick={doRestoreWithPassword} disabled={!restorePasswordInput.trim() || restoring}>
-                {restoring ? $t('恢复中...') : $t('用密码恢复')}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
+

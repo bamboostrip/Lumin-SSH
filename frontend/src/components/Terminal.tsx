@@ -27,6 +27,8 @@ import Tiptop from './Tiptop.tsx';
 import { useTerminalTimestamps } from './terminal/useTerminalTimestamps.ts';
 import { useTerminalLinkUnderlines } from './terminal/useTerminalLinkUnderlines.ts';
 import { useTerminalGutter } from './terminal/useTerminalGutter.ts';
+import { useTerminalTheme } from './terminal/useTerminalTheme.ts';
+import { useTerminalSettingsEvents } from './terminal/useTerminalSettingsEvents.ts';
 import type { TerminalProps } from './terminal/terminalTypes.ts';
 import { ToggleSwitch } from './settings/SharedComponents.tsx';
 import type { QuickCommandsHandle } from './QuickCommands.tsx';
@@ -39,7 +41,6 @@ import { Z } from '../constants/zIndex';
 import { getTerminalTheme, getAppThemeMode, isDarkTerminalSurface, getSolidTerminalBackground, type TerminalTheme } from '../utils/theme.ts';
 import { getResolvedProgramFontPreferences } from '../utils/programFonts.ts';
 import { highlightKeywords, loadKeywordRulesFromStorage, setKeywordRules, createHighlightState, type KeywordRule } from '../utils/terminalKeywordHighlight.ts';
-
 
 // 启动时从 localStorage 加载自定义关键字规则（模块级，仅执行一次）
 loadKeywordRulesFromStorage();
@@ -72,7 +73,6 @@ export default function Terminal({
   useEffect(() => { statusRef.current = status; }, [status]);
   const serverIdRef    = useRef(serverId);
   serverIdRef.current  = serverId;
-  const [themeToggle, setThemeToggle]     = useState(0); // 用于强制重渲染（浅色/深色模式切换）
   const [contextMenu, setContextMenu]         = useState<{ x: number; y: number; source: 'terminal' | 'input' } | null>(null);
   const [linkMenu, setLinkMenu]               = useState<{ x: number; y: number; url: string } | null>(null); // { x, y, url }
   const [linkToast, setLinkToast]             = useState('');
@@ -257,10 +257,31 @@ export default function Terminal({
   });
   const smartWriteRef = useRef<((data: string | Uint8Array) => void) | null>(null);
 
-  // ponytail: getTerminalTheme() 每次渲染调用 30+ 次，缓存为 1 次
-  const T = useMemo(() => getTerminalTheme(), [themeToggle]);
-
-
+  // ── 主题/壁纸与设置事件监听（terminal/ 目录同名 hook） ──
+  const { T, themeToggle, bgInfo } = useTerminalTheme({ termRef, wrapperRef });
+  useTerminalSettingsEvents({
+    termRef,
+    fitAddonRef,
+    gutterRef,
+    shortcutsRef,
+    localEchoRef,
+    timestampsEnabledRef,
+    commandBlocksEnabledRef,
+    terminalRightClickPasteOnEmptyRef,
+    terminalRightClickPasteModeRef,
+    terminalLeftClickCopyOnSelectionRef,
+    terminalLeftClickCopyOnSelectionModeRef,
+    keywordHighlightEnabledRef,
+    hlDecoderRef,
+    hlStateRef,
+    setTimestampsVisible,
+    setCommandBlocksVisible,
+    setTerminalDefaultMouseCursorEnabled,
+    setAltOpenHistoryEnabled,
+    cbExpandAllCollapsed,
+    cbClear,
+    scheduleGutterSync,
+  });
 
   // ── 初始化 xterm + WebSocket 终端通道 ────────────────────────────────
   // xterm.js 通过 AttachAddon + WebSocket 直接连到本地 Go WebSocket 服务器
@@ -747,7 +768,7 @@ export default function Terminal({
 
         let i = 0;
         const parts = [];
-        
+
         while (i < text.length) {
           // 1. 强大且健壮的 ANSI 转义序列跳过逻辑 (CSI、OSC 及其他单字符转义)
           if (text[i] === '\x1b') {
@@ -799,13 +820,13 @@ export default function Terminal({
               continue;
             }
           }
-          
+
           // 真正的冲突（服务器发来了与预测不符的可打印字符），视为脱轨，清空队列并接受服务器输出
           pendingEchoes.length = 0;
           parts.push(text[i]);
           i++;
         }
-        
+
         // 写回经过滤的文本
         const newText = parts.join('');
         smartWrite(newText);
@@ -1098,203 +1119,6 @@ export default function Terminal({
     });
     return () => cancelAnimationFrame(raf);
   }, [isActive, sessionId]);
-
-  // ── 背景管理与刷新 ─────────────────────────────────────────────────
-  const [bgInfo, setBgInfo] = useState({
-    image: localStorage.getItem('termBgImage') || '',
-    opacity: parseFloat(localStorage.getItem('termBgOpacity') || '0.15'),
-    globalActive: Boolean(localStorage.getItem('globalBgImage')),
-  });
-
-  useEffect(() => {
-    const handleBgChange = () => {
-      setBgInfo({
-        image: localStorage.getItem('termBgImage') || '',
-        opacity: parseFloat(localStorage.getItem('termBgOpacity') || '0.15'),
-        globalActive: Boolean(localStorage.getItem('globalBgImage')),
-      });
-    };
-    window.addEventListener('terminal-bg-changed', handleBgChange);
-    window.addEventListener('global-appearance-changed', handleBgChange);
-    return () => {
-      window.removeEventListener('terminal-bg-changed', handleBgChange);
-      window.removeEventListener('global-appearance-changed', handleBgChange);
-    };
-  }, []);
-
-  // 监听终端颜色主题切换，即时更新 xterm 主题
-  // 同时监听 App 浅色/深色模式切换
-  useEffect(() => {
-    const handleThemeChange = () => {
-      // setThemeToggle 触发重渲染，让 useMemo 重新计算 T（从 localStorage 读取最新主题）
-      setThemeToggle(v => v + 1);
-    };
-    const handleModeChange = () => {
-      // 同上，触发重渲染以更新 xterm 主题 + 容器颜色
-      setThemeToggle(v => v + 1);
-    };
-    window.addEventListener('terminal-theme-changed', handleThemeChange);
-    window.addEventListener('theme-mode-changed', handleModeChange);
-    return () => {
-      window.removeEventListener('terminal-theme-changed', handleThemeChange);
-      window.removeEventListener('theme-mode-changed', handleModeChange);
-    };
-  }, []);
-
-  // T 更新后同步 xterm 主题 + 容器 CSS 变量
-  useEffect(() => {
-    const term = termRef.current;
-    if (term) {
-      // xterm 背景用不透明容器底色（反转显示需要真实背景色），壁纸/色调层叠在内容上方
-      const xtermTheme = { ...T.xterm };
-      xtermTheme.background = getSolidTerminalBackground(T);
-      const darkTerm = isDarkTerminalSurface(T);
-      // 搜索/选区当前匹配常走 selectionForeground：深色终端强制白字，浅色终端强制深字
-      xtermTheme.selectionForeground = darkTerm ? '#ffffff' : '#0f172a';
-      term.options.theme = xtermTheme;
-      // ponytail: 对比度按终端底算。深色终端也关自动反差——搜索高亮底会参与计算，
-      // 否则白字会被压成黑字（浅色 UI + 复制深色终端时尤其明显）
-      term.options.minimumContrastRatio = 0;
-      // 强制重绘已有缓冲，否则 ANSI 色板切换后旧行不更新
-      try {
-        const rows = Math.max(0, (term.rows || 1) - 1);
-        term.refresh(0, rows);
-      } catch (_) {}
-    }
-    // ponytail: container 颜色走 CSS 变量，JSX 中不再直接引用 T.container
-    const el = wrapperRef.current;
-    if (el) {
-      const c = T.container;
-      // 主题包容器字段为可选，缺失时以空串兜底（原 .jsx 传 undefined 会被 setProperty 强转为 "undefined"）
-      const cssVar = (value: string | undefined) => value || '';
-      el.style.setProperty('--term-container-bg', cssVar(c.containerBg));
-      el.style.setProperty('--term-tint', c.tint || 'transparent');
-      el.style.setProperty('--term-status-bg', cssVar(c.statusBarBg));
-      el.style.setProperty('--term-status-border', cssVar(c.statusBarBorder));
-      el.style.setProperty('--term-status-color', cssVar(c.statusBarColor));
-      el.style.setProperty('--term-server-color', cssVar(c.serverNameColor));
-      el.style.setProperty('--term-input-bar-bg', cssVar(c.inputBarBg));
-      el.style.setProperty('--term-input-bar-border', cssVar(c.inputBarBorder));
-      el.style.setProperty('--term-input-bg', cssVar(c.inputBg));
-      el.style.setProperty('--term-input-color', cssVar(c.inputColor));
-      el.style.setProperty('--term-input-placeholder', c.inputPlaceholder || c.mutedColor || '');
-      el.style.setProperty('--term-btn-border', cssVar(c.btnBorder));
-      el.style.setProperty('--term-separator', cssVar(c.separator));
-      el.style.setProperty('--term-muted', cssVar(c.mutedColor));
-      el.style.setProperty('--term-context-bg', cssVar(c.contextBg));
-      el.style.setProperty('--term-context-border', cssVar(c.contextBorder));
-      el.style.setProperty('--term-context-shadow', cssVar(c.contextShadow));
-    }
-  }, [T]);
-
-  // 监听快捷键 / 本地回显 / 字体变更，同步更新 ref 缓存（保持设置即时生效）
-  useEffect(() => {
-    const handleShortcutsChange = (e: Event) => {
-      shortcutsRef.current = (e as CustomEvent<Record<string, string>>).detail;
-    };
-    const handleLocalEchoChange = (e: Event) => {
-      localEchoRef.current = (e as CustomEvent<unknown>).detail !== false;
-    };
-    const handleTimestampsChange = (e: Event) => {
-      const detail = (e as CustomEvent<unknown>).detail;
-      timestampsEnabledRef.current = detail !== false;
-      setTimestampsVisible(detail !== false);
-      if (!timestampsEnabledRef.current && !commandBlocksEnabledRef.current) {
-        if (gutterRef.current) gutterRef.current.innerHTML = '';
-      } else {
-        scheduleGutterSync();
-      }
-    };
-    const handleCommandBlocksChange = (e: Event) => {
-      const enabled = (e as CustomEvent<unknown>).detail !== false;
-      commandBlocksEnabledRef.current = enabled;
-      setCommandBlocksVisible(enabled);
-      if (!enabled) {
-        // ponytail: 关开关前先展开，否则 buffer 里还留着 ⋯ N lines，但 savedOutput 被清掉，再开无法展开
-        const term = termRef.current;
-        if (term) {
-          cbExpandAllCollapsed(term);
-        }
-        cbClear();
-      }
-      if (!timestampsEnabledRef.current && !enabled) {
-        if (gutterRef.current) gutterRef.current.innerHTML = '';
-      } else {
-        // 下一帧再 sync，等 display/width 样式生效
-        requestAnimationFrame(() => scheduleGutterSync());
-      }
-    };
-    const handleProgramFontSettingsChange = (e: Event) => {
-      const detail = (e as CustomEvent<{ terminalFontFamily?: string }>).detail;
-      const nextFontFamily = typeof detail?.terminalFontFamily === 'string' && detail.terminalFontFamily.trim()
-        ? detail.terminalFontFamily
-        : getResolvedProgramFontPreferences().terminalFontFamily;
-      if (termRef.current) {
-        termRef.current.options.fontFamily = nextFontFamily;
-        if (fitAddonRef.current) {
-          try { fitAddonRef.current.fit(); } catch (_) {}
-        }
-        scheduleGutterSync();
-      }
-    };
-    const handleTerminalOutputDefaultMouseCursorChange = (e: Event) => {
-      setTerminalDefaultMouseCursorEnabled((e as CustomEvent<unknown>).detail === true);
-    };
-    const handleTerminalRightClickPasteOnEmptyChange = (e: Event) => {
-      terminalRightClickPasteOnEmptyRef.current = (e as CustomEvent<unknown>).detail === true;
-    };
-    const handleTerminalRightClickPasteModeChange = (e: Event) => {
-      terminalRightClickPasteModeRef.current = (e as CustomEvent<string>).detail === 'always' ? 'always' : 'empty';
-    };
-    const handleTerminalLeftClickCopyOnSelectionChange = (e: Event) => {
-      terminalLeftClickCopyOnSelectionRef.current = (e as CustomEvent<unknown>).detail === true;
-    };
-    const handleTerminalLeftClickCopyOnSelectionModeChange = (e: Event) => {
-      terminalLeftClickCopyOnSelectionModeRef.current = (e as CustomEvent<string>).detail === 'mouseup' ? 'mouseup' : 'click';
-    };
-    const handleKeywordHighlightChange = (e: Event) => {
-      keywordHighlightEnabledRef.current = (e as CustomEvent<unknown>).detail === true;
-      // 开关切换时重置流式解码器，清除挂起的不完整字节，避免重新开启后污染输出
-      hlDecoderRef.current = new TextDecoder();
-      // 一并重置前景色状态：关闭前可能停在 fgActive=true，重开时避免误判
-      hlStateRef.current = createHighlightState();
-    };
-    const handleKeywordRulesChange = (e: Event) => {
-      const detail = (e as CustomEvent<KeywordRule[]>).detail;
-      if (Array.isArray(detail)) setKeywordRules(detail);
-    };
-    const handleAltOpenHistoryChange = (e: Event) => {
-      setAltOpenHistoryEnabled((e as CustomEvent<unknown>).detail !== false);
-    };
-    window.addEventListener('alt-open-history-changed', handleAltOpenHistoryChange);
-    window.addEventListener('app-shortcuts-changed', handleShortcutsChange);
-    window.addEventListener('terminal-local-echo-changed', handleLocalEchoChange);
-    window.addEventListener('terminal-timestamps-changed', handleTimestampsChange);
-    window.addEventListener('terminal-command-blocks-changed', handleCommandBlocksChange);
-    window.addEventListener('terminal-output-default-mouse-cursor-changed', handleTerminalOutputDefaultMouseCursorChange);
-    window.addEventListener('terminal-right-click-paste-on-empty-changed', handleTerminalRightClickPasteOnEmptyChange);
-    window.addEventListener('terminal-right-click-paste-mode-changed', handleTerminalRightClickPasteModeChange);
-    window.addEventListener('terminal-left-click-copy-on-selection-changed', handleTerminalLeftClickCopyOnSelectionChange);
-    window.addEventListener('terminal-left-click-copy-on-selection-mode-changed', handleTerminalLeftClickCopyOnSelectionModeChange);
-    window.addEventListener('terminal-keyword-highlight-changed', handleKeywordHighlightChange);
-    window.addEventListener('terminal-keyword-rules-changed', handleKeywordRulesChange);
-    window.addEventListener('program-font-settings-changed', handleProgramFontSettingsChange);
-    return () => {
-      window.removeEventListener('alt-open-history-changed', handleAltOpenHistoryChange);
-      window.removeEventListener('app-shortcuts-changed', handleShortcutsChange);
-      window.removeEventListener('terminal-local-echo-changed', handleLocalEchoChange);
-      window.removeEventListener('terminal-timestamps-changed', handleTimestampsChange);
-      window.removeEventListener('terminal-command-blocks-changed', handleCommandBlocksChange);
-      window.removeEventListener('terminal-output-default-mouse-cursor-changed', handleTerminalOutputDefaultMouseCursorChange);
-      window.removeEventListener('terminal-right-click-paste-on-empty-changed', handleTerminalRightClickPasteOnEmptyChange);
-      window.removeEventListener('terminal-right-click-paste-mode-changed', handleTerminalRightClickPasteModeChange);
-      window.removeEventListener('terminal-left-click-copy-on-selection-changed', handleTerminalLeftClickCopyOnSelectionChange);
-      window.removeEventListener('terminal-left-click-copy-on-selection-mode-changed', handleTerminalLeftClickCopyOnSelectionModeChange);
-      window.removeEventListener('terminal-keyword-highlight-changed', handleKeywordHighlightChange);
-      window.removeEventListener('terminal-keyword-rules-changed', handleKeywordRulesChange);
-      window.removeEventListener('program-font-settings-changed', handleProgramFontSettingsChange);
-    };
-  }, []);
 
   const getTerminalBufferCellPositionFromMouseEvent = useCallback((event: React.MouseEvent, isSelection = false) => {
     const term = termRef.current;
@@ -2570,7 +2394,7 @@ export default function Terminal({
           mixBlendMode: isDarkTerminalSurface(T) ? 'normal' : 'multiply',
         }}
       />
-      
+
       {/* 内容层（置于背景之上) */}
       <div className="relative flex flex-col h-full" style={{ zIndex: Z.CONTENT }}>
       {/* ── Session 状态栏 ── */}
@@ -2586,7 +2410,7 @@ export default function Terminal({
         <span className="font-medium font-mono text-[var(--term-server-color)]">
           {serverName || 'Terminal'}
         </span>
-        
+
         {/* 右侧极简状态显示 */}
         <div className="ml-auto flex items-center gap-2.5">
           <span className="text-xs font-mono font-bold" style={{ color: statusColor }}>

@@ -715,24 +715,8 @@ body.theme-light .update-bubble {
   background: var(--surface-base);
 }
 
-/* ── 首页工具栏按钮（其余按钮统一走 ui/Button） ── */
-
-/* 首页工具栏：保证图标按钮彼此可分、选中可辨 */
-.section-title-container .btn-ghost.btn-icon {
-  background: var(--surface-sunken);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
-}
-.section-title-container .btn-ghost.btn-icon:hover {
-  background: var(--surface-hover);
-  border-color: var(--border);
-  color: var(--text-primary);
-}
-.section-title-container .btn-ghost.btn-icon.active,
-.section-title-container .btn-ghost.btn-icon[aria-pressed="true"] {
-  background: var(--accent-dim);
-  border-color: var(--accent-border);
-  color: var(--accent);
+@layer components {
+  /* 已迁移至 Button，保留空壳避免回退 — 原首页工具栏图标按钮未分层覆盖已移除，改由 Button variant 统一控制 */
 }
 
 /* ── 输入框 ─────────────────────────────────────────────────── */
@@ -4572,17 +4556,19 @@ body.theme-light .dashboard-server-editor {
 .stat-val { font-size: 15px; font-weight: 700; font-family: var(--font-mono); color: var(--text-primary); line-height: 1.15; }
 .stat-lbl { font-size: 11px; color: var(--probe-label); font-weight: 500; margin-top: 3px; }
 
-/* 主机区域 */
-.section-title-container {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 10px;
-  flex-wrap: wrap;
-  margin-bottom: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  min-height: 30px;
+@layer components {
+  .section-title-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 10px;
+    flex-wrap: wrap;
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    min-height: 30px;
+  }
+  /* 已迁移至 Button，保留空壳避免回退 */
 }
 
 .input-compact {

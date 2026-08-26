@@ -2409,7 +2409,7 @@ body.theme-light .batch-operation-bar {
   margin-bottom: 10px;
   flex-shrink: 0;
 }
-.data-toolbar .input { flex: 1; min-width: 120px; }
+.data-toolbar .input { flex: 1; min-width: 120px; height: 30px; border-radius: var(--radius-sm); }
 
 .data-count {
   font-size: var(--text-xs);
@@ -2419,8 +2419,8 @@ body.theme-light .batch-operation-bar {
 }
 
 .data-table-shell {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--surface-base);
 }
@@ -5110,11 +5110,11 @@ body.theme-light .dashboard-server-editor {
   user-select: none;
 }
 .term-quick-cmd-btn {
-  height: 22px;
+  height: 24px;
   max-width: 120px;
   padding: 0 10px;
   font-size: 11px;
-  border-radius: 11px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
@@ -5149,7 +5149,7 @@ body.theme-light .dashboard-server-editor {
   align-items: center;
   justify-content: center;
   width: 24px;
-  height: 22px;
+  height: 24px;
   padding: 0;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
@@ -5168,7 +5168,7 @@ body.theme-light .dashboard-server-editor {
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 22px;
+  height: 24px;
   padding: 0 6px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-focus);

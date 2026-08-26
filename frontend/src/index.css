@@ -795,6 +795,11 @@ input::-ms-clear {
   background-position: right var(--space-3) center;
   padding-right: var(--space-8);
 }
+select option {
+  background: var(--surface-overlay);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+}
 
 .form-group { display: flex; flex-direction: column; gap: var(--space-1); }
 .form-label { font-size: var(--text-xs); font-weight: 500; color: var(--text-tertiary); }
@@ -2642,6 +2647,11 @@ body.theme-light .batch-operation-bar {
   border: 1px solid transparent;
   color: var(--text-secondary);
   box-shadow: none;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .file-toolbar-outline-btn:hover {

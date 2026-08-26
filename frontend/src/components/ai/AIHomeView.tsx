@@ -147,14 +147,14 @@ export function renderAIHomeView({
                   }
                 }}
                 placeholder={t('输入关键词搜索全部对话')}
-                className="h-[34px] w-full rounded-lg border border-line bg-sunken text-primary px-2.5 box-border outline-none"
+                className="h-[34px] w-full rounded-[var(--radius-sm)] border border-line bg-sunken text-primary px-2.5 box-border outline-none transition-colors focus:border-focus focus:bg-raised focus:ring-2 focus:ring-accent/20"
               />
               <button
                 type="button"
                 title={t('关闭搜索')}
                 aria-label={t('关闭搜索')}
                 onClick={resetGlobalSearchState}
-                className="w-[34px] h-[34px] inline-flex items-center justify-center rounded-lg border border-line bg-canvas text-tertiary cursor-pointer"
+                className="w-[34px] h-[34px] inline-flex items-center justify-center rounded-[var(--radius-sm)] border border-line bg-canvas hover:bg-hover text-tertiary hover:text-primary cursor-pointer transition-colors"
               >
                 ×
               </button>
@@ -224,22 +224,22 @@ export function renderAIHomeView({
           <div className="text-sm font-semibold text-secondary">{conversationSelectionMode ? t('已选择 {count} 项').replace('{count}', String(selectedConversationIds.size)) : t('对话历史')}</div>
           <div className="flex items-center gap-1.5">
           <button type="button" title={conversationSelectionMode ? t('退出多选') : t('多选')} aria-label={conversationSelectionMode ? t('退出多选') : t('多选')} onClick={() => conversationSelectionMode ? clearConversationSelection() : setConversationSelectionMode(true)} className={cn(
-            'w-7 h-7 inline-flex items-center justify-center rounded-md border cursor-pointer',
+            'w-7 h-7 inline-flex items-center justify-center rounded-[var(--radius-sm)] border cursor-pointer transition-colors',
             conversationSelectionMode
-              ? 'border-accent-border bg-[rgba(var(--accent-rgb),0.10)] text-accent'
-              : 'border-line-subtle bg-sunken text-tertiary',
+              ? 'border-accent-border bg-accent-dim text-accent font-semibold shadow-xs'
+              : 'border-line-subtle bg-sunken text-tertiary hover:text-primary hover:bg-hover',
           )}><CheckSquare size={14} /></button>
-          <button type="button" title={t('新建分组')} aria-label={t('新建分组')} onClick={() => void handleCreateConversationGroup()} className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-line-subtle bg-sunken text-tertiary cursor-pointer"><FolderPlus size={14} /></button>
+          <button type="button" title={t('新建分组')} aria-label={t('新建分组')} onClick={() => void handleCreateConversationGroup()} className="w-7 h-7 inline-flex items-center justify-center rounded-[var(--radius-sm)] border border-line-subtle bg-sunken text-tertiary hover:text-primary hover:bg-hover cursor-pointer transition-colors"><FolderPlus size={14} /></button>
           <button
             type="button"
             title={t('全局搜索对话')}
             aria-label={t('全局搜索对话')}
             onClick={handleOpenGlobalSearch}
             className={cn(
-              'w-7 h-7 inline-flex items-center justify-center rounded-md border cursor-pointer shrink-0 transition-[color,background-color,border-color,opacity] duration-[80ms]',
+              'w-7 h-7 inline-flex items-center justify-center rounded-[var(--radius-sm)] border cursor-pointer shrink-0 transition-colors',
               globalSearchOpen
-                ? 'border-accent-border bg-[rgba(var(--accent-rgb),0.10)] text-accent'
-                : 'border-line-subtle bg-sunken text-tertiary',
+                ? 'border-accent-border bg-accent-dim text-accent font-semibold shadow-xs'
+                : 'border-line-subtle bg-sunken text-tertiary hover:text-primary hover:bg-hover',
             )}
           >
             <Search size={14} />
@@ -248,10 +248,10 @@ export function renderAIHomeView({
           </div>
           <div role="tablist" aria-label={t('分组')} className="flex gap-1.5 overflow-x-auto [scrollbar-width:none] pb-px">
             <button role="tab" aria-selected={conversationFilter === 'all'} type="button" onClick={() => { setConversationFilter('all'); clearConversationSelection(); cancelRenameConversationGroup() }} onDoubleClick={showSystemGroupRenameUnsupported} className={cn(
-              'h-[26px] px-[9px] rounded-md border text-xs whitespace-nowrap cursor-pointer shrink-0',
+              'h-[26px] px-[9px] rounded-[var(--radius-sm)] border text-xs whitespace-nowrap cursor-pointer shrink-0 transition-colors font-medium',
               conversationFilter === 'all'
-                ? 'border-accent-border bg-[rgba(var(--accent-rgb),0.10)] text-accent'
-                : 'border-line-subtle bg-transparent text-secondary',
+                ? 'border-accent-border bg-accent-dim text-accent font-semibold shadow-xs'
+                : 'border-line-subtle bg-transparent text-secondary hover:text-primary hover:bg-hover/60',
             )}>{t('全部')}</button>
             {conversationOrganizer.groups.map((group) => {
               const selected = conversationFilter === group.id
@@ -270,7 +270,7 @@ export function renderAIHomeView({
                     if (event.key === 'Enter') { event.preventDefault(); commitRenameConversationGroup() }
                     if (event.key === 'Escape') { event.preventDefault(); cancelRenameConversationGroup() }
                   }}
-                  className="h-[26px] px-2 rounded-md border border-accent-border bg-sunken text-primary text-xs outline-2 outline-[rgba(var(--accent-rgb),0.16)] shrink-0"
+                  className="h-[26px] px-2 rounded-[var(--radius-sm)] border border-accent-border bg-sunken text-primary text-xs outline-2 outline-accent/20 shrink-0"
                   style={{ width: Math.max(72, Math.min(150, editingConversationGroupName.length * 12 + 24)) }}
                 />
               ) : (
@@ -288,13 +288,12 @@ export function renderAIHomeView({
                   onDrop={(event) => { event.preventDefault(); reorderConversationGroup(draggingConversationGroupId || event.dataTransfer.getData('text/plain'), group.id); setDraggingConversationGroupId(''); setDragOverConversationGroupId('') }}
                   onDragEnd={() => { setDraggingConversationGroupId(''); setDragOverConversationGroupId('') }}
                   className={cn(
-                    'h-[26px] px-[9px] rounded-md border text-xs whitespace-nowrap shrink-0 transition-[color,background-color,border-color,opacity] duration-[80ms]',
+                    'h-[26px] px-[9px] rounded-[var(--radius-sm)] border text-xs whitespace-nowrap shrink-0 transition-colors font-medium',
                     dragOver
-                      ? 'border-accent'
+                      ? 'border-accent ring-2 ring-accent/20'
                       : (selected
-                        ? 'border-accent-border'
-                        : 'border-line-subtle'),
-                    selected ? 'bg-[rgba(var(--accent-rgb),0.10)] text-accent' : 'bg-transparent text-secondary',
+                        ? 'border-accent-border bg-accent-dim text-accent font-semibold shadow-xs'
+                        : 'border-line-subtle bg-transparent text-secondary hover:text-primary hover:bg-hover/60'),
                   )}
                   style={{
                     cursor: dragging ? 'grabbing' : 'grab',
@@ -306,10 +305,10 @@ export function renderAIHomeView({
               )
             })}
             <button role="tab" aria-selected={conversationFilter === 'archived'} type="button" onClick={() => { setConversationFilter('archived'); clearConversationSelection(); cancelRenameConversationGroup() }} onDoubleClick={showSystemGroupRenameUnsupported} className={cn(
-              'h-[26px] px-[9px] rounded-md border text-xs whitespace-nowrap cursor-pointer shrink-0',
+              'h-[26px] px-[9px] rounded-[var(--radius-sm)] border text-xs whitespace-nowrap cursor-pointer shrink-0 transition-colors font-medium',
               conversationFilter === 'archived'
-                ? 'border-accent-border bg-[rgba(var(--accent-rgb),0.10)] text-accent'
-                : 'border-line-subtle bg-transparent text-secondary',
+                ? 'border-accent-border bg-accent-dim text-accent font-semibold shadow-xs'
+                : 'border-line-subtle bg-transparent text-secondary hover:text-primary hover:bg-hover/60',
             )}>{t('已归档')}</button>
           </div>
         </div>

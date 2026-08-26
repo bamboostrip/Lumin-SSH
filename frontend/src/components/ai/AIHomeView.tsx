@@ -314,17 +314,17 @@ export function renderAIHomeView({
         </div>
         {content}
         {conversationSelectionMode && selectedConversationIds.size > 0 ? (
-          <div className="sticky bottom-0 grid gap-1.5 p-2 border-t border-line bg-raised" style={{ zIndex: Z.STACK + 1 }}>
+          <div className="sticky bottom-2 mx-2 p-1.5 rounded-[var(--radius-md)] border border-line bg-overlay/95 shadow-lg backdrop-blur-md grid gap-1.5" style={{ zIndex: Z.STACK + 1 }}>
             {moveToGroupOpen ? (
               <div className="flex gap-1.5 overflow-x-auto [scrollbar-width:none]">
-                <Button variant="ghost" size="sm" onClick={() => handleMoveSelectedConversations('')} className="shrink-0">{t('移出分组')}</Button>
-                {conversationOrganizer.groups.map((group) => <Button key={group.id} variant="ghost" size="sm" onClick={() => handleMoveSelectedConversations(group.id)} className="shrink-0">{group.name}</Button>)}
+                <Button variant="ghost" size="sm" onClick={() => handleMoveSelectedConversations('')} className="shrink-0 h-7 text-xs rounded-[var(--radius-sm)]">{t('移出分组')}</Button>
+                {conversationOrganizer.groups.map((group) => <Button key={group.id} variant="ghost" size="sm" onClick={() => handleMoveSelectedConversations(group.id)} className="shrink-0 h-7 text-xs rounded-[var(--radius-sm)]">{group.name}</Button>)}
               </div>
             ) : null}
-            <div className="flex gap-1.5">
-              <Button variant="ghost" size="sm" onClick={() => setMoveToGroupOpen((current) => !current)} className="flex-1">{t('移动到分组')}</Button>
-              <Button variant="ghost" size="sm" onClick={() => void handleSetSelectedArchived(conversationFilter !== 'archived')} className="flex-1 gap-[5px]">{conversationFilter === 'archived' ? <ArchiveRestore size={13} /> : <Archive size={13} />}{conversationFilter === 'archived' ? t('恢复') : t('归档')}</Button>
-              <Button variant="danger" size="sm" onClick={() => void handleDeleteSelectedConversations()} aria-label={t('删除')} className="w-[34px] p-0"><Trash2 size={13} /></Button>
+            <div className="flex items-center gap-1.5">
+              <Button variant="ghost" size="sm" onClick={() => setMoveToGroupOpen((current) => !current)} className="flex-1 h-7 text-xs rounded-[var(--radius-sm)]">{t('移动到分组')}</Button>
+              <Button variant="ghost" size="sm" onClick={() => void handleSetSelectedArchived(conversationFilter !== 'archived')} className="flex-1 h-7 text-xs gap-1.5 rounded-[var(--radius-sm)]">{conversationFilter === 'archived' ? <ArchiveRestore size={13} /> : <Archive size={13} />}{conversationFilter === 'archived' ? t('恢复') : t('归档')}</Button>
+              <Button variant="danger" size="sm" onClick={() => void handleDeleteSelectedConversations()} aria-label={t('删除')} className="w-7 h-7 min-w-7 p-0 rounded-[var(--radius-sm)] inline-flex items-center justify-center shrink-0"><Trash2 size={13} /></Button>
             </div>
           </div>
         ) : null}

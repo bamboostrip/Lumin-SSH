@@ -3,7 +3,7 @@ import type { ChangeEvent } from 'react';
 import type { config } from '../../../wailsjs/go/models.ts';
 import { useTranslation } from '../../i18n.ts';
 import { cn } from '../../utils/cn.ts';
-import { Button } from '../ui';
+import { Button, Select } from '../ui';
 import type { ServerEditorForm } from './serverModalTypes.ts';
 
 export interface AddServerAuthSectionProps {
@@ -92,12 +92,20 @@ export function AddServerAuthSection({
             <>
               <div className="form-group">
                 <label className="form-label" htmlFor="server-credential">{t('选择凭据')} *</label>
-                <select id="server-credential" name="credentialId" className="select" value={selectedCredId} onChange={(e) => setSelectedCredId(e.target.value)}>
-                  <option value="">{t('请选择凭据')}</option>
-                  {credentials.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.username})</option>
-                  ))}
-                </select>
+                <Select
+                  id="server-credential"
+                  name="credentialId"
+                  value={selectedCredId}
+                  onChange={(val) => setSelectedCredId(val)}
+                  placeholder={t('请选择凭据')}
+                  options={[
+                    { value: '', label: t('请选择凭据') },
+                    ...credentials.map((c) => ({
+                      value: c.id,
+                      label: `${c.name} (${c.username})`,
+                    })),
+                  ]}
+                />
               </div>
               {selectedCredId && (() => {
                 const sel = credentials.find((c) => c.id === selectedCredId);
@@ -114,10 +122,16 @@ export function AddServerAuthSection({
           <>
             <div className="form-group">
               <label className="form-label" htmlFor="server-auth-type">{t('认证方式')}</label>
-              <select id="server-auth-type" name="authType" className="select" value={form.authType} onChange={set('authType')}>
-                <option value="password">{t('密码认证')}</option>
-                <option value="key">{t('私钥认证')}</option>
-              </select>
+              <Select
+                id="server-auth-type"
+                name="authType"
+                value={form.authType}
+                onChange={(val) => set('authType')({ target: { value: val } } as ChangeEvent<HTMLSelectElement>)}
+                options={[
+                  { value: 'password', label: t('密码认证') },
+                  { value: 'key', label: t('私钥认证') },
+                ]}
+              />
             </div>
 
             {form.authType === 'password' ? (

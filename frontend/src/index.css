@@ -2140,9 +2140,9 @@ body.theme-light .batch-operation-bar {
   gap: 6px;
   flex: 1;
   min-width: 0;
-  margin: -2px 0;
-  padding: 2px 4px 2px 0;
-  border-radius: 8px;
+  margin: -3px -4px;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
   transition: background-color 0.12s ease, box-shadow 0.12s ease, transform 0.12s ease, color 0.12s ease;
 }
 .probe-section-handle-sortable {

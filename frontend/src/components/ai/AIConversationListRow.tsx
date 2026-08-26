@@ -72,15 +72,17 @@ export function renderAIConversationListRow({
                 aria-pressed={selected}
                 onClick={() => toggleConversationSelection(item.id)}
                 className={cn(
-                  'w-[34px] self-stretch inline-flex items-center justify-center border-0 bg-transparent cursor-pointer shrink-0',
-                  'hover:text-accent hover:bg-[rgba(var(--accent-rgb),0.10)] focus-visible:text-accent focus-visible:bg-[rgba(var(--accent-rgb),0.10)]',
+                  'w-[34px] self-stretch inline-flex items-center justify-center border-0 bg-transparent cursor-pointer shrink-0 transition-colors',
+                  'hover:text-accent hover:bg-hover focus-visible:text-accent',
                   selected ? 'text-accent' : 'text-muted',
                 )}>
                 <span
                   className={cn(
-                    'w-4 h-4 rounded-sm border inline-flex items-center justify-center text-xs text-white',
+                    'w-4 h-4 rounded-sm border inline-flex items-center justify-center text-xs text-white transition-colors',
+                    selected
+                      ? 'bg-accent border-accent text-white'
+                      : 'border-line bg-sunken hover:border-accent-border',
                   )}
-                  style={{ borderColor: selected ? 'var(--accent)' : 'var(--border)', background: selected ? 'var(--accent)' : 'transparent' }}
                 >{selected ? '✓' : ''}</span>
               </button>
             ) : null}

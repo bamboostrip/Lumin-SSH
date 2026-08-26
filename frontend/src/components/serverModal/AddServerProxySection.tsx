@@ -29,14 +29,14 @@ export function AddServerProxySection({
       <div className="server-editor-fields">
         <div className="form-group">
           <label className="form-label">{t('代理模式')}</label>
-          <div className="inline-flex h-8.5 w-full items-center gap-1 rounded-[var(--radius-sm)] border border-line-subtle bg-sunken p-1">
+          <div className="inline-flex h-8.5 w-full items-center gap-0.5 rounded-[var(--radius-sm)] border border-line-subtle bg-sunken p-0.5">
             <button
               type="button"
               className={cn(
-                'flex-1 inline-flex h-6 items-center justify-center rounded-[6px] border text-xs font-medium transition-colors duration-[80ms]',
+                'flex-1 inline-flex h-7 items-center justify-center rounded-[6px] text-xs font-medium transition-all duration-150',
                 (!form.proxyMode || form.proxyMode === 'direct')
-                  ? 'border-accent-border bg-raised text-accent shadow-sm'
-                  : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
+                  ? 'bg-raised text-primary shadow-xs font-semibold'
+                  : 'text-secondary hover:text-primary hover:bg-hover/60',
               )}
               onClick={() => set('proxyMode')({ target: { value: 'direct', name: 'proxyMode' } } as unknown as ChangeEvent<HTMLSelectElement>)}
             >
@@ -45,10 +45,10 @@ export function AddServerProxySection({
             <button
               type="button"
               className={cn(
-                'flex-1 inline-flex h-6 items-center justify-center rounded-[6px] border text-xs font-medium transition-colors duration-[80ms]',
+                'flex-1 inline-flex h-7 items-center justify-center rounded-[6px] text-xs font-medium transition-all duration-150',
                 form.proxyMode === 'node'
-                  ? 'border-accent-border bg-raised text-accent shadow-sm'
-                  : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
+                  ? 'bg-raised text-primary shadow-xs font-semibold'
+                  : 'text-secondary hover:text-primary hover:bg-hover/60',
               )}
               onClick={() => set('proxyMode')({ target: { value: 'node', name: 'proxyMode' } } as unknown as ChangeEvent<HTMLSelectElement>)}
             >
@@ -57,10 +57,10 @@ export function AddServerProxySection({
             <button
               type="button"
               className={cn(
-                'flex-1 inline-flex h-6 items-center justify-center rounded-[6px] border text-xs font-medium transition-colors duration-[80ms]',
+                'flex-1 inline-flex h-7 items-center justify-center rounded-[6px] text-xs font-medium transition-all duration-150',
                 form.proxyMode === 'custom'
-                  ? 'border-accent-border bg-raised text-accent shadow-sm'
-                  : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
+                  ? 'bg-raised text-primary shadow-xs font-semibold'
+                  : 'text-secondary hover:text-primary hover:bg-hover/60',
               )}
               onClick={() => set('proxyMode')({ target: { value: 'custom', name: 'proxyMode' } } as unknown as ChangeEvent<HTMLSelectElement>)}
             >

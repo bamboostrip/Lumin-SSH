@@ -296,16 +296,16 @@ export default function AppearanceTab({
           <SettingRow
             definition={appearanceSettings.fields.monitorPanel}
             action={(
-              <div className="inline-flex h-8.5 items-center gap-1 rounded-[var(--radius-sm)] border border-line-subtle bg-sunken p-1">
+              <div className="inline-flex h-8.5 items-center gap-0.5 rounded-[var(--radius-sm)] border border-line-subtle bg-sunken p-0.5">
                 <button
                   type="button"
                   aria-pressed={probePanelPosition === 'left'}
                   onClick={() => onProbePanelPositionChange('left')}
                   className={cn(
-                    'inline-flex h-6 px-3 items-center justify-center rounded-[6px] border text-xs font-medium transition-colors duration-[80ms]',
+                    'inline-flex h-7 px-3 items-center justify-center rounded-[6px] text-xs font-medium transition-all duration-150',
                     probePanelPosition === 'left'
-                      ? 'border-accent-border bg-raised text-accent shadow-sm'
-                      : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
+                      ? 'bg-raised text-primary shadow-xs font-semibold'
+                      : 'text-secondary hover:text-primary hover:bg-hover/60',
                   )}
                 >
                   {$t('左侧')}
@@ -315,10 +315,10 @@ export default function AppearanceTab({
                   aria-pressed={probePanelPosition === 'right'}
                   onClick={() => onProbePanelPositionChange('right')}
                   className={cn(
-                    'inline-flex h-6 px-3 items-center justify-center rounded-[6px] border text-xs font-medium transition-colors duration-[80ms]',
+                    'inline-flex h-7 px-3 items-center justify-center rounded-[6px] text-xs font-medium transition-all duration-150',
                     probePanelPosition === 'right'
-                      ? 'border-accent-border bg-raised text-accent shadow-sm'
-                      : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
+                      ? 'bg-raised text-primary shadow-xs font-semibold'
+                      : 'text-secondary hover:text-primary hover:bg-hover/60',
                   )}
                 >
                   {$t('右侧')}

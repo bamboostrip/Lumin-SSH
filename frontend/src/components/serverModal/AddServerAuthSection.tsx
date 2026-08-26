@@ -48,14 +48,14 @@ export function AddServerAuthSection({
       </div>
       <div className="server-editor-fields">
         <div className="server-editor-auth-row">
-          <div className="inline-flex h-8.5 flex-1 items-center gap-1 rounded-[var(--radius-sm)] border border-line-subtle bg-sunken p-1">
+          <div className="inline-flex h-8.5 flex-1 items-center gap-0.5 rounded-[var(--radius-sm)] border border-line-subtle bg-sunken p-0.5">
             <button
               type="button"
               className={cn(
-                'flex-1 inline-flex h-6 items-center justify-center rounded-[6px] border text-xs font-medium transition-colors duration-[80ms]',
+                'flex-1 inline-flex h-7 items-center justify-center rounded-[6px] text-xs font-medium transition-all duration-150',
                 authMode === 'custom'
-                  ? 'border-accent-border bg-raised text-accent shadow-sm'
-                  : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
+                  ? 'bg-raised text-primary shadow-xs font-semibold'
+                  : 'text-secondary hover:text-primary hover:bg-hover/60',
               )}
               onClick={() => setAuthMode('custom')}
             >
@@ -64,10 +64,10 @@ export function AddServerAuthSection({
             <button
               type="button"
               className={cn(
-                'flex-1 inline-flex h-6 items-center justify-center rounded-[6px] border text-xs font-medium transition-colors duration-[80ms]',
+                'flex-1 inline-flex h-7 items-center justify-center rounded-[6px] text-xs font-medium transition-all duration-150',
                 authMode === 'credential'
-                  ? 'border-accent-border bg-raised text-accent shadow-sm'
-                  : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
+                  ? 'bg-raised text-primary shadow-xs font-semibold'
+                  : 'text-secondary hover:text-primary hover:bg-hover/60',
               )}
               onClick={() => setAuthMode('credential')}
             >

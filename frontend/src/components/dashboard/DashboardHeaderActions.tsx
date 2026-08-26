@@ -73,7 +73,7 @@ export function DashboardHeaderActions({
     <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 py-1">
       {/* 左侧：模式切换 + 搜索（占满剩余宽度，输入框不再窄） */}
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        <div className="inline-flex h-8.5 shrink-0 items-center gap-1 rounded-[var(--radius-sm)] border border-line-subtle bg-sunken p-1">
+        <div className="inline-flex h-8.5 shrink-0 items-center gap-0.5 rounded-[var(--radius-sm)] border border-line-subtle bg-sunken p-0.5">
           <Tiptop text={t('主机')} placement="bottom">
             <button
               type="button"
@@ -81,10 +81,10 @@ export function DashboardHeaderActions({
               aria-label={t('主机')}
               aria-pressed={hostPageMode === 'hosts'}
               className={cn(
-                'inline-flex h-[26px] items-center justify-center gap-1.5 rounded-[6px] border px-3 text-xs font-medium whitespace-nowrap transition-colors duration-[80ms]',
+                'inline-flex h-7 items-center justify-center gap-1.5 rounded-[6px] px-3 text-xs font-medium whitespace-nowrap transition-all duration-150',
                 hostPageMode === 'hosts'
-                  ? 'border-accent-border bg-raised text-accent shadow-sm'
-                  : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
+                  ? 'bg-raised text-primary shadow-xs font-semibold'
+                  : 'text-secondary hover:text-primary hover:bg-hover/60',
               )}
             >
               <Monitor size={14} />
@@ -98,10 +98,10 @@ export function DashboardHeaderActions({
               aria-label={t('最近连接')}
               aria-pressed={hostPageMode === 'recent'}
               className={cn(
-                'inline-flex h-[26px] items-center justify-center gap-1.5 rounded-[6px] border px-3 text-xs font-medium whitespace-nowrap transition-colors duration-[80ms]',
+                'inline-flex h-7 items-center justify-center gap-1.5 rounded-[6px] px-3 text-xs font-medium whitespace-nowrap transition-all duration-150',
                 hostPageMode === 'recent'
-                  ? 'border-accent-border bg-raised text-accent shadow-sm'
-                  : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
+                  ? 'bg-raised text-primary shadow-xs font-semibold'
+                  : 'text-secondary hover:text-primary hover:bg-hover/60',
               )}
             >
               <History size={14} />
@@ -202,7 +202,7 @@ export function DashboardHeaderActions({
               </Button>
             </Tiptop>
 
-            <div className="inline-flex h-8.5 items-center gap-1 rounded-[var(--radius-sm)] border border-line-subtle bg-sunken p-1">
+            <div className="inline-flex h-8.5 items-center gap-0.5 rounded-[var(--radius-sm)] border border-line-subtle bg-sunken p-0.5">
               <Tiptop text={t('卡片视图')} placement="bottom">
                 <button
                   type="button"
@@ -210,10 +210,10 @@ export function DashboardHeaderActions({
                   aria-label={t('卡片视图')}
                   aria-pressed={serverListViewMode === 'grid'}
                   className={cn(
-                    'inline-flex h-6 w-8 items-center justify-center rounded-[6px] border text-xs transition-colors duration-[80ms]',
+                    'inline-flex h-7 w-8 items-center justify-center rounded-[6px] text-xs transition-all duration-150',
                     serverListViewMode === 'grid'
-                      ? 'border-accent-border bg-raised text-accent shadow-sm'
-                      : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
+                      ? 'bg-raised text-primary shadow-xs font-semibold'
+                      : 'text-secondary hover:text-primary hover:bg-hover/60',
                   )}
                 >
                   <LayoutGrid size={15} />
@@ -226,10 +226,10 @@ export function DashboardHeaderActions({
                   aria-label={t('列表视图')}
                   aria-pressed={serverListViewMode === 'table'}
                   className={cn(
-                    'inline-flex h-6 w-8 items-center justify-center rounded-[6px] border text-xs transition-colors duration-[80ms]',
+                    'inline-flex h-7 w-8 items-center justify-center rounded-[6px] text-xs transition-all duration-150',
                     serverListViewMode === 'table'
-                      ? 'border-accent-border bg-raised text-accent shadow-sm'
-                      : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
+                      ? 'bg-raised text-primary shadow-xs font-semibold'
+                      : 'text-secondary hover:text-primary hover:bg-hover/60',
                   )}
                 >
                   <List size={15} />

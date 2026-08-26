@@ -116,15 +116,14 @@ export default function AppTopbar({
           {sessions.length > 0 && (
             <div className="tab-bar">
               <Tiptop text={t('返回主页')} placement="bottom">
-                <Button
-                  variant={activeSessionId === null ? 'secondary' : 'ghost'}
-                  size="sm"
-                  className={cn('no-drag shrink-0 rounded-[var(--radius-sm)]', activeSessionId === null ? 'text-accent border-accent-border shadow-sm' : '')}
+                <button
+                  type="button"
+                  className={cn('topbar-home-btn no-drag shrink-0', activeSessionId === null ? 'active' : '')}
                   onClick={() => { markWorkspaceRestoreNavigationOverride(); setActiveSessionId(null); setActiveTerminalId(null); }}
                   aria-label={t('返回主页')}
                 >
                   <House size={14} />
-                </Button>
+                </button>
               </Tiptop>
               <div className="tab-scroll" ref={tabScrollRef}>
                 <div ref={tabListRef} className="tab-list">

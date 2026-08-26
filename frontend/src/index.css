@@ -829,8 +829,8 @@ input::-ms-clear {
 .modal {
   background: var(--surface-raised);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
   width: 100%;
   max-height: 90vh;
   overflow-y: auto;

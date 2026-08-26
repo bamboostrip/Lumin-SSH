@@ -1,4 +1,4 @@
-import { ArchiveRestore, Bot, FolderOpen, Pencil, Scissors } from 'lucide-react'
+import { ArchiveRestore, Bot, Check, FolderOpen, Pencil, Scissors } from 'lucide-react'
 import { cn } from '../../utils/cn.ts'
 import Tiptop from '../Tiptop.tsx'
 import { getLanguage } from '../../i18n.ts'
@@ -73,17 +73,12 @@ export function renderAIConversationListRow({
                 onClick={() => toggleConversationSelection(item.id)}
                 className={cn(
                   'w-[34px] self-stretch inline-flex items-center justify-center border-0 bg-transparent cursor-pointer shrink-0 transition-colors',
-                  'hover:text-accent hover:bg-hover focus-visible:text-accent',
+                  'hover:bg-hover focus-visible:text-accent',
                   selected ? 'text-accent' : 'text-muted',
                 )}>
-                <span
-                  className={cn(
-                    'w-4 h-4 rounded-sm border inline-flex items-center justify-center text-xs text-white transition-colors',
-                    selected
-                      ? 'bg-accent border-accent text-white'
-                      : 'border-line bg-sunken hover:border-accent-border',
-                  )}
-                >{selected ? '✓' : ''}</span>
+                <div className={cn('custom-checkbox', selected && 'checked')}>
+                  {selected && <Check size={10} strokeWidth={4} />}
+                </div>
               </button>
             ) : null}
             <button

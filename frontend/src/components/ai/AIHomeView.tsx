@@ -1,4 +1,4 @@
-import { Archive, ArchiveRestore, CheckSquare, FolderPlus, Search, Trash2 } from 'lucide-react'
+import { Archive, ArchiveRestore, Check, CheckSquare, FolderPlus, Search, Trash2 } from 'lucide-react'
 import { Z } from '../../constants/zIndex'
 import { Button } from '../ui'
 import { cn } from '../../utils/cn.ts'
@@ -19,114 +19,102 @@ type LooseT = (key: I18nKey, vars?: Record<string, unknown>) => string
 // 闭包依赖经 deps 同名注入，行渲染委托 renderAIConversationListRow。
 export interface AIHomeViewDeps {
   t: LooseT
-  conversationList: ConversationSummary[]
-  conversationOrganizer: AIConversationOrganizerState
-  conversationFilter: string
-  setConversationFilter: React.Dispatch<React.SetStateAction<string>>
-  conversationSelectionMode: boolean
-  setConversationSelectionMode: React.Dispatch<React.SetStateAction<boolean>>
-  selectedConversationIds: Set<string>
-  moveToGroupOpen: boolean
-  setMoveToGroupOpen: React.Dispatch<React.SetStateAction<boolean>>
-  editingConversationGroupId: string
-  editingConversationGroupName: string
-  setEditingConversationGroupName: React.Dispatch<React.SetStateAction<string>>
-  draggingConversationGroupId: string
-  dragOverConversationGroupId: string
-  setDraggingConversationGroupId: React.Dispatch<React.SetStateAction<string>>
-  setDragOverConversationGroupId: React.Dispatch<React.SetStateAction<string>>
   panelState: PanelState
   globalSearchOpen: boolean
   globalSearchQuery: string
-  setGlobalSearchQuery: React.Dispatch<React.SetStateAction<string>>
-  normalizedGlobalSearchQuery: string
   globalSearchLoading: boolean
   globalSearchResults: AIConversationMessageSearchResult[]
+  conversationFilter: string
+  conversationOrganizer: AIConversationOrganizerState
+  editingConversationGroupId: string
+  editingConversationGroupName: string
+  draggingConversationGroupId: string
+  dragOverConversationGroupId: string
+  conversationSelectionMode: boolean
+  selectedConversationIds: Set<string>
+  moveToGroupOpen: boolean
+  renderedConversationList: ConversationSummary[]
   globalSearchInputRef: React.RefObject<HTMLInputElement | null>
   conversationGroupRenameInputRef: React.RefObject<HTMLInputElement | null>
+  setGlobalSearchQuery: (query: string) => void
   resetGlobalSearchState: () => void
-  handleOpenGlobalSearch: () => void
   handleSelectGlobalSearchResult: (result: AIConversationMessageSearchResult) => Promise<void>
-  toggleConversationSelection: (conversationId: string) => void
+  setConversationSelectionMode: (mode: boolean) => void
   clearConversationSelection: () => void
+  handleCreateConversationGroup: () => Promise<void>
+  handleOpenGlobalSearch: () => void
+  setConversationFilter: (filter: string) => void
+  cancelRenameConversationGroup: () => void
+  showSystemGroupRenameUnsupported: () => void
+  setEditingConversationGroupName: (name: string) => void
+  commitRenameConversationGroup: () => void
+  beginRenameConversationGroup: (groupId: string) => void
+  handleDeleteConversationGroup: (groupId: string) => Promise<void>
+  setDraggingConversationGroupId: (groupId: string) => void
+  setDragOverConversationGroupId: (groupId: string) => void
+  reorderConversationGroup: (sourceId: string, targetId: string) => void
+  toggleConversationSelection: (conversationId: string) => void
   handleOpenConversation: (conversationId: string, delegateToWorkspace?: boolean) => Promise<void>
   handleMakeConversationPermanent: (conversationId: string) => Promise<void>
   handleOpenConversationFolder: (conversationId: string) => Promise<void>
   handleRenameConversationTitle: (targetConversationId?: string) => Promise<void>
   handleDeleteConversation: (conversationId: string) => Promise<void>
-  handleCreateConversationGroup: () => Promise<void>
-  beginRenameConversationGroup: (groupId: string) => void
-  cancelRenameConversationGroup: () => void
-  commitRenameConversationGroup: () => void
-  reorderConversationGroup: (sourceGroupId: string, targetGroupId: string) => void
-  showSystemGroupRenameUnsupported: () => void
-  handleDeleteConversationGroup: (groupId: string) => Promise<void>
   handleMoveSelectedConversations: (groupId: string) => void
+  setMoveToGroupOpen: React.Dispatch<React.SetStateAction<boolean>>
   handleSetSelectedArchived: (archived: boolean) => Promise<void>
   handleDeleteSelectedConversations: () => Promise<void>
 }
 
 export function renderAIHomeView({
   t,
-  conversationList,
-  conversationOrganizer,
-  conversationFilter,
-  setConversationFilter,
-  conversationSelectionMode,
-  setConversationSelectionMode,
-  selectedConversationIds,
-  moveToGroupOpen,
-  setMoveToGroupOpen,
-  editingConversationGroupId,
-  editingConversationGroupName,
-  setEditingConversationGroupName,
-  draggingConversationGroupId,
-  dragOverConversationGroupId,
-  setDraggingConversationGroupId,
-  setDragOverConversationGroupId,
   panelState,
   globalSearchOpen,
   globalSearchQuery,
-  setGlobalSearchQuery,
-  normalizedGlobalSearchQuery,
   globalSearchLoading,
   globalSearchResults,
+  conversationFilter,
+  conversationOrganizer,
+  editingConversationGroupId,
+  editingConversationGroupName,
+  draggingConversationGroupId,
+  dragOverConversationGroupId,
+  conversationSelectionMode,
+  selectedConversationIds,
+  moveToGroupOpen,
+  renderedConversationList,
   globalSearchInputRef,
   conversationGroupRenameInputRef,
+  setGlobalSearchQuery,
   resetGlobalSearchState,
-  handleOpenGlobalSearch,
   handleSelectGlobalSearchResult,
-  toggleConversationSelection,
+  setConversationSelectionMode,
   clearConversationSelection,
+  handleCreateConversationGroup,
+  handleOpenGlobalSearch,
+  setConversationFilter,
+  cancelRenameConversationGroup,
+  showSystemGroupRenameUnsupported,
+  setEditingConversationGroupName,
+  commitRenameConversationGroup,
+  beginRenameConversationGroup,
+  handleDeleteConversationGroup,
+  setDraggingConversationGroupId,
+  setDragOverConversationGroupId,
+  reorderConversationGroup,
+  toggleConversationSelection,
   handleOpenConversation,
   handleMakeConversationPermanent,
   handleOpenConversationFolder,
   handleRenameConversationTitle,
   handleDeleteConversation,
-  handleCreateConversationGroup,
-  beginRenameConversationGroup,
-  cancelRenameConversationGroup,
-  commitRenameConversationGroup,
-  reorderConversationGroup,
-  showSystemGroupRenameUnsupported,
-  handleDeleteConversationGroup,
   handleMoveSelectedConversations,
+  setMoveToGroupOpen,
   handleSetSelectedArchived,
   handleDeleteSelectedConversations,
 }: AIHomeViewDeps) {
-    let content = null
-    const getConversationGroupId = (item: ConversationSummary) => {
-      const ownerId = item.rootConversationId || item.parentConversationId || item.id
-      return conversationOrganizer.assignments[item.id] || conversationOrganizer.assignments[ownerId] || ''
-    }
-    const visibleConversationList = conversationList.filter((item) => {
-      if (conversationFilter === 'archived') return item.archived === true
-      if (item.archived === true) return false
-      if (conversationFilter === 'all') return true
-      const groupId = getConversationGroupId(item)
-      return conversationFilter === 'ungrouped' ? !groupId : groupId === conversationFilter
-    })
-    const displayConversationList = buildAIConversationDisplayList(visibleConversationList)
+    const normalizedGlobalSearchQuery = globalSearchQuery.trim()
+    const displayConversationList = buildAIConversationDisplayList(renderedConversationList, conversationFilter)
+    let content: React.ReactNode = null
 
     if (globalSearchOpen) {
       content = (
@@ -174,27 +162,56 @@ export function renderAIHomeView({
                 {globalSearchResults.map((result) => {
                   const historyTimeParts = buildAIHistoryDisplayTimeParts(result.updatedAt || 0, getLanguage() || 'zh-CN')
                   const historyRelativeToneStyle = getAIHistoryRelativeTimeToneStyle(result.updatedAt || 0)
+                  const isSelected = selectedConversationIds.has(result.conversationId)
                   return (
-                  <button
-                    key={`${result.conversationId}:${result.messageId}`}
-                    type="button"
-                    onClick={() => {
-                      void handleSelectGlobalSearchResult(result)
-                    }}
-                    className="w-full grid gap-2 py-3 px-3.5 border-0 border-b border-line bg-transparent text-left cursor-pointer"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0 text-md font-bold text-primary whitespace-nowrap overflow-hidden text-ellipsis">{result.conversationTitle}</div>
-                      <div className="shrink-0 text-xs text-tertiary">{result.role === 'user' ? t('用户') : t('AI')}</div>
-                    </div>
-                    <div className="text-xs text-muted flex items-center gap-0 flex-wrap">
-                      <span>{historyTimeParts.absoluteText}</span>
-                      {historyTimeParts.relativeText ? (
-                        <span style={historyRelativeToneStyle}>({historyTimeParts.relativeText})</span>
+                    <div
+                      key={`${result.conversationId}:${result.messageId}`}
+                      className="w-full flex items-center border-0 border-b border-line transition-colors duration-[120ms]"
+                      style={{
+                        background: isSelected ? 'rgba(var(--accent-rgb), 0.12)' : 'transparent',
+                      }}
+                    >
+                      {conversationSelectionMode ? (
+                        <button
+                          type="button"
+                          aria-label={isSelected ? t('取消选择') : t('选择')}
+                          aria-pressed={isSelected}
+                          onClick={() => toggleConversationSelection(result.conversationId)}
+                          className={cn(
+                            'w-[34px] self-stretch inline-flex items-center justify-center border-0 bg-transparent cursor-pointer shrink-0 transition-colors',
+                            'hover:bg-hover focus-visible:text-accent',
+                            isSelected ? 'text-accent' : 'text-muted',
+                          )}
+                        >
+                          <div className={cn('custom-checkbox', isSelected && 'checked')}>
+                            {isSelected && <Check size={10} strokeWidth={4} />}
+                          </div>
+                        </button>
                       ) : null}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (conversationSelectionMode) {
+                            toggleConversationSelection(result.conversationId)
+                          } else {
+                            void handleSelectGlobalSearchResult(result)
+                          }
+                        }}
+                        className="flex-1 min-w-0 grid gap-2 py-3 px-3.5 border-0 bg-transparent text-left cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0 text-md font-bold text-primary whitespace-nowrap overflow-hidden text-ellipsis">{result.conversationTitle}</div>
+                          <div className="shrink-0 text-xs text-tertiary">{result.role === 'user' ? t('用户') : t('AI')}</div>
+                        </div>
+                        <div className="text-xs text-muted flex items-center gap-0 flex-wrap">
+                          <span>{historyTimeParts.absoluteText}</span>
+                          {historyTimeParts.relativeText ? (
+                            <span style={historyRelativeToneStyle}>({historyTimeParts.relativeText})</span>
+                          ) : null}
+                        </div>
+                        <div className="text-sm text-secondary leading-[1.6] whitespace-pre-wrap break-words">{result.snippet}</div>
+                      </button>
                     </div>
-                    <div className="text-sm text-secondary leading-[1.6] whitespace-pre-wrap break-words">{result.snippet}</div>
-                  </button>
                   )
                 })}
               </div>

@@ -501,6 +501,11 @@ body.theme-light {
 
   button { cursor: pointer; border: none; background: none; font-family: inherit; font-size: inherit; color: inherit; }
   input, textarea, select { font-family: inherit; }
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
   a { color: var(--accent); text-decoration: none; }
 
   /* ── 键盘焦点环（仅键盘导航时显示） ──────────────────────── */
@@ -641,7 +646,7 @@ body.theme-light.has-global-wallpaper .topbar-home-btn.active {
 .window-controls button {
   width: 28px;
   height: 28px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
 }
 
 .update-entry {
@@ -4617,7 +4622,12 @@ body.theme-light .dashboard-server-editor {
   cursor: pointer;
   user-select: none;
 }
-.server-editor-clear-check input { cursor: pointer; }
+.server-editor-clear-check input {
+  cursor: pointer;
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+}
 
 /* 状态面板 */
 .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }

@@ -30,7 +30,7 @@ export function Switch({
       ? 'w-[30px] min-w-[30px] h-[18px] min-h-[18px] p-[2px]'
       : 'w-[38px] min-w-[38px] h-[22px] min-h-[22px] p-[2px]',
     disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
-    checked ? (indicator ? 'bg-accent' : 'bg-success') : (indicator ? 'bg-line' : 'bg-hover'),
+    checked ? 'bg-accent' : (indicator ? 'bg-line' : 'bg-hover'),
     className,
   );
 

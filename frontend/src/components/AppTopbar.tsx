@@ -254,7 +254,7 @@ export default function AppTopbar({
               <Tiptop text={resolvedQuickThemeMode === 'light' ? t('深色') : t('浅色')} placement="bottom">
                 <button
                   type="button"
-                  className="no-drag w-7 h-7 p-0 rounded-xs inline-flex items-center justify-center shrink-0 text-secondary transition-colors duration-[80ms] hover:bg-hover hover:text-primary"
+                  className="no-drag w-7 h-7 p-0 rounded-[var(--radius-sm)] inline-flex items-center justify-center shrink-0 text-secondary transition-colors duration-[80ms] hover:bg-hover hover:text-primary"
                   onClick={handleQuickThemeToggle}
                   aria-label={resolvedQuickThemeMode === 'light' ? t('深色') : t('浅色')}
                 >
@@ -264,16 +264,17 @@ export default function AppTopbar({
             )}
             {activeSessionId !== null && isActiveSessionConnected && sessions.length > 0 && (
               <Tiptop text={showAIPanel ? t('收起 AI 助手面板') : t('打开 AI 助手面板')} placement="bottom">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="no-drag w-7! h-7! rounded-xs!"
+                <button
+                  type="button"
+                  className={cn(
+                    'no-drag w-7 h-7 p-0 rounded-[var(--radius-sm)] inline-flex items-center justify-center shrink-0 transition-colors duration-[80ms] hover:bg-hover',
+                    showAIPanel ? 'text-accent hover:text-accent' : 'text-secondary hover:text-primary',
+                  )}
                   onClick={() => setAIPanelVisibility(!showAIPanel)}
                   aria-label={showAIPanel ? t('收起 AI 助手面板') : t('打开 AI 助手面板')}
-                  style={{ color: showAIPanel ? 'var(--accent)' : undefined }}
                 >
                   <Bot size={16} />
-                </Button>
+                </button>
               </Tiptop>
             )}
             {startupUpdateInfo && (
@@ -295,47 +296,68 @@ export default function AppTopbar({
                       <span className="update-bubble-text">{startupUpdateInfo.version}</span>
                     </div>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
+                  <button
+                    type="button"
                     aria-pressed={isUpdateModalVisible}
-                    className="no-drag w-7! h-7! rounded-xs! overflow-visible"
+                    className={cn(
+                      'no-drag w-7 h-7 p-0 rounded-[var(--radius-sm)] inline-flex items-center justify-center shrink-0 transition-colors duration-[80ms] hover:bg-hover relative overflow-visible',
+                      isUpdateModalVisible ? 'text-accent hover:text-accent' : 'text-secondary hover:text-primary',
+                    )}
                     onClick={() => {
                       setShowUpdateBubble(false);
                       setIsUpdateModalVisible(true);
                     }}
                     aria-label={`${t('发现新版本')} ${startupUpdateInfo.version}`}
-                    style={{
-                      color: isUpdateModalVisible ? 'var(--accent)' : 'var(--text-secondary)',
-                    }}
                   >
                     <Rocket size={16} />
                     <span className="update-entry-badge absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-danger shadow-[0_0_0_2px_var(--surface-base)]" />
-                  </Button>
+                  </button>
                 </div>
               </Tiptop>
             )}
             <Tiptop text={t('设置')} placement="bottom">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="no-drag w-7! h-7! rounded-xs!"
+              <button
+                type="button"
+                className="no-drag w-7 h-7 p-0 rounded-[var(--radius-sm)] inline-flex items-center justify-center shrink-0 text-secondary transition-colors duration-[80ms] hover:bg-hover hover:text-primary"
                 onClick={() => {
                   setSettingsInitialTab('general');
                   setShowSettings(true);
                 }}
                 aria-label={t('设置')}
-              ><Settings size={16} /></Button>
+              >
+                <Settings size={16} />
+              </button>
             </Tiptop>
             <div className="window-divider" />
             <Tiptop text={t('最小化')} placement="bottom">
-              <Button variant="ghost" size="icon" className="no-drag w-7! h-7! rounded-xs!" onClick={WindowMinimise} aria-label={t('最小化')}><Minus size={14} /></Button>
+              <button
+                type="button"
+                className="no-drag w-7 h-7 p-0 rounded-[var(--radius-sm)] inline-flex items-center justify-center shrink-0 text-secondary transition-colors duration-[80ms] hover:bg-hover hover:text-primary"
+                onClick={WindowMinimise}
+                aria-label={t('最小化')}
+              >
+                <Minus size={14} />
+              </button>
             </Tiptop>
             <Tiptop text={t('最大化')} placement="bottom">
-              <Button variant="ghost" size="icon" className="no-drag w-7! h-7! rounded-xs!" onClick={handleToggleMaximise} aria-label={t('最大化')}><Square size={14} /></Button>
+              <button
+                type="button"
+                className="no-drag w-7 h-7 p-0 rounded-[var(--radius-sm)] inline-flex items-center justify-center shrink-0 text-secondary transition-colors duration-[80ms] hover:bg-hover hover:text-primary"
+                onClick={handleToggleMaximise}
+                aria-label={t('最大化')}
+              >
+                <Square size={14} />
+              </button>
             </Tiptop>
             <Tiptop text={t('关闭')} placement="bottom">
-              <Button variant="ghost" size="icon" className="no-drag w-7! h-7! rounded-xs!" aria-label={t('关闭')} onClick={handleCloseWindow}><X size={14} /></Button>
+              <button
+                type="button"
+                className="no-drag w-7 h-7 p-0 rounded-[var(--radius-sm)] inline-flex items-center justify-center shrink-0 text-secondary transition-colors duration-[80ms] hover:bg-danger hover:text-white"
+                aria-label={t('关闭')}
+                onClick={handleCloseWindow}
+              >
+                <X size={14} />
+              </button>
             </Tiptop>
           </div>
         </div>

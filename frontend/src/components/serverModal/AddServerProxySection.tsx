@@ -1,6 +1,7 @@
 import { Eye, EyeOff, Globe } from 'lucide-react';
 import type { ChangeEvent } from 'react';
 import { useTranslation } from '../../i18n.ts';
+import { cn } from '../../utils/cn.ts';
 import type { ProxyNode, ServerEditorForm } from './serverModalTypes.ts';
 
 export interface AddServerProxySectionProps {
@@ -27,12 +28,45 @@ export function AddServerProxySection({
       </div>
       <div className="server-editor-fields">
         <div className="form-group">
-          <label className="form-label" htmlFor="server-proxy-mode">{t('代理模式')}</label>
-          <select id="server-proxy-mode" name="proxyMode" className="select" value={form.proxyMode || 'direct'} onChange={set('proxyMode')}>
-            <option value="direct">{t('直连')}</option>
-            <option value="node">{t('选择代理节点')}</option>
-            <option value="custom">{t('自定义代理')}</option>
-          </select>
+          <label className="form-label">{t('代理模式')}</label>
+          <div className="inline-flex h-8.5 w-full items-center gap-1 rounded-[var(--radius-md)] border border-line-subtle bg-sunken p-1">
+            <button
+              type="button"
+              className={cn(
+                'flex-1 inline-flex h-6 items-center justify-center rounded-[var(--radius-sm)] border text-xs font-medium transition-colors duration-[80ms]',
+                (!form.proxyMode || form.proxyMode === 'direct')
+                  ? 'border-accent-border bg-raised text-accent shadow-sm'
+                  : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
+              )}
+              onClick={() => set('proxyMode')({ target: { value: 'direct', name: 'proxyMode' } } as unknown as ChangeEvent<HTMLSelectElement>)}
+            >
+              {t('直连')}
+            </button>
+            <button
+              type="button"
+              className={cn(
+                'flex-1 inline-flex h-6 items-center justify-center rounded-[var(--radius-sm)] border text-xs font-medium transition-colors duration-[80ms]',
+                form.proxyMode === 'node'
+                  ? 'border-accent-border bg-raised text-accent shadow-sm'
+                  : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
+              )}
+              onClick={() => set('proxyMode')({ target: { value: 'node', name: 'proxyMode' } } as unknown as ChangeEvent<HTMLSelectElement>)}
+            >
+              {t('代理节点')}
+            </button>
+            <button
+              type="button"
+              className={cn(
+                'flex-1 inline-flex h-6 items-center justify-center rounded-[var(--radius-sm)] border text-xs font-medium transition-colors duration-[80ms]',
+                form.proxyMode === 'custom'
+                  ? 'border-accent-border bg-raised text-accent shadow-sm'
+                  : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
+              )}
+              onClick={() => set('proxyMode')({ target: { value: 'custom', name: 'proxyMode' } } as unknown as ChangeEvent<HTMLSelectElement>)}
+            >
+              {t('自定义代理')}
+            </button>
+          </div>
         </div>
         {form.proxyMode === 'node' ? (
           proxyNodes.length === 0 ? (

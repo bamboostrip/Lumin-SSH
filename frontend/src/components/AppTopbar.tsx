@@ -117,9 +117,9 @@ export default function AppTopbar({
             <div className="tab-bar">
               <Tiptop text={t('返回主页')} placement="bottom">
                 <Button
-                  variant="ghost"
+                  variant={activeSessionId === null ? 'secondary' : 'ghost'}
                   size="sm"
-                  className="no-drag shrink-0 rounded-sm!"
+                  className={cn('no-drag shrink-0 rounded-[var(--radius-sm)]', activeSessionId === null ? 'text-accent border-accent-border shadow-sm' : '')}
                   onClick={() => { markWorkspaceRestoreNavigationOverride(); setActiveSessionId(null); setActiveTerminalId(null); }}
                   aria-label={t('返回主页')}
                 >

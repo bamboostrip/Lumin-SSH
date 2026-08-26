@@ -2,6 +2,7 @@ import { Eye, EyeOff, FolderOpen, Key, KeyRound } from 'lucide-react';
 import type { ChangeEvent } from 'react';
 import type { config } from '../../../wailsjs/go/models.ts';
 import { useTranslation } from '../../i18n.ts';
+import { cn } from '../../utils/cn.ts';
 import { Button } from '../ui';
 import type { ServerEditorForm } from './serverModalTypes.ts';
 
@@ -47,11 +48,29 @@ export function AddServerAuthSection({
       </div>
       <div className="server-editor-fields">
         <div className="server-editor-auth-row">
-          <div className="server-editor-segment">
-            <button type="button" className={authMode === 'custom' ? 'active' : ''} onClick={() => setAuthMode('custom')}>
+          <div className="inline-flex h-8.5 flex-1 items-center gap-1 rounded-[var(--radius-md)] border border-line-subtle bg-sunken p-1">
+            <button
+              type="button"
+              className={cn(
+                'flex-1 inline-flex h-6 items-center justify-center rounded-[var(--radius-sm)] border text-xs font-medium transition-colors duration-[80ms]',
+                authMode === 'custom'
+                  ? 'border-accent-border bg-raised text-accent shadow-sm'
+                  : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
+              )}
+              onClick={() => setAuthMode('custom')}
+            >
               {t('自定义')}
             </button>
-            <button type="button" className={authMode === 'credential' ? 'active' : ''} onClick={() => setAuthMode('credential')}>
+            <button
+              type="button"
+              className={cn(
+                'flex-1 inline-flex h-6 items-center justify-center rounded-[var(--radius-sm)] border text-xs font-medium transition-colors duration-[80ms]',
+                authMode === 'credential'
+                  ? 'border-accent-border bg-raised text-accent shadow-sm'
+                  : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
+              )}
+              onClick={() => setAuthMode('credential')}
+            >
               {t('使用凭据')}
             </button>
           </div>

@@ -296,9 +296,33 @@ export default function AppearanceTab({
           <SettingRow
             definition={appearanceSettings.fields.monitorPanel}
             action={(
-              <div className="flex bg-raised rounded-xl p-1 border border-line">
-                <Button size="sm" variant={probePanelPosition === 'left' ? 'secondary' : 'ghost'} aria-pressed={probePanelPosition === 'left'} onClick={() => onProbePanelPositionChange('left')} className="rounded-xl aria-pressed:bg-sunken aria-pressed:text-secondary aria-pressed:border-line">{$t('左侧')}</Button>
-                <Button size="sm" variant={probePanelPosition === 'right' ? 'secondary' : 'ghost'} aria-pressed={probePanelPosition === 'right'} onClick={() => onProbePanelPositionChange('right')} className="rounded-xl aria-pressed:bg-sunken aria-pressed:text-secondary aria-pressed:border-line">{$t('右侧')}</Button>
+              <div className="inline-flex h-8.5 items-center gap-1 rounded-[var(--radius-md)] border border-line-subtle bg-sunken p-1">
+                <button
+                  type="button"
+                  aria-pressed={probePanelPosition === 'left'}
+                  onClick={() => onProbePanelPositionChange('left')}
+                  className={cn(
+                    'inline-flex h-6 px-3 items-center justify-center rounded-[var(--radius-sm)] border text-xs font-medium transition-colors duration-[80ms]',
+                    probePanelPosition === 'left'
+                      ? 'border-accent-border bg-raised text-accent shadow-sm'
+                      : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
+                  )}
+                >
+                  {$t('左侧')}
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={probePanelPosition === 'right'}
+                  onClick={() => onProbePanelPositionChange('right')}
+                  className={cn(
+                    'inline-flex h-6 px-3 items-center justify-center rounded-[var(--radius-sm)] border text-xs font-medium transition-colors duration-[80ms]',
+                    probePanelPosition === 'right'
+                      ? 'border-accent-border bg-raised text-accent shadow-sm'
+                      : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
+                  )}
+                >
+                  {$t('右侧')}
+                </button>
               </div>
             )}
           />

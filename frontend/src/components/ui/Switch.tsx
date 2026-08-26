@@ -10,18 +10,19 @@ interface SwitchDims {
 }
 
 const BORDER = 1;
+const PADDING = 1;
 
 function dims(trackW: number, trackH: number, knob: number): SwitchDims {
   return {
     track: `w-[${trackW}px] h-[${trackH}px]`,
     knob,
-    travel: trackW - BORDER * 2 - knob,
+    travel: trackW - (BORDER + PADDING) * 2 - knob,
   };
 }
 
 const SIZE: Record<SwitchSize, SwitchDims> = {
-  md: dims(42, 24, 16),
-  sm: dims(34, 20, 12),
+  md: dims(38, 22, 18),
+  sm: dims(30, 18, 14),
 };
 
 export interface SwitchProps {
@@ -37,13 +38,13 @@ export interface SwitchProps {
 export function Switch({ checked, onChange, disabled = false, size = 'md', indicator = false, ...rest }: SwitchProps) {
   const s = SIZE[size];
   const shell = cn(
-    'rounded-full border border-line flex items-center justify-start overflow-hidden transition-colors duration-[80ms] shrink-0',
+    'rounded-full border border-line flex items-center justify-start overflow-hidden transition-colors duration-[120ms] shrink-0 p-[1px]',
     s.track,
     disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
   );
   const knob = (
     <span
-      className="rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.3)] transition-transform duration-[80ms]"
+      className="rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.3)] transition-transform duration-[120ms]"
       style={{ width: s.knob, height: s.knob, transform: checked ? `translateX(${s.travel}px)` : undefined }}
     />
   );

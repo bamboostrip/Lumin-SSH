@@ -4,7 +4,7 @@ import { Rocket, Save, SquarePen, Trash2, Zap } from 'lucide-react';
 import { Z } from '../../constants/zIndex.ts';
 import { useTranslation } from '../../i18n.ts';
 import { extractQuickCommandParams } from '../../utils/quickCommandParams.ts';
-import { Button, EmptyState } from '../ui';
+import { Button, EmptyState, Select } from '../ui';
 import {
   inputClass,
   type QuickCommandItem,
@@ -293,18 +293,20 @@ export function QuickCommandDetail({
           <div className="flex-1" />
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted">{t('发送到')}</span>
-            <select
-              id="qc-send-target-detail"
-              name="qc-send-target-detail"
-              value={sendTarget}
-              onChange={(e) => setSendTarget(e.target.value as 'current' | 'all')}
-              className="text-xs px-1.5 py-0.5 rounded-xs bg-sunken border border-line text-primary outline-none cursor-pointer"
-            >
-              <option value="current">{t('当前会话')}</option>
-              {connectedSessions.length > 1 && (
-                <option value="all">{t('全部会话')} ({connectedSessions.length})</option>
-              )}
-            </select>
+            <div className="w-[120px]">
+              <Select
+                id="qc-send-target-detail"
+                name="qc-send-target-detail"
+                value={sendTarget}
+                onChange={(val) => setSendTarget(val as 'current' | 'all')}
+                options={[
+                  { value: 'current', label: t('当前会话') },
+                  ...(connectedSessions.length > 1
+                    ? [{ value: 'all', label: `${t('全部会话')} (${connectedSessions.length})` }]
+                    : []),
+                ]}
+              />
+            </div>
           </div>
           <Button
             variant="primary"

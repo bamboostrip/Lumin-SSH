@@ -19,101 +19,113 @@ type LooseT = (key: I18nKey, vars?: Record<string, unknown>) => string
 // 闭包依赖经 deps 同名注入，行渲染委托 renderAIConversationListRow。
 export interface AIHomeViewDeps {
   t: LooseT
+  conversationList: ConversationSummary[]
+  conversationOrganizer: AIConversationOrganizerState
+  conversationFilter: string
+  setConversationFilter: (filter: string) => void
+  conversationSelectionMode: boolean
+  setConversationSelectionMode: (mode: boolean) => void
+  selectedConversationIds: Set<string>
+  moveToGroupOpen: boolean
+  setMoveToGroupOpen: React.Dispatch<React.SetStateAction<boolean>>
+  editingConversationGroupId: string
+  editingConversationGroupName: string
+  setEditingConversationGroupName: (name: string) => void
+  draggingConversationGroupId: string
+  dragOverConversationGroupId: string
+  setDraggingConversationGroupId: (groupId: string) => void
+  setDragOverConversationGroupId: (groupId: string) => void
   panelState: PanelState
   globalSearchOpen: boolean
   globalSearchQuery: string
+  setGlobalSearchQuery: (query: string) => void
+  normalizedGlobalSearchQuery: string
   globalSearchLoading: boolean
   globalSearchResults: AIConversationMessageSearchResult[]
-  conversationFilter: string
-  conversationOrganizer: AIConversationOrganizerState
-  editingConversationGroupId: string
-  editingConversationGroupName: string
-  draggingConversationGroupId: string
-  dragOverConversationGroupId: string
-  conversationSelectionMode: boolean
-  selectedConversationIds: Set<string>
-  moveToGroupOpen: boolean
-  renderedConversationList: ConversationSummary[]
   globalSearchInputRef: React.RefObject<HTMLInputElement | null>
   conversationGroupRenameInputRef: React.RefObject<HTMLInputElement | null>
-  setGlobalSearchQuery: (query: string) => void
   resetGlobalSearchState: () => void
-  handleSelectGlobalSearchResult: (result: AIConversationMessageSearchResult) => Promise<void>
-  setConversationSelectionMode: (mode: boolean) => void
-  clearConversationSelection: () => void
-  handleCreateConversationGroup: () => Promise<void>
   handleOpenGlobalSearch: () => void
-  setConversationFilter: (filter: string) => void
-  cancelRenameConversationGroup: () => void
-  showSystemGroupRenameUnsupported: () => void
-  setEditingConversationGroupName: (name: string) => void
-  commitRenameConversationGroup: () => void
-  beginRenameConversationGroup: (groupId: string) => void
-  handleDeleteConversationGroup: (groupId: string) => Promise<void>
-  setDraggingConversationGroupId: (groupId: string) => void
-  setDragOverConversationGroupId: (groupId: string) => void
-  reorderConversationGroup: (sourceId: string, targetId: string) => void
+  handleSelectGlobalSearchResult: (result: AIConversationMessageSearchResult) => Promise<void>
   toggleConversationSelection: (conversationId: string) => void
+  clearConversationSelection: () => void
   handleOpenConversation: (conversationId: string, delegateToWorkspace?: boolean) => Promise<void>
   handleMakeConversationPermanent: (conversationId: string) => Promise<void>
   handleOpenConversationFolder: (conversationId: string) => Promise<void>
   handleRenameConversationTitle: (targetConversationId?: string) => Promise<void>
   handleDeleteConversation: (conversationId: string) => Promise<void>
+  handleCreateConversationGroup: () => Promise<void>
+  beginRenameConversationGroup: (groupId: string) => void
+  cancelRenameConversationGroup: () => void
+  commitRenameConversationGroup: () => void
+  reorderConversationGroup: (sourceId: string, targetId: string) => void
+  showSystemGroupRenameUnsupported: () => void
+  handleDeleteConversationGroup: (groupId: string) => Promise<void>
   handleMoveSelectedConversations: (groupId: string) => void
-  setMoveToGroupOpen: React.Dispatch<React.SetStateAction<boolean>>
   handleSetSelectedArchived: (archived: boolean) => Promise<void>
   handleDeleteSelectedConversations: () => Promise<void>
 }
 
 export function renderAIHomeView({
   t,
+  conversationList,
+  conversationOrganizer,
+  conversationFilter,
+  setConversationFilter,
+  conversationSelectionMode,
+  setConversationSelectionMode,
+  selectedConversationIds,
+  moveToGroupOpen,
+  setMoveToGroupOpen,
+  editingConversationGroupId,
+  editingConversationGroupName,
+  setEditingConversationGroupName,
+  draggingConversationGroupId,
+  dragOverConversationGroupId,
+  setDraggingConversationGroupId,
+  setDragOverConversationGroupId,
   panelState,
   globalSearchOpen,
   globalSearchQuery,
+  setGlobalSearchQuery,
+  normalizedGlobalSearchQuery,
   globalSearchLoading,
   globalSearchResults,
-  conversationFilter,
-  conversationOrganizer,
-  editingConversationGroupId,
-  editingConversationGroupName,
-  draggingConversationGroupId,
-  dragOverConversationGroupId,
-  conversationSelectionMode,
-  selectedConversationIds,
-  moveToGroupOpen,
-  renderedConversationList,
   globalSearchInputRef,
   conversationGroupRenameInputRef,
-  setGlobalSearchQuery,
   resetGlobalSearchState,
-  handleSelectGlobalSearchResult,
-  setConversationSelectionMode,
-  clearConversationSelection,
-  handleCreateConversationGroup,
   handleOpenGlobalSearch,
-  setConversationFilter,
-  cancelRenameConversationGroup,
-  showSystemGroupRenameUnsupported,
-  setEditingConversationGroupName,
-  commitRenameConversationGroup,
-  beginRenameConversationGroup,
-  handleDeleteConversationGroup,
-  setDraggingConversationGroupId,
-  setDragOverConversationGroupId,
-  reorderConversationGroup,
+  handleSelectGlobalSearchResult,
   toggleConversationSelection,
+  clearConversationSelection,
   handleOpenConversation,
   handleMakeConversationPermanent,
   handleOpenConversationFolder,
   handleRenameConversationTitle,
   handleDeleteConversation,
+  handleCreateConversationGroup,
+  beginRenameConversationGroup,
+  cancelRenameConversationGroup,
+  commitRenameConversationGroup,
+  reorderConversationGroup,
+  showSystemGroupRenameUnsupported,
+  handleDeleteConversationGroup,
   handleMoveSelectedConversations,
-  setMoveToGroupOpen,
   handleSetSelectedArchived,
   handleDeleteSelectedConversations,
 }: AIHomeViewDeps) {
-    const normalizedGlobalSearchQuery = globalSearchQuery.trim()
-    const displayConversationList = buildAIConversationDisplayList(renderedConversationList, conversationFilter)
+    const getConversationGroupId = (item: ConversationSummary) => {
+      const ownerId = item.rootConversationId || item.parentConversationId || item.id
+      return conversationOrganizer.assignments[item.id] || conversationOrganizer.assignments[ownerId] || ''
+    }
+    const visibleConversationList = conversationList.filter((item) => {
+      if (conversationFilter === 'archived') return item.archived === true
+      if (item.archived === true) return false
+      if (conversationFilter === 'all') return true
+      const groupId = getConversationGroupId(item)
+      return conversationFilter === 'ungrouped' ? !groupId : groupId === conversationFilter
+    })
+    const displayConversationList = buildAIConversationDisplayList(visibleConversationList)
     let content: React.ReactNode = null
 
     if (globalSearchOpen) {

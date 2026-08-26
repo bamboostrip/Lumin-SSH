@@ -104,7 +104,7 @@ export function QuickCommandDetail({
     return (
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         <div className="flex-1 min-h-0 overflow-auto px-3 py-2.5 flex flex-col gap-2">
-          <div className="flex items-center gap-2 shrink-0 px-2.5 py-2 bg-sunken border border-line rounded-md">
+          <div className="flex items-center gap-2 shrink-0 px-2.5 py-2 bg-sunken border border-line rounded-[var(--radius-md)]">
             <span className="badge shrink-0">
               {editCmdName || selectedItem.name || t('未命名命令')}
             </span>
@@ -193,7 +193,7 @@ export function QuickCommandDetail({
                             top: historyDropdown.top ?? 0,
                             zIndex: Z.MENU,
                           }}
-                          className="w-[220px] max-h-[220px] flex flex-col box-border overflow-hidden bg-raised border border-line rounded-md shadow-md"
+                          className="w-[220px] max-h-[220px] flex flex-col box-border overflow-hidden bg-raised border border-line rounded-[var(--radius-md)] shadow-md"
                         >
                           <div className="p-1.5 shrink-0 border-b border-line-subtle">
                             <input
@@ -208,7 +208,7 @@ export function QuickCommandDetail({
                               onKeyDown={(e) => {
                                 if (e.key === 'Escape') { setHistoryDropdown(null); setHistorySearch(''); }
                               }}
-                              className={`${inputClass} px-2 py-[5px] rounded-sm`}
+                              className={inputClass}
                             />
                           </div>
                           <div

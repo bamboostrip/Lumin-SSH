@@ -186,7 +186,7 @@ export function TerminalHistoryPopup({
           </div>
 
           {/* 搜索 + 模式切换 */}
-          <div className="flex gap-1.5 items-center px-2.5 py-1.5 border-t border-[var(--term-separator)] shrink-0">
+          <div className="flex gap-2 items-center px-3 py-2 border-t border-[var(--term-separator)] shrink-0 bg-canvas">
             <input
               ref={historySearchInputRef}
               name="terminal-history-search"
@@ -196,13 +196,29 @@ export function TerminalHistoryPopup({
               onChange={e => setSearchQuery(e.target.value)}
               onKeyDown={handleHistorySearchKeyDown}
               placeholder={t('搜索命令...')}
-              className="flex-1 px-2 py-1 bg-[var(--term-input-bg)] border border-[var(--term-btn-border)] rounded-sm text-sm text-[var(--term-input-color)] outline-none"
+              className="flex-1 h-8.5 px-2.5 bg-sunken border border-line rounded-[var(--radius-sm)] text-xs text-primary outline-none focus:border-focus focus:ring-1 focus:ring-accent/30"
             />
-            <div className="server-editor-segment">
-              <button className={historyMode === 'server' ? 'active' : ''} onClick={() => setHistoryMode('server')}>
+            <div className="inline-flex h-8.5 items-center gap-0.5 rounded-[var(--radius-sm)] border border-line-subtle bg-sunken p-0.5 shrink-0">
+              <button
+                type="button"
+                className={`h-7 px-3 rounded-[6px] text-xs font-medium transition-colors cursor-pointer ${
+                  historyMode === 'server'
+                    ? 'bg-accent text-white font-semibold shadow-xs'
+                    : 'border border-transparent text-secondary hover:text-primary hover:bg-hover/60'
+                }`}
+                onClick={() => setHistoryMode('server')}
+              >
                 {t('当前服务器')}
               </button>
-              <button className={historyMode === 'global' ? 'active' : ''} onClick={() => setHistoryMode('global')}>
+              <button
+                type="button"
+                className={`h-7 px-3 rounded-[6px] text-xs font-medium transition-colors cursor-pointer ${
+                  historyMode === 'global'
+                    ? 'bg-accent text-white font-semibold shadow-xs'
+                    : 'border border-transparent text-secondary hover:text-primary hover:bg-hover/60'
+                }`}
+                onClick={() => setHistoryMode('global')}
+              >
                 {t('全部服务器')}
               </button>
             </div>

@@ -105,3 +105,14 @@
 ## 11. 待确认
 
 - 试点完成后的截图对比由用户主审，`spec` 评审通过后进入 `writing-plans` 产出详细实施计划。
+
+## 12. 评估基线（2026-08-26 MVP）
+
+> 详见独立评审文档：`2026-08-26-ui-pilot-review.md`  
+> 分支 HEAD `5166ca61` / 标签 `ui-pilot-mvp-2026-08-26`
+
+**构建**：`npm run build` ✓ `3633 modules transformed` (`built in 4.3s`)、`oxlint 0 warnings` (413 files)、`styles:check` `36/36` 通过、`frontend/dist` 112 文件完整。  
+**视觉**：Token `4/8/12/16/20 + shadow-sm/md rgba(16,24,40)` 已在 6 文件全量收敛为 `var(--radius-*)`；顶部 `md 12 + sm 8 + h-8.5` 与底部 `lg 16 + sm 8` + 卡片 `md 12 + pad 10/12 + shadow-sm` **同频通过**，阴影深/浅均不脏。  
+**密度**：10/20/40 卡片推演（220px 4 列、`gap 6px` 保留）均可接受，未现拥挤感；批量栏 `lg 16` 悬浮不遮挡末行。  
+**层级**：`section-title-container .btn-ghost` 已迁移至 `@layer components` 空壳，`utilities` 不再对抗。  
+**结论**：**通过（有条件推广）**—— 保留 `gap 6px`，浅色 `border-subtle 0.10→0.12` 与窄窗 `lg 16→md 12` 为观察项。待用户在 `npm run dev` 后补充深/浅截图至评审文档 §3.4 后即可进入全量推广（路径 3）评估。回退仅需 6 行 token 数值回退，无重构成本。

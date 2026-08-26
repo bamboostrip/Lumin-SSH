@@ -48,11 +48,11 @@ export function AddServerAuthSection({
       </div>
       <div className="server-editor-fields">
         <div className="server-editor-auth-row">
-          <div className="inline-flex h-8.5 flex-1 items-center gap-1 rounded-[var(--radius-md)] border border-line-subtle bg-sunken p-1">
+          <div className="inline-flex h-8.5 flex-1 items-center gap-1 rounded-[var(--radius-sm)] border border-line-subtle bg-sunken p-1">
             <button
               type="button"
               className={cn(
-                'flex-1 inline-flex h-6 items-center justify-center rounded-[var(--radius-sm)] border text-xs font-medium transition-colors duration-[80ms]',
+                'flex-1 inline-flex h-6 items-center justify-center rounded-[6px] border text-xs font-medium transition-colors duration-[80ms]',
                 authMode === 'custom'
                   ? 'border-accent-border bg-raised text-accent shadow-sm'
                   : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
@@ -64,7 +64,7 @@ export function AddServerAuthSection({
             <button
               type="button"
               className={cn(
-                'flex-1 inline-flex h-6 items-center justify-center rounded-[var(--radius-sm)] border text-xs font-medium transition-colors duration-[80ms]',
+                'flex-1 inline-flex h-6 items-center justify-center rounded-[6px] border text-xs font-medium transition-colors duration-[80ms]',
                 authMode === 'credential'
                   ? 'border-accent-border bg-raised text-accent shadow-sm'
                   : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
@@ -74,7 +74,11 @@ export function AddServerAuthSection({
               {t('使用凭据')}
             </button>
           </div>
-          <button type="button" className="server-editor-credential-button" onClick={onOpenCredentials}>
+          <button
+            type="button"
+            className="inline-flex h-8.5 shrink-0 items-center justify-center gap-1.5 rounded-[var(--radius-sm)] border border-line-subtle bg-sunken px-3 text-xs font-medium text-secondary hover:bg-hover hover:text-primary hover:border-line transition-colors"
+            onClick={onOpenCredentials}
+          >
             <KeyRound size={13} /> {t('凭据管理')}
           </button>
         </div>

@@ -29,11 +29,11 @@ export function AddServerProxySection({
       <div className="server-editor-fields">
         <div className="form-group">
           <label className="form-label">{t('代理模式')}</label>
-          <div className="inline-flex h-8.5 w-full items-center gap-1 rounded-[var(--radius-md)] border border-line-subtle bg-sunken p-1">
+          <div className="inline-flex h-8.5 w-full items-center gap-1 rounded-[var(--radius-sm)] border border-line-subtle bg-sunken p-1">
             <button
               type="button"
               className={cn(
-                'flex-1 inline-flex h-6 items-center justify-center rounded-[var(--radius-sm)] border text-xs font-medium transition-colors duration-[80ms]',
+                'flex-1 inline-flex h-6 items-center justify-center rounded-[6px] border text-xs font-medium transition-colors duration-[80ms]',
                 (!form.proxyMode || form.proxyMode === 'direct')
                   ? 'border-accent-border bg-raised text-accent shadow-sm'
                   : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
@@ -45,7 +45,7 @@ export function AddServerProxySection({
             <button
               type="button"
               className={cn(
-                'flex-1 inline-flex h-6 items-center justify-center rounded-[var(--radius-sm)] border text-xs font-medium transition-colors duration-[80ms]',
+                'flex-1 inline-flex h-6 items-center justify-center rounded-[6px] border text-xs font-medium transition-colors duration-[80ms]',
                 form.proxyMode === 'node'
                   ? 'border-accent-border bg-raised text-accent shadow-sm'
                   : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
@@ -57,7 +57,7 @@ export function AddServerProxySection({
             <button
               type="button"
               className={cn(
-                'flex-1 inline-flex h-6 items-center justify-center rounded-[var(--radius-sm)] border text-xs font-medium transition-colors duration-[80ms]',
+                'flex-1 inline-flex h-6 items-center justify-center rounded-[6px] border text-xs font-medium transition-colors duration-[80ms]',
                 form.proxyMode === 'custom'
                   ? 'border-accent-border bg-raised text-accent shadow-sm'
                   : 'border-transparent text-secondary hover:bg-hover hover:text-primary',

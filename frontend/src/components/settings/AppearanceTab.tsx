@@ -296,13 +296,13 @@ export default function AppearanceTab({
           <SettingRow
             definition={appearanceSettings.fields.monitorPanel}
             action={(
-              <div className="inline-flex h-8.5 items-center gap-1 rounded-[var(--radius-md)] border border-line-subtle bg-sunken p-1">
+              <div className="inline-flex h-8.5 items-center gap-1 rounded-[var(--radius-sm)] border border-line-subtle bg-sunken p-1">
                 <button
                   type="button"
                   aria-pressed={probePanelPosition === 'left'}
                   onClick={() => onProbePanelPositionChange('left')}
                   className={cn(
-                    'inline-flex h-6 px-3 items-center justify-center rounded-[var(--radius-sm)] border text-xs font-medium transition-colors duration-[80ms]',
+                    'inline-flex h-6 px-3 items-center justify-center rounded-[6px] border text-xs font-medium transition-colors duration-[80ms]',
                     probePanelPosition === 'left'
                       ? 'border-accent-border bg-raised text-accent shadow-sm'
                       : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
@@ -315,7 +315,7 @@ export default function AppearanceTab({
                   aria-pressed={probePanelPosition === 'right'}
                   onClick={() => onProbePanelPositionChange('right')}
                   className={cn(
-                    'inline-flex h-6 px-3 items-center justify-center rounded-[var(--radius-sm)] border text-xs font-medium transition-colors duration-[80ms]',
+                    'inline-flex h-6 px-3 items-center justify-center rounded-[6px] border text-xs font-medium transition-colors duration-[80ms]',
                     probePanelPosition === 'right'
                       ? 'border-accent-border bg-raised text-accent shadow-sm'
                       : 'border-transparent text-secondary hover:bg-hover hover:text-primary',

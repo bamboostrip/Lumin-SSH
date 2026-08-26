@@ -73,7 +73,7 @@ export function DashboardHeaderActions({
     <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 py-1">
       {/* 左侧：模式切换 + 搜索（占满剩余宽度，输入框不再窄） */}
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        <div className="inline-flex h-8.5 shrink-0 items-center gap-1 rounded-[var(--radius-md)] border border-line-subtle bg-sunken p-1">
+        <div className="inline-flex h-8.5 shrink-0 items-center gap-1 rounded-[var(--radius-sm)] border border-line-subtle bg-sunken p-1">
           <Tiptop text={t('主机')} placement="bottom">
             <button
               type="button"
@@ -81,7 +81,7 @@ export function DashboardHeaderActions({
               aria-label={t('主机')}
               aria-pressed={hostPageMode === 'hosts'}
               className={cn(
-                'inline-flex h-6 items-center justify-center gap-1.5 rounded-[var(--radius-sm)] border px-3 text-[13px] font-medium whitespace-nowrap transition-colors duration-[80ms]',
+                'inline-flex h-[26px] items-center justify-center gap-1.5 rounded-[6px] border px-3 text-xs font-medium whitespace-nowrap transition-colors duration-[80ms]',
                 hostPageMode === 'hosts'
                   ? 'border-accent-border bg-raised text-accent shadow-sm'
                   : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
@@ -98,7 +98,7 @@ export function DashboardHeaderActions({
               aria-label={t('最近连接')}
               aria-pressed={hostPageMode === 'recent'}
               className={cn(
-                'inline-flex h-6 items-center justify-center gap-1.5 rounded-[var(--radius-sm)] border px-3 text-[13px] font-medium whitespace-nowrap transition-colors duration-[80ms]',
+                'inline-flex h-[26px] items-center justify-center gap-1.5 rounded-[6px] border px-3 text-xs font-medium whitespace-nowrap transition-colors duration-[80ms]',
                 hostPageMode === 'recent'
                   ? 'border-accent-border bg-raised text-accent shadow-sm'
                   : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
@@ -109,7 +109,7 @@ export function DashboardHeaderActions({
               {recentServersCount > 0 && (
                 <span
                   className={cn(
-                    'ml-0.5 inline-flex min-w-[19px] h-[19px] items-center justify-center rounded-full px-1 text-xs font-bold leading-none font-mono',
+                    'ml-0.5 inline-flex min-w-[18px] h-[17px] items-center justify-center rounded-full px-1 text-[11px] font-semibold leading-none font-mono',
                     hostPageMode === 'recent'
                       ? 'bg-accent text-white shadow-sm'
                       : 'bg-accent/15 text-accent ring-1 ring-accent/25 ring-inset',
@@ -133,7 +133,7 @@ export function DashboardHeaderActions({
             type="search"
             autoComplete="off"
             aria-label={t('搜索服务器...')}
-            className="h-8.5 w-full rounded-[var(--radius-md)] border border-line-subtle bg-sunken pl-9 pr-8 text-[13px] text-primary placeholder:text-muted outline-none transition-colors focus:border-focus focus:bg-raised focus:ring-2 focus:ring-accent/20 [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
+            className="h-8.5 w-full rounded-[var(--radius-sm)] border border-line-subtle bg-sunken pl-9 pr-8 text-[13px] text-primary placeholder:text-muted outline-none transition-colors focus:border-focus focus:bg-raised focus:ring-2 focus:ring-accent/20 [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
             placeholder={t('搜索服务器...')}
             value={searchQuery}
             onChange={onSearchChange}
@@ -157,7 +157,7 @@ export function DashboardHeaderActions({
           <Button
             variant="ghost"
             size="icon"
-            className="!h-8.5 !w-8.5 !min-w-8.5 rounded-[var(--radius-md)] !border !border-line-subtle !bg-sunken hover:!bg-hover hover:!text-primary hover:!border-line"
+            className="!h-8.5 !w-8.5 !min-w-8.5 rounded-[var(--radius-sm)] !border !border-line-subtle !bg-sunken hover:!bg-hover hover:!text-primary hover:!border-line"
             aria-pressed={!!localMenuPos}
             aria-label={t('本地连接')}
             onClick={(e) => {
@@ -189,7 +189,7 @@ export function DashboardHeaderActions({
                 variant="ghost"
                 size="icon"
                 className={cn(
-                  '!h-8.5 !w-8.5 !min-w-8.5 rounded-[var(--radius-md)] !border !bg-sunken hover:!border-line',
+                  '!h-8.5 !w-8.5 !min-w-8.5 rounded-[var(--radius-sm)] !border !bg-sunken hover:!border-line',
                   selectionMode
                     ? '!border-accent-border !bg-accent-dim !text-accent'
                     : '!border-line-subtle hover:!bg-hover hover:!text-primary',
@@ -202,7 +202,7 @@ export function DashboardHeaderActions({
               </Button>
             </Tiptop>
 
-            <div className="inline-flex h-8.5 items-center gap-1 rounded-[var(--radius-md)] border border-line-subtle bg-sunken p-1">
+            <div className="inline-flex h-8.5 items-center gap-1 rounded-[var(--radius-sm)] border border-line-subtle bg-sunken p-1">
               <Tiptop text={t('卡片视图')} placement="bottom">
                 <button
                   type="button"
@@ -210,7 +210,7 @@ export function DashboardHeaderActions({
                   aria-label={t('卡片视图')}
                   aria-pressed={serverListViewMode === 'grid'}
                   className={cn(
-                    'inline-flex h-6 w-8 items-center justify-center rounded-[var(--radius-sm)] border text-xs transition-colors duration-[80ms]',
+                    'inline-flex h-6 w-8 items-center justify-center rounded-[6px] border text-xs transition-colors duration-[80ms]',
                     serverListViewMode === 'grid'
                       ? 'border-accent-border bg-raised text-accent shadow-sm'
                       : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
@@ -226,7 +226,7 @@ export function DashboardHeaderActions({
                   aria-label={t('列表视图')}
                   aria-pressed={serverListViewMode === 'table'}
                   className={cn(
-                    'inline-flex h-6 w-8 items-center justify-center rounded-[var(--radius-sm)] border text-xs transition-colors duration-[80ms]',
+                    'inline-flex h-6 w-8 items-center justify-center rounded-[6px] border text-xs transition-colors duration-[80ms]',
                     serverListViewMode === 'table'
                       ? 'border-accent-border bg-raised text-accent shadow-sm'
                       : 'border-transparent text-secondary hover:bg-hover hover:text-primary',
@@ -242,7 +242,7 @@ export function DashboardHeaderActions({
                 variant="ghost"
                 size="icon"
                 className={cn(
-                  '!h-8.5 !w-8.5 !min-w-8.5 rounded-[var(--radius-md)] !border !bg-sunken hover:!border-line',
+                  '!h-8.5 !w-8.5 !min-w-8.5 rounded-[var(--radius-sm)] !border !bg-sunken hover:!border-line',
                   hideSensitive
                     ? '!border-[rgba(var(--warning-rgb),0.35)] !bg-warning-dim !text-warning hover:!bg-warning-dim'
                     : '!border-line-subtle hover:!bg-hover hover:!text-primary',
@@ -260,7 +260,7 @@ export function DashboardHeaderActions({
               <Button
                 variant="secondary"
                 onClick={onToggleCollapseAllGroups}
-                className="h-8.5 shrink-0 gap-1.5 rounded-[var(--radius-md)] px-3 text-[13px] font-medium"
+                className="h-8.5 shrink-0 gap-1.5 rounded-[var(--radius-sm)] px-3 text-[13px] font-medium"
               >
                 {allCollapsed ? <Folder size={14} /> : <FolderOpen size={14} />}
                 <span className="hidden sm:inline">{allCollapsed ? t('打开分组') : t('收起分组')}</span>
@@ -271,7 +271,7 @@ export function DashboardHeaderActions({
               variant="secondary"
               onClick={onOpenImportExport}
               aria-label={t('数据管理')}
-              className="h-8.5 shrink-0 gap-1.5 rounded-[var(--radius-md)] px-3 text-[13px] font-medium"
+              className="h-8.5 shrink-0 gap-1.5 rounded-[var(--radius-sm)] px-3 text-[13px] font-medium"
             >
               <Database size={14} />
               <span className="hidden sm:inline">{t('数据管理')}</span>
@@ -285,7 +285,7 @@ export function DashboardHeaderActions({
                 variant="ghost"
                 size="icon"
                 className={cn(
-                  '!h-8.5 !w-8.5 !min-w-8.5 rounded-[var(--radius-md)] !border !bg-sunken hover:!border-line',
+                  '!h-8.5 !w-8.5 !min-w-8.5 rounded-[var(--radius-sm)] !border !bg-sunken hover:!border-line',
                   hideSensitive
                     ? '!border-[rgba(var(--warning-rgb),0.35)] !bg-warning-dim !text-warning hover:!bg-warning-dim'
                     : '!border-line-subtle hover:!bg-hover hover:!text-primary',
@@ -303,7 +303,7 @@ export function DashboardHeaderActions({
               onClick={() => void onClearRecent()}
               disabled={!hasRecentServers}
               aria-label={t('清空最近连接')}
-              className="h-8.5 shrink-0 gap-1.5 rounded-[var(--radius-md)] px-3 text-[13px] font-medium"
+              className="h-8.5 shrink-0 gap-1.5 rounded-[var(--radius-sm)] px-3 text-[13px] font-medium"
             >
               <Trash2 size={14} />
               <span>{t('清空')}</span>

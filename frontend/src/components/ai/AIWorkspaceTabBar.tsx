@@ -1,5 +1,4 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { cn } from '../../utils/cn.ts'
+import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react'
 import Tiptop from '../Tiptop.tsx'
 import { openGlobalContextMenu } from '../../utils/contextMenu.ts'
 import { t as translate, type I18nKey } from '../../i18n.ts'
@@ -63,7 +62,7 @@ export function renderAIWorkspaceTabBar({
       data-ai-workspace-tab-bar="true"
       onClickCapture={suppressAIWorkspaceTabCloseInteraction}
       onDoubleClickCapture={suppressAIWorkspaceTabCloseInteraction}
-      className="h-10 flex items-stretch gap-0 pt-1 px-1.5 border-b border-line bg-canvas shrink-0 overflow-hidden">
+      className="terminal-sub-tab-bar">
       {aiWorkspaceTabOverflow ? (
         <button
           type="button"
@@ -147,10 +146,7 @@ export function renderAIWorkspaceTabBar({
                   ],
                 })
               }}
-              className={cn(
-                'shrink-0 basis-auto w-44 min-w-[132px] max-w-[220px] flex items-center rounded-t-lg -mb-px border',
-                active ? 'border-line border-b-raised bg-raised' : 'border-transparent',
-              )}>
+              className={`terminal-sub-tab shrink-0 basis-auto max-w-[220px] ${active ? 'active' : ''}`}>
               <Tiptop text={tabLabel} placement="bottom" style={{ display: 'flex', height: '100%', minWidth: 0, flex: 1 }}>
                 <button
                   type="button"
@@ -170,10 +166,7 @@ export function renderAIWorkspaceTabBar({
                     closeWorkspaceTab(tab.id)
                   }}
                   aria-label={tabLabel}
-                  className={cn(
-                    'min-w-0 grow basis-auto h-full flex items-center justify-start gap-[7px] pl-2.5 pr-2 border-0 relative bg-transparent cursor-pointer text-sm tabular-nums',
-                    active ? 'text-primary font-bold' : 'text-secondary font-medium',
-                  )}>
+                  className="min-w-0 grow basis-auto h-full flex items-center justify-start gap-[6px] pl-1 pr-1 border-0 relative bg-transparent cursor-pointer text-xs tabular-nums text-inherit font-inherit">
                   {running ? <span aria-label={t('执行中')} className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" /> : null}
                   <span className="text-muted tabular-nums shrink-0">{index + 1}</span>
                   <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{tabTitle}</span>
@@ -185,8 +178,9 @@ export function renderAIWorkspaceTabBar({
                 </button>
               </Tiptop>
               {tabGroup.tabs.length > 1 ? (
-                <button
-                  type="button"
+                <span
+                  role="button"
+                  tabIndex={0}
                   aria-label={`${t('关闭')} ${tabTitle}`}
                   title={t('关闭')}
                   onClick={(event) => {
@@ -194,9 +188,9 @@ export function renderAIWorkspaceTabBar({
                     event.stopPropagation()
                     closeWorkspaceTab(tab.id)
                   }}
-                  className="w-6 h-6 mr-1 p-0 border-0 rounded-sm bg-transparent text-muted cursor-pointer shrink-0 text-lg leading-none">
-                  ×
-                </button>
+                  className="terminal-sub-tab-close">
+                  <X size={10} />
+                </span>
               ) : null}
             </div>
           )
@@ -213,13 +207,15 @@ export function renderAIWorkspaceTabBar({
           <ChevronRight size={14} />
         </button>
       ) : null}
-      <button
-        type="button"
-        title={t('新对话')}
-        aria-label={t('新对话')}
-        onClick={createWorkspaceTab}
-        className="w-[30px] border-0 border-b-2 border-b-transparent bg-transparent text-secondary cursor-pointer text-[18px] shrink-0">
-        +
-      </button>
+      <div className="terminal-sub-tab-actions">
+        <button
+          type="button"
+          title={t('新对话')}
+          aria-label={t('新对话')}
+          onClick={createWorkspaceTab}
+          className="terminal-create-btn inline-flex items-center justify-center shrink-0">
+          <Plus size={14} />
+        </button>
+      </div>
     </div>
   )}

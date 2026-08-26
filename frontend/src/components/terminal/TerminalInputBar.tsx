@@ -366,12 +366,7 @@ export function TerminalInputBar({
         <button
           onClick={toggleMultiLineWrap}
           aria-label={multiLineWrapEnabled ? t('独立子 Shell 执行 (已开启)') : t('直接在当前会话执行 (默认)')}
-          className={cn(
-            'term-btn p-0 w-8 min-w-8 h-8 min-h-8 justify-center rounded-[var(--radius-sm)] transition-colors',
-            multiLineWrapEnabled
-              ? 'active bg-accent-dim text-accent border-accent-border font-bold'
-              : 'text-secondary hover:bg-hover hover:text-primary',
-          )}
+          className={cn('term-btn-icon', multiLineWrapEnabled ? 'active enabled border-accent text-accent bg-accent-dim font-bold' : 'enabled')}
         >
           <span className="inline-flex items-center justify-center w-3.5 font-mono text-xs font-bold">
             &gt;_

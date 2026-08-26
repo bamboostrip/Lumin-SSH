@@ -302,10 +302,10 @@ export default function AppearanceTab({
                   aria-pressed={probePanelPosition === 'left'}
                   onClick={() => onProbePanelPositionChange('left')}
                   className={cn(
-                    'inline-flex h-7 px-3 items-center justify-center rounded-[6px] text-xs font-medium transition-all duration-150',
+                    'inline-flex h-7 px-3 items-center justify-center rounded-[6px] text-xs font-medium transition-colors',
                     probePanelPosition === 'left'
-                      ? 'bg-raised text-primary shadow-xs font-semibold'
-                      : 'text-secondary hover:text-primary hover:bg-hover/60',
+                      ? 'border border-accent-border bg-accent-dim text-accent font-semibold shadow-xs'
+                      : 'border border-transparent text-secondary hover:text-primary hover:bg-hover/60',
                   )}
                 >
                   {$t('左侧')}
@@ -315,10 +315,10 @@ export default function AppearanceTab({
                   aria-pressed={probePanelPosition === 'right'}
                   onClick={() => onProbePanelPositionChange('right')}
                   className={cn(
-                    'inline-flex h-7 px-3 items-center justify-center rounded-[6px] text-xs font-medium transition-all duration-150',
+                    'inline-flex h-7 px-3 items-center justify-center rounded-[6px] text-xs font-medium transition-colors',
                     probePanelPosition === 'right'
-                      ? 'bg-raised text-primary shadow-xs font-semibold'
-                      : 'text-secondary hover:text-primary hover:bg-hover/60',
+                      ? 'border border-accent-border bg-accent-dim text-accent font-semibold shadow-xs'
+                      : 'border border-transparent text-secondary hover:text-primary hover:bg-hover/60',
                   )}
                 >
                   {$t('右侧')}

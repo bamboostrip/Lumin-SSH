@@ -81,10 +81,10 @@ export function DashboardHeaderActions({
               aria-label={t('主机')}
               aria-pressed={hostPageMode === 'hosts'}
               className={cn(
-                'inline-flex h-7 items-center justify-center gap-1.5 rounded-[6px] px-3 text-xs font-medium whitespace-nowrap transition-all duration-150',
+                'inline-flex h-7 items-center justify-center gap-1.5 rounded-[6px] px-3 text-xs font-medium whitespace-nowrap transition-colors',
                 hostPageMode === 'hosts'
-                  ? 'bg-raised text-primary shadow-xs font-semibold'
-                  : 'text-secondary hover:text-primary hover:bg-hover/60',
+                  ? 'border border-accent-border bg-accent-dim text-accent font-semibold shadow-xs'
+                  : 'border border-transparent text-secondary hover:text-primary hover:bg-hover/60',
               )}
             >
               <Monitor size={14} />
@@ -98,10 +98,10 @@ export function DashboardHeaderActions({
               aria-label={t('最近连接')}
               aria-pressed={hostPageMode === 'recent'}
               className={cn(
-                'inline-flex h-7 items-center justify-center gap-1.5 rounded-[6px] px-3 text-xs font-medium whitespace-nowrap transition-all duration-150',
+                'inline-flex h-7 items-center justify-center gap-1.5 rounded-[6px] px-3 text-xs font-medium whitespace-nowrap transition-colors',
                 hostPageMode === 'recent'
-                  ? 'bg-raised text-primary shadow-xs font-semibold'
-                  : 'text-secondary hover:text-primary hover:bg-hover/60',
+                  ? 'border border-accent-border bg-accent-dim text-accent font-semibold shadow-xs'
+                  : 'border border-transparent text-secondary hover:text-primary hover:bg-hover/60',
               )}
             >
               <History size={14} />
@@ -210,10 +210,10 @@ export function DashboardHeaderActions({
                   aria-label={t('卡片视图')}
                   aria-pressed={serverListViewMode === 'grid'}
                   className={cn(
-                    'inline-flex h-7 w-8 items-center justify-center rounded-[6px] text-xs transition-all duration-150',
+                    'inline-flex h-7 w-8 items-center justify-center rounded-[6px] text-xs transition-colors',
                     serverListViewMode === 'grid'
-                      ? 'bg-raised text-primary shadow-xs font-semibold'
-                      : 'text-secondary hover:text-primary hover:bg-hover/60',
+                      ? 'border border-accent-border bg-accent-dim text-accent font-semibold shadow-xs'
+                      : 'border border-transparent text-secondary hover:text-primary hover:bg-hover/60',
                   )}
                 >
                   <LayoutGrid size={15} />
@@ -226,10 +226,10 @@ export function DashboardHeaderActions({
                   aria-label={t('列表视图')}
                   aria-pressed={serverListViewMode === 'table'}
                   className={cn(
-                    'inline-flex h-7 w-8 items-center justify-center rounded-[6px] text-xs transition-all duration-150',
+                    'inline-flex h-7 w-8 items-center justify-center rounded-[6px] text-xs transition-colors',
                     serverListViewMode === 'table'
-                      ? 'bg-raised text-primary shadow-xs font-semibold'
-                      : 'text-secondary hover:text-primary hover:bg-hover/60',
+                      ? 'border border-accent-border bg-accent-dim text-accent font-semibold shadow-xs'
+                      : 'border border-transparent text-secondary hover:text-primary hover:bg-hover/60',
                   )}
                 >
                   <List size={15} />

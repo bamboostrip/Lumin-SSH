@@ -5100,6 +5100,12 @@ body.theme-light .dashboard-server-editor {
   border-color: var(--border);
   color: var(--text-secondary);
 }
+.term-btn-icon.active,
+.term-btn-icon.active.enabled {
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
 
 /* ── 终端顶部状态栏 ── */
 .term-status-bar {

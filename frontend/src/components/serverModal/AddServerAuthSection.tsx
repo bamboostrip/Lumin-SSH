@@ -52,10 +52,10 @@ export function AddServerAuthSection({
             <button
               type="button"
               className={cn(
-                'flex-1 inline-flex h-7 items-center justify-center rounded-[6px] text-xs font-medium transition-all duration-150',
+                'flex-1 inline-flex h-7 items-center justify-center rounded-[6px] text-xs font-medium transition-colors',
                 authMode === 'custom'
-                  ? 'bg-raised text-primary shadow-xs font-semibold'
-                  : 'text-secondary hover:text-primary hover:bg-hover/60',
+                  ? 'border border-accent-border bg-accent-dim text-accent font-semibold shadow-xs'
+                  : 'border border-transparent text-secondary hover:text-primary hover:bg-hover/60',
               )}
               onClick={() => setAuthMode('custom')}
             >
@@ -64,10 +64,10 @@ export function AddServerAuthSection({
             <button
               type="button"
               className={cn(
-                'flex-1 inline-flex h-7 items-center justify-center rounded-[6px] text-xs font-medium transition-all duration-150',
+                'flex-1 inline-flex h-7 items-center justify-center rounded-[6px] text-xs font-medium transition-colors',
                 authMode === 'credential'
-                  ? 'bg-raised text-primary shadow-xs font-semibold'
-                  : 'text-secondary hover:text-primary hover:bg-hover/60',
+                  ? 'border border-accent-border bg-accent-dim text-accent font-semibold shadow-xs'
+                  : 'border border-transparent text-secondary hover:text-primary hover:bg-hover/60',
               )}
               onClick={() => setAuthMode('credential')}
             >

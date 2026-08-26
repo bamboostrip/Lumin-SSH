@@ -1468,22 +1468,22 @@ input::-ms-clear {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 6px 8px;
+  padding: 10px 12px;
   margin: 0;
   width: 100%;
   min-height: 44px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: var(--transition-fast);
   position: relative;
   border: 1px solid var(--border-subtle);
   background: var(--surface-raised);
-  box-shadow: none;
+  box-shadow: var(--shadow-sm);
 }
 .server-card:hover {
   background: var(--surface-hover);
   border-color: var(--border);
-  box-shadow: none;
+  box-shadow: var(--shadow-md);
 }
 .server-card.active {
   background: var(--accent-dim);

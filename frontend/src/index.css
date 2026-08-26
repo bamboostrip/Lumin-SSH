@@ -2483,12 +2483,12 @@ body.theme-light .batch-operation-bar {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 8px;
+  padding: 4px 8px;
+  min-height: 34px;
   border-bottom: 1px solid var(--file-manager-border-color, var(--border-subtle));
   background: var(--file-manager-toolbar-bg, var(--surface-raised));
   flex-shrink: 0;
   flex-wrap: wrap;
-  min-height: 0;
 }
 .file-toolbar-actions { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 
@@ -2513,8 +2513,8 @@ body.theme-light .batch-operation-bar {
 .file-locator-input {
   width: 100%;
   min-width: 0;
-  height: 28px;
-  padding: 2px 28px 2px 8px;
+  height: 30px;
+  padding: 2px 28px 2px 10px;
   border: 1px solid var(--file-manager-border-color, var(--border-subtle));
   border-radius: var(--radius-sm);
   background: var(--file-manager-path-bg, var(--surface-sunken));
@@ -2527,7 +2527,7 @@ body.theme-light .batch-operation-bar {
 
 .file-locator-clear-btn {
   position: absolute;
-  right: 4px;
+  right: 5px;
   top: 50%;
   transform: translateY(-50%);
   display: inline-flex;
@@ -2537,7 +2537,7 @@ body.theme-light .batch-operation-bar {
   height: 20px;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
@@ -2568,10 +2568,10 @@ body.theme-light .batch-operation-bar {
 }
 
 .file-toolbar-outline-btn {
-  width: 28px;
-  min-width: 28px;
-  height: 28px;
-  min-height: 28px;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
   padding: 0;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -2597,7 +2597,7 @@ body.theme-light .batch-operation-bar {
 
 .file-toolbar-outline-btn.has-count {
   width: auto;
-  min-width: 28px;
+  min-width: 30px;
   padding: 0 7px;
   display: inline-flex;
   align-items: center;
@@ -2641,8 +2641,8 @@ body.theme-light .batch-operation-bar {
 .path-input {
   flex: 1;
   min-width: 0;
-  height: 28px;
-  padding: 2px var(--space-2);
+  height: 30px;
+  padding: 0 10px;
   border: 1px solid var(--file-manager-border-color, var(--border-subtle));
   border-radius: var(--radius-sm);
   background: var(--file-manager-path-bg, var(--surface-sunken));
@@ -2956,18 +2956,25 @@ body.theme-light .batch-operation-bar {
 }
 .file-name.is-dir { color: var(--file-manager-folder-text-color, var(--accent)); font-weight: 500; }
 
-.file-size { font-size: var(--text-sm); color: var(--file-manager-secondary-text-color, var(--text-secondary)); font-family: var(--font-mono); }
+.file-size { font-size: var(--text-sm); color: var(--file-manager-secondary-text-color, var(--text-secondary)); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .file-permission {
   font-size: var(--text-sm);
   color: var(--file-manager-secondary-text-color, var(--text-secondary));
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .file-permission:hover { color: var(--file-manager-text-color, var(--accent)); }
-.file-date { font-size: var(--text-sm); color: var(--file-manager-secondary-text-color, var(--text-secondary)); }
+.file-date { font-size: var(--text-sm); color: var(--file-manager-secondary-text-color, var(--text-secondary)); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.file-col-size,
+.file-col-permission,
+.file-col-modified {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
 .file-actions { opacity: 0; display: flex; gap: var(--space-1); justify-content: flex-end; align-items: center; min-height: 26px; }
 /* 双面板紧凑模式：操作列不独占宽度，hover 时浮在修改时间列上方 */
 .file-manager-dual .file-list-body .file-actions {

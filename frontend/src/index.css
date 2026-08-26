@@ -1513,15 +1513,22 @@ input::-ms-clear {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 6px 10px;
+  padding: 8px 12px;
   background: var(--surface-overlay);
   backdrop-filter: none;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
   margin-top: 0;
   z-index: 100;
   animation: none;
+}
+
+.batch-operation-bar .btn-cancel,
+.batch-operation-bar .btn-delete-batch,
+.batch-operation-bar .btn-batch-primary,
+.batch-operation-bar .btn-batch-action {
+  border-radius: var(--radius-sm);
 }
 
 body.theme-light .batch-operation-bar {

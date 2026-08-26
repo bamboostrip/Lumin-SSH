@@ -54,7 +54,7 @@ export function ServerGroupHeader({
           ) : null)}
         </div>
       )}
-      <span onClick={() => toggleGroup(groupName)} className={cn('items-center gap-1.5 cursor-pointer flex-1', isTableView ? 'inline-flex' : 'flex')}>
+      <span onClick={() => toggleGroup(groupName)} className={cn('items-center gap-1.5 cursor-pointer flex-1 rounded-[var(--radius-sm)]', isTableView ? 'inline-flex' : 'flex')}>
         {collapsed ? <Folder size={isTableView ? 13 : 14} /> : <FolderOpen size={isTableView ? 13 : 14} />}
         <span>{groupName || t('未分组')}</span>
         <span className="text-xs text-tertiary">({count})</span>
@@ -69,7 +69,7 @@ export function ServerGroupHeader({
                 onGroupDelete(groupName, ids);
               }
             }}
-            className={cn('bg-transparent border-none cursor-pointer p-0.5 text-danger rounded-sm', isTableView ? 'inline-flex' : 'flex')}
+            className={cn('bg-transparent border-none cursor-pointer p-0.5 text-danger rounded-[var(--radius-sm)]', isTableView ? 'inline-flex' : 'flex')}
             aria-label={t('删除分组')}
           >
             <Trash size={isTableView ? 12 : 13} />
@@ -79,12 +79,12 @@ export function ServerGroupHeader({
       {groupName && (
         <span className={cn('gap-0.5', isTableView ? 'inline-flex' : 'flex')}>
           <Tiptop text={t('上移')}>
-            <button onClick={(e) => { e.stopPropagation(); moveGroup(groupName, -1); }} className={cn('bg-transparent border-none cursor-pointer p-0.5 text-tertiary', isTableView ? 'inline-flex' : 'flex')} aria-label={t('上移')}>
+            <button onClick={(e) => { e.stopPropagation(); moveGroup(groupName, -1); }} className={cn('bg-transparent border-none cursor-pointer p-0.5 text-tertiary rounded-[var(--radius-sm)]', isTableView ? 'inline-flex' : 'flex')} aria-label={t('上移')}>
               <ChevronUp size={isTableView ? 12 : 13} />
             </button>
           </Tiptop>
           <Tiptop text={t('下移')}>
-            <button onClick={(e) => { e.stopPropagation(); moveGroup(groupName, 1); }} className={cn('bg-transparent border-none cursor-pointer p-0.5 text-tertiary', isTableView ? 'inline-flex' : 'flex')} aria-label={t('下移')}>
+            <button onClick={(e) => { e.stopPropagation(); moveGroup(groupName, 1); }} className={cn('bg-transparent border-none cursor-pointer p-0.5 text-tertiary rounded-[var(--radius-sm)]', isTableView ? 'inline-flex' : 'flex')} aria-label={t('下移')}>
               <ChevronDown size={isTableView ? 12 : 13} />
             </button>
           </Tiptop>

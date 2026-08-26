@@ -4236,9 +4236,9 @@ body.theme-light .editor-mode-banner {
 .glass-card {
   background: var(--surface-base);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   padding: 10px;
-  box-shadow: none;
+  box-shadow: var(--shadow-sm);
   transition: var(--transition-fast);
   position: relative;
   overflow: hidden;

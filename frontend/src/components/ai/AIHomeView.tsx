@@ -247,8 +247,8 @@ export function renderAIHomeView({
     }
 
     return (
-      <div className="flex-1 min-h-0 overflow-y-auto bg-canvas">
-        <div className="px-2.5 py-2 border-b border-line-subtle bg-raised sticky top-0 grid gap-2" style={{ zIndex: Z.STACK }}>
+      <div className="flex-1 min-h-0 flex flex-col bg-canvas relative">
+        <div className="px-2.5 py-2 border-b border-line-subtle bg-raised shrink-0 grid gap-2" style={{ zIndex: Z.STACK }}>
           <div className="flex items-center justify-between gap-2">
           <div className="text-sm font-semibold text-secondary">{conversationSelectionMode ? t('已选择 {count} 项').replace('{count}', String(selectedConversationIds.size)) : t('对话历史')}</div>
           <div className="flex items-center gap-1.5">
@@ -341,9 +341,11 @@ export function renderAIHomeView({
             )}>{t('已归档')}</button>
           </div>
         </div>
-        {content}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          {content}
+        </div>
         {conversationSelectionMode && selectedConversationIds.size > 0 ? (
-          <div className="sticky bottom-2 mx-2 p-1.5 rounded-[var(--radius-md)] border border-line bg-overlay/95 shadow-lg backdrop-blur-md grid gap-1.5" style={{ zIndex: Z.STACK + 1 }}>
+          <div className="shrink-0 p-2 border-t border-line bg-raised grid gap-1.5" style={{ zIndex: Z.STACK + 1 }}>
             {moveToGroupOpen ? (
               <div className="flex gap-1.5 overflow-x-auto [scrollbar-width:none]">
                 <Button variant="ghost" size="sm" onClick={() => handleMoveSelectedConversations('')} className="shrink-0 h-7 text-xs rounded-[var(--radius-sm)]">{t('移出分组')}</Button>
@@ -351,9 +353,20 @@ export function renderAIHomeView({
               </div>
             ) : null}
             <div className="flex items-center gap-1.5">
-              <Button variant="ghost" size="sm" onClick={() => setMoveToGroupOpen((current) => !current)} className="flex-1 h-7 text-xs rounded-[var(--radius-sm)]">{t('移动到分组')}</Button>
-              <Button variant="ghost" size="sm" onClick={() => void handleSetSelectedArchived(conversationFilter !== 'archived')} className="flex-1 h-7 text-xs gap-1.5 rounded-[var(--radius-sm)]">{conversationFilter === 'archived' ? <ArchiveRestore size={13} /> : <Archive size={13} />}{conversationFilter === 'archived' ? t('恢复') : t('归档')}</Button>
-              <Button variant="danger" size="sm" onClick={() => void handleDeleteSelectedConversations()} aria-label={t('删除')} className="w-7 h-7 min-w-7 p-0 rounded-[var(--radius-sm)] inline-flex items-center justify-center shrink-0"><Trash2 size={13} /></Button>
+              <div className="flex items-center gap-1 pl-1 pr-1.5 shrink-0 text-xs font-semibold text-primary">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-accent text-white text-[11px] font-bold">
+                  {selectedConversationIds.size}
+                </span>
+                <span>{t('项')}</span>
+              </div>
+              <Button variant="secondary" size="sm" onClick={() => setMoveToGroupOpen((current) => !current)} className="flex-1 h-7 text-xs rounded-[var(--radius-sm)]">{t('移动到分组')}</Button>
+              <Button variant="secondary" size="sm" onClick={() => void handleSetSelectedArchived(conversationFilter !== 'archived')} className="flex-1 h-7 text-xs gap-1.5 rounded-[var(--radius-sm)]">
+                {conversationFilter === 'archived' ? <ArchiveRestore size={13} /> : <Archive size={13} />}
+                {conversationFilter === 'archived' ? t('恢复') : t('归档')}
+              </Button>
+              <Button variant="danger" size="sm" onClick={() => void handleDeleteSelectedConversations()} aria-label={t('删除')} className="w-7 h-7 p-0 shrink-0 rounded-[var(--radius-sm)]">
+                <Trash2 size={13} />
+              </Button>
             </div>
           </div>
         ) : null}

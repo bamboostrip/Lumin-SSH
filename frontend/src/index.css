@@ -589,12 +589,15 @@ body.theme-light {
 .has-global-wallpaper .topbar-home-btn.active {
   background: color-mix(in srgb, var(--surface-raised) 85%, transparent);
   border-color: var(--accent-border);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  border-bottom-color: var(--accent);
+  box-shadow: inset 0 -2px 0 var(--accent), 0 1px 4px rgba(0, 0, 0, 0.12);
 }
 body.theme-light.has-global-wallpaper .tab-item.active,
 body.theme-light.has-global-wallpaper .topbar-home-btn.active {
   background: rgba(255, 255, 255, 0.85);
   border-color: var(--accent-border);
+  border-bottom-color: var(--accent);
+  box-shadow: inset 0 -2px 0 var(--accent), 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
 .topbar-content {

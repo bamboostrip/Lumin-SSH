@@ -100,7 +100,7 @@ export default function QuickEditWebSearchSection({
               onClick={handleValidateWebSearch}
               disabled={!canValidateWebSearch || validatingWebSearch}
               style={{ opacity: canValidateWebSearch ? 1 : 0.6 }}
-              className={`min-w-[74px] min-h-10 px-2.5 rounded-[var(--radius-sm)] border text-sm font-semibold inline-flex items-center justify-center gap-1.5 ${validationButtonVariant === 'success'
+              className={`min-w-[74px] h-[30px] min-h-[30px] px-2.5 rounded-[var(--radius-sm)] border text-sm font-semibold inline-flex items-center justify-center gap-1.5 ${validationButtonVariant === 'success'
                 ? 'border-[rgba(var(--success-rgb),0.35)] bg-[rgba(var(--success-rgb),0.10)] text-success'
                 : validationButtonVariant === 'error'
                   ? 'border-[rgba(var(--danger-rgb),0.30)] bg-[rgba(var(--danger-rgb),0.08)] text-danger'

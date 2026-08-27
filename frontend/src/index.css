@@ -1021,6 +1021,19 @@ select option {
   color: var(--accent);
 }
 
+/* 标签行首固定「搜索服务器」入口（快连面板触发钮） */
+.tab-search-item {
+  width: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  padding: 0;
+  justify-content: center;
+  color: var(--text-tertiary);
+}
+.tab-search-item:hover {
+  color: var(--text-primary);
+}
+
 .tab-item:not(.active)::after {
   content: '';
   position: absolute;

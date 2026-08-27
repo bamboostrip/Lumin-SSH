@@ -37,8 +37,9 @@ export interface AppTopbarProps {
   sshChannelUsage: Record<string, SshChannelUsage>;
   tabsOverflow: boolean;
   tabActionsRef: React.RefObject<HTMLDivElement | null>;
-  sessionListBtnRef: React.RefObject<HTMLButtonElement | null>;
-  toggleSessionList: () => void;
+    sessionListBtnRef: React.RefObject<HTMLButtonElement | null>;
+    showSessionList: boolean;
+    toggleSessionList: () => void;
   closeAllSessions: () => Promise<void>;
   showThemeQuickEntry: boolean;
   activeAIDevilMode: boolean;
@@ -64,7 +65,7 @@ export default function AppTopbar({
   logoImg, showTopbarRefreshedLogo, topbarLogoTransitionImg,
   sessions, tabScrollRef, tabListRef, activeSessionId, handleTabClick,
   closeSession, setTabContextMenu, sessionAuthPrompts, sshChannelUsage,
-  tabsOverflow, tabActionsRef, sessionListBtnRef, toggleSessionList,
+  tabsOverflow, tabActionsRef, sessionListBtnRef, showSessionList, toggleSessionList,
   closeAllSessions, showThemeQuickEntry, activeAIDevilMode,
   resolvedQuickThemeMode, handleQuickThemeToggle, isActiveSessionConnected,
   showAIPanel, setAIPanelVisibility, startupUpdateInfo, showUpdateBubble,
@@ -117,6 +118,19 @@ export default function AppTopbar({
             <div className="tab-bar">
               <div className="tab-scroll" ref={tabScrollRef}>
                 <div ref={tabListRef} className="tab-list">
+                  <Tiptop text={t('搜索服务器')} placement="bottom">
+                    <button
+                      ref={sessionListBtnRef}
+                      type="button"
+                      className="tab-item tab-search-item no-drag shrink-0"
+                      onClick={(e) => { e.stopPropagation(); toggleSessionList(); }}
+                      aria-label={t('搜索服务器')}
+                      aria-haspopup="dialog"
+                      aria-expanded={showSessionList}
+                    >
+                      <ChevronDown size={14} />
+                    </button>
+                  </Tiptop>
                   <Tiptop text={t('返回主页')} placement="bottom">
                     <button
                       type="button"
@@ -219,18 +233,6 @@ export default function AppTopbar({
                 </div>
               </div>
               <div ref={tabActionsRef} className="tab-actions">
-                {tabsOverflow && (
-                  <Tiptop text={t('服务器列表')} placement="bottom">
-                    <button
-                      ref={sessionListBtnRef}
-                      className="no-drag w-[26px]! min-w-[26px]! h-[26px]! p-0 rounded-sm!"
-                      onClick={toggleSessionList}
-                      aria-label={t('服务器列表')}
-                    >
-                      <ChevronDown size={14} />
-                    </button>
-                  </Tiptop>
-                )}
                 {sessions.length >= 2 && (
                   <Tiptop text={t('关闭全部')} placement="bottom">
                     <button

@@ -5,6 +5,7 @@ import { useTranslation } from '../../i18n.ts';
 import { cn } from '../../utils/cn.ts';
 import Tiptop from '../Tiptop.tsx';
 import { Button } from '../ui';
+import useTabStripWheelScroll from '../../hooks/useTabStripWheelScroll.ts';
 import { fmem, type DetailAction, type ProcessInfo } from './processTypes.ts';
 
 interface DetailRowProps {
@@ -49,6 +50,8 @@ export function ProcessDetailDrawer({
   const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [nav, setNav] = useState({ left: false, right: false });
+  // 进程明细标签条：普通滚轮直接滚动切换（与终端/网络标签条统一）
+  useTabStripWheelScroll(scrollRef, detailProcesses.length > 0);
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -122,14 +125,17 @@ export function ProcessDetailDrawer({
               </button>
             )}
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => detailDispatch({ type: 'closeAll' })}
-            className="p-0.5 text-tertiary shrink-0"
-          >
-            <X size={14} />
-          </Button>
+          <Tiptop text={t('关闭全部')} placement="bottom">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => detailDispatch({ type: 'closeAll' })}
+              className="p-0.5 text-tertiary shrink-0"
+              aria-label={t('关闭全部')}
+            >
+              <X size={14} />
+            </Button>
+          </Tiptop>
         </div>
 
         <div className="p-3 overflow-auto flex-1" key={activeProcess?.pid}>

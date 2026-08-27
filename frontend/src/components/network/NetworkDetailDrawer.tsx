@@ -1,9 +1,11 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import type React from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from '../../i18n.ts';
 import { cn } from '../../utils/cn.ts';
+import Tiptop from '../Tiptop.tsx';
 import { Button } from '../ui';
+import useTabStripWheelScroll from '../../hooks/useTabStripWheelScroll.ts';
 import { formatTransferTotal } from '../../utils/probeFormatting.ts';
 import type { NetworkConnection } from './networkTypes.ts';
 
@@ -29,6 +31,8 @@ export function NetworkDetailDrawer({
   const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [nav, setNav] = useState({ left: false, right: false });
+  // 端口明细标签条：普通滚轮直接滚动切换（与终端/进程标签条统一）
+  useTabStripWheelScroll(scrollRef, detailConnections.length > 0);
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -76,17 +80,18 @@ export function NetworkDetailDrawer({
                 >
                   <span>{item.listenIP || '*'}:{item.port || '-'}</span>
                   <span className="text-tertiary max-w-[100px] truncate">{item.name || '-'}</span>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onCloseConnectionDetail(key);
-                    }}
-                    aria-label={t('关闭')}
-                    className="terminal-sub-tab-close border-none bg-transparent cursor-pointer p-0"
-                  >
-                    ×
-                  </button>
+                  <Tiptop text={t('关闭')} placement="bottom">
+                    <span
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onCloseConnectionDetail(key);
+                      }}
+                      aria-label={t('关闭')}
+                      className="terminal-sub-tab-close"
+                    >
+                      ×
+                    </span>
+                  </Tiptop>
                 </div>
               );
             })}
@@ -97,7 +102,17 @@ export function NetworkDetailDrawer({
               </button>
             )}
           </div>
-          <Button variant="ghost" size="sm" onClick={onCloseAllDetails}>{t('关闭全部')}</Button>
+          <Tiptop text={t('关闭全部')} placement="bottom">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onCloseAllDetails}
+              className="p-0.5 text-tertiary shrink-0"
+              aria-label={t('关闭全部')}
+            >
+              <X size={14} />
+            </Button>
+          </Tiptop>
         </div>
         <div className="flex-1 min-h-0 overflow-auto p-3">
           <div className="text-tertiary text-sm mb-2">

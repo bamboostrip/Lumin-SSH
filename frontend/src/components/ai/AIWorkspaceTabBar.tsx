@@ -21,12 +21,12 @@ export interface AIWorkspaceTabBarDeps {
   aiWorkspaceTabOverflow: boolean
   aiWorkspaceTabCanScrollLeft: boolean
   aiWorkspaceTabCanScrollRight: boolean
-  aiWorkspaceTabScrollRef: React.RefObject<HTMLDivElement | null>
+  // 标签条会被每个会话标签面板各渲染一份，ref 只应挂在激活标签那份上
+  aiWorkspaceTabScrollRef?: React.RefObject<HTMLDivElement | null>
   aiWorkspaceTabCloseLockRef: React.RefObject<{ tabId: string; confirmed: boolean; lastInteractionAt: number } | undefined>
   suppressAIWorkspaceTabCloseInteraction: (event: React.SyntheticEvent) => void
   scrollAIWorkspaceTabs: (direction: number) => void
   handleAIWorkspaceTabScroll: () => void
-  handleAIWorkspaceTabWheel: (event: React.WheelEvent<HTMLDivElement>) => void
   clearAIWorkspaceTabCloseUnlockTimer: () => void
   activateWorkspaceTab: (tabId: string) => void
   closeWorkspaceTab: (tabId: string) => void
@@ -50,7 +50,6 @@ export function renderAIWorkspaceTabBar({
   suppressAIWorkspaceTabCloseInteraction,
   scrollAIWorkspaceTabs,
   handleAIWorkspaceTabScroll,
-  handleAIWorkspaceTabWheel,
   clearAIWorkspaceTabCloseUnlockTimer,
   activateWorkspaceTab,
   closeWorkspaceTab,
@@ -77,7 +76,6 @@ export function renderAIWorkspaceTabBar({
       <div
         ref={aiWorkspaceTabScrollRef}
         className="terminal-sub-tab-scroll"
-        onWheel={handleAIWorkspaceTabWheel}
         onScroll={handleAIWorkspaceTabScroll}>
         {tabGroup.tabs.map((tab: AIWorkspaceTab, index) => {
           const active = tab.id === activeTabId

@@ -1306,6 +1306,12 @@ body.theme-light .topbar-home-btn.active {
   display: none;
 }
 
+/* 滚动区内的定高圆钮（新建标签等）：容器 align-items:stretch 会让定高子项顶部
+   对齐，hover 圆环会贴住/越过标签栏顶边——统一改为垂直居中 */
+.terminal-sub-tab-scroll .tab-create-btn {
+  align-self: center;
+}
+
 /* 标签溢出导航箭头（幽灵方钮）：仅有内容一侧出现 */
 .terminal-sub-tab-nav {
   align-self: stretch;
@@ -1386,6 +1392,9 @@ body.theme-light .topbar-home-btn.active {
   min-width: 28px;
   height: 28px;
   min-height: 28px;
+  /* 外层 Tiptop 触发器被 align-self:stretch 拉到与工具钮(28px+2px边距=32px)同高，
+     定高子项默认顶部对齐会偏高——居中对齐后与新建终端 + 钮同几何 */
+  align-self: center;
   padding: 0;
   display: inline-flex;
   align-items: center;

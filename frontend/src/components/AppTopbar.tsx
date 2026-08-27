@@ -5,6 +5,7 @@ import Tiptop from './Tiptop.tsx';
 import { WindowMinimise } from '../../wailsjs/runtime/runtime.js';
 import { Z } from '../constants/zIndex.ts';
 import { cn } from '../utils/cn.ts';
+import useTabStripWheelScroll from '../hooks/useTabStripWheelScroll.ts';
 import type { SessionAuthPrompt, SshChannelUsage } from '../hooks/useSessionConnections.ts';
 import type { SessionLike } from '../utils/sessionWorkspace.ts';
 
@@ -74,6 +75,8 @@ export default function AppTopbar({
   handleCloseWindow, reconnectSession,
 }: AppTopbarProps) {
   const topbarRef = useRef<HTMLDivElement | null>(null);
+  // 顶栏会话标签条：普通滚轮直接横向滚动（与其他标签条统一，不依赖 Shift）
+  useTabStripWheelScroll(tabScrollRef, sessions.length > 0);
 
   return (
     <>

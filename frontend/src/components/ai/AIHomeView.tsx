@@ -243,7 +243,11 @@ export function renderAIHomeView({
           </div>
         </div>
       )
-    } else {      content = displayConversationList.map((item) => renderAIConversationListRow({ t, panelState, selectedConversationIds, conversationSelectionMode, toggleConversationSelection, handleOpenConversation, handleMakeConversationPermanent, handleOpenConversationFolder, handleRenameConversationTitle, handleDeleteConversation }, item))
+    } else {      content = (
+        <div className="flex flex-col gap-[4px] px-1 pb-1">
+          {displayConversationList.map((item) => renderAIConversationListRow({ t, panelState, selectedConversationIds, conversationSelectionMode, toggleConversationSelection, handleOpenConversation, handleMakeConversationPermanent, handleOpenConversationFolder, handleRenameConversationTitle, handleDeleteConversation }, item))}
+        </div>
+      )
     }
 
     return (

@@ -56,17 +56,12 @@ export function renderAIConversationListRow({
           <div
             key={item.id}
             className={cn(
-              'ai-conversation-row group w-full flex items-center mx-1 my-[2px] rounded-[var(--radius-md)]',
+              'ai-conversation-row group w-full flex items-center rounded-[var(--radius-md)] shrink-0',
               'transition-[color,background-color,border-color,opacity,box-shadow] duration-[120ms]',
               selected && 'selected',
               panelState.activeConversationId === item.id && 'is-active',
             )}
-            style={{
-              opacity: item.archived === true ? 0.72 : 1,
-              contentVisibility: 'auto',
-              containIntrinsicSize: '56px',
-              contain: 'layout paint style',
-            }}
+            style={{ opacity: item.archived === true ? 0.72 : 1 }}
           >
             {conversationSelectionMode ? (
               <button

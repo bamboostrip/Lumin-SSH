@@ -557,8 +557,8 @@ body.theme-light {
   display: flex;
   align-items: center;
   height: var(--topbar-h);
-  background: var(--topbar-bg, var(--surface-sunken));
-  border-bottom: 1px solid var(--topbar-border-color, var(--border-subtle));
+  background: var(--topbar-bg, color-mix(in srgb, var(--accent) 8%, var(--surface-sunken)));
+  border-bottom: 1px solid var(--topbar-border-color, color-mix(in srgb, var(--accent) 18%, var(--border-subtle)));
   padding: 0 var(--space-2);
   --wails-draggable: drag;
   flex-shrink: 0;
@@ -569,9 +569,14 @@ body.theme-light {
   -webkit-user-select: none;
 }
 
+body.theme-light .topbar {
+  background: var(--topbar-bg, color-mix(in srgb, var(--accent) 10%, #e6e9ee));
+  border-bottom-color: color-mix(in srgb, var(--accent) 18%, rgba(28, 35, 45, 0.12));
+}
+
 /* 全局背景启用时：顶栏背景半透明沉降磨砂 */
 .has-global-wallpaper .topbar {
-  background: color-mix(in srgb, var(--surface-sunken) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, color-mix(in srgb, var(--surface-sunken) 45%, transparent));
   border-bottom-color: transparent;
   backdrop-filter: blur(10px);
 }
@@ -584,26 +589,24 @@ body.theme-light {
 }
 .has-global-wallpaper .tab-item:hover,
 .has-global-wallpaper .topbar-home-btn:hover {
-  background: color-mix(in srgb, var(--surface-hover) 65%, transparent);
+  background: color-mix(in srgb, var(--accent) 18%, color-mix(in srgb, var(--surface-hover) 65%, transparent));
   backdrop-filter: blur(8px);
 }
 .has-global-wallpaper .tab-item.active,
 .has-global-wallpaper .topbar-home-btn.active {
   background: color-mix(in srgb, var(--surface-canvas) 92%, transparent);
-  border: 1px solid var(--accent-border);
-  border-top: 2px solid var(--accent);
-  border-bottom: 1px solid transparent;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border-subtle));
+  border-bottom: 1px solid color-mix(in srgb, var(--surface-canvas) 92%, transparent);
   backdrop-filter: blur(16px);
-  box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.12);
 }
 body.theme-light.has-global-wallpaper .tab-item.active,
 body.theme-light.has-global-wallpaper .topbar-home-btn.active {
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid var(--accent-border);
-  border-top: 2px solid var(--accent);
-  border-bottom: 1px solid transparent;
+  background: rgba(250, 249, 249, 0.94);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border-subtle));
+  border-bottom: 1px solid rgba(250, 249, 249, 0.94);
   backdrop-filter: blur(16px);
-  box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.06);
 }
 
 .topbar-content {
@@ -997,7 +1000,7 @@ select option {
   position: relative;
   max-width: 180px;
   background: transparent;
-  color: var(--text-tertiary);
+  color: color-mix(in srgb, var(--accent) 32%, var(--text-secondary));
   border: 1px solid transparent;
   border-bottom: none;
   transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
@@ -1011,13 +1014,13 @@ select option {
   transform: translateY(-50%);
   width: 1px;
   height: 14px;
-  background: var(--border-subtle, var(--border));
+  background: color-mix(in srgb, var(--accent) 25%, var(--border-subtle));
   opacity: 0.6;
   transition: opacity var(--transition-fast);
 }
 
 .tab-item:hover {
-  background: var(--surface-hover);
+  background: color-mix(in srgb, var(--accent) 15%, var(--surface-hover));
   color: var(--text-primary);
   border-radius: 8px 8px 0 0;
 }
@@ -1033,14 +1036,19 @@ select option {
 .tab-item.active {
   background: var(--surface-canvas);
   color: var(--text-primary);
-  border: 1px solid var(--border-line);
-  border-top: 2px solid var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border-subtle));
   border-bottom: 1px solid var(--surface-canvas);
   margin-bottom: -1px;
   padding-bottom: 1px;
-  box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.06), 0 2px 6px rgba(0, 0, 0, 0.04);
-  font-weight: 700;
+  box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.04);
+  font-weight: 600;
   z-index: 2;
+}
+
+body.theme-light .tab-item.active {
+  background: #faf9f9;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border-subtle));
+  border-bottom: 1px solid #faf9f9;
 }
 
 .topbar-home-btn {
@@ -1055,7 +1063,7 @@ select option {
   border: 1px solid transparent;
   border-bottom: none;
   background: transparent;
-  color: var(--text-secondary);
+  color: color-mix(in srgb, var(--accent) 32%, var(--text-secondary));
   transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
   cursor: pointer;
   position: relative;
@@ -1070,13 +1078,13 @@ select option {
   transform: translateY(-50%);
   width: 1px;
   height: 14px;
-  background: var(--border-subtle, var(--border));
+  background: color-mix(in srgb, var(--accent) 25%, var(--border-subtle));
   opacity: 0.6;
   transition: opacity var(--transition-fast);
 }
 
 .topbar-home-btn:hover {
-  background: var(--surface-hover);
+  background: color-mix(in srgb, var(--accent) 15%, var(--surface-hover));
   color: var(--text-primary);
   border-radius: 8px 8px 0 0;
 }
@@ -1090,15 +1098,20 @@ select option {
 
 .topbar-home-btn.active {
   background: var(--surface-canvas);
-  border: 1px solid var(--border-line);
-  border-top: 2px solid var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border-subtle));
   border-bottom: 1px solid var(--surface-canvas);
   margin-bottom: -1px;
   padding-bottom: 1px;
   color: var(--accent);
-  box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.06), 0 2px 6px rgba(0, 0, 0, 0.04);
-  font-weight: 700;
+  box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.04);
+  font-weight: 600;
   z-index: 2;
+}
+
+body.theme-light .topbar-home-btn.active {
+  background: #faf9f9;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border-subtle));
+  border-bottom: 1px solid #faf9f9;
 }
 
 .tab-close {

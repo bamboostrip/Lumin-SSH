@@ -1860,6 +1860,43 @@ body.theme-light .batch-operation-bar {
   box-shadow: none;
 }
 
+/* 原生 checkbox 统一为设计系统勾选框外观（与 .custom-checkbox 同款） */
+input[type="checkbox"] {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  border-radius: 3px;
+  border: 1.5px solid var(--border);
+  background: var(--surface-sunken);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  vertical-align: middle;
+}
+input[type="checkbox"]:hover { border-color: var(--accent); }
+input[type="checkbox"]:checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+input[type="checkbox"]:checked::after {
+  content: '';
+  width: 7px;
+  height: 3.5px;
+  border-left: 1.5px solid #fff;
+  border-bottom: 1.5px solid #fff;
+  transform: rotate(-45deg);
+  margin-top: -1px;
+}
+input[type="checkbox"]:focus-visible {
+  outline: 2px solid rgba(var(--accent-rgb), 0.35);
+  outline-offset: 1px;
+}
+input[type="checkbox"]:disabled { opacity: 0.5; cursor: not-allowed; }
+
 .server-avatar {
   width: 30px;
   height: 30px;
@@ -4818,9 +4855,6 @@ body.theme-light .dashboard-server-editor {
 }
 .server-editor-clear-check input {
   cursor: pointer;
-  accent-color: var(--accent);
-  width: 15px;
-  height: 15px;
 }
 
 /* 状态面板 */

@@ -1961,6 +1961,25 @@ body.theme-light .batch-operation-bar {
   animation: saveFlowTargetPulse 900ms cubic-bezier(0.2, 0.82, 0.22, 1) both;
 }
 
+/* ── AI 会话历史列表行（与服务器列表同一套行状态语言）── */
+.ai-conversation-row { border-left: 2px solid transparent; }
+.ai-conversation-row:hover { background: var(--surface-hover); }
+/* 当前会话 = 持久标记，沿用 accent-dim + 左侧色条（同服务器「当前连接」语义） */
+.ai-conversation-row.is-active {
+  background: var(--accent-dim);
+  border-left-color: var(--accent);
+}
+/* 勾选多选 = 轻着色无色条（同服务器勾选/文件管理器配方） */
+.ai-conversation-row.selected {
+  background: color-mix(in srgb, var(--accent) 15%, var(--surface-base));
+}
+.ai-conversation-row.selected:hover {
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface-hover));
+}
+.ai-conversation-row.is-active.selected {
+  background: var(--accent-dim);
+}
+
 /* ── 服务器网格 ── */
 .server-grid {
   display: grid;

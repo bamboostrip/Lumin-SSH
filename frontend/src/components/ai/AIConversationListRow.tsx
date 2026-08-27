@@ -55,10 +55,13 @@ export function renderAIConversationListRow({
         return (
           <div
             key={item.id}
-            className="w-full flex items-center border-b border-line transition-[color,background-color,border-color,opacity,box-shadow] duration-[120ms]"
+            className={cn(
+              'ai-conversation-row group w-full flex items-center mx-1 my-[1px] rounded-[var(--radius-md)]',
+              'transition-[color,background-color,border-color,opacity,box-shadow] duration-[120ms]',
+              selected && 'selected',
+              panelState.activeConversationId === item.id && 'is-active',
+            )}
             style={{
-              background: selected ? 'rgba(var(--accent-rgb), 0.12)' : (panelState.activeConversationId === item.id ? 'rgba(var(--accent-rgb), 0.08)' : 'transparent'),
-              borderLeft: panelState.activeConversationId === item.id ? '2px solid var(--accent)' : '2px solid transparent',
               opacity: item.archived === true ? 0.72 : 1,
               contentVisibility: 'auto',
               containIntrinsicSize: '56px',
@@ -135,7 +138,7 @@ export function renderAIConversationListRow({
                 </div>
               </div>
             </button>
-            {!conversationSelectionMode ? <div className="flex items-center gap-1 mr-2.5 shrink-0">
+            {!conversationSelectionMode ? <div className="flex items-center gap-1 mr-2.5 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-[120ms]">
               {item.transient === true ? (
                 <button
                   type="button"

@@ -21,7 +21,7 @@ export default function AIPanel({ width, side, sessionId, terminalId, sessionTer
   // （隐藏副本收不到 wheel 事件），标签数变化时重挂。
   useTabStripWheelScrollInContainer(panelRef, tabGroup.tabs.length)
   return (
-    <div ref={panelRef} className="h-full min-h-0 flex flex-col overflow-hidden relative" style={{ width, minWidth: width }}>
+    <div ref={panelRef} className="h-full min-h-0 flex flex-col overflow-hidden relative w-full min-w-0 max-w-full" style={{ width: width || '100%', minWidth: 0, maxWidth: '100%' }}>
       {tabGroup.tabs.map((tab) => (
         <div key={tab.id} className="absolute inset-0" style={{ display: activeTabId === tab.id ? 'flex' : 'none' }}>
           <AIConversationTabPanel

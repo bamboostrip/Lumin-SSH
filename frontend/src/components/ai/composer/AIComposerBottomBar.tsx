@@ -56,8 +56,8 @@ export function AIComposerBottomBar({
   const { t } = useTranslation();
 
   return (
-    <div className="h-10 border-t border-line flex items-center gap-2.5 pl-3 pr-2.5 relative overflow-visible" style={{ zIndex: Z.PANEL_BUTTON }}>
-      <div className="flex items-center gap-2 flex-1 w-0 min-w-0 overflow-visible">
+    <div className="h-10 border-t border-line flex items-center gap-2.5 pl-3 pr-2.5 relative w-full min-w-0 max-w-full" style={{ zIndex: Z.PANEL_BUTTON }}>
+      <div className="flex items-center gap-2 flex-1 w-0 min-w-0 overflow-x-auto [scrollbar-width:none] py-1">
         <AIProviderSelector
           currentProviderId={currentProviderId}
           onCurrentProviderChange={onCurrentProviderChange}

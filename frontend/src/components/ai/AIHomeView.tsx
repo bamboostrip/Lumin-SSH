@@ -253,31 +253,31 @@ export function renderAIHomeView({
     return (
       <div className="flex-1 min-h-0 flex flex-col bg-canvas relative">
         <div className="px-2.5 py-2 border-b border-line-subtle bg-raised shrink-0 grid gap-2" style={{ zIndex: Z.STACK }}>
-          <div className="flex items-center justify-between gap-2">
-          <div className="text-sm font-semibold text-secondary">{conversationSelectionMode ? t('已选择 {count} 项').replace('{count}', String(selectedConversationIds.size)) : t('对话历史')}</div>
-          <div className="flex items-center gap-1.5">
-          <button type="button" title={conversationSelectionMode ? t('退出多选') : t('多选')} aria-label={conversationSelectionMode ? t('退出多选') : t('多选')} onClick={() => conversationSelectionMode ? clearConversationSelection() : setConversationSelectionMode(true)} className={cn(
-            'w-7 h-7 inline-flex items-center justify-center rounded-[var(--radius-sm)] border cursor-pointer transition-colors',
-            conversationSelectionMode
-              ? 'border-accent-border bg-accent-dim text-accent font-semibold shadow-xs'
-              : 'border-line-subtle bg-sunken text-tertiary hover:text-primary hover:bg-hover',
-          )}><CheckSquare size={14} /></button>
-          <button type="button" title={t('新建分组')} aria-label={t('新建分组')} onClick={() => void handleCreateConversationGroup()} className="w-7 h-7 inline-flex items-center justify-center rounded-[var(--radius-sm)] border border-line-subtle bg-sunken text-tertiary hover:text-primary hover:bg-hover cursor-pointer transition-colors"><FolderPlus size={14} /></button>
-          <button
-            type="button"
-            title={t('全局搜索对话')}
-            aria-label={t('全局搜索对话')}
-            onClick={handleOpenGlobalSearch}
-            className={cn(
-              'w-7 h-7 inline-flex items-center justify-center rounded-[var(--radius-sm)] border cursor-pointer shrink-0 transition-colors',
-              globalSearchOpen
-                ? 'border-accent-border bg-accent-dim text-accent font-semibold shadow-xs'
-                : 'border-line-subtle bg-sunken text-tertiary hover:text-primary hover:bg-hover',
-            )}
-          >
-            <Search size={14} />
-          </button>
-          </div>
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <div className="text-sm font-semibold text-secondary min-w-0 truncate">{conversationSelectionMode ? t('已选择 {count} 项').replace('{count}', String(selectedConversationIds.size)) : t('对话历史')}</div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button type="button" title={conversationSelectionMode ? t('退出多选') : t('多选')} aria-label={conversationSelectionMode ? t('退出多选') : t('多选')} onClick={() => conversationSelectionMode ? clearConversationSelection() : setConversationSelectionMode(true)} className={cn(
+                'w-7 h-7 inline-flex items-center justify-center rounded-[var(--radius-sm)] border cursor-pointer transition-colors',
+                conversationSelectionMode
+                  ? 'border-accent-border bg-accent-dim text-accent font-semibold shadow-xs'
+                  : 'border-line-subtle bg-sunken text-tertiary hover:text-primary hover:bg-hover',
+              )}><CheckSquare size={14} /></button>
+              <button type="button" title={t('新建分组')} aria-label={t('新建分组')} onClick={() => void handleCreateConversationGroup()} className="w-7 h-7 inline-flex items-center justify-center rounded-[var(--radius-sm)] border border-line-subtle bg-sunken text-tertiary hover:text-primary hover:bg-hover cursor-pointer transition-colors"><FolderPlus size={14} /></button>
+              <button
+                type="button"
+                title={t('全局搜索对话')}
+                aria-label={t('全局搜索对话')}
+                onClick={handleOpenGlobalSearch}
+                className={cn(
+                  'w-7 h-7 inline-flex items-center justify-center rounded-[var(--radius-sm)] border cursor-pointer shrink-0 transition-colors',
+                  globalSearchOpen
+                    ? 'border-accent-border bg-accent-dim text-accent font-semibold shadow-xs'
+                    : 'border-line-subtle bg-sunken text-tertiary hover:text-primary hover:bg-hover',
+                )}
+              >
+                <Search size={14} />
+              </button>
+            </div>
           </div>
           <div role="tablist" aria-label={t('分组')} className="flex gap-1.5 overflow-x-auto [scrollbar-width:none] pb-px">
             <button role="tab" aria-selected={conversationFilter === 'all'} type="button" onClick={() => { setConversationFilter('all'); clearConversationSelection(); cancelRenameConversationGroup() }} onDoubleClick={showSystemGroupRenameUnsupported} className={cn(

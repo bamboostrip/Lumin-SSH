@@ -972,6 +972,7 @@ select option {
   gap: 0;
   height: 100%;
   min-width: max-content;
+  padding: 0 8px;
 }
 
 .tab-actions {
@@ -1006,7 +1007,7 @@ select option {
   transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
 }
 
-.tab-item::after {
+.tab-item:not(.active)::after {
   content: '';
   position: absolute;
   right: 0;
@@ -1025,11 +1026,10 @@ select option {
   border-radius: 8px 8px 0 0;
 }
 
-.tab-item:hover::after,
-.tab-item.active::after,
-.tab-item:has(+ .tab-item.active)::after,
-.tab-item:has(+ .tab-item:hover)::after,
-.tab-item:last-child::after {
+.tab-item:not(.active):hover::after,
+.tab-item:not(.active):has(+ .tab-item.active)::after,
+.tab-item:not(.active):has(+ .tab-item:hover)::after,
+.tab-item:not(.active):last-child::after {
   opacity: 0;
 }
 
@@ -1045,10 +1045,47 @@ select option {
   z-index: 2;
 }
 
+/* 激活标签：Chrome 经典外凹反弧平滑过渡 */
+.tab-item.active::before,
+.tab-item.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 8px;
+  height: 8px;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.tab-item.active::before {
+  left: -8px;
+  border-bottom-right-radius: 8px;
+  box-shadow: 4px 4px 0 0 var(--surface-canvas);
+}
+
+.tab-item.active::after {
+  right: -8px;
+  border-bottom-left-radius: 8px;
+  box-shadow: -4px 4px 0 0 var(--surface-canvas);
+}
+
 body.theme-light .tab-item.active {
   background: #faf9f9;
   border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border-subtle));
   border-bottom: 1px solid #faf9f9;
+}
+
+body.theme-light .tab-item.active::before {
+  box-shadow: 4px 4px 0 0 #faf9f9;
+}
+
+body.theme-light .tab-item.active::after {
+  box-shadow: -4px 4px 0 0 #faf9f9;
+}
+
+.has-global-wallpaper .tab-item.active::before,
+.has-global-wallpaper .tab-item.active::after {
+  display: none; /* In frosted wallpaper mode, keep clean rounded tab */
 }
 
 .topbar-home-btn {
@@ -1070,7 +1107,7 @@ body.theme-light .tab-item.active {
   flex-shrink: 0;
 }
 
-.topbar-home-btn::after {
+.topbar-home-btn:not(.active)::after {
   content: '';
   position: absolute;
   right: 0;
@@ -1089,8 +1126,7 @@ body.theme-light .tab-item.active {
   border-radius: 8px 8px 0 0;
 }
 
-.topbar-home-btn:hover::after,
-.topbar-home-btn.active::after,
+.topbar-home-btn:not(.active):hover::after,
 .tab-bar:has(.tab-item:first-child.active) .topbar-home-btn::after,
 .tab-bar:has(.tab-item:first-child:hover) .topbar-home-btn::after {
   opacity: 0;

@@ -86,7 +86,7 @@ export function AddServerProxySection({
                 options={[
                   { value: '', label: t('请选择代理节点') },
                   ...proxyNodes.map((node) => ({
-                    value: node.id,
+                    value: node.id || '',
                     label: [
                       node.name || t('未命名节点'),
                       node.type === 'http' ? t('HTTP 代理') : t('SOCKS5 代理'),

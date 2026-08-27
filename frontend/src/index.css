@@ -1482,17 +1482,14 @@ body.theme-light .topbar-home-btn.active {
   padding: 0 10px;
   border-radius: var(--radius-sm);
   margin: 2px 1px;
-  background: var(--tab-inactive-bg);
-  border: 1px solid var(--tab-inactive-border);
-  color: var(--tab-inactive-text);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
 }
 
 .terminal-create-btn:hover {
-  background: var(--tab-inactive-bg-hover);
-  border-color: var(--border-focus);
+  background: var(--surface-hover);
   color: var(--text-primary);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .terminal-create-btn.active {
@@ -1615,25 +1612,22 @@ body.theme-light .terminal-sub-tab.active::after {
 }
 
 /* 无融合对象时的退档变体：下方不是 canvas 内容区（如编辑器 oneDark、
-   抽屉内的明细面板），加 no-arc 保持 accent 下划线小胶囊语言 */
+   抽屉内的明细面板），加 no-arc 保持 accent 下划线小胶囊语言。
+   与全局静默语言一致：非激活透明，悬停浮起，激活 accent 下划线 */
 .terminal-sub-tab.no-arc {
   border-radius: var(--radius-sm);
   margin: 2px 1px;
-  background: var(--tab-inactive-bg);
-  color: var(--tab-inactive-text);
-  border: 1px solid var(--tab-inactive-border);
-  border-bottom: 1px solid var(--tab-inactive-border);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  background: transparent;
+  color: var(--text-secondary);
 }
 .terminal-sub-tab.no-arc:hover {
-  background: var(--tab-inactive-bg-hover);
+  background: var(--surface-hover);
   color: var(--text-primary);
-  border-color: var(--border);
 }
 .terminal-sub-tab.no-arc::after { display: none; }
 .terminal-sub-tab.no-arc.active {
   background: var(--tab-active-bg);
-  border-color: var(--tab-active-border);
+  border-color: transparent;
   border-bottom-color: var(--accent);
   box-shadow: inset 0 -2px 0 var(--accent);
   margin-bottom: 2px;

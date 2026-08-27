@@ -557,7 +557,7 @@ body.theme-light {
   display: flex;
   align-items: center;
   height: var(--topbar-h);
-  background: var(--topbar-bg, var(--surface-raised));
+  background: var(--topbar-bg, var(--surface-sunken));
   border-bottom: 1px solid var(--topbar-border-color, var(--border-subtle));
   padding: 0 var(--space-2);
   --wails-draggable: drag;
@@ -569,10 +569,11 @@ body.theme-light {
   -webkit-user-select: none;
 }
 
-/* 全局背景启用时：顶栏背景透明，使壁纸覆盖顶栏区域 */
+/* 全局背景启用时：顶栏背景半透明沉降磨砂 */
 .has-global-wallpaper .topbar {
-  background: transparent;
+  background: color-mix(in srgb, var(--surface-sunken) 45%, transparent);
   border-bottom-color: transparent;
+  backdrop-filter: blur(10px);
 }
 
 .has-global-wallpaper .tab-item,
@@ -588,19 +589,21 @@ body.theme-light {
 }
 .has-global-wallpaper .tab-item.active,
 .has-global-wallpaper .topbar-home-btn.active {
-  background: color-mix(in srgb, var(--surface-canvas) 85%, transparent);
-  border: 1px solid var(--border-subtle, var(--border));
-  border-bottom: 1px solid color-mix(in srgb, var(--surface-canvas) 85%, transparent);
-  backdrop-filter: blur(12px);
-  box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.08);
+  background: color-mix(in srgb, var(--surface-canvas) 92%, transparent);
+  border: 1px solid var(--accent-border);
+  border-top: 2px solid var(--accent);
+  border-bottom: 1px solid transparent;
+  backdrop-filter: blur(16px);
+  box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.16);
 }
 body.theme-light.has-global-wallpaper .tab-item.active,
 body.theme-light.has-global-wallpaper .topbar-home-btn.active {
-  background: rgba(255, 255, 255, 0.88);
-  border: 1px solid var(--border-subtle, var(--border));
-  border-bottom: 1px solid rgba(255, 255, 255, 0.88);
-  backdrop-filter: blur(12px);
-  box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.04);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--accent-border);
+  border-top: 2px solid var(--accent);
+  border-bottom: 1px solid transparent;
+  backdrop-filter: blur(16px);
+  box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.08);
 }
 
 .topbar-content {
@@ -994,7 +997,7 @@ select option {
   position: relative;
   max-width: 180px;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   border: 1px solid transparent;
   border-bottom: none;
   transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
@@ -1030,18 +1033,14 @@ select option {
 .tab-item.active {
   background: var(--surface-canvas);
   color: var(--text-primary);
-  border: 1px solid var(--border-subtle, var(--border));
+  border: 1px solid var(--border-line);
+  border-top: 2px solid var(--accent);
   border-bottom: 1px solid var(--surface-canvas);
   margin-bottom: -1px;
   padding-bottom: 1px;
-  box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.04);
-  font-weight: 600;
+  box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.06), 0 2px 6px rgba(0, 0, 0, 0.04);
+  font-weight: 700;
   z-index: 2;
-}
-
-.tab-item.active .tab-close,
-.tab-item.active .tab-reconnect {
-  opacity: 0.7;
 }
 
 .topbar-home-btn {
@@ -1091,15 +1090,17 @@ select option {
 
 .topbar-home-btn.active {
   background: var(--surface-canvas);
-  border: 1px solid var(--border-subtle, var(--border));
+  border: 1px solid var(--border-line);
+  border-top: 2px solid var(--accent);
   border-bottom: 1px solid var(--surface-canvas);
   margin-bottom: -1px;
   padding-bottom: 1px;
   color: var(--accent);
-  box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.04);
-  font-weight: 600;
+  box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.06), 0 2px 6px rgba(0, 0, 0, 0.04);
+  font-weight: 700;
   z-index: 2;
 }
+
 .tab-close {
   margin-left: 2px;
   width: 18px;
@@ -1110,11 +1111,21 @@ select option {
   justify-content: center;
   color: var(--text-muted);
   font-size: var(--text-xs);
-  opacity: 0.55;
+  opacity: 0;
   flex-shrink: 0;
-  transition: var(--transition-fast);
+  transition: opacity var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
 }
-.tab-close:hover { opacity: 1; background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger); }
+.tab-item:hover .tab-close {
+  opacity: 0.7;
+}
+.tab-item.active .tab-close {
+  opacity: 0.75;
+}
+.tab-close:hover {
+  opacity: 1 !important;
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
+}
 
 .tab-reconnect {
   display: inline-flex;
@@ -1125,10 +1136,21 @@ select option {
   height: 18px;
   border-radius: var(--radius-xs);
   color: var(--text-muted);
-  opacity: 0.55;
-  transition: var(--transition);
+  opacity: 0;
+  flex-shrink: 0;
+  transition: opacity var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
 }
-.tab-reconnect:hover { opacity: 1; background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
+.tab-item:hover .tab-reconnect {
+  opacity: 0.7;
+}
+.tab-item.active .tab-reconnect {
+  opacity: 0.75;
+}
+.tab-reconnect:hover {
+  opacity: 1 !important;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+}
 
 /* ── 终端子标签栏 ───────────────────────────────────────────── */
 .terminal-sub-tab-bar {

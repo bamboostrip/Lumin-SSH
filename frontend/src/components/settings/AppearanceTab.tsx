@@ -238,25 +238,26 @@ export default function AppearanceTab({
                 aria-pressed={showThemeQuickEntry}
                 aria-label={$t('快捷入口')}
                 className={cn(
-                  'inline-flex items-center gap-2.5 min-h-[34px] px-3 rounded-[var(--radius-sm)] cursor-pointer select-none whitespace-nowrap transition-colors duration-[80ms] border',
+                  'inline-flex items-center gap-2 h-8.5 px-3 rounded-[var(--radius-sm)] cursor-pointer select-none whitespace-nowrap transition-colors duration-[80ms] border',
                   showThemeQuickEntry
-                    ? 'border-accent-border bg-[rgba(var(--accent-rgb),0.10)] text-primary shadow-[inset_0_0_0_1px_rgba(var(--accent-rgb),0.12)]'
-                    : 'border-line bg-raised text-secondary',
+                    ? 'border-accent-border bg-accent-dim text-accent font-semibold shadow-xs'
+                    : 'border-line bg-raised text-secondary hover:text-primary hover:bg-hover/60',
                 )}
               >
-                <span className="text-sm font-semibold">{$t('快捷入口')}</span>
+                <span className="text-xs font-semibold">{$t('快捷入口')}</span>
                 <Switch indicator checked={showThemeQuickEntry} size="sm" />
               </button>
-              <div className="inline-flex items-center gap-0.5 rounded-[var(--radius-sm)] border border-line-subtle bg-sunken p-0.5">
+              <div className="inline-flex h-8.5 items-center gap-0.5 rounded-[var(--radius-sm)] border border-line-subtle bg-sunken p-0.5">
                 <button
                   type="button"
                   aria-pressed={themeMode === 'light'}
                   onClick={() => onThemeChange('light')}
-                  className={`h-7 px-2.5 rounded-[6px] text-xs font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  className={cn(
+                    'h-7 px-2.5 rounded-[6px] text-xs font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer',
                     themeMode === 'light'
-                      ? 'bg-accent text-white font-semibold shadow-xs'
-                      : 'border border-transparent text-secondary hover:text-primary hover:bg-hover/60'
-                  }`}
+                      ? 'border border-accent-border bg-accent-dim text-accent font-semibold shadow-xs'
+                      : 'border border-transparent text-secondary hover:text-primary hover:bg-hover/60',
+                  )}
                 >
                   <Sun size={14} />{$t('浅色')}
                 </button>
@@ -264,11 +265,12 @@ export default function AppearanceTab({
                   type="button"
                   aria-pressed={themeMode === 'system'}
                   onClick={() => onThemeChange('system')}
-                  className={`h-7 px-2.5 rounded-[6px] text-xs font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  className={cn(
+                    'h-7 px-2.5 rounded-[6px] text-xs font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer',
                     themeMode === 'system'
-                      ? 'bg-accent text-white font-semibold shadow-xs'
-                      : 'border border-transparent text-secondary hover:text-primary hover:bg-hover/60'
-                  }`}
+                      ? 'border border-accent-border bg-accent-dim text-accent font-semibold shadow-xs'
+                      : 'border border-transparent text-secondary hover:text-primary hover:bg-hover/60',
+                  )}
                 >
                   <Monitor size={14} />{$t('系统')}
                 </button>
@@ -276,11 +278,12 @@ export default function AppearanceTab({
                   type="button"
                   aria-pressed={themeMode === 'dark'}
                   onClick={() => onThemeChange('dark')}
-                  className={`h-7 px-2.5 rounded-[6px] text-xs font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  className={cn(
+                    'h-7 px-2.5 rounded-[6px] text-xs font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer',
                     themeMode === 'dark'
-                      ? 'bg-accent text-white font-semibold shadow-xs'
-                      : 'border border-transparent text-secondary hover:text-primary hover:bg-hover/60'
-                  }`}
+                      ? 'border border-accent-border bg-accent-dim text-accent font-semibold shadow-xs'
+                      : 'border border-transparent text-secondary hover:text-primary hover:bg-hover/60',
+                  )}
                 >
                   <Moon size={14} />{$t('深色')}
                 </button>

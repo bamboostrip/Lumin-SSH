@@ -131,8 +131,8 @@
   transform: translateY(-50%);
   width: 1px;
   height: 14px;
-  background: color-mix(in srgb, var(--accent) 25%, var(--border-subtle));
-  opacity: 0.6;
+  background: var(--border);
+  opacity: 0.75;
   transition: opacity var(--transition-fast);
 }
 

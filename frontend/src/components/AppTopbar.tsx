@@ -237,19 +237,16 @@ export default function AppTopbar({
               </div>
               <div ref={tabActionsRef} className="tab-actions">
                 {sessions.length >= 2 && (
-                  <>
-                    <div className="w-[1px] h-3.5 bg-line mx-1 shrink-0 opacity-80" />
-                    <Tiptop text={t('关闭全部')} placement="bottom">
-                      <button
-                        type="button"
-                        className="no-drag w-[26px] h-[26px] p-0 rounded-sm inline-flex items-center justify-center bg-transparent border-0 cursor-pointer text-tertiary hover:text-danger hover:bg-danger-dim transition-colors duration-[80ms]"
-                        onClick={closeAllSessions}
-                        aria-label={t('关闭全部')}
-                      >
-                        <X size={13} />
-                      </button>
-                    </Tiptop>
-                  </>
+                  <Tiptop text={t('关闭全部')} placement="bottom">
+                    <button
+                      type="button"
+                      className="no-drag w-[26px] h-[26px] p-0 rounded-sm inline-flex items-center justify-center bg-transparent border-0 cursor-pointer text-tertiary hover:text-danger hover:bg-danger-dim transition-colors duration-[80ms]"
+                      onClick={closeAllSessions}
+                      aria-label={t('关闭全部')}
+                    >
+                      <X size={13} />
+                    </button>
+                  </Tiptop>
                 )}
               </div>
             </div>

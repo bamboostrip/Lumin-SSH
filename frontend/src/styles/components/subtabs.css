@@ -103,10 +103,13 @@
 .terminal-sub-tab-actions {
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: 2px;
   flex-shrink: 0;
   margin-left: auto;
-  padding-left: 0;
+  padding-left: 6px;
+  border-left: 1px solid var(--border-subtle);
+  height: 28px;
+  align-self: center;
 }
 
 .terminal-tab-list-trigger {
@@ -287,7 +290,7 @@
   background: color-mix(in srgb, var(--accent) 15%, var(--surface-hover));
   color: var(--text-primary);
 }
-/* 非激活相邻分隔线（紧邻激活/悬停项或末尾时隐去），同主标签栏 */
+/* 非激活相邻分隔线（紧邻激活/悬停项或末尾时隐去） */
 .terminal-sub-tab:not(.active)::after {
   content: '';
   position: absolute;
@@ -295,15 +298,16 @@
   top: 50%;
   transform: translateY(-50%);
   width: 1px;
-  height: 13px;
-  background: color-mix(in srgb, var(--accent) 25%, var(--border-subtle));
-  opacity: 0.6;
+  height: 14px;
+  background: var(--border);
+  opacity: 0.75;
   transition: opacity var(--transition-fast);
 }
 .terminal-sub-tab:not(.active):hover::after,
-.terminal-sub-tab:not(.active):has(+ .terminal-sub-tab.active)::after,
-.terminal-sub-tab:not(.active):has(+ .terminal-sub-tab:hover)::after,
-.terminal-sub-tab:not(.active):last-child::after {
+.terminal-sub-tab-scroll > .tiptop:has(.terminal-sub-tab:hover) .terminal-sub-tab::after,
+.terminal-sub-tab-scroll > .tiptop:has(+ .tiptop .terminal-sub-tab.active) .terminal-sub-tab::after,
+.terminal-sub-tab-scroll > .tiptop:has(+ .tiptop .terminal-sub-tab:hover) .terminal-sub-tab::after,
+.terminal-sub-tab-scroll > .tiptop:last-child .terminal-sub-tab::after {
   opacity: 0;
 }
 .terminal-sub-tab.active {

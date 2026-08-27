@@ -7,8 +7,8 @@
   display: flex;
   align-items: center;
   height: var(--topbar-h);
-  background: var(--topbar-bg, color-mix(in srgb, var(--accent) 8%, var(--surface-sunken)));
-  border-bottom: 1px solid var(--topbar-border-color, color-mix(in srgb, var(--accent) 18%, var(--border-subtle)));
+  background: var(--topbar-bg, var(--surface-raised));
+  border-bottom: 1px solid var(--topbar-border-color, var(--border-subtle));
   padding: 0 var(--space-2);
   --wails-draggable: drag;
   flex-shrink: 0;
@@ -20,22 +20,8 @@
 }
 
 body.theme-light .topbar {
-  background: var(--topbar-bg, color-mix(in srgb, var(--accent) 10%, #e6e9ee));
-  border-bottom-color: color-mix(in srgb, var(--accent) 18%, rgba(28, 35, 45, 0.12));
-}
-
-/* 全局背景启用时：顶栏微磨砂半透明沉降，与全屏壁纸无缝融合且保持主题基准色 */
-.has-global-wallpaper .topbar {
-  background: color-mix(in srgb, var(--accent) 8%, color-mix(in srgb, var(--surface-sunken) 82%, transparent));
-  border-bottom-color: color-mix(in srgb, var(--accent) 15%, var(--border-subtle));
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-
-body.theme-light.has-global-wallpaper .topbar,
-body.theme-light .has-global-wallpaper .topbar {
-  background: color-mix(in srgb, var(--accent) 8%, color-mix(in srgb, #e6e9ee 82%, transparent));
-  border-bottom-color: color-mix(in srgb, var(--accent) 15%, rgba(28, 35, 45, 0.1));
+  background: var(--topbar-bg, var(--surface-raised));
+  border-bottom-color: var(--border-subtle);
 }
 
 .has-global-wallpaper .tab-item,

@@ -1033,6 +1033,34 @@ select option {
 .tab-search-item:hover {
   color: var(--text-primary);
 }
+.tab-search-item.active {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+/* 标签行内「新建」圆钮：静默无底，悬停浮现圆形灰底（对齐浏览器范式） */
+.tab-create-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.tab-create-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.tab-create-btn:active {
+  background: var(--surface-active);
+  color: var(--text-primary);
+}
 
 .tab-item:not(.active)::after {
   content: '';

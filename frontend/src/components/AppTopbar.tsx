@@ -122,7 +122,7 @@ export default function AppTopbar({
                     <button
                       ref={sessionListBtnRef}
                       type="button"
-                      className="tab-item tab-search-item no-drag shrink-0"
+                      className={`tab-item tab-search-item no-drag shrink-0${showSessionList ? ' active' : ''}`}
                       onClick={(e) => { e.stopPropagation(); toggleSessionList(); }}
                       aria-label={t('搜索服务器')}
                       aria-haspopup="dialog"

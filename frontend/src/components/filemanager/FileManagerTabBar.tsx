@@ -268,7 +268,7 @@ export function renderFileManagerTabBar(fm: FileManagerController) {
           )}
           <button
             type="button"
-            className="terminal-create-btn ml-[10px] inline-flex items-center justify-center shrink-0"
+            className="tab-create-btn ml-[10px]"
             onClick={() => { void handleCreateFileManagerTab(); }}
             aria-label={t('新建标签')}
             title={t('新建标签')}

@@ -200,7 +200,7 @@ export function renderAIWorkspaceTabBar({
           title={t('新对话')}
           aria-label={t('新对话')}
           onClick={createWorkspaceTab}
-          className="terminal-create-btn ml-[10px] inline-flex items-center justify-center shrink-0">
+          className="tab-create-btn ml-[10px]">
           <Plus size={14} />
         </button>
       </div>

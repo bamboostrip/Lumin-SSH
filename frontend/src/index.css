@@ -1102,10 +1102,22 @@ body.theme-light .tab-item.active::after {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M10 10 C3.6 10 0 6.4 0 0 L0 10 Z' fill='%23faf9f9'/%3E%3Cpath d='M10 10 C3.6 10 0 6.4 0 0' fill='none' stroke='%23c1cce6' stroke-width='1'/%3E%3C/svg%3E");
 }
 
-/* 壁纸模式下隐藏外反弧以保持纯净磨砂 */
-.has-global-wallpaper .tab-item.active::before,
+/* 壁纸模式下保留外凹反弧：填充改用激活标签的半透明磨砂配方（canvas 92%/浅色 .94），
+   与磨砂标签连为一体而非实心浮块；描边沿用各主题标签边框渲染色 */
+.has-global-wallpaper .tab-item.active::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M0 10 C6.4 10 10 6.4 10 0 L10 10 Z' fill='rgba(13,17,23,0.92)'/%3E%3Cpath d='M0 10 C6.4 10 10 6.4 10 0' fill='none' stroke='%232a4160' stroke-width='1'/%3E%3C/svg%3E");
+}
+
 .has-global-wallpaper .tab-item.active::after {
-  display: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M10 10 C3.6 10 0 6.4 0 0 L0 10 Z' fill='rgba(13,17,23,0.92)'/%3E%3Cpath d='M10 10 C3.6 10 0 6.4 0 0' fill='none' stroke='%232a4160' stroke-width='1'/%3E%3C/svg%3E");
+}
+
+body.theme-light.has-global-wallpaper .tab-item.active::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M0 10 C6.4 10 10 6.4 10 0 L10 10 Z' fill='rgba(250,249,249,0.94)'/%3E%3Cpath d='M0 10 C6.4 10 10 6.4 10 0' fill='none' stroke='%23c1cce6' stroke-width='1'/%3E%3C/svg%3E");
+}
+
+body.theme-light.has-global-wallpaper .tab-item.active::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M10 10 C3.6 10 0 6.4 0 0 L0 10 Z' fill='rgba(250,249,249,0.94)'/%3E%3Cpath d='M10 10 C3.6 10 0 6.4 0 0' fill='none' stroke='%23c1cce6' stroke-width='1'/%3E%3C/svg%3E");
 }
 
 .topbar-home-btn {

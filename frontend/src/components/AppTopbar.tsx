@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { House, Minus, Square, X, Bot, Settings, RefreshCw, Rocket, Sun, Moon, ChevronDown } from 'lucide-react';
 import Tiptop from './Tiptop.tsx';
-import { Button } from './ui';
+
 import { WindowMinimise } from '../../wailsjs/runtime/runtime.js';
 import { Z } from '../constants/zIndex.ts';
 import { cn } from '../utils/cn.ts';
@@ -233,15 +233,14 @@ export default function AppTopbar({
                 )}
                 {sessions.length >= 2 && (
                   <Tiptop text={t('关闭全部')} placement="bottom">
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      className="no-drag text-danger!"
+                    <button
+                      type="button"
+                      className="no-drag w-[26px] h-[26px] p-0 rounded-sm inline-flex items-center justify-center bg-transparent border-0 cursor-pointer text-tertiary hover:text-danger hover:bg-danger-dim transition-colors duration-[80ms]"
                       onClick={closeAllSessions}
                       aria-label={t('关闭全部')}
                     >
-                      <X size={12} /> {t('关闭全部')}
-                    </Button>
+                      <X size={13} />
+                    </button>
                   </Tiptop>
                 )}
               </div>

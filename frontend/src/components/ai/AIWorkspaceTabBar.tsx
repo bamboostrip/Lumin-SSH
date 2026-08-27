@@ -195,6 +195,14 @@ export function renderAIWorkspaceTabBar({
             </div>
           )
         })}
+        <button
+          type="button"
+          title={t('新对话')}
+          aria-label={t('新对话')}
+          onClick={createWorkspaceTab}
+          className="terminal-create-btn ml-[10px] inline-flex items-center justify-center shrink-0">
+          <Plus size={14} />
+        </button>
       </div>
       {aiWorkspaceTabOverflow ? (
         <button
@@ -207,15 +215,5 @@ export function renderAIWorkspaceTabBar({
           <ChevronRight size={14} />
         </button>
       ) : null}
-      <div className="terminal-sub-tab-actions">
-        <button
-          type="button"
-          title={t('新对话')}
-          aria-label={t('新对话')}
-          onClick={createWorkspaceTab}
-          className="terminal-create-btn inline-flex items-center justify-center shrink-0">
-          <Plus size={14} />
-        </button>
-      </div>
     </div>
   )}

@@ -56,7 +56,7 @@ export function renderAIConversationListRow({
           <div
             key={item.id}
             className={cn(
-              'ai-conversation-row group w-full flex items-center rounded-[var(--radius-md)] shrink-0',
+              'ai-conversation-row group w-full flex items-center rounded-[var(--radius-md)] shrink-0 relative overflow-hidden',
               'transition-[color,background-color,border-color,opacity,box-shadow] duration-[120ms]',
               selected && 'selected',
               panelState.activeConversationId === item.id && 'is-active',
@@ -84,7 +84,7 @@ export function renderAIConversationListRow({
               onClick={() => conversationSelectionMode ? toggleConversationSelection(item.id) : void handleOpenConversation(item.id)}
               className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2 border-0 bg-transparent text-left cursor-pointer"
             >
-              <div className="flex-1 min-w-0 grid gap-0.5" style={{ paddingLeft: item.depth > 0 ? `${item.depth * 12}px` : 0 }}>
+              <div className="flex-1 min-w-0 flex flex-col gap-0.5" style={{ paddingLeft: item.depth > 0 ? `${item.depth * 12}px` : 0 }}>
                 <div className="flex items-center gap-1.5 min-w-0">
                   {isAgentSubtask ? (
                     <Tiptop text={t('子代理任务')} placement="top">
@@ -117,67 +117,73 @@ export function renderAIConversationListRow({
                     </span>
                   ) : null}
                   <div className={cn(
-                    'min-w-0 text-base leading-tight whitespace-nowrap overflow-hidden text-ellipsis',
+                    'flex-1 min-w-0 text-base leading-tight truncate',
                     isArchivedAgentSubtask ? 'text-secondary' : 'text-primary',
                     panelState.activeConversationId === item.id ? 'font-semibold' : 'font-medium',
-                  )}>{displayTitle || item.title}</div>
+                  )} title={displayTitle || item.title}>{displayTitle || item.title}</div>
                 </div>
-                <div className="flex items-center gap-0.5 min-w-0 flex-wrap">
-                  <div className="text-xs text-tertiary whitespace-nowrap inline-flex items-center gap-0">
-                    <span>{historyTimeParts.absoluteText}</span>
+                <div className="flex items-center gap-1 min-w-0 text-xs text-tertiary">
+                  <span className="truncate" title={historyTimeParts.absoluteText}>
                     {historyTimeParts.relativeText ? (
-                      <span style={historyRelativeToneStyle}>({historyTimeParts.relativeText})</span>
-                    ) : null}
-                  </div>
-                  <div className="text-xs text-muted whitespace-nowrap">·{item.messageCount}</div>
+                      <>
+                        <span style={historyRelativeToneStyle}>{historyTimeParts.relativeText}</span>
+                        <span className="opacity-50 ml-1 text-[11px] font-mono">{historyTimeParts.absoluteText}</span>
+                      </>
+                    ) : (
+                      <span>{historyTimeParts.absoluteText}</span>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-muted">·{item.messageCount}</span>
                 </div>
               </div>
             </button>
-            {!conversationSelectionMode ? <div className="flex items-center gap-1 mr-2.5 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-[120ms]">
-              {item.transient === true ? (
+            {!conversationSelectionMode ? (
+              <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 px-1 py-0.5 rounded-[var(--radius-sm)] bg-raised/95 backdrop-blur-sm border border-line-subtle shadow-xs opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto transition-opacity duration-[120ms]">
+                {item.transient === true ? (
+                  <button
+                    type="button"
+                    title={`${t('临时会话')} → ${t('保存')}`}
+                    aria-label={`${t('临时会话')} → ${t('保存')}`}
+                    onClick={() => void handleMakeConversationPermanent(item.id)}
+                    className={cn(AI_ROW_ACTION_BASE, AI_ROW_ACTION_HOVER_ACCENT, 'text-accent')}
+                  >
+                    <ArchiveRestore size={13} />
+                  </button>
+                ) : null}
+                {item.transient !== true ? (
+                  <button
+                    type="button"
+                    title={t('打开任务所在文件夹')}
+                    aria-label={t('打开任务所在文件夹')}
+                    onClick={() => void handleOpenConversationFolder(item.id)}
+                    className={cn(AI_ROW_ACTION_BASE, AI_ROW_ACTION_HOVER_ACCENT, 'text-muted')}
+                  >
+                    <FolderOpen size={13} />
+                  </button>
+                ) : null}
+                {item.transient !== true ? (
+                  <button
+                    type="button"
+                    title={t('编辑任务标题')}
+                    aria-label={t('编辑任务标题')}
+                    onClick={() => void handleRenameConversationTitle(item.id)}
+                    className={cn(AI_ROW_ACTION_BASE, AI_ROW_ACTION_HOVER_ACCENT, 'text-muted')}
+                  >
+                    <Pencil size={13} />
+                  </button>
+                ) : null}
                 <button
                   type="button"
-                  title={`${t('临时会话')} → ${t('保存')}`}
-                  aria-label={`${t('临时会话')} → ${t('保存')}`}
-                  onClick={() => void handleMakeConversationPermanent(item.id)}
-                  className={cn(AI_ROW_ACTION_BASE, AI_ROW_ACTION_HOVER_ACCENT, 'text-accent')}
+                  title={t('删除')}
+                  aria-label={t('删除')}
+                  onClick={() => {
+                    void handleDeleteConversation(item.id)
+                  }}
+                  className={cn(AI_ROW_ACTION_BASE, AI_ROW_ACTION_HOVER_DANGER, 'text-muted')}
                 >
-                  <ArchiveRestore size={13} />
+                  ×
                 </button>
-              ) : null}
-              {item.transient !== true ? (
-              <button
-                type="button"
-                title={t('打开任务所在文件夹')}
-                aria-label={t('打开任务所在文件夹')}
-                onClick={() => void handleOpenConversationFolder(item.id)}
-                className={cn(AI_ROW_ACTION_BASE, AI_ROW_ACTION_HOVER_ACCENT, 'text-muted')}
-              >
-                <FolderOpen size={13} />
-              </button>
-              ) : null}
-              {item.transient !== true ? (
-              <button
-                type="button"
-                title={t('编辑任务标题')}
-                aria-label={t('编辑任务标题')}
-                onClick={() => void handleRenameConversationTitle(item.id)}
-                className={cn(AI_ROW_ACTION_BASE, AI_ROW_ACTION_HOVER_ACCENT, 'text-muted')}
-              >
-                <Pencil size={13} />
-              </button>
-              ) : null}
-              <button
-                type="button"
-                title={t('删除')}
-                aria-label={t('删除')}
-                onClick={() => {
-                  void handleDeleteConversation(item.id)
-                }}
-                className={cn(AI_ROW_ACTION_BASE, AI_ROW_ACTION_HOVER_DANGER, 'text-muted')}
-              >
-                ×
-              </button>
-            </div> : null}
+              </div>
+            ) : null}
           </div>
         )}

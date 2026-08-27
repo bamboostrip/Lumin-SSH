@@ -80,21 +80,21 @@ export function ProcessDetailDrawer({
         onMouseDown={onStartDetailDrag}
       />
       <div style={{ height: detailHeight }} className="shrink-0 border-t border-line flex flex-col overflow-hidden bg-sunken">
-        <div className="flex justify-between items-center px-2 py-1 border-b border-line-light bg-raised gap-1">
-          <div className="flex items-stretch min-w-0 flex-1">
+        <div className="flex justify-between items-end px-2 pt-1 border-b border-line bg-sunken gap-1">
+          <div className="flex items-end min-w-0 flex-1">
             {nav.left && (
-              <button type="button" className="terminal-sub-tab-nav" aria-label={t('向左滚动标签')} onClick={() => scrollRef.current?.scrollBy({ left: -180, behavior: 'smooth' })}>
+              <button type="button" className="terminal-sub-tab-nav mb-0.5" aria-label={t('向左滚动标签')} onClick={() => scrollRef.current?.scrollBy({ left: -180, behavior: 'smooth' })}>
                 <ChevronLeft size={14} />
               </button>
             )}
-            <div ref={scrollRef} className="flex gap-[3px] items-center min-w-0 flex-1 overflow-x-auto tab-row-scroll-x" onScroll={updateNav}>
+            <div ref={scrollRef} className="flex gap-0 items-end min-w-0 flex-1 overflow-x-auto tab-row-scroll-x px-2" onScroll={updateNav}>
               {detailProcesses.map((p) => {
               const isActive = activePid === p.pid;
               return (
                 <div
                   key={p.pid}
                   onClick={() => detailDispatch({ type: 'toggle', process: p })}
-                  className={cn('terminal-sub-tab no-arc font-mono', isActive && 'active')}
+                  className={cn('drawer-detail-tab font-mono no-drag', isActive && 'active')}
                 >
                   <span>{p.pid}</span>
                   <span className={cn(
@@ -110,7 +110,7 @@ export function ProcessDetailDrawer({
                         detailDispatch({ type: 'close', pid: p.pid });
                       }}
                       aria-label={t('关闭')}
-                      className="terminal-sub-tab-close"
+                      className="drawer-detail-tab-close"
                     >
                       ×
                     </span>
@@ -120,7 +120,7 @@ export function ProcessDetailDrawer({
             })}
             </div>
             {nav.right && (
-              <button type="button" className="terminal-sub-tab-nav" aria-label={t('向右滚动标签')} onClick={() => scrollRef.current?.scrollBy({ left: 180, behavior: 'smooth' })}>
+              <button type="button" className="terminal-sub-tab-nav mb-0.5" aria-label={t('向右滚动标签')} onClick={() => scrollRef.current?.scrollBy({ left: 180, behavior: 'smooth' })}>
                 <ChevronRight size={14} />
               </button>
             )}
@@ -130,7 +130,7 @@ export function ProcessDetailDrawer({
               variant="ghost"
               size="sm"
               onClick={() => detailDispatch({ type: 'closeAll' })}
-              className="p-0.5 text-tertiary shrink-0"
+              className="p-0.5 text-tertiary shrink-0 mb-0.5"
               aria-label={t('关闭全部')}
             >
               <X size={14} />

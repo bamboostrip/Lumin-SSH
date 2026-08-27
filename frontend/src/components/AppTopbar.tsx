@@ -115,18 +115,18 @@ export default function AppTopbar({
 
           {sessions.length > 0 && (
             <div className="tab-bar">
-              <Tiptop text={t('返回主页')} placement="bottom">
-                <button
-                  type="button"
-                  className={cn('topbar-home-btn no-drag shrink-0', activeSessionId === null ? 'active' : '')}
-                  onClick={() => { markWorkspaceRestoreNavigationOverride(); setActiveSessionId(null); setActiveTerminalId(null); }}
-                  aria-label={t('返回主页')}
-                >
-                  <House size={14} />
-                </button>
-              </Tiptop>
               <div className="tab-scroll" ref={tabScrollRef}>
                 <div ref={tabListRef} className="tab-list">
+                  <Tiptop text={t('返回主页')} placement="bottom">
+                    <button
+                      type="button"
+                      className={cn('tab-item tab-home-item no-drag shrink-0', activeSessionId === null ? 'active' : '')}
+                      onClick={() => { markWorkspaceRestoreNavigationOverride(); setActiveSessionId(null); setActiveTerminalId(null); }}
+                      aria-label={t('返回主页')}
+                    >
+                      <House size={14} />
+                    </button>
+                  </Tiptop>
                   {sessions.map((s) => (
                     <div
                       key={s.id}

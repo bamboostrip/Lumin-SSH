@@ -1057,7 +1057,7 @@ select option {
   z-index: 2;
 }
 
-/* 激活标签：Chrome 经典外凹圆弧（带连续 1px 边框线，10px 弧度，光学补偿线宽） */
+/* 激活标签：Chrome 经典外凹圆弧（带连续 1px 边框线，10px 弧度，1.1px 精致线宽） */
 .tab-item.active::before,
 .tab-item.active::after {
   content: '';
@@ -1074,12 +1074,12 @@ select option {
 /* 深色模式左/右连续外凹圆弧 */
 .tab-item.active::before {
   left: -10px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' shape-rendering='geometricPrecision'%3E%3Cpath d='M0 10 A10 10 0 0 0 10 0 L10 10 Z' fill='%230d1117'/%3E%3Cpath d='M0 10 A10 10 0 0 0 10 0' fill='none' stroke='rgba(255,255,255,0.22)' stroke-width='1.35'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' shape-rendering='geometricPrecision'%3E%3Cpath d='M0 10 A10 10 0 0 0 10 0 L10 10 Z' fill='%230d1117'/%3E%3Cpath d='M0 10 A10 10 0 0 0 10 0' fill='none' stroke='rgba(255,255,255,0.16)' stroke-width='1.1'/%3E%3C/svg%3E");
 }
 
 .tab-item.active::after {
   right: -10px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' shape-rendering='geometricPrecision'%3E%3Cpath d='M0 0 A10 10 0 0 0 10 10 L0 10 Z' fill='%230d1117'/%3E%3Cpath d='M0 0 A10 10 0 0 0 10 10' fill='none' stroke='rgba(255,255,255,0.22)' stroke-width='1.35'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' shape-rendering='geometricPrecision'%3E%3Cpath d='M0 0 A10 10 0 0 0 10 10 L0 10 Z' fill='%230d1117'/%3E%3Cpath d='M0 0 A10 10 0 0 0 10 10' fill='none' stroke='rgba(255,255,255,0.16)' stroke-width='1.1'/%3E%3C/svg%3E");
 }
 
 body.theme-light .tab-item.active {
@@ -1090,11 +1090,11 @@ body.theme-light .tab-item.active {
 
 /* 浅色模式左/右连续外凹圆弧（#faf9f9 填充 + 连续微边框描边） */
 body.theme-light .tab-item.active::before {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' shape-rendering='geometricPrecision'%3E%3Cpath d='M0 10 A10 10 0 0 0 10 0 L10 10 Z' fill='%23faf9f9'/%3E%3Cpath d='M0 10 A10 10 0 0 0 10 0' fill='none' stroke='rgba(35,30,55,0.25)' stroke-width='1.35'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' shape-rendering='geometricPrecision'%3E%3Cpath d='M0 10 A10 10 0 0 0 10 0 L10 10 Z' fill='%23faf9f9'/%3E%3Cpath d='M0 10 A10 10 0 0 0 10 0' fill='none' stroke='rgba(28,35,45,0.18)' stroke-width='1.1'/%3E%3C/svg%3E");
 }
 
 body.theme-light .tab-item.active::after {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' shape-rendering='geometricPrecision'%3E%3Cpath d='M0 0 A10 10 0 0 0 10 10 L0 10 Z' fill='%23faf9f9'/%3E%3Cpath d='M0 0 A10 10 0 0 0 10 10' fill='none' stroke='rgba(35,30,55,0.25)' stroke-width='1.35'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' shape-rendering='geometricPrecision'%3E%3Cpath d='M0 0 A10 10 0 0 0 10 10 L0 10 Z' fill='%23faf9f9'/%3E%3Cpath d='M0 0 A10 10 0 0 0 10 10' fill='none' stroke='rgba(28,35,45,0.18)' stroke-width='1.1'/%3E%3C/svg%3E");
 }
 
 /* 壁纸模式下隐藏外反弧以保持纯净磨砂 */

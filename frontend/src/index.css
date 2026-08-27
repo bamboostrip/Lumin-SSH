@@ -1506,10 +1506,10 @@ body.theme-light .topbar-home-btn.active {
 }
 
 .terminal-create-btn.active {
-  background: var(--tab-active-bg);
-  border-color: var(--tab-active-border);
-  color: var(--tab-active-text, var(--text-primary));
-  box-shadow: inset 0 -2px 0 var(--accent);
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
+  color: var(--accent);
+  box-shadow: var(--shadow-xs);
   font-weight: 600;
 }
 
@@ -1628,10 +1628,20 @@ body.theme-light .terminal-sub-tab.active::after {
    抽屉内的明细面板），加 no-arc 保持 accent 下划线小胶囊语言。
    与全局静默语言一致：非激活透明，悬停浮起，激活 accent 下划线 */
 .terminal-sub-tab.no-arc {
+  height: 26px;
+  min-height: 26px;
+  padding: 0 10px;
+  font-size: var(--text-xs);
   border-radius: var(--radius-sm);
-  margin: 2px 1px;
   background: transparent;
+  border: 1px solid transparent;
   color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: var(--transition-fast);
 }
 .terminal-sub-tab.no-arc:hover {
   background: var(--surface-hover);
@@ -1639,13 +1649,19 @@ body.theme-light .terminal-sub-tab.active::after {
 }
 .terminal-sub-tab.no-arc::after { display: none; }
 .terminal-sub-tab.no-arc.active {
-  background: var(--tab-active-bg);
-  border-color: transparent;
-  border-bottom-color: var(--accent);
-  box-shadow: inset 0 -2px 0 var(--accent);
-  margin-bottom: 2px;
-  padding-bottom: 0;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: var(--shadow-xs);
   border-radius: var(--radius-sm);
+  margin: 0;
+  padding: 0 10px;
+}
+body.theme-light .terminal-sub-tab.no-arc.active {
+  background: #ffffff;
+  border-color: var(--border);
+  box-shadow: var(--shadow-xs);
 }
 .terminal-sub-tab.no-arc.active::before,
 .terminal-sub-tab.no-arc.active::after {
@@ -1737,10 +1753,10 @@ body.theme-light .terminal-sub-tab.active::after {
 }
 
 .terminal-sub-tab-icon-only.active {
-  background: var(--surface-sunken);
-  border-color: var(--border);
-  color: var(--text-primary);
-  box-shadow: inset 0 -2px 0 var(--accent);
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
+  color: var(--accent);
+  box-shadow: var(--shadow-xs);
 }
 
 .terminal-sub-tab-icon-only.active svg {

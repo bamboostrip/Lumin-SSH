@@ -129,6 +129,7 @@ svg[class*="lucide"] {
   --surface-sunken:    #1b2230;  /* 输入框/凹陷区 */
   --surface-hover:     #243042;  /* hover 态 */
   --surface-active:    #2c384c;  /* active/选中态 */
+  --surface-canvas:    #0d1117;  /* 激活标签融入内容区的底色（须与外凹反弧 SVG 填充一致） */
 
   /* ── 边框 ── */
   --overlay-scrim: rgba(0, 0, 0, 0.42);
@@ -335,6 +336,7 @@ body.theme-light {
   --surface-sunken:    #e9ecef;
   --surface-hover:     #e2e6eb;
   --surface-active:    #d6dbe2;
+  --surface-canvas:    #faf9f9;  /* 激活标签融入内容区的底色（须与外凹反弧 SVG 填充一致） */
 
   --overlay-scrim: rgba(28, 35, 45, 0.32);
   --border:        rgba(28, 35, 45, 0.14);

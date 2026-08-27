@@ -40,7 +40,7 @@ export const Z = {
   FLOATING_EDITOR_MENU: 9002,
 
   // ── Chrome / search ──
-  TOPBAR: 1000,
+  TOPBAR: 10001,
   SEARCH_PANEL: 10000,
 
   // ── Global modals ──

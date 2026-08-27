@@ -13,7 +13,7 @@
   --wails-draggable: drag;
   flex-shrink: 0;
   position: relative;
-  z-index: 1000; /* Z.TOPBAR — modals and dialogs layer above topbar */
+  z-index: 10001; /* 保持高于全局壁纸覆盖层 (z-index: 10000)，确保顶栏底色不被壁纸污染，同时低于 MODAL (35000) */
   /* 顶栏双击最大化/点按钮时禁止划词，避免 WebView2 弹出 AI 搜索工具条 */
   user-select: none;
   -webkit-user-select: none;
@@ -22,41 +22,6 @@
 body.theme-light .topbar {
   background: var(--topbar-bg, color-mix(in srgb, var(--accent) 10%, #e6e9ee));
   border-bottom-color: color-mix(in srgb, var(--accent) 18%, rgba(28, 35, 45, 0.12));
-}
-
-/* 全局背景启用时：顶栏背景半透明沉降磨砂 */
-.has-global-wallpaper .topbar {
-  background: color-mix(in srgb, var(--accent) 10%, color-mix(in srgb, var(--surface-sunken) 45%, transparent));
-  border-bottom-color: transparent;
-  backdrop-filter: blur(10px);
-}
-
-.has-global-wallpaper .tab-item,
-.has-global-wallpaper .topbar-home-btn {
-  background: transparent;
-  border-color: transparent;
-  backdrop-filter: none;
-}
-.has-global-wallpaper .tab-item:hover,
-.has-global-wallpaper .topbar-home-btn:hover {
-  background: color-mix(in srgb, var(--accent) 18%, color-mix(in srgb, var(--surface-hover) 65%, transparent));
-  backdrop-filter: blur(8px);
-}
-.has-global-wallpaper .tab-item.active,
-.has-global-wallpaper .topbar-home-btn.active {
-  background: color-mix(in srgb, var(--surface-canvas) 92%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border-subtle));
-  border-bottom: 1px solid color-mix(in srgb, var(--surface-canvas) 92%, transparent);
-  backdrop-filter: blur(16px);
-  box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.12);
-}
-body.theme-light.has-global-wallpaper .tab-item.active,
-body.theme-light.has-global-wallpaper .topbar-home-btn.active {
-  background: rgba(250, 249, 249, 0.94);
-  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border-subtle));
-  border-bottom: 1px solid rgba(250, 249, 249, 0.94);
-  backdrop-filter: blur(16px);
-  box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.06);
 }
 
 .topbar-content {

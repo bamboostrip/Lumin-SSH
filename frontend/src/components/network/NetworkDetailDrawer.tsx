@@ -46,10 +46,7 @@ export function NetworkDetailDrawer({
                 <div
                   key={key}
                   onClick={() => setActiveDetailKey(key)}
-                  className={cn(
-                    'flex items-center gap-[5px] px-2.5 py-[3px] text-sm rounded-sm cursor-pointer font-mono select-none whitespace-nowrap border',
-                    isActive ? 'border-accent bg-active text-primary' : 'border-line bg-sunken text-secondary',
-                  )}
+                  className={cn('terminal-sub-tab no-arc font-mono', isActive && 'active')}
                 >
                   <span>{item.listenIP || '*'}:{item.port || '-'}</span>
                   <span className="text-tertiary max-w-[100px] truncate">{item.name || '-'}</span>
@@ -59,7 +56,8 @@ export function NetworkDetailDrawer({
                       event.stopPropagation();
                       onCloseConnectionDetail(key);
                     }}
-                    className="border-none bg-transparent text-tertiary cursor-pointer p-0 text-base leading-none"
+                    aria-label={t('关闭')}
+                    className="terminal-sub-tab-close border-none bg-transparent cursor-pointer p-0"
                   >
                     ×
                   </button>

@@ -1510,12 +1510,65 @@ body.theme-light .topbar-home-btn.active {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 .terminal-sub-tab.active {
+  background: var(--surface-canvas);
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--border-subtle));
+  border-bottom-color: var(--surface-canvas);
+  margin-bottom: -1px;
+  padding-bottom: 1px;
+  box-shadow: none;
+  font-weight: 600;
+  border-radius: 10px 10px 0 0;
+}
+body.theme-light .terminal-sub-tab.active {
+  background: #faf9f9;
+  border-color: color-mix(in srgb, var(--accent) 18%, var(--border-subtle));
+  border-bottom-color: #faf9f9;
+}
+
+/* 子标签 Chrome 外凹反弧：与主工作区 .tab-item 同源（含深浅色填充与描边） */
+.terminal-sub-tab.active::before,
+.terminal-sub-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 10px;
+  height: 10px;
+  pointer-events: none;
+  z-index: 3;
+  background-size: 10px 10px;
+  background-repeat: no-repeat;
+}
+.terminal-sub-tab.active::before {
+  left: -10px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M0 10 C6.4 10 10 6.4 10 0 L10 10 Z' fill='%230d1117'/%3E%3Cpath d='M0 10 C6.4 10 10 6.4 10 0' fill='none' stroke='%232a4160' stroke-width='1'/%3E%3C/svg%3E");
+}
+.terminal-sub-tab.active::after {
+  right: -10px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M10 10 C3.6 10 0 6.4 0 0 L0 10 Z' fill='%230d1117'/%3E%3Cpath d='M10 10 C3.6 10 0 6.4 0 0' fill='none' stroke='%232a4160' stroke-width='1'/%3E%3C/svg%3E");
+}
+body.theme-light .terminal-sub-tab.active::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M0 10 C6.4 10 10 6.4 10 0 L10 10 Z' fill='%23faf9f9'/%3E%3Cpath d='M0 10 C6.4 10 10 6.4 10 0' fill='none' stroke='%23c1cce6' stroke-width='1'/%3E%3C/svg%3E");
+}
+body.theme-light .terminal-sub-tab.active::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M10 10 C3.6 10 0 6.4 0 0 L0 10 Z' fill='%23faf9f9'/%3E%3Cpath d='M10 10 C3.6 10 0 6.4 0 0' fill='none' stroke='%23c1cce6' stroke-width='1'/%3E%3C/svg%3E");
+}
+
+/* 无融合对象时的退档变体：下方不是 canvas 内容区（如编辑器 oneDark、
+   抽屉内的明细面板），加 no-arc 保持 accent 下划线小胶囊语言 */
+.terminal-sub-tab.no-arc { border-radius: var(--radius-sm); }
+.terminal-sub-tab.no-arc.active {
   background: var(--tab-active-bg);
-  color: var(--tab-active-text, var(--text-primary));
   border-color: var(--tab-active-border);
   border-bottom-color: var(--accent);
   box-shadow: inset 0 -2px 0 var(--accent);
-  font-weight: 600;
+  margin-bottom: 2px;
+  padding-bottom: 0;
+  border-radius: var(--radius-sm);
+}
+.terminal-sub-tab.no-arc.active::before,
+.terminal-sub-tab.no-arc.active::after {
+  display: none;
 }
 .terminal-sub-tab.active .terminal-sub-tab-close {
   opacity: 0.7;

@@ -27,7 +27,7 @@ export function FileEditorTabs({
         return (
           <div
             key={f.path}
-            className={`terminal-sub-tab font-mono py-[5px] px-3 ${isActive ? 'active' : ''}`}
+            className={`terminal-sub-tab no-arc font-mono py-[5px] px-3 ${isActive ? 'active' : ''}`}
             onClick={() => onActivate(f.path)}
           >
             <span>{f.name}{fModified ? ' ●' : ''}</span>

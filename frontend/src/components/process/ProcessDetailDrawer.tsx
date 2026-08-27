@@ -66,12 +66,7 @@ export function ProcessDetailDrawer({
                 <div
                   key={p.pid}
                   onClick={() => detailDispatch({ type: 'toggle', process: p })}
-                  className={cn(
-                    'flex items-center gap-1 px-2.5 py-[3px] text-sm rounded-sm cursor-pointer font-mono select-none whitespace-nowrap border transition-all duration-[120ms]',
-                    isActive
-                      ? 'border-accent bg-active text-primary font-medium'
-                      : 'border-line bg-sunken text-secondary hover:border-focus hover:bg-hover hover:text-primary',
-                  )}
+                  className={cn('terminal-sub-tab no-arc font-mono', isActive && 'active')}
                 >
                   <span>{p.pid}</span>
                   <span className={cn(
@@ -87,7 +82,7 @@ export function ProcessDetailDrawer({
                         detailDispatch({ type: 'close', pid: p.pid });
                       }}
                       aria-label={t('关闭')}
-                      className="ml-0.5 opacity-40 cursor-pointer text-base leading-none"
+                      className="terminal-sub-tab-close"
                     >
                       ×
                     </span>

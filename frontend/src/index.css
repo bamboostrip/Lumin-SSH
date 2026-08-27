@@ -1708,13 +1708,12 @@ body.theme-light .topbar-home-btn.active {
   animation: saveFlowCardPulse 980ms cubic-bezier(0.22, 0.82, 0.24, 1) both;
 }
 
+/* 勾选多选：轻着色，与「当前连接」（accent-dim + 左侧色条）区分 */
 .server-card.selected {
-  background: var(--accent-dim);
-  border-color: var(--accent-border);
+  background: color-mix(in srgb, var(--accent) 15%, var(--surface-base));
 }
 .server-card.selected:hover {
-  background: rgba(var(--accent-rgb), 0.16);
-  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface-hover));
 }
 
 /* ── 批量操作悬浮条 ── */
@@ -1939,13 +1938,15 @@ body.theme-light .batch-operation-bar {
 .server-table-row > td:first-child { border-radius: var(--radius-md) 0 0 var(--radius-md); }
 .server-table-row > td:last-child { border-radius: 0 var(--radius-md) var(--radius-md) 0; }
 .server-table-row:hover > td { background: var(--surface-hover); }
-.server-table-row.active > td,
-.server-table-row.selected > td { background: var(--accent-dim); }
-.server-table-row.active > td:first-child,
-.server-table-row.selected > td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
+.server-table-row.active > td { background: var(--accent-dim); }
+.server-table-row.active > td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
+/* 勾选多选与「当前连接」区分：仅轻微着色，不带左侧色条（与文件管理器选中配方一致） */
+.server-table-row.selected > td {
+  background: color-mix(in srgb, var(--accent) 15%, var(--surface-base));
+}
 .server-table-row.save-flow-hit > td { animation: saveFlowRowPulse 920ms cubic-bezier(0.2, 0.82, 0.22, 1) both; }
 .server-table-row.selected:hover > td {
-  background: rgba(var(--accent-rgb), 0.16);
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface-hover));
 }
 
 .save-flow-target {

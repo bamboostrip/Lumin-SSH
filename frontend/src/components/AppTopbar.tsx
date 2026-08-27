@@ -65,7 +65,7 @@ export default function AppTopbar({
   logoImg, showTopbarRefreshedLogo, topbarLogoTransitionImg,
   sessions, tabScrollRef, tabListRef, activeSessionId, handleTabClick,
   closeSession, setTabContextMenu, sessionAuthPrompts, sshChannelUsage,
-  tabsOverflow, tabActionsRef, sessionListBtnRef, showSessionList, toggleSessionList,
+  tabActionsRef, sessionListBtnRef, showSessionList, toggleSessionList,
   closeAllSessions, showThemeQuickEntry, activeAIDevilMode,
   resolvedQuickThemeMode, handleQuickThemeToggle, isActiveSessionConnected,
   showAIPanel, setAIPanelVisibility, startupUpdateInfo, showUpdateBubble,
@@ -116,21 +116,21 @@ export default function AppTopbar({
 
           {sessions.length > 0 && (
             <div className="tab-bar">
+              <Tiptop text={t('搜索服务器')} placement="bottom">
+                <button
+                  ref={sessionListBtnRef}
+                  type="button"
+                  className={`tab-item tab-search-item no-drag shrink-0${showSessionList ? ' active' : ''}`}
+                  onClick={(e) => { e.stopPropagation(); toggleSessionList(); }}
+                  aria-label={t('搜索服务器')}
+                  aria-haspopup="dialog"
+                  aria-expanded={showSessionList}
+                >
+                  <ChevronDown size={14} />
+                </button>
+              </Tiptop>
               <div className="tab-scroll" ref={tabScrollRef}>
                 <div ref={tabListRef} className="tab-list">
-                  <Tiptop text={t('搜索服务器')} placement="bottom">
-                    <button
-                      ref={sessionListBtnRef}
-                      type="button"
-                      className={`tab-item tab-search-item no-drag shrink-0${showSessionList ? ' active' : ''}`}
-                      onClick={(e) => { e.stopPropagation(); toggleSessionList(); }}
-                      aria-label={t('搜索服务器')}
-                      aria-haspopup="dialog"
-                      aria-expanded={showSessionList}
-                    >
-                      <ChevronDown size={14} />
-                    </button>
-                  </Tiptop>
                   <Tiptop text={t('返回主页')} placement="bottom">
                     <button
                       type="button"

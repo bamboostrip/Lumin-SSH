@@ -1,5 +1,6 @@
-import { X } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import type React from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from '../../i18n.ts';
 import { cn } from '../../utils/cn.ts';
 import Tiptop from '../Tiptop.tsx';
@@ -46,6 +47,24 @@ export function ProcessDetailDrawer({
   setShowEnv,
 }: ProcessDetailDrawerProps) {
   const { t } = useTranslation();
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [nav, setNav] = useState({ left: false, right: false });
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setNav({
+      left: el.scrollLeft > 1,
+      right: el.scrollWidth - el.clientWidth - el.scrollLeft > 1,
+    });
+  }, [detailProcesses.length]);
+  const updateNav = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setNav({
+      left: el.scrollLeft > 1,
+      right: el.scrollWidth - el.clientWidth - el.scrollLeft > 1,
+    });
+  };
 
   if (detailProcesses.length === 0) {
     return null;
@@ -59,8 +78,14 @@ export function ProcessDetailDrawer({
       />
       <div style={{ height: detailHeight }} className="shrink-0 border-t border-line flex flex-col overflow-hidden bg-sunken">
         <div className="flex justify-between items-center px-2 py-1 border-b border-line-light bg-raised gap-1">
-          <div className="flex gap-[3px] overflow-hidden flex-1">
-            {detailProcesses.map((p) => {
+          <div className="flex items-stretch min-w-0 flex-1">
+            {nav.left && (
+              <button type="button" className="terminal-sub-tab-nav" aria-label={t('向左滚动标签')} onClick={() => scrollRef.current?.scrollBy({ left: -180, behavior: 'smooth' })}>
+                <ChevronLeft size={14} />
+              </button>
+            )}
+            <div ref={scrollRef} className="flex gap-[3px] items-center min-w-0 flex-1 overflow-x-auto tab-row-scroll-x" onScroll={updateNav}>
+              {detailProcesses.map((p) => {
               const isActive = activePid === p.pid;
               return (
                 <div
@@ -90,6 +115,12 @@ export function ProcessDetailDrawer({
                 </div>
               );
             })}
+            </div>
+            {nav.right && (
+              <button type="button" className="terminal-sub-tab-nav" aria-label={t('向右滚动标签')} onClick={() => scrollRef.current?.scrollBy({ left: 180, behavior: 'smooth' })}>
+                <ChevronRight size={14} />
+              </button>
+            )}
           </div>
           <Button
             variant="ghost"

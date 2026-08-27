@@ -1306,42 +1306,50 @@ body.theme-light .topbar-home-btn.active {
   display: none;
 }
 
+/* 标签溢出导航箭头（幽灵方钮）：仅有内容一侧出现 */
 .terminal-sub-tab-nav {
   align-self: stretch;
-  width: 28px;
-  min-width: 28px;
+  width: 26px;
+  min-width: 26px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1px solid var(--tab-inactive-border);
-  border-radius: var(--radius-xs);
-  background: var(--tab-inactive-bg);
-  color: var(--tab-inactive-text);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
   flex-shrink: 0;
   transition: var(--transition-fast);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
-}
-
-.terminal-sub-tab-nav-left {
-  border-right: 1px solid var(--tab-inactive-border);
-}
-
-.terminal-sub-tab-nav-right {
-  border-left: 1px solid var(--tab-inactive-border);
 }
 
 .terminal-sub-tab-nav:hover {
-  background: var(--tab-inactive-bg-hover);
-  border-color: var(--border-focus);
+  background: var(--surface-hover);
   color: var(--text-primary);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .terminal-sub-tab-nav:active {
-  background: color-mix(in srgb, var(--accent) 12%, var(--tab-inactive-bg));
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: var(--surface-active);
   color: var(--text-primary);
+}
+
+.terminal-sub-tab-nav.disabled,
+.terminal-sub-tab-nav:disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+  background: transparent;
+}
+
+/* 隐藏横向滚动条的标签滚动区 */
+.tab-row-scroll-x {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.tab-row-scroll-x::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .terminal-sub-tab-nav.disabled,
@@ -1382,26 +1390,22 @@ body.theme-light .topbar-home-btn.active {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--tab-inactive-border);
+  border: none;
   border-radius: var(--radius-sm);
-  background: var(--tab-inactive-bg);
-  color: var(--tab-inactive-text);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  background: transparent;
+  color: var(--text-tertiary);
   transition: var(--transition-fast);
 }
 
 .terminal-tab-list-btn:hover {
-  background: var(--tab-inactive-bg-hover);
-  border-color: var(--border-focus);
+  background: var(--surface-hover);
   color: var(--text-primary);
 }
 
 .terminal-tab-list-btn.active {
-  background: var(--tab-active-bg);
-  border-color: var(--tab-active-border);
-  border-bottom-color: var(--accent);
-  color: var(--tab-active-text, var(--text-primary));
-  box-shadow: inset 0 -2px 0 var(--accent);
+  background: var(--accent-dim);
+  border-color: transparent;
+  color: var(--accent);
 }
 
 .terminal-tab-list-menu {

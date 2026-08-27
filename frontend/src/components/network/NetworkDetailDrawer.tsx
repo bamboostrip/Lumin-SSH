@@ -1,4 +1,6 @@
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type React from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from '../../i18n.ts';
 import { cn } from '../../utils/cn.ts';
 import { Button } from '../ui';
@@ -25,6 +27,24 @@ export function NetworkDetailDrawer({
   onStartDetailDrag,
 }: NetworkDetailDrawerProps) {
   const { t } = useTranslation();
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [nav, setNav] = useState({ left: false, right: false });
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setNav({
+      left: el.scrollLeft > 1,
+      right: el.scrollWidth - el.clientWidth - el.scrollLeft > 1,
+    });
+  }, [detailConnections.length]);
+  const updateNav = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setNav({
+      left: el.scrollLeft > 1,
+      right: el.scrollWidth - el.clientWidth - el.scrollLeft > 1,
+    });
+  };
 
   if (detailConnections.length === 0) {
     return null;
@@ -39,8 +59,14 @@ export function NetworkDetailDrawer({
       <div className="split-resizer-h hotzone-bottom" onMouseDown={onStartDetailDrag} />
       <div style={{ height: detailHeight }} className="shrink-0 border-t border-line flex flex-col overflow-hidden bg-sunken">
         <div className="flex justify-between items-center px-2 py-1 border-b border-line-light bg-raised gap-1">
-          <div className="flex gap-[3px] overflow-hidden flex-1">
-            {detailConnections.map(({ key, item }) => {
+          <div className="flex items-stretch min-w-0 flex-1">
+            {nav.left && (
+              <button type="button" className="terminal-sub-tab-nav" aria-label={t('向左滚动标签')} onClick={() => scrollRef.current?.scrollBy({ left: -180, behavior: 'smooth' })}>
+                <ChevronLeft size={14} />
+              </button>
+            )}
+            <div ref={scrollRef} className="flex gap-[3px] items-center min-w-0 flex-1 overflow-x-auto tab-row-scroll-x" onScroll={updateNav}>
+              {detailConnections.map(({ key, item }) => {
               const isActive = activeDetailKey === key;
               return (
                 <div
@@ -64,6 +90,12 @@ export function NetworkDetailDrawer({
                 </div>
               );
             })}
+            </div>
+            {nav.right && (
+              <button type="button" className="terminal-sub-tab-nav" aria-label={t('向右滚动标签')} onClick={() => scrollRef.current?.scrollBy({ left: 180, behavior: 'smooth' })}>
+                <ChevronRight size={14} />
+              </button>
+            )}
           </div>
           <Button variant="ghost" size="sm" onClick={onCloseAllDetails}>{t('关闭全部')}</Button>
         </div>

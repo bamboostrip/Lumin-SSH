@@ -1962,7 +1962,11 @@ body.theme-light .batch-operation-bar {
 }
 
 /* ── AI 会话历史列表行（与服务器列表同一套行状态语言）── */
-.ai-conversation-row { border-left: 2px solid transparent; }
+/* 常驻浮起底：选中与否几何一致，平铺也有清晰边界 */
+.ai-conversation-row {
+  background: var(--surface-raised);
+  border-left: 2px solid transparent;
+}
 .ai-conversation-row:hover { background: var(--surface-hover); }
 /* 当前会话 = 持久标记，沿用 accent-dim + 左侧色条（同服务器「当前连接」语义） */
 .ai-conversation-row.is-active {

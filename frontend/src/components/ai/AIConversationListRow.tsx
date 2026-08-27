@@ -56,7 +56,7 @@ export function renderAIConversationListRow({
           <div
             key={item.id}
             className={cn(
-              'ai-conversation-row group w-full flex items-center mx-1 my-[1px] rounded-[var(--radius-md)]',
+              'ai-conversation-row group w-full flex items-center mx-1 my-[2px] rounded-[var(--radius-md)]',
               'transition-[color,background-color,border-color,opacity,box-shadow] duration-[120ms]',
               selected && 'selected',
               panelState.activeConversationId === item.id && 'is-active',

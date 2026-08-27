@@ -304,11 +304,19 @@
   transition: opacity var(--transition-fast);
 }
 .terminal-sub-tab:not(.active):hover::after,
+.terminal-sub-tab-scroll > .terminal-sub-tab:last-child::after,
+.terminal-sub-tab-scroll > .terminal-sub-tab:has(+ .terminal-sub-tab.active)::after,
+.terminal-sub-tab-scroll > .terminal-sub-tab:has(+ .terminal-sub-tab:hover)::after,
 .terminal-sub-tab-scroll > .tiptop:has(.terminal-sub-tab:hover) .terminal-sub-tab::after,
 .terminal-sub-tab-scroll > .tiptop:has(+ .tiptop .terminal-sub-tab.active) .terminal-sub-tab::after,
 .terminal-sub-tab-scroll > .tiptop:has(+ .tiptop .terminal-sub-tab:hover) .terminal-sub-tab::after,
 .terminal-sub-tab-scroll > .tiptop:last-child .terminal-sub-tab::after {
   opacity: 0;
+}
+.file-editor-tab-bar {
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+  padding: 0 8px;
 }
 .terminal-sub-tab.active {
   background: var(--surface-canvas);

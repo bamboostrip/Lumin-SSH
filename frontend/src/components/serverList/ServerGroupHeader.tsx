@@ -99,7 +99,7 @@ export function ServerGroupHeader({
         <td
           colSpan={6 + (selectionMode ? 1 : 0)}
           onContextMenu={(e) => openGroupHeaderMenu(e, groupName)}
-          className="px-2 pt-3 pb-0.5 text-sm text-secondary font-medium select-none"
+          className="px-2 pt-1.5 pb-0.5 text-sm text-secondary font-medium select-none"
         >
           <span className="inline-flex items-center gap-1.5 w-full">
             {content}

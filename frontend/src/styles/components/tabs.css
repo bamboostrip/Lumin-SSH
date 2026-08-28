@@ -101,7 +101,7 @@
   min-width: 28px;
   max-width: 28px;
   padding: 0;
-  border: none;
+  border: 1px solid transparent;
   background: transparent;
   border-radius: var(--radius-sm);
   cursor: pointer;
@@ -111,7 +111,7 @@
   margin-right: 4px;
   margin-left: 2px;
   color: var(--text-secondary);
-  transition: background var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
 }
 
 .tab-search-item:hover {
@@ -123,6 +123,30 @@
 .tab-search-item:active {
   background: var(--surface-active);
   transform: scale(0.96);
+}
+
+/* 面板打开/激活态：箭头上主题强调色 (accent)，背景与边框呈现清晰激活高亮 */
+.tab-search-item.active,
+.tab-search-item[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-hover));
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent), var(--shadow-sm);
+}
+
+.tab-search-item.active:hover,
+.tab-search-item[aria-expanded="true"]:hover {
+  background: color-mix(in srgb, var(--accent) 20%, var(--surface-hover));
+  color: var(--accent);
+}
+
+.tab-search-item svg {
+  transition: transform var(--transition-fast);
+}
+
+.tab-search-item.active svg,
+.tab-search-item[aria-expanded="true"] svg {
+  transform: rotate(180deg);
 }
 
 /* 标签行内「新建」圆钮：静默无底，悬停浮现圆形灰底（对齐浏览器范式） */

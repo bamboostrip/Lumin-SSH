@@ -137,7 +137,7 @@ export default function AppTopbar({
                   type="button"
                   className={cn(
                     'tab-search-item no-drag shrink-0',
-                    showSessionList && 'text-accent bg-hover shadow-sm',
+                    showSessionList && 'active',
                   )}
                   onClick={(e) => { e.stopPropagation(); toggleSessionList(); }}
                   aria-label={t('搜索服务器')}

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import type * as React from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import type { IBufferRange, IMarker, ITerminalInitOnlyOptions, ITerminalOptions } from '@xterm/xterm';
@@ -719,52 +719,93 @@ export function useTerminalSession(deps: {
     }
   }, [status]);
 
-  // ── 监听容器大小变化进行自适应 ───────────────────────────────────
+  const safeFit = useCallback(() => {
+    if (!termRef.current || !fitAddonRef.current || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    try {
+      fitAddonRef.current.fit();
+      const term = termRef.current;
+      const { cols, rows } = term;
+      if (cols > 0 && rows > 0) {
+        AppGo.ResizeTerminal(sessionId, cols, rows);
+        // xterm 5 在后台（display:none）时 IntersectionObserver 会将 RenderService 设为 paused，
+        // 导致尺寸虽然更新但 renderer canvas 仍停留在旧高度，Viewport 因计算出 scrollHeight > height 而误显示滚动条。
+        // 此处主动解除 pause、冲刷任务队列、同步尺寸并触发 Viewport 重新计算，彻底消除切标签后误显滚动条的问题。
+        try {
+          const core = (term as any)._core;
+          if (core?._renderService) {
+            if (core._renderService._isPaused) {
+              core._renderService._isPaused = false;
+              core._renderService._pausedResizeTask?.flush();
+            }
+            core._renderService.handleResize?.(cols, rows);
+            core._renderService.refreshRows?.(0, rows - 1);
+          }
+          if (core?._viewport) {
+            core._viewport.queueSync?.();
+          }
+        } catch (_) {}
+        term.scrollToBottom();
+      }
+    } catch (e) {
+      console.error('[Terminal] safeFit error:', e);
+    }
+  }, [sessionId]);
+
+  // ── 监听容器与窗口大小变化进行自适应 ─────────────────────────────────
   useEffect(() => {
-    if (!isActive || !containerRef.current || !fitAddonRef.current || !termRef.current) return;
+    if (!isActive || !containerRef.current) return;
 
     let resizeTimer: ReturnType<typeof setTimeout> | null = null;
-    const observer = new ResizeObserver(() => {
-      if (resizeTimer) clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => {
-        if (!termRef.current || !fitAddonRef.current || !containerRef.current) return;
-        const rect = containerRef.current.getBoundingClientRect();
-        if (rect.width <= 0 || rect.height <= 0) return;
-        try {
-          fitAddonRef.current.fit();
-          const { cols, rows } = termRef.current;
-          AppGo.ResizeTerminal(sessionId, cols, rows);
-        } catch (e) {
-          console.error('[Terminal] Resize error:', e);
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentRect.width > 0 && entry.contentRect.height > 0) {
+          if (resizeTimer) clearTimeout(resizeTimer);
+          resizeTimer = setTimeout(() => {
+            safeFit();
+          }, 30);
         }
-      }, 50);
+      }
     });
 
     observer.observe(containerRef.current);
 
+    const handleWindowResize = () => {
+      safeFit();
+    };
+    window.addEventListener('resize', handleWindowResize);
+
     return () => {
       if (resizeTimer) clearTimeout(resizeTimer);
       observer.disconnect();
+      window.removeEventListener('resize', handleWindowResize);
     };
-  }, [isActive, sessionId]);
+  }, [isActive, safeFit]);
 
-  // ── 终端切换回来时，重新 fit ────────────────────────────────────
+  // ── 终端切换回来时，多阶段重新自适应 ──────────────────────────────
   useEffect(() => {
-    if (!isActive || !termRef.current || !fitAddonRef.current) return;
-    const term = termRef.current;
-    const fitAddon = fitAddonRef.current;
-    const raf = requestAnimationFrame(() => {
-      try {
-        const rect = containerRef.current?.getBoundingClientRect();
-        if (rect && rect.width > 0 && rect.height > 0) {
-          fitAddon.fit();
-          const { cols, rows } = term;
-          AppGo.ResizeTerminal(sessionId, cols, rows);
-        }
-      } catch (e) {
-        console.error('[Terminal] activate fit error:', e);
-      }
+    if (!isActive) return;
+
+    // 多阶段重适应：立即执行、RAF 执行、double-RAF 以及 60ms/150ms/300ms 延迟，
+    // 覆盖标签切换后容器 display:flex 恢复、子标签栏渲染以及 CSS 布局完全就绪的各个阶段
+    safeFit();
+    const raf1 = requestAnimationFrame(() => {
+      safeFit();
+      const raf2 = requestAnimationFrame(() => {
+        safeFit();
+      });
+      return () => cancelAnimationFrame(raf2);
     });
-    return () => cancelAnimationFrame(raf);
-  }, [isActive, sessionId]);
+    const t1 = setTimeout(safeFit, 60);
+    const t2 = setTimeout(safeFit, 150);
+    const t3 = setTimeout(safeFit, 300);
+
+    return () => {
+      cancelAnimationFrame(raf1);
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [isActive, safeFit]);
 }

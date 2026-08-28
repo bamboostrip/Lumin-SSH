@@ -115,7 +115,7 @@ export default function WorkspaceTerminalGrid({
                   </Button>
                 </div>
               )}
-              <div style={{ flex: 1, minHeight: 0 }}>
+              <div className="flex-1 flex flex-col min-h-0 min-w-0 h-full overflow-hidden">
                 <ErrorBoundary label={t('终端 {id} 渲染出错', { id: term.id })}>
                   <Terminal
                     sessionId={term.id || ''}
@@ -138,7 +138,7 @@ export default function WorkspaceTerminalGrid({
       })() : (getEffectiveTerminals(s).map((term) => {
         const isTermActive = (contentTab === 'terminal' || s.status !== 'connected') && activeTerminalId === term.id;
         return (
-          <div key={term.id} className="absolute inset-0 flex flex-col" data-wallpaper-exempt="true" style={{
+          <div key={term.id} className="absolute inset-0 flex flex-col min-h-0 min-w-0 overflow-hidden" data-wallpaper-exempt="true" style={{
             visibility: isTermActive ? 'visible' : 'hidden',
             pointerEvents: isTermActive ? 'auto' : 'none',
             contain: isTermActive ? 'none' : 'strict',

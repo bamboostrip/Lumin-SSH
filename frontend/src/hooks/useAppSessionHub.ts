@@ -57,6 +57,8 @@ interface DockPreviewZone {
 export interface UseAppSessionHubOptions {
   servers: config.Connection[];
   serversRef: MutableRefObject<config.Connection[]>;
+  /** 由编排层统一持有的会话列表 ref（与 useAIReview 共用），hub 负责保持其与 sessions 状态同步 */
+  sessionsRef: MutableRefObject<SessionLike[]>;
   credentials: config.Credential[];
   setCredentials: Dispatch<SetStateAction<config.Credential[]>>;
   serversLoaded: boolean;
@@ -88,6 +90,7 @@ export interface UseAppSessionHubOptions {
 export default function useAppSessionHub({
   servers: _servers,
   serversRef,
+  sessionsRef,
   credentials,
   setCredentials,
   serversLoaded,
@@ -116,7 +119,6 @@ export default function useAppSessionHub({
   t,
 }: UseAppSessionHubOptions) {
   const [sessions, setSessions] = useState<SessionLike[]>([]);
-  const sessionsRef = useRef<SessionLike[]>([]);
   useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
   const cancelledConnectionsRef = useRef<Set<string>>(new Set());
   const mountedRef = useRef(true);

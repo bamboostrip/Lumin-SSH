@@ -29,6 +29,8 @@ export interface WorkspaceTerminalGridProps {
   t: (key: string, vars?: Record<string, unknown>) => string;
 }
 
+// 工作区终端网格：按会话保存的分屏布局把各终端渲染到对应网格单元（含分屏头与关闭按钮），
+// 无工作区布局时退化为绝对定位堆叠；非激活终端仅隐藏保活，恢复工作区期间显示遮罩。
 export default function WorkspaceTerminalGrid({
   session: s,
   activeSessionId,

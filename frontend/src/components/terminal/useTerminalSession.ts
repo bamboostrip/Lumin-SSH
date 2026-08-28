@@ -105,6 +105,7 @@ export function useTerminalSession(deps: {
   const statusRef = useRef(status);
   useEffect(() => { statusRef.current = status; }, [status]);
 
+  const userPinnedRef = useRef(false);
   const lastSentPTYSizeRef = useRef<{ cols: number; rows: number }>({ cols: 0, rows: 0 });
   const ptyResizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -252,12 +253,12 @@ export function useTerminalSession(deps: {
     setAlternateBufferActive(false);
 
     // ── 智能写入：用户手动滚动上时保持位置 ─────────────────────────
-    let userPinned = false; // 用户手动往上滚后锁定
+    userPinnedRef.current = false;
     const onTermScroll = () => {
       const buf = term.buffer.active;
       // 滚到底部时解除锁定
       if (buf.viewportY >= buf.baseY) {
-        userPinned = false;
+        userPinnedRef.current = false;
       }
       scheduleGutterSync();
       scheduleLinkUnderlineSync();
@@ -330,7 +331,7 @@ export function useTerminalSession(deps: {
       // 无论向上还是向下滚动，都检查当前位置并更新锁定状态
       requestAnimationFrame(() => {
         const buf = term.buffer.active;
-        userPinned = buf.viewportY < buf.baseY;
+        userPinnedRef.current = buf.viewportY < buf.baseY;
       });
     };
     containerRef.current?.addEventListener('wheel', wheelHandler, { passive: true });
@@ -355,7 +356,7 @@ export function useTerminalSession(deps: {
       if (keywordHighlightEnabledRef.current && typeof data === 'string') {
         writeData = highlightKeywords(data, hlStateRef.current);
       }
-      if (userPinned) {
+      if (userPinnedRef.current) {
         // xterm.js 在用户不在底部时已经会保持滚动位置。
         // 之前用 scrollToLine(savedY) 在异步回调中执行，会在用户向下滚动后
         // 把视图拉回旧位置，导致用户无法追上最新输出。
@@ -776,11 +777,16 @@ export function useTerminalSession(deps: {
           core._renderService.handleResize?.(cols, rows);
           core._renderService.refreshRows?.(0, rows - 1);
         }
+        const buf = term.buffer.active;
+        const targetLine = userPinnedRef.current ? Math.min(buf.viewportY, buf.baseY) : buf.baseY;
+        if (!userPinnedRef.current) {
+          term.scrollToBottom();
+        }
         if (core?._viewport) {
-          core._viewport.queueSync?.();
+          core._viewport.scrollToLine?.(targetLine, true);
+          core._viewport.queueSync?.(targetLine);
         }
       } catch (_) {}
-      term.scrollToBottom();
     } catch (e) {
       console.error('[Terminal] safeFit error:', e);
     }

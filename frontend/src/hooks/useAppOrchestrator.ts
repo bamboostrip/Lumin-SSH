@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo, type MutableRefObject } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, type RefObject } from 'react';
 import type { config } from '../../wailsjs/go/models.ts';
 import type { ProbeSnapshot } from '../components/ProbePanel.tsx';
 import type { TopbarSession } from '../components/AppTopbar.tsx';
@@ -155,7 +155,7 @@ export default function useAppOrchestrator() {
   const { sessions } = sessionState;
 
   const { pings, pingEnabled, isRefreshingPing, pingCounts, handleRefreshPing } = useServerPing({
-    serversRef: serversRef as unknown as MutableRefObject<PingServerLike[] | null>,
+    serversRef: serversRef as unknown as RefObject<PingServerLike[] | null>,
     activeSessionId: sessionState.activeSessionId,
     dashboardHostPageMode,
   });

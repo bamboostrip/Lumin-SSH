@@ -58,7 +58,7 @@ interface AIBridgeLike {
 }
 
 export interface UseAIReviewOptions {
-  sessionsRef: React.MutableRefObject<unknown[]>;
+  sessionsRef: React.RefObject<unknown[]>;
   addToast: (message: string | Error, type?: string, duration?: number, actions?: unknown[]) => number;
   t: (key: string, vars?: Record<string, unknown>) => string;
 }

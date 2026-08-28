@@ -29,9 +29,22 @@ function readSavedWindowSize(): SavedWindowSize | null {
 }
 
 export default function useWindowState(): () => Promise<void> {
-  // 保持 Wails 窗口边缘缩放状态与最大化状态同步，防止最大化时显示边缘缩放光标
+  // 保持 Wails 窗口边缘缩放状态与最大化状态同步，并增强无边框边缘缩放光标与拖拽判定
   useEffect(() => {
     let isMax = false;
+
+    const clearResizeState = () => {
+      const wailsFlags = (window as unknown as { wails?: { flags?: { enableResize?: boolean; resizeEdge?: string } } })?.wails?.flags;
+      if (wailsFlags && 'resizeEdge' in wailsFlags) {
+        delete wailsFlags.resizeEdge;
+      }
+      if (document.documentElement.hasAttribute('data-wails-resize-edge')) {
+        document.documentElement.removeAttribute('data-wails-resize-edge');
+      }
+      if (document.documentElement.style.cursor && document.documentElement.style.cursor.includes('resize')) {
+        document.documentElement.style.cursor = '';
+      }
+    };
 
     const syncMaximizeState = async () => {
       try {
@@ -41,12 +54,7 @@ export default function useWindowState(): () => Promise<void> {
           wailsFlags.enableResize = !isMax;
         }
         if (isMax) {
-          if (wailsFlags && 'resizeEdge' in wailsFlags) {
-            delete wailsFlags.resizeEdge;
-          }
-          if (document.documentElement.style.cursor && document.documentElement.style.cursor.includes('resize')) {
-            document.documentElement.style.cursor = '';
-          }
+          clearResizeState();
         }
       } catch {}
     };
@@ -58,25 +66,70 @@ export default function useWindowState(): () => Promise<void> {
     window.addEventListener('resize', onResize);
     const timer = window.setInterval(syncMaximizeState, 400);
 
-    const onMouseMove = () => {
+    const onMouseMove = (e: MouseEvent) => {
+      const wailsFlags = (window as unknown as { wails?: { flags?: { enableResize?: boolean; resizeEdge?: string; borderThickness?: number } } })?.wails?.flags;
       if (isMax) {
-        const wailsFlags = (window as unknown as { wails?: { flags?: { enableResize?: boolean; resizeEdge?: string } } })?.wails?.flags;
         if (wailsFlags) {
           wailsFlags.enableResize = false;
-          if ('resizeEdge' in wailsFlags) {
-            delete wailsFlags.resizeEdge;
-          }
         }
-        if (document.documentElement.style.cursor && document.documentElement.style.cursor.includes('resize')) {
-          document.documentElement.style.cursor = '';
+        clearResizeState();
+        return;
+      }
+
+      if (!wailsFlags || wailsFlags.enableResize === false) {
+        return;
+      }
+
+      const borderThickness = Math.max(wailsFlags.borderThickness || 0, 8);
+      wailsFlags.borderThickness = borderThickness;
+      const rightBorder = (window.innerWidth - e.clientX < borderThickness) || (window.outerWidth - e.clientX < borderThickness);
+      const leftBorder = e.clientX < borderThickness;
+      const topBorder = e.clientY < borderThickness;
+      const bottomBorder = (window.innerHeight - e.clientY < borderThickness) || (window.outerHeight - e.clientY < borderThickness);
+
+      let edge: string | null = null;
+      if (rightBorder && bottomBorder) edge = 'se-resize';
+      else if (leftBorder && bottomBorder) edge = 'sw-resize';
+      else if (leftBorder && topBorder) edge = 'nw-resize';
+      else if (topBorder && rightBorder) edge = 'ne-resize';
+      else if (leftBorder) edge = 'w-resize';
+      else if (topBorder) edge = 'n-resize';
+      else if (bottomBorder) edge = 's-resize';
+      else if (rightBorder) edge = 'e-resize';
+
+      if (edge) {
+        wailsFlags.resizeEdge = edge;
+        document.documentElement.style.cursor = edge;
+        document.documentElement.setAttribute('data-wails-resize-edge', edge);
+      } else if (wailsFlags.resizeEdge !== undefined || document.documentElement.hasAttribute('data-wails-resize-edge')) {
+        clearResizeState();
+      }
+    };
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (isMax) return;
+      const wailsFlags = (window as unknown as { wails?: { flags?: { resizeEdge?: string } } })?.wails?.flags;
+      if (wailsFlags?.resizeEdge) {
+        const w = window as unknown as { WailsInvoke?: (cmd: string) => void };
+        if (w.WailsInvoke) {
+          w.WailsInvoke('resize:' + wailsFlags.resizeEdge);
+          e.preventDefault();
+          e.stopPropagation();
         }
       }
     };
+
     window.addEventListener('mousemove', onMouseMove, { capture: true, passive: true });
+    window.addEventListener('mousedown', onMouseDown, { capture: true });
+    window.addEventListener('mouseleave', clearResizeState);
+    window.addEventListener('blur', clearResizeState);
 
     return () => {
       window.removeEventListener('resize', onResize);
       window.removeEventListener('mousemove', onMouseMove, { capture: true });
+      window.removeEventListener('mousedown', onMouseDown, { capture: true });
+      window.removeEventListener('mouseleave', clearResizeState);
+      window.removeEventListener('blur', clearResizeState);
       window.clearInterval(timer);
     };
   }, []);

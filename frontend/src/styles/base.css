@@ -47,6 +47,21 @@
   .codicon {
     opacity: var(--app-icon-opacity, 1);
   }
+
+  /* ── 窗口边缘缩放时光标强制穿透 ───────────────────────────── */
+  html[data-wails-resize-edge] *,
+  html[style*="cursor: e-resize"] *,
+  html[style*="cursor: w-resize"] *,
+  html[style*="cursor: n-resize"] *,
+  html[style*="cursor: s-resize"] *,
+  html[style*="cursor: ne-resize"] *,
+  html[style*="cursor: nw-resize"] *,
+  html[style*="cursor: se-resize"] *,
+  html[style*="cursor: sw-resize"] *,
+  html[style*="cursor: col-resize"] *,
+  html[style*="cursor: row-resize"] * {
+    cursor: inherit !important;
+  }
 }
 
 /* ── 全局滚动条样式（统一现代精致半透明胶囊风格） ── */

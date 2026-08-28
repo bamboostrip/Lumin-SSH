@@ -48,18 +48,8 @@
     opacity: var(--app-icon-opacity, 1);
   }
 
-  /* ── 窗口边缘缩放时光标强制穿透 ───────────────────────────── */
-  html[data-wails-resize-edge] *,
-  html[style*="cursor: e-resize"] *,
-  html[style*="cursor: w-resize"] *,
-  html[style*="cursor: n-resize"] *,
-  html[style*="cursor: s-resize"] *,
-  html[style*="cursor: ne-resize"] *,
-  html[style*="cursor: nw-resize"] *,
-  html[style*="cursor: se-resize"] *,
-  html[style*="cursor: sw-resize"] *,
-  html[style*="cursor: col-resize"] *,
-  html[style*="cursor: row-resize"] * {
+  /* ── 窗口边缘缩放时光标强制穿透（边缘状态由 useWindowState 镜像到 data 属性） ── */
+  html[data-wails-resize-edge] * {
     cursor: inherit !important;
   }
 }

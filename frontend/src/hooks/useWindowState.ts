@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   WindowGetSize,
   WindowIsMaximised,
@@ -6,6 +6,7 @@ import {
   WindowSetSize,
   WindowToggleMaximise,
 } from '../../wailsjs/runtime/runtime.js';
+import useIsWindowMaximized, { refreshWindowMaximized } from './useIsWindowMaximized.ts';
 
 interface SavedWindowSize {
   w: number;
@@ -13,124 +14,139 @@ interface SavedWindowSize {
   maximized: boolean;
 }
 
-function shouldRememberWindowSize(): boolean {
-  return typeof localStorage !== 'undefined'
-    && localStorage.getItem('rememberWindowSize') !== 'false';
+interface WailsFlags {
+  enableResize?: boolean;
+  resizeEdge?: string;
+  borderThickness?: number;
+  defaultCursor?: string | null;
 }
 
-function readSavedWindowSize(): SavedWindowSize | null {
-  try {
-    const parsed = JSON.parse(localStorage.getItem('windowSize') || 'null') as unknown;
-    const saved = parsed as SavedWindowSize | null;
-    return saved && saved.w > 100 && saved.h > 100 ? saved : null;
-  } catch {
-    return null;
+const RESIZE_EDGE_ATTR = 'data-wails-resize-edge';
+// 边缘缩放抓握带宽度（Wails 默认 6px），缩放优先于贴边滚动条。
+// AI 聊天/监控面板的滚动条通过等宽 gutter 内缩错开：[0,8) 缩放、[8,14) 滚动条两不误；
+// 其余贴边滚动条区域按缩放处理（滚轮滚动不受影响）
+const RESIZE_BORDER_THICKNESS = 8;
+
+function getWailsFlags(): WailsFlags | undefined {
+  return (window as unknown as { wails?: { flags?: WailsFlags } })?.wails?.flags;
+}
+
+function clearWindowResizeState(): void {
+  const flags = getWailsFlags();
+  if (flags && 'resizeEdge' in flags) {
+    delete flags.resizeEdge;
+  }
+  const doc = document.documentElement;
+  if (doc.hasAttribute(RESIZE_EDGE_ATTR)) {
+    doc.removeAttribute(RESIZE_EDGE_ATTR);
+  }
+  if (doc.style.cursor && doc.style.cursor.includes('resize')) {
+    doc.style.cursor = '';
   }
 }
 
+/** 指针是否落在元素的原生滚动条像素上（边缘缩放判定带内调用） */
+function isOverNativeScrollbar(e: MouseEvent, el: HTMLElement): boolean {
+  // 右侧竖向 / 底部横向：Chromium 中滚动条不占用 client 区，命中坐标越过 client 即滚动条
+  if (e.offsetX > el.clientWidth || e.offsetY > el.clientHeight) {
+    return true;
+  }
+  // 左侧竖向（rtl 容器，如左停靠的监控面板）：滚动条位于元素左缘
+  const rect = el.getBoundingClientRect();
+  if (e.clientX < rect.left || e.clientX > rect.right
+    || e.clientY < rect.top || e.clientY > rect.bottom) {
+    return false;
+  }
+  if (getComputedStyle(el).direction !== 'rtl') {
+    return false;
+  }
+  // clientLeft 不含左滚动条时，滚动条占位体现为左缘空隙
+  const gap = rect.width - el.clientLeft - el.clientWidth;
+  if (gap > 1 && e.clientX <= rect.left + el.clientLeft + gap) {
+    return true;
+  }
+  // clientLeft 已包含左滚动条宽度的情形
+  return el.clientLeft > 1 && e.clientX <= rect.left + el.clientLeft;
+}
+
 export default function useWindowState(): () => Promise<void> {
-  // 保持 Wails 窗口边缘缩放状态与最大化状态同步，并增强无边框边缘缩放光标与拖拽判定
+  // 最大化状态来自共享单例轮询，避免多处各自 setInterval 调 Wails IPC
+  const maximized = useIsWindowMaximized();
+  const isMaxRef = useRef(maximized);
+  isMaxRef.current = maximized;
+
+  // 保持 Wails 无边框窗口的边缘缩放开关与最大化状态同步
   useEffect(() => {
-    let isMax = false;
+    const flags = getWailsFlags();
+    if (flags) {
+      flags.enableResize = !maximized;
+      flags.borderThickness = RESIZE_BORDER_THICKNESS;
+    }
+    if (maximized) {
+      clearWindowResizeState();
+    }
+  }, [maximized]);
 
-    const clearResizeState = () => {
-      const wailsFlags = (window as unknown as { wails?: { flags?: { enableResize?: boolean; resizeEdge?: string } } })?.wails?.flags;
-      if (wailsFlags && 'resizeEdge' in wailsFlags) {
-        delete wailsFlags.resizeEdge;
-      }
-      if (document.documentElement.hasAttribute('data-wails-resize-edge')) {
-        document.documentElement.removeAttribute('data-wails-resize-edge');
-      }
-      if (document.documentElement.style.cursor && document.documentElement.style.cursor.includes('resize')) {
-        document.documentElement.style.cursor = '';
-      }
-    };
-
-    const syncMaximizeState = async () => {
-      try {
-        isMax = await WindowIsMaximised();
-        const wailsFlags = (window as unknown as { wails?: { flags?: { enableResize?: boolean; resizeEdge?: string; defaultCursor?: string | null } } })?.wails?.flags;
-        if (wailsFlags) {
-          wailsFlags.enableResize = !isMax;
-        }
-        if (isMax) {
-          clearResizeState();
-        }
-      } catch {}
-    };
-
-    syncMaximizeState();
-    const onResize = () => {
-      syncMaximizeState();
-    };
-    window.addEventListener('resize', onResize);
-    const timer = window.setInterval(syncMaximizeState, 400);
+  // 边缘缩放的坐标判定与 resize: 调用交给 Wails 自带 runtime 维护；这里只把
+  // runtime 维护的 resizeEdge 镜像到 data 属性，驱动 CSS 光标穿透（元素自身
+  // cursor 规则不得遮挡边缘缩放光标）
+  useEffect(() => {
+    const doc = document.documentElement;
 
     const onMouseMove = (e: MouseEvent) => {
-      const wailsFlags = (window as unknown as { wails?: { flags?: { enableResize?: boolean; resizeEdge?: string; borderThickness?: number } } })?.wails?.flags;
-      if (isMax) {
-        if (wailsFlags) {
-          wailsFlags.enableResize = false;
-        }
-        clearResizeState();
-        return;
+      if (isMaxRef.current) return;
+      const flags = getWailsFlags();
+      if (!flags || flags.enableResize === false) return;
+      if (flags.borderThickness !== RESIZE_BORDER_THICKNESS) {
+        flags.borderThickness = RESIZE_BORDER_THICKNESS;
       }
 
-      if (!wailsFlags || wailsFlags.enableResize === false) {
-        return;
-      }
-
-      const borderThickness = Math.max(wailsFlags.borderThickness || 0, 8);
-      wailsFlags.borderThickness = borderThickness;
-      const rightBorder = (window.innerWidth - e.clientX < borderThickness) || (window.outerWidth - e.clientX < borderThickness);
-      const leftBorder = e.clientX < borderThickness;
-      const topBorder = e.clientY < borderThickness;
-      const bottomBorder = (window.innerHeight - e.clientY < borderThickness) || (window.outerHeight - e.clientY < borderThickness);
-
-      let edge: string | null = null;
-      if (rightBorder && bottomBorder) edge = 'se-resize';
-      else if (leftBorder && bottomBorder) edge = 'sw-resize';
-      else if (leftBorder && topBorder) edge = 'nw-resize';
-      else if (topBorder && rightBorder) edge = 'ne-resize';
-      else if (leftBorder) edge = 'w-resize';
-      else if (topBorder) edge = 'n-resize';
-      else if (bottomBorder) edge = 's-resize';
-      else if (rightBorder) edge = 'e-resize';
-
+      const edge = flags.resizeEdge;
       if (edge) {
-        wailsFlags.resizeEdge = edge;
-        document.documentElement.style.cursor = edge;
-        document.documentElement.setAttribute('data-wails-resize-edge', edge);
-      } else if (wailsFlags.resizeEdge !== undefined || document.documentElement.hasAttribute('data-wails-resize-edge')) {
-        clearResizeState();
+        if (doc.getAttribute(RESIZE_EDGE_ATTR) !== edge) {
+          doc.setAttribute(RESIZE_EDGE_ATTR, edge);
+        }
+      } else if (doc.hasAttribute(RESIZE_EDGE_ATTR)) {
+        doc.removeAttribute(RESIZE_EDGE_ATTR);
       }
     };
 
     const onMouseDown = (e: MouseEvent) => {
-      if (isMax) return;
-      const wailsFlags = (window as unknown as { wails?: { flags?: { resizeEdge?: string } } })?.wails?.flags;
-      if (wailsFlags?.resizeEdge) {
-        const w = window as unknown as { WailsInvoke?: (cmd: string) => void };
-        if (w.WailsInvoke) {
-          w.WailsInvoke('resize:' + wailsFlags.resizeEdge);
-          e.preventDefault();
-          e.stopPropagation();
-        }
+      if (isMaxRef.current) return;
+      const flags = getWailsFlags();
+      if (!flags?.resizeEdge) return;
+      // 指针落在原生滚动条像素上时，浏览器强制显示箭头光标（CSS 改不了），
+      // 此时按住应为滚动而非缩放：命中滚动条就取消边缘状态，让滚动条接管，
+      // 保证"显示缩放光标的地方按下才会缩放"，判定与光标始终一致
+      const target = e.target;
+      if (target instanceof HTMLElement
+        && target.clientWidth > 0
+        && isOverNativeScrollbar(e, target)) {
+        delete flags.resizeEdge;
+        return;
+      }
+      const w = window as unknown as { WailsInvoke?: (cmd: string) => void };
+      if (w.WailsInvoke) {
+        w.WailsInvoke('resize:' + flags.resizeEdge);
+        e.preventDefault();
+        e.stopPropagation();
       }
     };
 
-    window.addEventListener('mousemove', onMouseMove, { capture: true, passive: true });
+    const onLeave = () => clearWindowResizeState();
+
+    // 冒泡阶段注册：晚于 wails runtime 的同名监听执行，镜像的才是当次事件的状态
+    window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mousedown', onMouseDown, { capture: true });
-    window.addEventListener('mouseleave', clearResizeState);
-    window.addEventListener('blur', clearResizeState);
+    window.addEventListener('mouseleave', onLeave);
+    window.addEventListener('blur', onLeave);
 
     return () => {
-      window.removeEventListener('resize', onResize);
-      window.removeEventListener('mousemove', onMouseMove, { capture: true });
+      window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mousedown', onMouseDown, { capture: true });
-      window.removeEventListener('mouseleave', clearResizeState);
-      window.removeEventListener('blur', clearResizeState);
-      window.clearInterval(timer);
+      window.removeEventListener('mouseleave', onLeave);
+      window.removeEventListener('blur', onLeave);
+      onLeave();
     };
   }, []);
 
@@ -201,20 +217,22 @@ export default function useWindowState(): () => Promise<void> {
       }
     } catch { }
     WindowToggleMaximise();
-    setTimeout(async () => {
-      try {
-        const isMax = await WindowIsMaximised();
-        const wailsFlags = (window as unknown as { wails?: { flags?: { enableResize?: boolean; resizeEdge?: string } } })?.wails?.flags;
-        if (wailsFlags) {
-          wailsFlags.enableResize = !isMax;
-          if (isMax) {
-            delete wailsFlags.resizeEdge;
-            if (document.documentElement.style.cursor && document.documentElement.style.cursor.includes('resize')) {
-              document.documentElement.style.cursor = '';
-            }
-          }
-        }
-      } catch {}
-    }, 100);
+    // 切换后稍候刷新共享最大化状态，驱动 enableResize 同步与热区层显隐
+    setTimeout(() => refreshWindowMaximized(), 100);
   }, []);
+}
+
+function shouldRememberWindowSize(): boolean {
+  return typeof localStorage !== 'undefined'
+    && localStorage.getItem('rememberWindowSize') !== 'false';
+}
+
+function readSavedWindowSize(): SavedWindowSize | null {
+  try {
+    const parsed = JSON.parse(localStorage.getItem('windowSize') || 'null') as unknown;
+    const saved = parsed as SavedWindowSize | null;
+    return saved && saved.w > 100 && saved.h > 100 ? saved : null;
+  } catch {
+    return null;
+  }
 }

@@ -528,6 +528,8 @@ export function useTerminalSession(deps: {
         out = normalizeTerminalPasteText(out);
       }
 
+      userPinnedRef.current = false;
+
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(textEncoder.encode(out));
       }

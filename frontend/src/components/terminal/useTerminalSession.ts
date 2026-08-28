@@ -105,6 +105,32 @@ export function useTerminalSession(deps: {
   const statusRef = useRef(status);
   useEffect(() => { statusRef.current = status; }, [status]);
 
+  const lastSentPTYSizeRef = useRef<{ cols: number; rows: number }>({ cols: 0, rows: 0 });
+  const ptyResizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleDebouncedPTYResize = useCallback((cols: number, rows: number, immediate = false) => {
+    const MIN_COLS = 20;
+    const MIN_ROWS = 2;
+    const clampedCols = Math.max(MIN_COLS, cols);
+    const clampedRows = Math.max(MIN_ROWS, rows);
+    if (lastSentPTYSizeRef.current.cols === clampedCols && lastSentPTYSizeRef.current.rows === clampedRows) {
+      return;
+    }
+    if (ptyResizeTimerRef.current) {
+      clearTimeout(ptyResizeTimerRef.current);
+      ptyResizeTimerRef.current = null;
+    }
+    const send = () => {
+      lastSentPTYSizeRef.current = { cols: clampedCols, rows: clampedRows };
+      AppGo.ResizeTerminal(sessionId, clampedCols, clampedRows);
+    };
+    if (immediate) {
+      send();
+    } else {
+      ptyResizeTimerRef.current = setTimeout(send, 80);
+    }
+  }, [sessionId]);
+
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -128,6 +154,7 @@ export function useTerminalSession(deps: {
       cursorStyle:      'bar',
       cursorWidth:      1,
       scrollback:       5000,
+      reflowCursorLine: true,
       // SearchAddon 高亮装饰依赖 proposed API
       allowProposedApi: true,
       fastScrollModifier: 'alt',
@@ -421,7 +448,7 @@ export function useTerminalSession(deps: {
         // 尺寸变化事件被错过，本地 PTY 可能长期停留在出生尺寸；这里主动
         // 同步一次，同时给 SIGWINCH 会重绘提示符的 shell（bash/zsh）兜底自愈机会。
         if (termRef.current) {
-          AppGo.ResizeTerminal(sessionId, termRef.current.cols, termRef.current.rows);
+          scheduleDebouncedPTYResize(termRef.current.cols, termRef.current.rows, true);
         }
       };
 
@@ -610,7 +637,7 @@ export function useTerminalSession(deps: {
     });
 
     const resizeDisposable = term.onResize(({ cols, rows }) => {
-      AppGo.ResizeTerminal(sessionId, cols, rows);
+      scheduleDebouncedPTYResize(cols, rows, false);
       scheduleGutterSync();
       scheduleLinkUnderlineSync();
     });
@@ -719,39 +746,45 @@ export function useTerminalSession(deps: {
     }
   }, [status]);
 
-  const safeFit = useCallback(() => {
+  const safeFit = useCallback((immediate = false) => {
     if (!termRef.current || !fitAddonRef.current || !containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
     try {
-      fitAddonRef.current.fit();
       const term = termRef.current;
-      const { cols, rows } = term;
-      if (cols > 0 && rows > 0) {
-        AppGo.ResizeTerminal(sessionId, cols, rows);
-        // xterm 5 在后台（display:none）时 IntersectionObserver 会将 RenderService 设为 paused，
-        // 导致尺寸虽然更新但 renderer canvas 仍停留在旧高度，Viewport 因计算出 scrollHeight > height 而误显示滚动条。
-        // 此处主动解除 pause、冲刷任务队列、同步尺寸并触发 Viewport 重新计算，彻底消除切标签后误显滚动条的问题。
-        try {
-          const core = (term as any)._core;
-          if (core?._renderService) {
-            if (core._renderService._isPaused) {
-              core._renderService._isPaused = false;
-              core._renderService._pausedResizeTask?.flush();
-            }
-            core._renderService.handleResize?.(cols, rows);
-            core._renderService.refreshRows?.(0, rows - 1);
-          }
-          if (core?._viewport) {
-            core._viewport.queueSync?.();
-          }
-        } catch (_) {}
-        term.scrollToBottom();
+      const dims = fitAddonRef.current.proposeDimensions();
+      if (!dims || isNaN(dims.cols) || isNaN(dims.rows)) return;
+      const MIN_COLS = 20;
+      const MIN_ROWS = 2;
+      const cols = Math.max(MIN_COLS, dims.cols);
+      const rows = Math.max(MIN_ROWS, dims.rows);
+      if (term.cols !== cols || term.rows !== rows) {
+        term.resize(cols, rows);
       }
+      scheduleDebouncedPTYResize(cols, rows, immediate);
+
+      // xterm 5 在后台（display:none）时 IntersectionObserver 会将 RenderService 设为 paused，
+      // 导致尺寸虽然更新但 renderer canvas 仍停留在旧高度，Viewport 因计算出 scrollHeight > height 而误显示滚动条。
+      // 此处主动解除 pause、冲刷任务队列、同步尺寸并触发 Viewport 重新计算，彻底消除切标签后误显滚动条的问题。
+      try {
+        const core = (term as any)._core;
+        if (core?._renderService) {
+          if (core._renderService._isPaused) {
+            core._renderService._isPaused = false;
+            core._renderService._pausedResizeTask?.flush();
+          }
+          core._renderService.handleResize?.(cols, rows);
+          core._renderService.refreshRows?.(0, rows - 1);
+        }
+        if (core?._viewport) {
+          core._viewport.queueSync?.();
+        }
+      } catch (_) {}
+      term.scrollToBottom();
     } catch (e) {
       console.error('[Terminal] safeFit error:', e);
     }
-  }, [sessionId]);
+  }, [scheduleDebouncedPTYResize]);
 
   // ── 监听容器与窗口大小变化进行自适应 ─────────────────────────────────
   useEffect(() => {
@@ -763,7 +796,7 @@ export function useTerminalSession(deps: {
         if (entry.contentRect.width > 0 && entry.contentRect.height > 0) {
           if (resizeTimer) clearTimeout(resizeTimer);
           resizeTimer = setTimeout(() => {
-            safeFit();
+            safeFit(false);
           }, 30);
         }
       }
@@ -771,13 +804,18 @@ export function useTerminalSession(deps: {
 
     observer.observe(containerRef.current);
 
+    let windowResizeTimer: ReturnType<typeof setTimeout> | null = null;
     const handleWindowResize = () => {
-      safeFit();
+      if (windowResizeTimer) clearTimeout(windowResizeTimer);
+      windowResizeTimer = setTimeout(() => {
+        safeFit(false);
+      }, 30);
     };
     window.addEventListener('resize', handleWindowResize);
 
     return () => {
       if (resizeTimer) clearTimeout(resizeTimer);
+      if (windowResizeTimer) clearTimeout(windowResizeTimer);
       observer.disconnect();
       window.removeEventListener('resize', handleWindowResize);
     };
@@ -789,17 +827,17 @@ export function useTerminalSession(deps: {
 
     // 多阶段重适应：立即执行、RAF 执行、double-RAF 以及 60ms/150ms/300ms 延迟，
     // 覆盖标签切换后容器 display:flex 恢复、子标签栏渲染以及 CSS 布局完全就绪的各个阶段
-    safeFit();
+    safeFit(true);
     const raf1 = requestAnimationFrame(() => {
-      safeFit();
+      safeFit(true);
       const raf2 = requestAnimationFrame(() => {
-        safeFit();
+        safeFit(true);
       });
       return () => cancelAnimationFrame(raf2);
     });
-    const t1 = setTimeout(safeFit, 60);
-    const t2 = setTimeout(safeFit, 150);
-    const t3 = setTimeout(safeFit, 300);
+    const t1 = setTimeout(() => safeFit(true), 60);
+    const t2 = setTimeout(() => safeFit(true), 150);
+    const t3 = setTimeout(() => safeFit(true), 300);
 
     return () => {
       cancelAnimationFrame(raf1);

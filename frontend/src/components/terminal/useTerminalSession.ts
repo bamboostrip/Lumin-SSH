@@ -785,16 +785,35 @@ export function useTerminalSession(deps: {
           term.scrollToBottom();
         }
         if (core?._viewport) {
+          core._viewport._latestYDisp = targetLine;
           core._viewport.scrollToLine?.(targetLine, true);
           core._viewport.queueSync?.(targetLine);
         }
       } catch (_) {}
+
+      // 安排下一帧（RAF）再次确认底部同步，防止 xterm 内部异步 refresh 回调覆盖底部位置
+      requestAnimationFrame(() => {
+        try {
+          const t = termRef.current;
+          if (!t) return;
+          const b = t.buffer.active;
+          const c = (t as any)._core;
+          if (!userPinnedRef.current) {
+            t.scrollToBottom();
+            if (c?._viewport) {
+              c._viewport._latestYDisp = b.baseY;
+              c._viewport.scrollToLine?.(b.baseY, true);
+              c._viewport.queueSync?.(b.baseY);
+            }
+          }
+        } catch (_) {}
+      });
     } catch (e) {
       console.error('[Terminal] safeFit error:', e);
     }
   }, [scheduleDebouncedPTYResize]);
 
-  // ── 监听容器与窗口大小变化进行自适应 ─────────────────────────────────
+  // ── 监听容器与窗口大小变化以及侧边栏切换进行自适应 ─────────────────
   useEffect(() => {
     if (!isActive || !containerRef.current) return;
 
@@ -821,11 +840,26 @@ export function useTerminalSession(deps: {
     };
     window.addEventListener('resize', handleWindowResize);
 
+    const handleAIPanelChange = () => {
+      // 侧边栏/AI面板展开或收起时，采用多阶段自适应确保尺寸与底部锚定完全就绪
+      safeFit(true);
+      requestAnimationFrame(() => {
+        safeFit(true);
+        requestAnimationFrame(() => {
+          safeFit(true);
+        });
+      });
+      setTimeout(() => safeFit(true), 60);
+      setTimeout(() => safeFit(true), 150);
+    };
+    window.addEventListener('ai-panel-visibility-changed', handleAIPanelChange);
+
     return () => {
       if (resizeTimer) clearTimeout(resizeTimer);
       if (windowResizeTimer) clearTimeout(windowResizeTimer);
       observer.disconnect();
       window.removeEventListener('resize', handleWindowResize);
+      window.removeEventListener('ai-panel-visibility-changed', handleAIPanelChange);
     };
   }, [isActive, safeFit]);
 

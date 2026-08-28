@@ -82,6 +82,7 @@ export default function usePanelLayout(): UsePanelLayoutResult {
     const next = !!value;
     setShowAIPanel(next);
     localStorage.setItem('showAIPanel', String(next));
+    window.dispatchEvent(new CustomEvent('ai-panel-visibility-changed', { detail: next }));
   }, []);
 
   useEffect(() => {

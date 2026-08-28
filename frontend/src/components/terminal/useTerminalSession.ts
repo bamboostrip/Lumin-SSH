@@ -114,12 +114,15 @@ export function useTerminalSession(deps: {
     const MIN_ROWS = 2;
     const clampedCols = Math.max(MIN_COLS, cols);
     const clampedRows = Math.max(MIN_ROWS, rows);
-    if (lastSentPTYSizeRef.current.cols === clampedCols && lastSentPTYSizeRef.current.rows === clampedRows) {
-      return;
-    }
+    // 必须先取消挂起的 resize 再去重：快速拖动窗口回到 earlier size 时，
+    // 去重早退若不清定时器，过期的更大尺寸会在 80ms 后仍发给 PTY，
+    // 造成 shell 折行列数与终端实际列数长期错位
     if (ptyResizeTimerRef.current) {
       clearTimeout(ptyResizeTimerRef.current);
       ptyResizeTimerRef.current = null;
+    }
+    if (lastSentPTYSizeRef.current.cols === clampedCols && lastSentPTYSizeRef.current.rows === clampedRows) {
+      return;
     }
     const send = () => {
       lastSentPTYSizeRef.current = { cols: clampedCols, rows: clampedRows };
@@ -670,6 +673,11 @@ export function useTerminalSession(deps: {
       }
       if (linkUnderlineLayerRef.current) linkUnderlineLayerRef.current.innerHTML = '';
       clearTimeout(fitTimer);
+      // 取消挂起的防抖 PTY resize，避免拆卸后仍向会话发送过期尺寸
+      if (ptyResizeTimerRef.current) {
+        clearTimeout(ptyResizeTimerRef.current);
+        ptyResizeTimerRef.current = null;
+      }
       if (vpEl) vpEl.removeEventListener('scroll', onTermScroll);
       // 移除 wheel 监听器，避免内存泄漏
       containerRef.current?.removeEventListener('wheel', wheelHandler);

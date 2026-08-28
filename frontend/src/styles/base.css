@@ -74,6 +74,11 @@
   width: 6px;
   height: 6px;
 }
+::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
 ::-webkit-scrollbar-track {
   background: transparent;
 }

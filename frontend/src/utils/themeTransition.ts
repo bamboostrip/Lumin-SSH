@@ -1,14 +1,18 @@
 /**
- * 主题切换过渡动画（View Transitions API）
+ * 主题切换过渡动画（View Transitions API + WebKit 降级）
  *
  * 效果与 Art Design Pro 等一致，并按目标模式区分方向：
  * - 切到浅色（扩散 expand）：新浅色画面从点击处从小到大圆形扩散盖住全局；
  * - 切到深色（收缩 contract）：旧浅色画面收缩成圆形陷落到点击处，深色从四周合拢。
  *
- * 实现方式：document.startViewTransition 截取旧/新两帧快照。
- * 扩散在 ::view-transition-new(root) 上用 clip-path: circle() 从 0 动画到全屏半径；
- * 收缩需旧快照置顶（html.theme-transition-contract 提升其 z-index），clip-path 反向收缩。
- * 不支持的内核（Linux WebKitGTK 等）或用户开启"减少动态效果"时直接切换，无动画。
+ * 实现方式：
+ * - Chromium（Win WebView2）：`document.startViewTransition` 截取旧/新快照，扩散在
+ *   `::view-transition-new(root)`、收缩在 `::view-transition-old(root)` 上跑
+ *   `clip-path: circle()`，见 `animations.css` 的 `@supports`。
+ * - WebKit（Linux WebKitGTK / macOS）：`View Transitions` 在 Wails 透明窗口下
+ *   `clip-path` 会黑屏，故 `isWebKit()` 时走 `runFallbackTransition`——用普通
+ *   `fixed` 覆盖层（`theme-light` 的 `var(--surface-base)`）模拟同款圆揭示，
+ *   三端均保留动画；`prefers-reduced-motion` 时仍直接切换。
  */
 
 interface ThemeTransitionPoint {
@@ -111,6 +115,134 @@ function computeRevealEndRadius(point: ThemeTransitionPoint): number {
   return Math.hypot(farthestX, farthestY);
 }
 
+// ── WebKit 降级：用普通 fixed 覆盖层模拟圆揭示，避免 View Transitions 黑屏 ──
+let fallbackOverlay: HTMLElement | null = null;
+
+function createFallbackOverlay(): HTMLElement {
+  const el = document.createElement('div');
+  el.setAttribute('data-theme-fallback-overlay', 'true');
+  // 直接用浅色底色（light 的 --surface-base #f3f4f6），不依赖 body 的 theme-light 继承，
+  // 保证在深色背景上也能正确显示浅色圆。深色底为 #0f1319，但降级动画两方向均用浅色层
+  //（扩散：浅色层从小到大盖住深色；收缩：浅色层全屏收缩露出底层深色），与原生方向一致。
+  el.style.cssText =
+    'position:fixed;inset:0;z-index:2147483647;pointer-events:none;' +
+    'background:#f3f4f6;' +
+    'will-change:clip-path;';
+  return el;
+}
+
+function runFallbackTransition(
+  applyChange: () => void,
+  point: ThemeTransitionPoint,
+  direction: ThemeTransitionDirection,
+): void {
+  if (typeof document === 'undefined') {
+    applyChange();
+    return;
+  }
+  // 若已有未结束的降级动画，先清理，避免叠加
+  if (fallbackOverlay?.parentNode) fallbackOverlay.remove();
+  const endRadius = computeRevealEndRadius(point);
+  const circleAt = `at ${point.x}px ${point.y}px`;
+  const isContract = direction === 'contract';
+
+  if (isContract) {
+    // 收缩：旧浅色全屏盖住，先切底层为深色，再让浅色层收缩露出深色
+    const overlay = createFallbackOverlay();
+    overlay.style.clipPath = `circle(${endRadius}px ${circleAt})`;
+    document.body.appendChild(overlay);
+    fallbackOverlay = overlay;
+    // 底层切深色（被 overlay 盖住，用户仍见浅色）
+    applyChange();
+    const anim = overlay.animate(
+      { clipPath: [`circle(${endRadius}px ${circleAt})`, `circle(0px ${circleAt})`] },
+      { duration: TRANSITION_DURATION_MS, easing: 'ease-in-out', fill: 'forwards' },
+    );
+    anim.onfinish = () => {
+      overlay.remove();
+      if (fallbackOverlay === overlay) fallbackOverlay = null;
+    };
+    anim.oncancel = () => {
+      overlay.remove();
+      if (fallbackOverlay === overlay) fallbackOverlay = null;
+    };
+  } else {
+    // 扩散：新浅色从点击点扩散盖住旧深色，底层保持深色直到动画结束再切浅色
+    const overlay = createFallbackOverlay();
+    overlay.style.clipPath = `circle(0px ${circleAt})`;
+    document.body.appendChild(overlay);
+    fallbackOverlay = overlay;
+    const anim = overlay.animate(
+      { clipPath: [`circle(0px ${circleAt})`, `circle(${endRadius}px ${circleAt})`] },
+      { duration: TRANSITION_DURATION_MS, easing: 'ease-in-out', fill: 'forwards' },
+    );
+    anim.onfinish = () => {
+      applyChange();
+      overlay.remove();
+      if (fallbackOverlay === overlay) fallbackOverlay = null;
+    };
+    anim.oncancel = () => {
+      applyChange();
+      overlay.remove();
+      if (fallbackOverlay === overlay) fallbackOverlay = null;
+    };
+  }
+}
+
+async function runFallbackTransitionAsync<T>(
+  applyChange: () => Promise<T>,
+  point: ThemeTransitionPoint,
+  direction: ThemeTransitionDirection,
+): Promise<T> {
+  if (typeof document === 'undefined') return applyChange();
+  if (fallbackOverlay?.parentNode) fallbackOverlay.remove();
+  const endRadius = computeRevealEndRadius(point);
+  const circleAt = `at ${point.x}px ${point.y}px`;
+  const isContract = direction === 'contract';
+  const outcome: { result?: T; failure?: { error: unknown } } = {};
+
+  if (isContract) {
+    const overlay = createFallbackOverlay();
+    overlay.style.clipPath = `circle(${endRadius}px ${circleAt})`;
+    document.body.appendChild(overlay);
+    fallbackOverlay = overlay;
+    try {
+      outcome.result = await applyChange();
+    } catch (error) {
+      outcome.failure = { error };
+    }
+    const anim = overlay.animate(
+      { clipPath: [`circle(${endRadius}px ${circleAt})`, `circle(0px ${circleAt})`] },
+      { duration: TRANSITION_DURATION_MS, easing: 'ease-in-out', fill: 'forwards' },
+    );
+    await anim.finished.catch(() => {});
+    overlay.remove();
+    if (fallbackOverlay === overlay) fallbackOverlay = null;
+  } else {
+    const overlay = createFallbackOverlay();
+    overlay.style.clipPath = `circle(0px ${circleAt})`;
+    document.body.appendChild(overlay);
+    fallbackOverlay = overlay;
+    const anim = overlay.animate(
+      { clipPath: [`circle(0px ${circleAt})`, `circle(${endRadius}px ${circleAt})`] },
+      { duration: TRANSITION_DURATION_MS, easing: 'ease-in-out', fill: 'forwards' },
+    );
+    const animDone = anim.finished.catch(() => {});
+    // 扩散需等动画结束后再切底层，避免底层提前变浅导致外围瞬间变浅
+    await animDone;
+    try {
+      outcome.result = await applyChange();
+    } catch (error) {
+      outcome.failure = { error };
+    }
+    overlay.remove();
+    if (fallbackOverlay === overlay) fallbackOverlay = null;
+  }
+
+  if (outcome.failure) throw outcome.failure.error;
+  return outcome.result as T;
+}
+
 function playRevealAnimation(transition: ViewTransitionLike, point: ThemeTransitionPoint, direction: ThemeTransitionDirection): void {
   transition.ready.then(() => {
     const endRadius = computeRevealEndRadius(point);
@@ -156,8 +288,22 @@ export function runThemeChangeWithTransition(
   origin?: ThemeTransitionPoint | null,
   direction: ThemeTransitionDirection = 'expand',
 ): void {
+  if (prefersReducedMotion()) {
+    applyChange();
+    return;
+  }
+  if (isWebKit()) {
+    bindPointerTracking();
+    const point = resolveTransitionPoint(origin);
+    try {
+      runFallbackTransition(applyChange, point, direction);
+    } catch {
+      applyChange();
+    }
+    return;
+  }
   const doc = getViewTransitionDocument();
-  if (!doc || prefersReducedMotion()) {
+  if (!doc) {
     applyChange();
     return;
   }
@@ -181,8 +327,16 @@ export async function runThemeChangeWithTransitionAsync<T>(
   origin?: ThemeTransitionPoint | null,
   direction: ThemeTransitionDirection = 'expand',
 ): Promise<T> {
+  if (prefersReducedMotion()) {
+    return applyChange();
+  }
+  if (isWebKit()) {
+    bindPointerTracking();
+    const point = resolveTransitionPoint(origin);
+    return runFallbackTransitionAsync(applyChange, point, direction);
+  }
   const doc = getViewTransitionDocument();
-  if (!doc || prefersReducedMotion()) {
+  if (!doc) {
     return applyChange();
   }
   bindPointerTracking();

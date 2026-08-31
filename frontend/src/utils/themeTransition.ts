@@ -55,10 +55,29 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
+function isWebKit(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  // Wails: Linux WebKitGTK / macOS WebKit 仅含 AppleWebKit，Windows WebView2 为 Chromium（含 Chrome）
+  // WebKit 的 View Transitions 在 Wails 透明窗口 + clip-path 动画下会黑屏，见 animations.css
+  return /AppleWebKit/.test(ua) && !/Chrome/.test(ua) && !/Chromium/.test(ua);
+}
+
 function getViewTransitionDocument(): ViewTransitionDocument | null {
   if (typeof document === 'undefined') return null;
   const doc = document as ViewTransitionDocument;
-  return typeof doc.startViewTransition === 'function' ? doc : null;
+  if (typeof doc.startViewTransition !== 'function') return null;
+  if (isWebKit()) return null;
+  if (typeof CSS !== 'undefined' && typeof (CSS as unknown as { supports?: unknown }).supports === 'function') {
+    try {
+      // @ts-ignore — view-transition-name 为较新属性，无类型
+      if (!CSS.supports('view-transition-name', 'root')) return null;
+    } catch {
+      // 旧内核 CSS.supports 可能抛异常，视为不支持
+      return null;
+    }
+  }
+  return doc;
 }
 
 export function isThemeTransitionSupported(): boolean {

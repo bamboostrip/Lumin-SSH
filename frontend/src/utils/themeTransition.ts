@@ -1,18 +1,17 @@
 /**
- * 主题切换过渡动画（View Transitions API + Linux WebKitGTK 降级）
+ * 主题切换过渡动画（View Transitions API + 优雅降级）
  *
  * 效果与 Art Design Pro 等一致，并按目标模式区分方向：
  * - 切到浅色（扩散 expand）：新浅色画面从点击处从小到大圆形扩散盖住全局；
  * - 切到深色（收缩 contract）：旧浅色画面收缩成圆形陷落到点击处，深色从四周合拢。
  *
- * 实现方式：
- * - Chromium（Win WebView2）及 macOS WKWebView：`document.startViewTransition`
- *   截取旧/新快照，扩散在 `::view-transition-new(root)`、收缩在
- *   `::view-transition-old(root)` 上跑 `clip-path: circle()`，见 `animations.css`。
- * - Linux WebKitGTK：`View Transitions` 在 Wails 透明窗口下 `clip-path` 会黑屏，
- *   故 `isWebKit()`（仅 Linux）时走 `runFallbackTransition`——用普通 `fixed`
- *   旧主题色层淡出揭示新主题，三端均保留过渡但 Linux 为柔和淡出以避免实心圆生硬；
- *   `prefers-reduced-motion` 时仍直接切换。
+ * 实现方式（优雅降级）：
+ * - Chromium（Win WebView2 ≥111 / macOS WKWebView 新版）支持 `View Transitions`：
+ *   `document.startViewTransition` 截取旧/新快照，扩散在 `::view-transition-new(root)`、
+ *   收缩在 `::view-transition-old(root)` 上跑 `clip-path: circle()`，见 `animations.css`。
+ * - Linux WebKitGTK（Wails 透明窗口下 clip-path 黑屏）及旧版 WebView（无
+ *   `startViewTransition`）：走 `runFallbackTransition`——旧主题色层 320ms 淡出
+ *   揭示新主题，三端均保留过渡，`prefers-reduced-motion` 时直接切换。
  */
 
 interface ThemeTransitionPoint {
@@ -89,7 +88,8 @@ function getViewTransitionDocument(): ViewTransitionDocument | null {
 }
 
 export function isThemeTransitionSupported(): boolean {
-  return getViewTransitionDocument() !== null && !prefersReducedMotion();
+  // 优雅降级：原生 View Transitions 不可用时走 fallback 淡出，仍有动画
+  return !prefersReducedMotion();
 }
 
 /** 按目标模式推导方向：切到浅色扩散、切到深色收缩（system 按当前系统偏好解析） */
@@ -227,6 +227,7 @@ function bindContractClass(transition: ViewTransitionLike, direction: ThemeTrans
 /**
  * 同步主题变更的动画包装：applyChange 内完成所有 DOM 变更
  * （body class / CSS 变量 / React 状态需配合 flushSync）
+ * 优雅降级：Chromium 走原生圆扩散，Linux WebKitGTK 及旧版 WebView 走 fallback 淡出
  */
 export function runThemeChangeWithTransition(
   applyChange: () => void,
@@ -237,6 +238,7 @@ export function runThemeChangeWithTransition(
     applyChange();
     return;
   }
+  // Linux WebKitGTK 黑屏，旧版 WebView 无 View Transitions，均走 fallback 淡出而非直接切换
   if (isWebKit()) {
     bindPointerTracking();
     const point = resolveTransitionPoint(origin);
@@ -249,7 +251,13 @@ export function runThemeChangeWithTransition(
   }
   const doc = getViewTransitionDocument();
   if (!doc) {
-    applyChange();
+    bindPointerTracking();
+    const point = resolveTransitionPoint(origin);
+    try {
+      runFallbackTransition(applyChange, point, direction);
+    } catch {
+      applyChange();
+    }
     return;
   }
   bindPointerTracking();
@@ -266,6 +274,7 @@ export function runThemeChangeWithTransition(
 /**
  * 异步主题变更的动画包装（applyChange 返回 Promise，如设置页保存后端）。
  * 动画快照会等 Promise 完成后落定；结果与异常原样透传给调用方。
+ * 优雅降级同同步版本
  */
 export async function runThemeChangeWithTransitionAsync<T>(
   applyChange: () => Promise<T>,
@@ -282,7 +291,9 @@ export async function runThemeChangeWithTransitionAsync<T>(
   }
   const doc = getViewTransitionDocument();
   if (!doc) {
-    return applyChange();
+    bindPointerTracking();
+    const point = resolveTransitionPoint(origin);
+    return runFallbackTransitionAsync(applyChange, point, direction);
   }
   bindPointerTracking();
   const point = resolveTransitionPoint(origin);

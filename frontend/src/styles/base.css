@@ -141,10 +141,10 @@ body.modal-open .app-layout *::-webkit-scrollbar {
   width: 0 !important;
   height: 0 !important;
 }
-/* 背景中真实可滚动容器：滚动后立即开弹层时 GTK 的 overlay indicator 仍在 1s 淡出期内，
-   仅 scrollbar-width:none 无法瞬间隐藏已在动画中的 native thumb，需同时 overflow:hidden。
-   覆盖所有在 .app-layout 内可能成为背景的可滚动容器（首页/文件/探针/终端等），
-   portaled 到 body 的弹层不受影响（.app-layout 外），若未来新增滚动容器只需在此追加。 */
+/* 背景滚动锁定：文件管理器(Virtuoso)、探针、首页等任意在 .app-layout 内的可滚动容器
+   在 Linux WebKitGTK 上滚动后 1s 内 overlay indicator 仍在淡出，scrollbar-width:none 无法瞬间隐藏
+   动画中的 native thumb，需 overflow:hidden。采用通用选择器而非枚举，避免遗漏 Virtuoso 等动态
+   生成的滚动容器（文件管理器截图即为此类）。portaled 弹层在 body 外不受影响，.modal-overlay 例外保留。 */
 html.modal-open .app-layout .dashboard-server-editor-body,
 html.modal-open .app-layout .hosts-scroll-area,
 html.modal-open .app-layout .data-page-scroll,
@@ -152,13 +152,16 @@ html.modal-open .app-layout .probe-panel,
 html.modal-open .app-layout .terminal-tab-list-items,
 html.modal-open .app-layout .context-menu,
 html.modal-open .app-layout .term-quick-cmd-preview,
+/* 通用兜底：任意 .app-layout 内元素（排除仍在 .app-layout 内的 GlobalDialog） */
+html.modal-open .app-layout *:not(.modal-overlay):not(.modal-overlay *):not([data-modal-overlay]):not([data-modal-overlay] *),
 body.modal-open .app-layout .dashboard-server-editor-body,
 body.modal-open .app-layout .hosts-scroll-area,
 body.modal-open .app-layout .data-page-scroll,
 body.modal-open .app-layout .probe-panel,
 body.modal-open .app-layout .terminal-tab-list-items,
 body.modal-open .app-layout .context-menu,
-body.modal-open .app-layout .term-quick-cmd-preview {
+body.modal-open .app-layout .term-quick-cmd-preview,
+body.modal-open .app-layout *:not(.modal-overlay):not(.modal-overlay *):not([data-modal-overlay]):not([data-modal-overlay] *) {
   overflow: hidden !important;
 }
 html.modal-open,

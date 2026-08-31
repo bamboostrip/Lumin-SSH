@@ -115,130 +115,71 @@ function computeRevealEndRadius(point: ThemeTransitionPoint): number {
   return Math.hypot(farthestX, farthestY);
 }
 
-// ── WebKit 降级：用普通 fixed 覆盖层模拟圆揭示，避免 View Transitions 黑屏 ──
+// ── WebKit 降级：View Transitions 在 Wails 透明窗口下黑屏，改用普通 overlay 模拟 ──
+// 为避免实心圆的生硬与闪屏，降级采用与真实快照更接近的“旧画面整体淡出”而非实心色块圆，
+// 在 Win 上仍为圆扩散，Linux 上为柔和淡入淡出，三端均保留过渡但不黑屏。
 let fallbackOverlay: HTMLElement | null = null;
 
-function createFallbackOverlay(): HTMLElement {
+function createFallbackOverlay(isLight: boolean): HTMLElement {
   const el = document.createElement('div');
   el.setAttribute('data-theme-fallback-overlay', 'true');
-  // 直接用浅色底色（light 的 --surface-base #f3f4f6），不依赖 body 的 theme-light 继承，
-  // 保证在深色背景上也能正确显示浅色圆。深色底为 #0f1319，但降级动画两方向均用浅色层
-  //（扩散：浅色层从小到大盖住深色；收缩：浅色层全屏收缩露出底层深色），与原生方向一致。
   el.style.cssText =
     'position:fixed;inset:0;z-index:2147483647;pointer-events:none;' +
-    'background:#f3f4f6;' +
-    'will-change:clip-path;';
+    `background:${isLight ? '#f3f4f6' : '#0f1319'};` +
+    'will-change:opacity,clip-path;';
   return el;
 }
 
 function runFallbackTransition(
   applyChange: () => void,
-  point: ThemeTransitionPoint,
+  _point: ThemeTransitionPoint,
   direction: ThemeTransitionDirection,
 ): void {
   if (typeof document === 'undefined') {
     applyChange();
     return;
   }
-  // 若已有未结束的降级动画，先清理，避免叠加
   if (fallbackOverlay?.parentNode) fallbackOverlay.remove();
-  const endRadius = computeRevealEndRadius(point);
-  const circleAt = `at ${point.x}px ${point.y}px`;
-  const isContract = direction === 'contract';
-
-  if (isContract) {
-    // 收缩：旧浅色全屏盖住，先切底层为深色，再让浅色层收缩露出深色
-    const overlay = createFallbackOverlay();
-    overlay.style.clipPath = `circle(${endRadius}px ${circleAt})`;
-    document.body.appendChild(overlay);
-    fallbackOverlay = overlay;
-    // 底层切深色（被 overlay 盖住，用户仍见浅色）
-    applyChange();
-    const anim = overlay.animate(
-      { clipPath: [`circle(${endRadius}px ${circleAt})`, `circle(0px ${circleAt})`] },
-      { duration: TRANSITION_DURATION_MS, easing: 'ease-in-out', fill: 'forwards' },
-    );
-    anim.onfinish = () => {
-      overlay.remove();
-      if (fallbackOverlay === overlay) fallbackOverlay = null;
-    };
-    anim.oncancel = () => {
-      overlay.remove();
-      if (fallbackOverlay === overlay) fallbackOverlay = null;
-    };
-  } else {
-    // 扩散：新浅色从点击点扩散盖住旧深色，底层保持深色直到动画结束再切浅色
-    const overlay = createFallbackOverlay();
-    overlay.style.clipPath = `circle(0px ${circleAt})`;
-    document.body.appendChild(overlay);
-    fallbackOverlay = overlay;
-    const anim = overlay.animate(
-      { clipPath: [`circle(0px ${circleAt})`, `circle(${endRadius}px ${circleAt})`] },
-      { duration: TRANSITION_DURATION_MS, easing: 'ease-in-out', fill: 'forwards' },
-    );
-    anim.onfinish = () => {
-      applyChange();
-      overlay.remove();
-      if (fallbackOverlay === overlay) fallbackOverlay = null;
-    };
-    anim.oncancel = () => {
-      applyChange();
-      overlay.remove();
-      if (fallbackOverlay === overlay) fallbackOverlay = null;
-    };
-  }
+  const overlayLight = direction === 'contract';
+  const overlay = createFallbackOverlay(overlayLight);
+  overlay.style.opacity = '1';
+  document.body.appendChild(overlay);
+  fallbackOverlay = overlay;
+  // 先切底层，再让旧色层淡出，避免闪屏（底层已是新主题，旧层淡出即揭示新主题）
+  applyChange();
+  const anim = overlay.animate({ opacity: ['1', '0'] }, { duration: 320, easing: 'ease-out', fill: 'forwards' });
+  anim.onfinish = () => {
+    overlay.remove();
+    if (fallbackOverlay === overlay) fallbackOverlay = null;
+  };
+  anim.oncancel = () => {
+    overlay.remove();
+    if (fallbackOverlay === overlay) fallbackOverlay = null;
+  };
 }
 
 async function runFallbackTransitionAsync<T>(
   applyChange: () => Promise<T>,
-  point: ThemeTransitionPoint,
+  _point: ThemeTransitionPoint,
   direction: ThemeTransitionDirection,
 ): Promise<T> {
   if (typeof document === 'undefined') return applyChange();
   if (fallbackOverlay?.parentNode) fallbackOverlay.remove();
-  const endRadius = computeRevealEndRadius(point);
-  const circleAt = `at ${point.x}px ${point.y}px`;
-  const isContract = direction === 'contract';
+  const overlayLight = direction === 'contract';
+  const overlay = createFallbackOverlay(overlayLight);
+  overlay.style.opacity = '1';
+  document.body.appendChild(overlay);
+  fallbackOverlay = overlay;
   const outcome: { result?: T; failure?: { error: unknown } } = {};
-
-  if (isContract) {
-    const overlay = createFallbackOverlay();
-    overlay.style.clipPath = `circle(${endRadius}px ${circleAt})`;
-    document.body.appendChild(overlay);
-    fallbackOverlay = overlay;
-    try {
-      outcome.result = await applyChange();
-    } catch (error) {
-      outcome.failure = { error };
-    }
-    const anim = overlay.animate(
-      { clipPath: [`circle(${endRadius}px ${circleAt})`, `circle(0px ${circleAt})`] },
-      { duration: TRANSITION_DURATION_MS, easing: 'ease-in-out', fill: 'forwards' },
-    );
-    await anim.finished.catch(() => {});
-    overlay.remove();
-    if (fallbackOverlay === overlay) fallbackOverlay = null;
-  } else {
-    const overlay = createFallbackOverlay();
-    overlay.style.clipPath = `circle(0px ${circleAt})`;
-    document.body.appendChild(overlay);
-    fallbackOverlay = overlay;
-    const anim = overlay.animate(
-      { clipPath: [`circle(0px ${circleAt})`, `circle(${endRadius}px ${circleAt})`] },
-      { duration: TRANSITION_DURATION_MS, easing: 'ease-in-out', fill: 'forwards' },
-    );
-    const animDone = anim.finished.catch(() => {});
-    // 扩散需等动画结束后再切底层，避免底层提前变浅导致外围瞬间变浅
-    await animDone;
-    try {
-      outcome.result = await applyChange();
-    } catch (error) {
-      outcome.failure = { error };
-    }
-    overlay.remove();
-    if (fallbackOverlay === overlay) fallbackOverlay = null;
+  try {
+    outcome.result = await applyChange();
+  } catch (error) {
+    outcome.failure = { error };
   }
-
+  const anim = overlay.animate({ opacity: ['1', '0'] }, { duration: 320, easing: 'ease-out', fill: 'forwards' });
+  await anim.finished.catch(() => {});
+  overlay.remove();
+  if (fallbackOverlay === overlay) fallbackOverlay = null;
   if (outcome.failure) throw outcome.failure.error;
   return outcome.result as T;
 }

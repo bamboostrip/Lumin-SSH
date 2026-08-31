@@ -1,4 +1,5 @@
 import { useLayoutEffect } from 'react';
+import { isLinuxWebKit } from '../utils/platform';
 
 /**
  * useOverlayScrollLock — Linux WebKitGTK 滚动条穿透的统一加锁
@@ -19,6 +20,9 @@ import { useLayoutEffect } from 'react';
  * - 本 hook 负责在 `paint` 前同步给 `html/body` 加 `modal-open`，并通过
  *   `body.dataset.modalCount` 计数保证多层嵌套（例：设置弹层内再开二次确认）时
  *   仅在最后一层关闭才解锁。
+ * - **仅 Linux WebKitGTK 生效**（`isLinuxWebKit`）：Windows 经典滚动条占布局空间，
+ *   隐藏会引发背景 reflow（Virtuoso 丢滚动位置、面板排版跳动）；macOS 可正常裁剪。
+ *   非 Linux 平台本 hook 为 no-op，不加 `modal-open`，`base.css` 的锁定规则随之不触发。
  *
  * @param open - 弹层/菜单/下拉是否可见，`true` 时加锁，`false` 或卸载时解锁
  *
@@ -69,7 +73,12 @@ import { useLayoutEffect } from 'react';
  */
 export function useOverlayScrollLock(open: boolean) {
   useLayoutEffect(() => {
-    if (!open) return undefined;
+    // 仅 Linux WebKitGTK 需要加锁：其 overlay 滚动条是独立合成层会穿透 fixed 弹层。
+    // Windows WebView2 的经典滚动条占据布局空间，modal-open 的 scrollbar-width:none
+    // 会使滚动条瞬间消失引发背景 reflow（虚拟列表丢失滚动位置、面板排版跳动）；
+    // macOS WKWebView 滚动条可被弹层正常裁剪。非 Linux 平台保持 PR #299 之前的
+    // 无锁行为，靠弹层 z-index 自然盖住背景。
+    if (!open || !isLinuxWebKit) return undefined;
 
     const docEl = document.documentElement;
     const body = document.body;

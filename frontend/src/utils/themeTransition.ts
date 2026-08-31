@@ -1,18 +1,18 @@
 /**
- * 主题切换过渡动画（View Transitions API + WebKit 降级）
+ * 主题切换过渡动画（View Transitions API + Linux WebKitGTK 降级）
  *
  * 效果与 Art Design Pro 等一致，并按目标模式区分方向：
  * - 切到浅色（扩散 expand）：新浅色画面从点击处从小到大圆形扩散盖住全局；
  * - 切到深色（收缩 contract）：旧浅色画面收缩成圆形陷落到点击处，深色从四周合拢。
  *
  * 实现方式：
- * - Chromium（Win WebView2）：`document.startViewTransition` 截取旧/新快照，扩散在
- *   `::view-transition-new(root)`、收缩在 `::view-transition-old(root)` 上跑
- *   `clip-path: circle()`，见 `animations.css` 的 `@supports`。
- * - WebKit（Linux WebKitGTK / macOS）：`View Transitions` 在 Wails 透明窗口下
- *   `clip-path` 会黑屏，故 `isWebKit()` 时走 `runFallbackTransition`——用普通
- *   `fixed` 覆盖层（`theme-light` 的 `var(--surface-base)`）模拟同款圆揭示，
- *   三端均保留动画；`prefers-reduced-motion` 时仍直接切换。
+ * - Chromium（Win WebView2）及 macOS WKWebView：`document.startViewTransition`
+ *   截取旧/新快照，扩散在 `::view-transition-new(root)`、收缩在
+ *   `::view-transition-old(root)` 上跑 `clip-path: circle()`，见 `animations.css`。
+ * - Linux WebKitGTK：`View Transitions` 在 Wails 透明窗口下 `clip-path` 会黑屏，
+ *   故 `isWebKit()`（仅 Linux）时走 `runFallbackTransition`——用普通 `fixed`
+ *   旧主题色层淡出揭示新主题，三端均保留过渡但 Linux 为柔和淡出以避免实心圆生硬；
+ *   `prefers-reduced-motion` 时仍直接切换。
  */
 
 interface ThemeTransitionPoint {
@@ -62,9 +62,13 @@ function prefersReducedMotion(): boolean {
 function isWebKit(): boolean {
   if (typeof navigator === 'undefined') return false;
   const ua = navigator.userAgent || '';
-  // Wails: Linux WebKitGTK / macOS WebKit 仅含 AppleWebKit，Windows WebView2 为 Chromium（含 Chrome）
-  // WebKit 的 View Transitions 在 Wails 透明窗口 + clip-path 动画下会黑屏，见 animations.css
-  return /AppleWebKit/.test(ua) && !/Chrome/.test(ua) && !/Chromium/.test(ua);
+  const isAppleWebKit = /AppleWebKit/.test(ua) && !/Chrome/.test(ua) && !/Chromium/.test(ua);
+  if (!isAppleWebKit) return false;
+  // 仅 Linux WebKitGTK 在 Wails 透明窗口下会黑屏，macOS WKWebView 实测正常
+  // 通过 UA/平台区分：Linux 含 Linux/X11，macOS 含 Mac
+  const platform = (navigator as unknown as { platform?: string }).platform || '';
+  const uaIsLinux = /Linux|X11/.test(ua) || /Linux/.test(platform);
+  return uaIsLinux;
 }
 
 function getViewTransitionDocument(): ViewTransitionDocument | null {

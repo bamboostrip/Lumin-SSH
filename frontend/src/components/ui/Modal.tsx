@@ -1,8 +1,9 @@
-import { useEffect, useLayoutEffect, type ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { t } from '../../i18n.ts';
 import { Z } from '../../constants/zIndex.ts';
+import { useOverlayScrollLock } from '../../hooks/useOverlayScrollLock.ts';
 
 export type ModalSize = 'sm' | 'md' | 'lg' | 'xl';
 
@@ -62,33 +63,7 @@ export function Modal({
     return () => window.removeEventListener('keydown', onKey, true);
   }, [open, closeOnEscape, onClose]);
 
-  // 关键：用 useLayoutEffect 同步在 paint 前加上 modal-open，避免首帧穿透。
-  // Linux WebKitGTK 的 overlay scrollbar 在滚动后 1s 内处于可见态（自动淡出），
-  // 若用 useEffect（paint 后才加类），首帧会把仍在淡出动画中的 thumb 画到 fixed 弹层之上，
-  // 表现为“滚动后立马开设置才穿透、等一会就消失”。
-  useLayoutEffect(() => {
-    if (!open) return undefined;
-
-    const docEl = document.documentElement;
-    const body = document.body;
-    const previousCount = Number(body.dataset.modalCount || '0');
-    const nextCount = previousCount + 1;
-
-    body.dataset.modalCount = String(nextCount);
-    body.classList.add('modal-open');
-    docEl.classList.add('modal-open');
-
-    return () => {
-      const remaining = Math.max(0, Number(body.dataset.modalCount || '1') - 1);
-      if (remaining === 0) {
-        body.classList.remove('modal-open');
-        docEl.classList.remove('modal-open');
-        delete body.dataset.modalCount;
-      } else {
-        body.dataset.modalCount = String(remaining);
-      }
-    };
-  }, [open]);
+  useOverlayScrollLock(open);
 
   if (!open) return null;
 

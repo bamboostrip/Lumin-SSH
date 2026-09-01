@@ -5,24 +5,24 @@ import { isLinuxWebKit } from '../utils/platform';
  * useOverlayScrollLock — Linux WebKitGTK 滚动条穿透的统一加锁
  *
  * @description
- * Wails Linux 使用 WebKitGTK，其原生 overlay scrollbar 在滚动后 1s 内处于
- * 淡出动画中，thumb 以独立合成层（GTK GtkOverlay）绘制在所有 `position:fixed`
- * 之上，`z-index`/`isolation` 无法压制。若弹层打开时背景容器仍为
- * `overflow:auto`，thumb 会穿透到弹层上（表现为一条 6px 细线，滚动后立即
- * 开弹层必现，静置 1s 后自动消失）。`base.css` 结合 `html.modal-open` 在
- * `paint` 前将背景 `overflow` 切为 `hidden` 才能瞬间隐藏。
+ * Wails Linux 使用 WebKitGTK，其滚动条以独立合成层绘制在所有 `position:fixed`
+ * 之上，`z-index`/`isolation` 无法压制。滚动后立即打开弹层时，背景 thumb 会
+ * 穿透到弹层上（表现为一条 6px 细线，静置 1s 后自动消失）。
  *
- * 本 hook 与 `frontend/src/styles/base.css:124-210` 配套：
- * - `base.css` 将 `*` 的滚动条样式收敛到 `.app-layout/[data-modal-overlay]/.modal-overlay`
- *   并在 `html.modal-open .app-layout *{scrollbar-width:none; overflow:hidden}` 隐藏背景；
+ * 本 hook 与 `frontend/src/styles/base.css` 配套：
+ * - `base.css` 在 `html.modal-open` 时把背景 `.app-layout` 的滚动条 thumb/track
+ *   **透明化**（`scrollbar-color: transparent` / `::-webkit-scrollbar-*` 背景透明）。
+ *   早期方案用 `scrollbar-width:none + overflow:hidden` 强制隐藏，但会移除滚动条
+ *   槽位、改变布局（overflow:hidden 打在 * 上还破坏 sticky），导致背景 reflow
+ *   （文件列表丢滚动位置、面板排版跳动、虚拟列表闪烁，Windows/Linux 均受影响）；
+ *   透明化保持滚动条结构与槽位不动，零布局变化，GTK 画到弹层上的 thumb 同样透明。
  *   弹层自身通过 `[data-modal-overlay]`/`.modal-overlay`/`[data-select-dropdown]` 等
- *   恢复为 `thin`，`portaled` 到 `body` 的弹层天然在 `.app-layout` 外不受影响。
- * - 本 hook 负责在 `paint` 前同步给 `html/body` 加 `modal-open`，并通过
- *   `body.dataset.modalCount` 计数保证多层嵌套（例：设置弹层内再开二次确认）时
- *   仅在最后一层关闭才解锁。
- * - **仅 Linux WebKitGTK 生效**（`isLinuxWebKit`）：Windows 经典滚动条占布局空间，
- *   隐藏会引发背景 reflow（Virtuoso 丢滚动位置、面板排版跳动）；macOS 可正常裁剪。
- *   非 Linux 平台本 hook 为 no-op，不加 `modal-open`，`base.css` 的锁定规则随之不触发。
+ *   恢复可见，`portaled` 到 `body` 的弹层天然在 `.app-layout` 外不受影响。
+ * - 本 hook 负责在 `paint` 前同步给 `html/body` 加 `modal-open`（首帧即生效，防
+ *   滚动后立即开弹层的首帧穿透），并通过 `body.dataset.modalCount` 计数保证多层
+ *   嵌套（例：设置弹层内再开二次确认）时仅在最后一层关闭才解锁。
+ * - **仅 Linux WebKitGTK 生效**（`isLinuxWebKit`）：Windows/macOS 的滚动条可被
+ *   弹层正常裁剪，无穿透问题，不加 `modal-open` 避免无谓的全局重绘。
  *
  * @param open - 弹层/菜单/下拉是否可见，`true` 时加锁，`false` 或卸载时解锁
  *
@@ -76,11 +76,9 @@ import { isLinuxWebKit } from '../utils/platform';
  */
 export function useOverlayScrollLock(open: boolean) {
   useLayoutEffect(() => {
-    // 仅 Linux WebKitGTK 需要加锁：其 overlay 滚动条是独立合成层会穿透 fixed 弹层。
-    // Windows WebView2 的经典滚动条占据布局空间，modal-open 的 scrollbar-width:none
-    // 会使滚动条瞬间消失引发背景 reflow（虚拟列表丢失滚动位置、面板排版跳动）；
-    // macOS WKWebView 滚动条可被弹层正常裁剪。非 Linux 平台保持 PR #299 之前的
-    // 无锁行为，靠弹层 z-index 自然盖住背景。
+    // 仅 Linux WebKitGTK 需要加锁：其滚动条绘制为独立合成层会穿透 fixed 弹层，
+    // modal-open 时 base.css 将背景滚动条透明化以隐藏穿透（零布局变化）。
+    // Windows/macOS 的滚动条可被弹层正常裁剪，不加锁避免无谓的全局重绘。
     if (!open || !isLinuxWebKit) return undefined;
 
     const docEl = document.documentElement;

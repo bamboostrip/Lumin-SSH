@@ -55,7 +55,10 @@ import { isLinuxWebKit } from '../utils/platform';
  * ```
  *
  * @rules
- * - 已使用 `ui/Modal` 的组件无需再调用，`Modal.tsx:65` 已内置。
+ * - 已使用 `ui/Modal` 的组件无需再调用，`Modal.tsx` 已内置。
+ * - **任何 `createPortal` 到 body 的交互弹层必须接入本 hook**：`npm run overlay:check`
+ *   （scripts/check-overlay-lock.mjs）会扫描校验，遗漏时登记豁免清单需写明原因。
+ *   GlobalContextMenu 曾因遗漏导致 Linux 上输入框右键菜单被背景滚动条穿透。
  * - 全屏遮罩会盖住顶栏导致窗口无法拖动：新的全屏弹层（`.modal-overlay` 或
  *   `fixed inset-0` 的模态类遮罩）首个子节点需放 `<ModalDragStrip />`
  *   （见 `ui/ModalDragStrip.tsx`），恢复遮罩打开时的顶栏拖动/双击最大化。

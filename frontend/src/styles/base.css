@@ -72,7 +72,9 @@
 [data-tab-context-menu],
 [data-tab-context-menu] *,
 [data-context-menu],
-[data-context-menu] * {
+[data-context-menu] *,
+[data-history-dropdown],
+[data-history-dropdown] * {
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb, rgba(120, 140, 165, 0.35)) transparent;
 }
@@ -92,7 +94,9 @@
 [data-tab-context-menu]::-webkit-scrollbar,
 [data-tab-context-menu] *::-webkit-scrollbar,
 [data-context-menu]::-webkit-scrollbar,
-[data-context-menu] *::-webkit-scrollbar {
+[data-context-menu] *::-webkit-scrollbar,
+[data-history-dropdown]::-webkit-scrollbar,
+[data-history-dropdown] *::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
@@ -111,7 +115,9 @@
 [data-tab-context-menu]::-webkit-scrollbar-button,
 [data-tab-context-menu] *::-webkit-scrollbar-button,
 [data-context-menu]::-webkit-scrollbar-button,
-[data-context-menu] *::-webkit-scrollbar-button {
+[data-context-menu] *::-webkit-scrollbar-button,
+[data-history-dropdown]::-webkit-scrollbar-button,
+[data-history-dropdown] *::-webkit-scrollbar-button {
   display: none !important;
   width: 0 !important;
   height: 0 !important;
@@ -131,7 +137,9 @@
 [data-tab-context-menu]::-webkit-scrollbar-track,
 [data-tab-context-menu] *::-webkit-scrollbar-track,
 [data-context-menu]::-webkit-scrollbar-track,
-[data-context-menu] *::-webkit-scrollbar-track {
+[data-context-menu] *::-webkit-scrollbar-track,
+[data-history-dropdown]::-webkit-scrollbar-track,
+[data-history-dropdown] *::-webkit-scrollbar-track {
   background: transparent;
 }
 .app-layout::-webkit-scrollbar-thumb,
@@ -149,7 +157,9 @@
 [data-tab-context-menu]::-webkit-scrollbar-thumb,
 [data-tab-context-menu] *::-webkit-scrollbar-thumb,
 [data-context-menu]::-webkit-scrollbar-thumb,
-[data-context-menu] *::-webkit-scrollbar-thumb {
+[data-context-menu] *::-webkit-scrollbar-thumb,
+[data-history-dropdown]::-webkit-scrollbar-thumb,
+[data-history-dropdown] *::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb, rgba(120, 140, 165, 0.35));
   border-radius: var(--radius-full);
   transition: background 0.15s ease;
@@ -169,7 +179,9 @@
 [data-tab-context-menu]::-webkit-scrollbar-thumb:hover,
 [data-tab-context-menu] *::-webkit-scrollbar-thumb:hover,
 [data-context-menu]::-webkit-scrollbar-thumb:hover,
-[data-context-menu] *::-webkit-scrollbar-thumb:hover {
+[data-context-menu] *::-webkit-scrollbar-thumb:hover,
+[data-history-dropdown]::-webkit-scrollbar-thumb:hover,
+[data-history-dropdown] *::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover, rgba(140, 165, 195, 0.6));
 }
 .app-layout::-webkit-scrollbar-corner,
@@ -187,7 +199,9 @@
 [data-tab-context-menu]::-webkit-scrollbar-corner,
 [data-tab-context-menu] *::-webkit-scrollbar-corner,
 [data-context-menu]::-webkit-scrollbar-corner,
-[data-context-menu] *::-webkit-scrollbar-corner {
+[data-context-menu] *::-webkit-scrollbar-corner,
+[data-history-dropdown]::-webkit-scrollbar-corner,
+[data-history-dropdown] *::-webkit-scrollbar-corner {
   background: transparent;
 }
 
@@ -271,11 +285,16 @@ body.modal-open .modal-overlay *::-webkit-scrollbar {
 }
 
 /* Select 下拉在 .app-layout 内时（仪表盘/文件管理器等），其自身滚动需保留
-   （Select 的 useOverlayScrollLock 会在下拉打开时触发 modal-open） */
+   （Select 的 useOverlayScrollLock 会在下拉打开时触发 modal-open）。
+   [data-history-dropdown]（快捷命令历史下拉）同理由 useOverlayScrollLock 加锁，一并恢复 */
 html.modal-open [data-select-dropdown],
 html.modal-open [data-select-dropdown] *,
+html.modal-open [data-history-dropdown],
+html.modal-open [data-history-dropdown] *,
 body.modal-open [data-select-dropdown],
-body.modal-open [data-select-dropdown] * {
+body.modal-open [data-select-dropdown] *,
+body.modal-open [data-history-dropdown],
+body.modal-open [data-history-dropdown] * {
   scrollbar-width: thin !important;
   scrollbar-color: var(--scrollbar-thumb, rgba(120, 140, 165, 0.35)) transparent !important;
   overflow-y: auto !important;
@@ -283,8 +302,12 @@ body.modal-open [data-select-dropdown] * {
 }
 html.modal-open [data-select-dropdown]::-webkit-scrollbar,
 html.modal-open [data-select-dropdown] *::-webkit-scrollbar,
+html.modal-open [data-history-dropdown]::-webkit-scrollbar,
+html.modal-open [data-history-dropdown] *::-webkit-scrollbar,
 body.modal-open [data-select-dropdown]::-webkit-scrollbar,
-body.modal-open [data-select-dropdown] *::-webkit-scrollbar {
+body.modal-open [data-select-dropdown] *::-webkit-scrollbar,
+body.modal-open [data-history-dropdown]::-webkit-scrollbar,
+body.modal-open [data-history-dropdown] *::-webkit-scrollbar {
   display: block !important;
   width: 6px !important;
   height: 6px !important;

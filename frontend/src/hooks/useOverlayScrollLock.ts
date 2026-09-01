@@ -24,6 +24,13 @@ import { isLinuxWebKit } from '../utils/platform';
  * - **仅 Linux WebKitGTK 生效**（`isLinuxWebKit`）：Windows/macOS 的滚动条可被
  *   弹层正常裁剪，无穿透问题，不加 `modal-open` 避免无谓的全局重绘。
  *
+ * 已实验排除的替代方案（2026-09 Linux 实测，勿重试）：
+ * - 仅靠结构层修复（portal 到 body + isolation + 滚动条样式作用域收敛）：穿透仍复现；
+ * - 弹层去进场动画（排除合成层提升触发）：无效；
+ * - 滚动容器提升合成层（will-change:scroll-position，含 Virtuoso）：无效。
+ * 结论：WebKitGTK 的滚动条层不受页面合成结构控制，弹层打开期间让背景滚动条
+ * 不可见（透明化）是该环境下防穿透的唯一手段；透明化保持槽位不动故无 reflow。
+ *
  * @param open - 弹层/菜单/下拉是否可见，`true` 时加锁，`false` 或卸载时解锁
  *
  * @usage

@@ -306,7 +306,7 @@ export default function GlobalContextMenu() {
         style={{
           left: menu.x,
           top: menu.y,
-          zIndex: Z.MENU,
+          zIndex: Z.CONTEXT_MENU,
           overflow: hasSubmenu ? 'visible' : undefined,
         }}
       >
@@ -328,8 +328,8 @@ export default function GlobalContextMenu() {
             className="fixed animate-[fadeIn_0.12s_ease]"
             style={
               submenuToLeft
-                ? { top: anchor.top - 5, right: window.innerWidth - anchor.left + 2, zIndex: Z.SUBMENU }
-                : { top: anchor.top - 5, left: anchor.right + 2, zIndex: Z.SUBMENU }
+                ? { top: anchor.top - 5, right: window.innerWidth - anchor.left + 2, zIndex: Z.CONTEXT_SUBMENU }
+                : { top: anchor.top - 5, left: anchor.right + 2, zIndex: Z.CONTEXT_SUBMENU }
             }
           >
             <MenuList items={toUiItems(activeParent.children)} onClose={closeMenu} />

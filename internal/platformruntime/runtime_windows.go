@@ -10,8 +10,6 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/windows"
 )
 
 var (
@@ -559,37 +557,38 @@ func getScreenSize() (int, int) {
 	return int(float64(cx) / scale), int(float64(cy) / scale)
 }
 
-// applyPlatformOptions 设置 Windows 特定的 Wails 选项，并根据屏幕大小自适应窗口尺寸
-func ApplyOptions(opts *options.App, webviewGpuDisabled bool) {
-	// ponytail: 根据屏幕分辨率自适应窗口大小，上限 1440x900，留 10% 边距
+// AdjustWindowSize 根据屏幕分辨率自适应窗口尺寸（超过屏幕 90% 时收缩，留 10% 边距）。
+func AdjustWindowSize(width, height int) (int, int) {
 	sw, sh := getScreenSize()
 	targetW := int(float64(sw) * 0.9)
 	targetH := int(float64(sh) * 0.9)
-	if opts.Width > targetW {
-		opts.Width = targetW
+	if width > targetW {
+		width = targetW
 	}
-	if opts.Height > targetH {
-		opts.Height = targetH
+	if height > targetH {
+		height = targetH
 	}
+	return width, height
+}
 
-	// 固定 WebView2 用户数据根目录为 %AppData%\Lumin，避免便携包改名后按 exe 名多出
-	// Lumin-x.y.z-portable.exe/EBWebView。引擎会在其下自建 EBWebView，与 config 同级。
-	webviewUserDataPath := ""
+// WebviewUserDataPath 固定 WebView2 用户数据根目录为 %AppData%\Lumin，避免便携包改名后
+// 按 exe 名多出 Lumin-x.y.z-portable.exe/EBWebView。引擎会在其下自建 EBWebView，与 config 同级。
+func WebviewUserDataPath() string {
 	if appData, err := os.UserConfigDir(); err == nil {
-		webviewUserDataPath = filepath.Join(appData, "Lumin")
-		_ = os.MkdirAll(webviewUserDataPath, 0700)
+		dir := filepath.Join(appData, "Lumin")
+		_ = os.MkdirAll(dir, 0700)
+		return dir
 	}
+	return ""
+}
 
-	opts.Windows = &windows.Options{
-		WebviewIsTransparent:              true,
-		WindowIsTranslucent:               true,
-		DisableWindowIcon:                 false,
-		DisableFramelessWindowDecorations: false,
-		WebviewUserDataPath:               webviewUserDataPath,
-		ZoomFactor:                        1.0,
-		WebviewGpuIsDisabled:              webviewGpuDisabled,
-		Theme:                             windows.Dark,
+// WebviewGPUArgs v3 移除了 WebviewGpuIsDisabled 选项，GPU 加速禁用改由
+// WebView2 启动参数实现（应用级 AdditionalBrowserArgs）。
+func WebviewGPUArgs(disabled bool) []string {
+	if disabled {
+		return []string{"--disable-gpu"}
 	}
+	return nil
 }
 
 const (

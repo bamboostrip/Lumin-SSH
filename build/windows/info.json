@@ -1,15 +1,15 @@
 {
 	"fixed": {
-		"file_version": "{{.Info.ProductVersion}}"
+		"file_version": "1.3.2"
 	},
 	"info": {
 		"0000": {
-			"ProductVersion": "{{.Info.ProductVersion}}",
-			"CompanyName": "{{.Info.CompanyName}}",
-			"FileDescription": "{{.Info.ProductName}}",
-			"LegalCopyright": "{{.Info.Copyright}}",
-			"ProductName": "{{.Info.ProductName}}",
-			"Comments": "{{.Info.Comments}}"
+			"ProductVersion": "1.3.2",
+			"CompanyName": "Lumin",
+			"FileDescription": "Lumin",
+			"LegalCopyright": "Copyright 2026 Lumin",
+			"ProductName": "Lumin",
+			"Comments": "Lightweight SSH Client"
 		}
 	}
 }

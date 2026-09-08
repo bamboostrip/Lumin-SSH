@@ -32,12 +32,13 @@ import (
 	"luminssh-go/internal/sshmanager"
 	"luminssh-go/internal/transfer"
 	"luminssh-go/internal/updatedownload"
+	"luminssh-go/internal/wailsevents"
 	"luminssh-go/internal/wsbuffer"
 	"luminssh-go/internal/wslocal"
 	runtimeenv "luminssh-go/module/runtimeenv"
 	runtimeinstaller "luminssh-go/module/runtimeinstaller"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 type externalEditRemoteFiles struct {
@@ -69,8 +70,8 @@ type externalEditEventSink struct {
 }
 
 func (s externalEditEventSink) Emit(event string, payload map[string]interface{}) {
-	if s.app != nil && s.app.ctx != nil {
-		runtime.EventsEmit(s.app.ctx, event, payload)
+	if s.app != nil {
+		wailsevents.Emit(event, payload)
 	}
 }
 
@@ -166,10 +167,35 @@ func NewApp() *App {
 	return app
 }
 
-// startup is called when the app starts. The context is saved
-// so we can call the runtime methods
-func (a *App) startup(ctx context.Context) {
+// ServiceStartup 实现 wails v3 的服务生命周期接口，等价 v2 的 OnStartup 回调。
+// v3 中该方法先于窗口创建执行，时序与 v2 OnStartup 一致。
+func (a *App) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
+	// 先挂托盘：startup 里 MCP 等可能阻塞，托盘若排后面会出现「窗口已能关到托盘但图标很久才出」。
 	a.ctx = ctx
+	a.startup(ctx)
+	platformruntime.AttachFramelessWindowFix()
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		platformruntime.AttachFramelessWindowFix()
+		time.Sleep(1 * time.Second)
+		platformruntime.AttachFramelessWindowFix()
+	}()
+	// macOS: 窗口隐藏到托盘后，点 Dock 图标恢复窗口。
+	// Wails 的 AppDelegate 未实现 applicationShouldHandleReopen:hasVisibleWindows:。
+	platformruntime.SetupDockReopenHandler(func() { forceShowWindow() })
+	platformruntime.StartSystray(func() { setupSystray(a) })
+	// 启动单实例 socket：二次启动会发 show 指令，经 forceShowWindow 走托盘同一路径唤起主窗口。
+	platformruntime.StartSingletonServer(func() { forceShowWindow() })
+	return nil
+}
+
+// ServiceShutdown 实现 wails v3 的服务生命周期接口（等价 v2 OnShutdown 的服务侧清理）。
+func (a *App) ServiceShutdown() error {
+	a.shutdown()
+	return nil
+}
+// startup 初始化各管理器与后台服务（由 ServiceStartup 调用）。
+func (a *App) startup(ctx context.Context) {
 	a.sshManager.SetCtx(ctx) // Give SSH manager access to Wails events
 	a.sshManager.SetApp(a)   // Give SSH manager access to WebSocket registry
 	a.configManager.SetWailsCtx(ctx)
@@ -236,13 +262,13 @@ func (a *App) shutdown() {
 	})
 }
 
-// DoQuit 用户确认退出，设标记让 OnBeforeClose 放行并清理应用资源。
+// DoQuit 用户确认退出，设标记让 WindowClosing 钩子放行并清理应用资源。
 func (a *App) DoQuit() {
 	a.quitting.Store(true)
 	a.shutdown()
 	a.quitOnce.Do(func() {
-		if a.ctx != nil {
-			runtime.Quit(a.ctx)
+		if app := application.Get(); app != nil {
+			app.Quit()
 		}
 	})
 }
@@ -301,7 +327,14 @@ func (a *App) GetArch() string {
 // ClipboardGetText 读取系统剪贴板文本。前端在 WKWebView（macOS）下通过它绕开
 // navigator.clipboard.readText 触发的 WebKit "Paste" 提示气泡（issue #263）。
 func (a *App) ClipboardGetText() (string, error) {
-	return runtime.ClipboardGetText(a.ctx)
+	if app := application.Get(); app != nil {
+		text, ok := app.Clipboard.Text()
+		if !ok {
+			return "", fmt.Errorf("clipboard does not contain text")
+		}
+		return text, nil
+	}
+	return "", fmt.Errorf("application not running")
 }
 
 // GetConnections returns all saved SSH connections
@@ -376,14 +409,10 @@ func (a *App) ExportConnections(useEncryption bool, password string) (string, er
 	}
 	timestamp := time.Now().Format("20060102_150405.000_-0700")
 	defaultName := fmt.Sprintf("lumin-ssh-connections-%s%s", timestamp, ext)
-	filters := []runtime.FileFilter{
+	filters := []application.FileFilter{
 		{DisplayName: fmt.Sprintf("Lumin-SSH (*%s)", ext), Pattern: "*" + ext},
 	}
-	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           title,
-		DefaultFilename: defaultName,
-		Filters:         filters,
-	})
+	path, err := saveFileDialog(title, defaultName, "", filters)
 	if err != nil {
 		return "", err
 	}
@@ -440,14 +469,10 @@ func (a *App) ExportConnectionsByIDs(ids []string, useEncryption bool, password 
 	}
 	timestamp := time.Now().Format("20060102_150405.000_-0700")
 	defaultName := fmt.Sprintf("lumin-ssh-connections-%s%s", timestamp, ext)
-	filters := []runtime.FileFilter{
+	filters := []application.FileFilter{
 		{DisplayName: fmt.Sprintf("Lumin-SSH (*%s)", ext), Pattern: "*" + ext},
 	}
-	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           title,
-		DefaultFilename: defaultName,
-		Filters:         filters,
-	})
+	path, err := saveFileDialog(title, defaultName, "", filters)
 	if err != nil {
 		return "", err
 	}
@@ -502,11 +527,8 @@ func (a *App) ExportConnectionsByIDs(ids []string, useEncryption bool, password 
 // SelectImportFile 弹出打开对话框让用户选择导入文件，返回文件路径（用户取消返回空串）。
 // 与 ImportConnections 分离，便于密文导入需要密码时无需重新选文件。
 func (a *App) SelectImportFile() (string, error) {
-	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "导入节点",
-		Filters: []runtime.FileFilter{
-			{DisplayName: "Lumin-SSH (*.json;*.lumin2)", Pattern: "*.json;*.lumin2"},
-		},
+	path, err := openFileDialog("导入节点", "", []application.FileFilter{
+		{DisplayName: "Lumin-SSH (*.json;*.lumin2)", Pattern: "*.json;*.lumin2"},
 	})
 	if err != nil {
 		return "", err
@@ -550,12 +572,8 @@ func (a *App) DownloadImportTemplate(lang string) (string, error) {
 	if lang == "en-US" {
 		title = "Save Import Template"
 	}
-	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           title,
-		DefaultFilename: "lumin-ssh-import-template.json",
-		Filters: []runtime.FileFilter{
-			{DisplayName: "JSON (*.json)", Pattern: "*.json"},
-		},
+	path, err := saveFileDialog(title, "lumin-ssh-import-template.json", "", []application.FileFilter{
+		{DisplayName: "JSON (*.json)", Pattern: "*.json"},
 	})
 	if err != nil {
 		return "", err
@@ -757,19 +775,16 @@ func (a *App) SetFileManagerMaxEditSize(mb int) error {
 
 // SelectExternalEditor opens a native file dialog for choosing an editor executable.
 func (a *App) SelectExternalEditor() (string, error) {
-	filters := []runtime.FileFilter{
+	filters := []application.FileFilter{
 		{DisplayName: "Applications", Pattern: "*.*"},
 	}
 	if goruntime.GOOS == "windows" {
-		filters = []runtime.FileFilter{
+		filters = []application.FileFilter{
 			{DisplayName: "Executables (*.exe)", Pattern: "*.exe"},
 			{DisplayName: "All files", Pattern: "*.*"},
 		}
 	}
-	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title:   "选择外部编辑器",
-		Filters: filters,
-	})
+	path, err := openFileDialog("选择外部编辑器", "", filters)
 	if err != nil {
 		return "", err
 	}
@@ -1087,9 +1102,7 @@ func (a *App) AbortChunkedUploadTask(taskID string) error {
 
 // UploadFile opens a file dialog to select a local file and uploads it to the remote path
 func (a *App) UploadFile(sessionId string, remotePath string) error {
-	filepaths, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Select File to Upload",
-	})
+	filepaths, err := openFileDialog("Select File to Upload", "", nil)
 	if err != nil || filepaths == "" {
 		return err
 	}
@@ -1097,41 +1110,28 @@ func (a *App) UploadFile(sessionId string, remotePath string) error {
 }
 
 func (a *App) SelectUploadFiles() ([]string, error) {
-	return runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Select Files to Upload",
-	})
+	return openMultipleFilesDialog("Select Files to Upload", "", nil)
 }
 
 func (a *App) SelectUploadDirectory() (string, error) {
-	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Select Folder to Upload",
-	})
+	return openDirectoryDialog("Select Folder to Upload", "")
 }
 
 func (a *App) SelectDownloadFilePath(remotePath string, defaultDir string) (string, error) {
 	filename := filepath.Base(remotePath)
-	options := runtime.SaveDialogOptions{
-		Title:           "Save File",
-		DefaultFilename: filename,
-	}
 	defaultDirectory := resolveDownloadDefaultDirectory(defaultDir)
 	if defaultDirectory != "" {
 		_ = os.MkdirAll(defaultDirectory, 0o755)
-		options.DefaultDirectory = defaultDirectory
 	}
-	return runtime.SaveFileDialog(a.ctx, options)
+	return saveFileDialog("Save File", filename, defaultDirectory, nil)
 }
 
 func (a *App) SelectDownloadDirectory(defaultDir string) (string, error) {
-	options := runtime.OpenDialogOptions{
-		Title: "Select Download Directory",
-	}
 	defaultDirectory := resolveDownloadDefaultDirectory(defaultDir)
 	if defaultDirectory != "" {
 		_ = os.MkdirAll(defaultDirectory, 0o755)
-		options.DefaultDirectory = defaultDirectory
 	}
-	return runtime.OpenDirectoryDialog(a.ctx, options)
+	return openDirectoryDialog("Select Download Directory", defaultDirectory)
 }
 
 func (a *App) UploadLocalPathsCompressed(sessionId string, uploadID string, maxConcurrent int, localPaths []string, remoteDir string) error {
@@ -1271,11 +1271,8 @@ func (a *App) ListThemePackages() ([]map[string]interface{}, error) {
 }
 
 func (a *App) SelectThemePackageFiles() ([]string, error) {
-	return runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "选择主题包文件",
-		Filters: []runtime.FileFilter{
-			{DisplayName: "主题包 (*.json)", Pattern: "*.json"},
-		},
+	return openMultipleFilesDialog("选择主题包文件", "", []application.FileFilter{
+		{DisplayName: "主题包 (*.json)", Pattern: "*.json"},
 	})
 }
 
@@ -1354,11 +1351,8 @@ func (a *App) ListProgramFonts() ([]programfonts.ProgramFontInfo, error) {
 }
 
 func (a *App) SelectProgramFontFiles() ([]string, error) {
-	return runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "选择字体文件",
-		Filters: []runtime.FileFilter{
-			{DisplayName: "字体文件 (*.ttf;*.otf;*.ttc;*.woff;*.woff2)", Pattern: "*.ttf;*.otf;*.ttc;*.woff;*.woff2"},
-		},
+	return openMultipleFilesDialog("选择字体文件", "", []application.FileFilter{
+		{DisplayName: "字体文件 (*.ttf;*.otf;*.ttc;*.woff;*.woff2)", Pattern: "*.ttf;*.otf;*.ttc;*.woff;*.woff2"},
 	})
 }
 
@@ -1436,9 +1430,7 @@ func (a *App) OpenLocalPathInExplorer(localPath string, isDirectory bool) error 
 
 // ReadPrivateKeyFile opens a file dialog to read a private key file
 func (a *App) ReadPrivateKeyFile() (string, error) {
-	keyPath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "选择私钥文件",
-	})
+	keyPath, err := openFileDialog("选择私钥文件", "", nil)
 	if err != nil || keyPath == "" {
 		return "", err
 	}
@@ -1825,9 +1817,7 @@ func (a *App) IsCustomTasksDir() bool {
 
 // SelectTasksDirectory 弹出目录选择对话框，返回用户选择的目录路径
 func (a *App) SelectTasksDirectory() (string, error) {
-	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "选择 AI 对话存储目录",
-	})
+	return openDirectoryDialog("选择 AI 对话存储目录", "")
 }
 
 // MigrateAITasksDir 将 AI 对话数据迁移到目标目录
@@ -2056,9 +2046,7 @@ func (a *App) UpdateApp(downloadUrl string, filename string, proxyFirst bool) er
 	downloader := updatedownload.Downloader{
 		Client: client,
 		Progress: func(progress float64) {
-			if a.ctx != nil {
-				runtime.EventsEmit(a.ctx, "app-update-progress", progress)
-			}
+			wailsevents.Emit("app-update-progress", progress)
 		},
 	}
 	var lastErr error

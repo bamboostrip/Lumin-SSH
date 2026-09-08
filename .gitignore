@@ -4,6 +4,8 @@
 *.dll
 *.so
 *.dylib
+/bin/
+/.task/
 /build/bin/
 /build/*.deb
 /build/*.rpm
@@ -13,9 +15,11 @@
 /build/x86_64/
 /build/windows/installer/Output/
 /build/windows/installer/wails_tools.nsh
+*.syso
 
 # ── Wails 自动生成 ──
-/frontend/wailsjs/
+# v3 迁移：wailsjs/ 现在是手写的 v3 兼容 shim（指向 frontend/bindings 生成代码），
+# 必须入库；v3 生成绑定在 frontend/bindings/，随仓库提交以便 CI 直接构建。
 /frontend/package.json.md5
 
 # ── 前端 ──

@@ -8,6 +8,22 @@ import { applyProgramFontPreferences } from './utils/programFonts.ts';
 import { applyStoredThemePackage, loadThemePackages } from './utils/theme.ts';
 // favicon 与 UI logo 共用同一源，避免 public/favicon.png 再拷一份
 import logoFavicon from './assets/logo.webp';
+// Wails v3 迁移兼容：v2 暴露 window.go / window.runtime 全局，v3 改为纯模块访问。
+// 历史代码（AI 桥接、文件管理器等 30+ 处）仍经全局对象做可选链守卫调用，
+// 这里用 v3 的模块实现重新挂载，保持旧调用路径与守卫语义不变。
+import * as AppBindings from '../wailsjs/go/wailsapp/App.js';
+import * as AIBindingsModule from '../wailsjs/go/wailsapp/AIBindings.js';
+import * as AIProviderBindingsModule from '../wailsjs/go/wailsapp/AIProviderBindings.js';
+import * as wailsRuntimeShim from '../wailsjs/runtime/runtime.js';
+
+(window as any).go = {
+  wailsapp: {
+    App: AppBindings,
+    AIBindings: AIBindingsModule,
+    AIProviderBindings: AIProviderBindingsModule,
+  },
+};
+(window as any).runtime = wailsRuntimeShim;
 
 (() => {
   let link = document.querySelector<HTMLLinkElement>("link[rel='icon']");
@@ -69,6 +85,10 @@ applyStoredThemePackage();
 
 // 禁用浏览器默认右键菜单（完全拦截，以便使用统一的自定义玻璃菜单）
 document.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// Wails v3 拖放机制：只有带 data-file-drop-target 属性的元素才接受文件拖放。
+// 挂在 body 上等效 v2 的全局 OnFileDrop 通配模式，具体落点由各处回调自行判定。
+document.body.setAttribute('data-file-drop-target', 'true');
 
 // 全局未捕获错误捕获，帮助定位白屏原因
 window.addEventListener('error', (e) => {

@@ -6,9 +6,10 @@ import (
 	"time"
 
 	ai "luminssh-go/internal/ai"
+	"luminssh-go/internal/wailsevents"
 	"luminssh-go/internal/mcpserver"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	
 )
 
 const mcpApprovalTimeout = 5 * time.Minute
@@ -33,7 +34,7 @@ func (r *mcpActivityReporter) ReportActivity(event mcpserver.ActivityEvent) {
 	if r == nil || r.app == nil || r.app.ctx == nil {
 		return
 	}
-	runtime.EventsEmit(r.app.ctx, "mcp-activity", event)
+	wailsevents.Emit("mcp-activity", event)
 }
 
 func (r *mcpActivityReporter) RequestApproval(event mcpserver.ActivityEvent) (bool, error) {

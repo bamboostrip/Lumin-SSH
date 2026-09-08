@@ -2,24 +2,13 @@
 
 package platformruntime
 
-import (
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/mac"
-)
-
-// ApplyOptions 设置 macOS 窗口选项。
-func ApplyOptions(opts *options.App, _ bool) {
-	if opts == nil {
-		return
-	}
-	opts.Mac = &mac.Options{
-		TitleBar:             mac.TitleBarHiddenInset(),
-		Appearance:           mac.DefaultAppearance,
-		WebviewIsTransparent: false,
-		WindowIsTranslucent:  false,
-		About: &mac.AboutInfo{
-			Title:   "Lumin",
-			Message: "Lightweight SSH Client",
-		},
-	}
+// AdjustWindowSize macOS 上不做屏幕自适应收缩。
+func AdjustWindowSize(width, height int) (int, int) {
+	return width, height
 }
+
+// WebviewUserDataPath macOS 上由 WKWebView 自行管理数据目录。
+func WebviewUserDataPath() string { return "" }
+
+// WebviewGPUArgs macOS 上无需禁用 GPU 的启动参数。
+func WebviewGPUArgs(bool) []string { return nil }

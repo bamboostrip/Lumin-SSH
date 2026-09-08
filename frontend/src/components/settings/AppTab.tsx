@@ -25,6 +25,7 @@ function GithubIcon({ size = 24 }: { size?: number }) {
 import { AboutLink } from './SharedComponents';
 import { settings } from './settingDefinitions';
 import { getFreshContributorsCache, getResolvedThemeMode, loadContributors, type Contributor } from './appTabContributors';
+import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime.js';
 
 export interface AppTabProps {
   CURRENT_VERSION: string;
@@ -239,14 +240,14 @@ export default function AppTab({ CURRENT_VERSION, BUILD_TIME, updateInfo, checki
         <div className="flex gap-2.5 flex-wrap mt-0.5">
           <button
             type="button"
-            onClick={() => window.runtime?.BrowserOpenURL?.(APP_GITHUB_ANDROID_REPO_URL)}
+            onClick={() => BrowserOpenURL(APP_GITHUB_ANDROID_REPO_URL)}
             className="rounded-lg px-3 py-1.5 text-sm font-semibold cursor-pointer border border-line bg-canvas text-accent"
           >
             {$t('打开 Android 仓库')}
           </button>
           <button
             type="button"
-            onClick={() => window.runtime?.BrowserOpenURL?.(APP_GITHUB_ANDROID_RELEASES_URL)}
+            onClick={() => BrowserOpenURL(APP_GITHUB_ANDROID_RELEASES_URL)}
             className="rounded-lg px-3 py-1.5 text-sm font-medium cursor-pointer border border-line bg-canvas text-secondary"
           >
             {$t('Android 发行版')}
@@ -276,7 +277,7 @@ export default function AppTab({ CURRENT_VERSION, BUILD_TIME, updateInfo, checki
             : contributors.map((item) => (
                 <div
                   key={item.login}
-                  onClick={() => window.runtime?.BrowserOpenURL?.(item.profileUrl)}
+                  onClick={() => BrowserOpenURL(item.profileUrl)}
                   className="flex items-center gap-3.5 px-[18px] py-4 rounded-md cursor-pointer transition-all duration-[200ms] text-left bg-overlay border border-line hover:border-accent-border hover:bg-sunken"
                 >
                   <img

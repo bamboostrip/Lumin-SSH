@@ -13,11 +13,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"luminssh-go/internal/wailsevents"
 	"luminssh-go/internal/mcpserver"
 	"luminssh-go/internal/transfer"
 
 	"github.com/pkg/sftp"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	
 	"golang.org/x/crypto/ssh"
 )
 
@@ -189,7 +190,7 @@ func (p *progressReader) emit(current int64) {
 		}
 	}
 	if p.ctx != nil {
-		runtime.EventsEmit(p.ctx, p.eventName, pct)
+		wailsevents.Emit(p.eventName, pct)
 	}
 }
 

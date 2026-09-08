@@ -1,14 +1,10 @@
 /**
  * Wails 桥接全局对象类型声明
  *
- * 类型全部复用 Wails 自动生成的声明文件：
- *   - wailsjs/go/wailsapp/*.d.ts    （Go 方法绑定）
- *   - wailsjs/go/models.ts          （Go 结构体模型）
- * 迁移期不重新生成、不手改，仅在此处聚合声明。
- *
- * 注意：window.go 声明为必选（非 optional），以兼容现有代码中
- * `window.go.wailsapp.App.xxx()` 的直接调用方式；纯浏览器 dev
- * 场景（无 wails 环境）由代码中的可选链守卫（window.go?.）处理。
+ * Wails v3 迁移说明：v3 移除了 window.go / window.runtime 全局，绑定与运行时
+ * 走纯模块（wailsjs/ 目录为兼容 shim：绑定指向 v3 生成代码，runtime 指向
+ * @wailsio/runtime）。main.tsx 启动时用模块实现重新挂载这两个全局，
+ * 历史代码（AI 桥接等 30+ 处）的可选链调用方式保持不变。
  */
 import type * as App from '../../wailsjs/go/wailsapp/App';
 import type * as AIBindings from '../../wailsjs/go/wailsapp/AIBindings';
@@ -16,18 +12,16 @@ import type * as AIProviderBindings from '../../wailsjs/go/wailsapp/AIProviderBi
 
 declare global {
   interface Window {
-    go: {
+    /** v3 已移除该全局；main.tsx 用 v3 绑定模块重新挂载，供历史桥接代码使用 */
+    go?: {
       wailsapp: {
         App: typeof App;
         AIBindings: typeof AIBindings;
         AIProviderBindings: typeof AIProviderBindings;
       };
     };
-    /** wails runtime 全局（部分场景直接挂在 window 上） */
-    runtime?: {
-      BrowserOpenURL?: (url: string) => void;
-      [key: string]: unknown;
-    };
+    /** v3 已移除该全局；main.tsx 用 @wailsio/runtime 兼容 shim 重新挂载 */
+    runtime?: typeof import('../../wailsjs/runtime/runtime');
     /** 文件管理器/编辑器状态注入（App 调用处桥接，AI 上下文快照读取） */
     __luminEditorStates?: Record<string, { openFilePaths?: unknown; activeFilePath?: unknown }>;
     __luminFileManagerPaths?: Record<string, unknown>;

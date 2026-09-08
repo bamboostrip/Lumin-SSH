@@ -3,6 +3,7 @@ import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 import { APP_GITHUB_RELEASE_API, APP_VERSION } from '../config.ts';
 import { EventsOn } from '../../wailsjs/runtime/runtime.js';
 import { t, type I18nKey } from '../i18n.ts';
+import { BrowserOpenURL } from '../../wailsjs/runtime/runtime.js';
 
 const RELEASE_API = APP_GITHUB_RELEASE_API;
 
@@ -262,7 +263,7 @@ export function useUpdateChecker({ onResult, onError }: UseUpdateCheckerOptions 
     if (!isGithubAssetDownloadUrl(updateInfo.url) || !/\.(exe|deb|rpm|dmg)$/.test(packageName)) {
       // 非可安装资产：最多打开浏览器，绝不进入热替换
       if (updateInfo.url) {
-        window.runtime?.BrowserOpenURL?.(updateInfo.url);
+        BrowserOpenURL(updateInfo.url);
       }
       throw new Error('未找到可安装的更新包，已取消自动替换');
     }

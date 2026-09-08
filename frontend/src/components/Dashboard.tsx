@@ -12,6 +12,7 @@ import { DashboardStatusOverview } from './dashboard/DashboardStatusOverview.tsx
 import { type DashboardSessionLike } from './dashboard/dashboardTypes.ts';
 import ServerList from './ServerList.tsx';
 import type { MenuItem } from './ui';
+import { GetLocalShells } from '../../wailsjs/go/wailsapp/App.js';
 
 export interface DashboardProps {
   editorServer: (config.Connection & { authType?: string }) | null;
@@ -133,7 +134,7 @@ export default function Dashboard({
   const moveGroupMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    window.go?.wailsapp?.App?.GetLocalShells?.()
+    GetLocalShells()
       .then((list) => {
         setLocalShells(list || []);
       })

@@ -10,12 +10,13 @@ import (
 	"strings"
 	"time"
 
+	"luminssh-go/internal/wailsevents"
 	"luminssh-go/internal/config"
 	"luminssh-go/internal/localsftp"
 	"luminssh-go/internal/localsysinfo"
 	"luminssh-go/internal/terminalstream"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/ianaindex"
 	"golang.org/x/text/transform"
@@ -113,14 +114,14 @@ func (m *SSHManager) pipeOutput(sessionId string, r io.Reader, historyStream *te
 					}
 					m.mu.Unlock()
 					if shouldEmitCwd && m.ctx != nil {
-						runtime.EventsEmit(m.ctx, "ssh-terminal-cwd-"+sessionId, cwd)
+						wailsevents.Emit("ssh-terminal-cwd-"+sessionId, cwd)
 					}
 				}
 				for _, command := range commands {
 					if command == "" || m.ctx == nil {
 						continue
 					}
-					runtime.EventsEmit(m.ctx, "ssh-command-executed", map[string]string{
+					wailsevents.Emit("ssh-command-executed", map[string]string{
 						"sessionId": eventSessionId,
 						"command":   command,
 						"time":      time.Now().Format(time.RFC3339),
@@ -140,7 +141,7 @@ func (m *SSHManager) pipeOutput(sessionId string, r io.Reader, historyStream *te
 			if m.app != nil {
 				m.app.WriteWsOutput(sessionId, data)
 			} else if m.ctx != nil {
-				runtime.EventsEmit(m.ctx, "terminal-data-"+sessionId, string(data))
+				wailsevents.Emit("terminal-data-"+sessionId, string(data))
 			}
 		}
 		if err != nil {
@@ -207,7 +208,7 @@ func (m *SSHManager) pipeLocalOutput(sessionId string, cptyHandle any, stdoutPip
 					}
 					m.mu.Unlock()
 					if shouldEmitCwd && m.ctx != nil {
-						runtime.EventsEmit(m.ctx, "ssh-terminal-cwd-"+sessionId, cwd)
+						wailsevents.Emit("ssh-terminal-cwd-"+sessionId, cwd)
 					}
 				}
 			} else {
@@ -225,7 +226,7 @@ func (m *SSHManager) pipeLocalOutput(sessionId string, cptyHandle any, stdoutPip
 			if m.app != nil {
 				m.app.WriteWsOutput(sessionId, data)
 			} else if m.ctx != nil {
-				runtime.EventsEmit(m.ctx, "terminal-data-"+sessionId, string(data))
+				wailsevents.Emit("terminal-data-"+sessionId, string(data))
 			}
 			if err != nil {
 				return
@@ -371,7 +372,7 @@ func (m *SSHManager) StartLocalCwdMonitor(sessionId string) {
 				}
 				m.mu.Unlock()
 				if changed && m.ctx != nil {
-					runtime.EventsEmit(m.ctx, "ssh-terminal-cwd-"+sessionId, cwd)
+					wailsevents.Emit("ssh-terminal-cwd-"+sessionId, cwd)
 				}
 			}
 		}

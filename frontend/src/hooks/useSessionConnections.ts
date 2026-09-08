@@ -482,7 +482,7 @@ export default function useSessionConnections(deps: UseSessionConnectionsDeps): 
       const serverObj = { id: String(session.serverId), name: String(session.serverName), host: 'localhost' };
       setConnectingServers((prev) => [...prev, { server: serverObj, sessionId: session.id!, startTime: Date.now() }]);
       try {
-        await window.go.wailsapp.App.ConnectLocal(session.id!, String(session.serverName), String(session.shellPath || ''), '');
+        await window.go?.wailsapp.App.ConnectLocal(session.id!, String(session.serverName), String(session.shellPath || ''), '');
         // 本地/串口复用同一 sessionId 重连：自增 wsRebuildKey 让 Terminal 重建 WebSocket
         if (!deferState) {
           setSessions((prev) =>
@@ -512,7 +512,7 @@ export default function useSessionConnections(deps: UseSessionConnectionsDeps): 
       setConnectingServers((prev) => [...prev, { server: serverObj, sessionId: session.id!, startTime: Date.now() }]);
       try {
         const config = session.serialConfig as { port: string; baudRate: number; dataBits: number; stopBits: number; parity: string };
-        await window.go.wailsapp.App.ConnectSerial(
+        await window.go?.wailsapp.App.ConnectSerial(
           session.id!,
           String(session.serverName),
           config.port,
@@ -1626,7 +1626,7 @@ export default function useSessionConnections(deps: UseSessionConnectionsDeps): 
     setContentTab('terminal');
     setConnectingServers((prev) => [...prev, { server: { id: String(newSession.serverId), name, host: 'localhost' }, sessionId, startTime: Date.now() }]);
 
-    window.go.wailsapp.App.ConnectLocal(sessionId, name, shellPath, '')
+    window.go?.wailsapp.App.ConnectLocal(sessionId, name, shellPath, '')
       .then(() => {
         setSessions((prev) =>
           prev.map((s) => (s.id === sessionId ? { ...s, status: 'connected' } : s))
@@ -1664,7 +1664,7 @@ export default function useSessionConnections(deps: UseSessionConnectionsDeps): 
     setContentTab('terminal');
     setConnectingServers((prev) => [...prev, { server: { id: String(newSession.serverId), name: displayName, host: config.port }, sessionId, startTime: Date.now() }]);
 
-    window.go.wailsapp.App.ConnectSerial(
+    window.go?.wailsapp.App.ConnectSerial(
       sessionId,
       displayName,
       config.port,

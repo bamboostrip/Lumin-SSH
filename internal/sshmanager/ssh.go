@@ -17,13 +17,14 @@ import (
 	"sync"
 	"time"
 
+	"luminssh-go/internal/wailsevents"
 	"luminssh-go/internal/config"
 	"luminssh-go/internal/localsftp"
 	"luminssh-go/internal/terminalstream"
 	"luminssh-go/internal/transfer"
 
 	"github.com/pkg/sftp"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 )
@@ -210,7 +211,7 @@ func (s transferSink) Emit(event string, payload any) {
 		}
 	}
 	if s.manager != nil && s.manager.ctx != nil {
-		runtime.EventsEmit(s.manager.ctx, event, payload)
+		wailsevents.Emit(event, payload)
 	}
 }
 
@@ -393,7 +394,7 @@ func (m *SSHManager) runPostAuthStep(ctx context.Context, cancel context.CancelF
 			return fmt.Errorf("连接已取消")
 		case <-noticeTimer.C:
 			if m != nil && m.ctx != nil {
-				runtime.EventsEmit(m.ctx, "ssh-status", map[string]interface{}{
+				wailsevents.Emit("ssh-status", map[string]interface{}{
 					"sessionId": sessionId,
 					"status":    "post-auth-slow",
 					"message":   "SSH 已认证，但打开终端通道响应较慢，服务器可能正在恢复或负载较高。",
@@ -553,7 +554,7 @@ func (m *SSHManager) Connect(sessionId string, conn Connection) error {
 				errStr := dialErr.Error()
 				if strings.Contains(errStr, "connection refused") {
 					if m.ctx != nil {
-						runtime.EventsEmit(m.ctx, "ssh-connection-failed", map[string]interface{}{
+						wailsevents.Emit("ssh-connection-failed", map[string]interface{}{
 							"sessionId": sessionId,
 							"connId":    conn.ID,
 							"host":      conn.Host,
@@ -609,7 +610,7 @@ func (m *SSHManager) Connect(sessionId string, conn Connection) error {
 						}
 						isNew := len(pending.OldKeys) == 0
 						m.mu.RUnlock()
-						runtime.EventsEmit(m.ctx, "ssh-host-key-changed", map[string]interface{}{
+						wailsevents.Emit("ssh-host-key-changed", map[string]interface{}{
 							"sessionId":       sessionId,
 							"hostname":        hostname,
 							"host":            conn.Host,
@@ -626,7 +627,7 @@ func (m *SSHManager) Connect(sessionId string, conn Connection) error {
 				if strings.Contains(errStr, "unable to authenticate") ||
 					strings.Contains(errStr, "no supported methods remain") {
 					if m.ctx != nil {
-						runtime.EventsEmit(m.ctx, "ssh-auth-failed", map[string]interface{}{
+						wailsevents.Emit("ssh-auth-failed", map[string]interface{}{
 							"sessionId": sessionId,
 							"connId":    conn.ID,
 							"host":      conn.Host,
@@ -740,7 +741,7 @@ func (m *SSHManager) Connect(sessionId string, conn Connection) error {
 		go m.initSFTPClient(sessionId, connKey, conn, client)
 	}
 	if m.ctx != nil {
-		runtime.EventsEmit(m.ctx, "ssh-command-ready", map[string]interface{}{
+		wailsevents.Emit("ssh-command-ready", map[string]interface{}{
 			"sessionId": sessionId,
 		})
 	}
@@ -945,7 +946,7 @@ func (m *SSHManager) initSFTPClient(sessionId string, connKey string, conn Conne
 			event["openwrt"] = true
 			event["installCmd"] = sftpInstallCmd
 		}
-		runtime.EventsEmit(m.ctx, "ssh-status", event)
+		wailsevents.Emit("ssh-status", event)
 	}
 }
 
@@ -987,7 +988,7 @@ func (m *SSHManager) disconnectAndNotify(sessionId string, expectedSession *ssh.
 		connectionClosed = !clientAlive || (terminalsBefore > 0 && terminalsAfter == 0)
 	}
 
-	runtime.EventsEmit(m.ctx, "ssh-disconnected", map[string]interface{}{
+	wailsevents.Emit("ssh-disconnected", map[string]interface{}{
 		"sessionId":        sessionId,
 		"parentSessionId":  parentSessionId,
 		"terminalIds":      []string{sessionId},
@@ -1022,7 +1023,7 @@ func (m *SSHManager) disconnectCurrentGen(sessionId string, gen uint64) {
 	if !m.Disconnect(sessionId) || m.ctx == nil {
 		return
 	}
-	runtime.EventsEmit(m.ctx, "ssh-disconnected", map[string]interface{}{
+	wailsevents.Emit("ssh-disconnected", map[string]interface{}{
 		"sessionId":        sessionId,
 		"parentSessionId":  parentSessionId,
 		"terminalIds":      []string{sessionId},

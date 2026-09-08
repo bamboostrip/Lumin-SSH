@@ -13,6 +13,7 @@ import (
 	"time"
 
 	ai "luminssh-go/internal/ai"
+	"luminssh-go/internal/wailsevents"
 	"luminssh-go/internal/config"
 	"luminssh-go/internal/localopen"
 	"luminssh-go/internal/mcp"
@@ -21,7 +22,7 @@ import (
 	"luminssh-go/internal/sshmanager"
 
 	"github.com/pkg/sftp"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	
 	"golang.org/x/crypto/ssh"
 )
 
@@ -349,7 +350,7 @@ func (b *AIBindings) SaveAIGlobalSettings(jsonStr string) error {
 	}
 	if previous.MCPActivityVisible != current.MCPActivityVisible {
 		if b != nil && b.app != nil && b.app.ctx != nil {
-			runtime.EventsEmit(b.app.ctx, "mcp-activity-visibility-changed", current.MCPActivityVisible)
+			wailsevents.Emit("mcp-activity-visibility-changed", current.MCPActivityVisible)
 		}
 	}
 	previous.CurrentProviderID = ""

@@ -7,8 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	
 	"golang.org/x/crypto/ssh"
+	"luminssh-go/internal/wailsevents"
 )
 
 func (m *SSHManager) watchClient(connKey string, client *ssh.Client) {
@@ -185,7 +186,7 @@ func (m *SSHManager) cleanupClientTransport(connKey string, client *ssh.Client, 
 		if parentSessionId == "" {
 			parentSessionId = terminalIds[0]
 		}
-		runtime.EventsEmit(m.ctx, "ssh-disconnected", map[string]interface{}{
+		wailsevents.Emit("ssh-disconnected", map[string]interface{}{
 			"sessionId":        terminalIds[0],
 			"parentSessionId":  parentSessionId,
 			"terminalIds":      terminalIds,

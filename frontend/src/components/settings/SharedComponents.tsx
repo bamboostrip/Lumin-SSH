@@ -2,6 +2,7 @@ import React from 'react';
 import { t as $t, type I18nKey } from '../../i18n.ts';
 import { Switch } from '../ui';
 import { cn } from '../../utils/cn.ts';
+import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime.js';
 
 const SETTINGS_TAB_GAP = 14;
 
@@ -149,7 +150,7 @@ export function AboutLink({ icon, title, url, definition }: AboutLinkProps) {
   return (
     <div
       data-settings-field-id={definition?.id}
-      onClick={() => window.runtime?.BrowserOpenURL?.(url)}
+      onClick={() => BrowserOpenURL(url)}
       className="flex flex-col items-center justify-center gap-2.5 px-3 py-4 min-h-24 rounded-[var(--radius-md)] cursor-pointer transition-all duration-[200ms] text-center border border-line hover:border-accent-border hover:bg-sunken shadow-sm hover:shadow-md"
     >
       <div className="flex items-center justify-center w-10 h-10 text-secondary">

@@ -12,7 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	
+	"luminssh-go/internal/wailsevents"
 )
 
 const (
@@ -288,7 +289,7 @@ func (m *SSHManager) ReconnectDisconnectedSession(sessionId string) (ReconnectOu
 	m.mu.Unlock()
 
 	if m.ctx != nil {
-		runtime.EventsEmit(m.ctx, "ssh-mcp-reconnected", map[string]interface{}{
+		wailsevents.Emit("ssh-mcp-reconnected", map[string]interface{}{
 			"sessionId":       record.ParentSessionId,
 			"connKey":         record.ConnKey,
 			"oldToNew":        oldToNew,
@@ -335,7 +336,7 @@ func (m *SSHManager) recordMCPReconnectFailure(parentSessionId string, connKey s
 
 	log.Printf("[mcp-reconnect] 重连失败 parent=%s connKey=%s fails=%d err=%v", parentSessionId, connKey, fails, cause)
 	if fails%mcpReconnectNotifyEvery == 0 && m.ctx != nil {
-		runtime.EventsEmit(m.ctx, "mcp-reconnect-failed", map[string]interface{}{
+		wailsevents.Emit("mcp-reconnect-failed", map[string]interface{}{
 			"sessionId": parentSessionId,
 			"connKey":   connKey,
 			"attempts":  fails,

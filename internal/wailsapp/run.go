@@ -1,12 +1,11 @@
 package wailsapp
 
-// ponytail: 应用入口逻辑（原 main.go 的 Wails 启动 + 托盘 + 生命周期回调）。
+// ponytail: 应用入口逻辑（v3 迁移：wails.Run(options) → application.New + Window + Run）。
 // main.go 仅保留 //go:embed（路径相对根目录）并把资源注入 Run。
-// 回调与 App 同包，可直接访问未导出字段（ctx/quitting/closeAck/configManager），
-// 故无需为迁移新增任何导出方法，绑定结构体方法集零变化。
+// v2 的 OnStartup/OnBeforeClose 分别由 App.ServiceStartup 与
+// 窗口 WindowClosing 钩子（e.Cancel 拦截）承接；Bind 改为 Services。
 
 import (
-	"context"
 	"embed"
 	"io"
 	"log"
@@ -20,14 +19,12 @@ import (
 	"luminssh-go/internal/platformruntime"
 
 	"github.com/energye/systray"
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 // forceShowWindow 唤醒隐藏到托盘/久置最小化的窗口。
-// 不先 Hide 再 Show：久置后 Show 失败会把窗口永久卡在隐藏态。
+// 不先 Restore 再 Show 会失败的场景：久置后 Show 失败会把窗口永久卡在隐藏态。
 // 先走平台原生激活抢前台（Windows 久置后 SetForeground 常被拒），再异步走 Wails 恢复。
 // 原生激活放前后各一次：覆盖「仅最小化」和「托盘隐藏」两种状态。
 // ponytail: 托盘消息线程只做调度，绝不在这里同步执行窗口调用。
@@ -37,19 +34,21 @@ import (
 // 消息发送，无超时），主线程一旦卡死（SSH 断线等）托盘线程会无限期阻塞，
 // 单击/双击/右键全部无响应，只能重启软件恢复。全部异步化后即使窗口操作
 // 阻塞，托盘消息泵也能立即返回继续响应。
-func forceShowWindow(ctx context.Context) {
+func forceShowWindow() {
 	defer func() { recover() }()
 	go func() {
 		defer func() { recover() }()
 		platformruntime.ForceShowWindow()
 	}()
-	if ctx != nil {
-		go func() {
-			defer func() { recover() }()
-			wailsruntime.WindowUnminimise(ctx)
-			wailsruntime.WindowShow(ctx)
-		}()
-	}
+	go func() {
+		defer func() { recover() }()
+		if app := application.Get(); app != nil {
+			if w := app.Window.Current(); w != nil {
+				w.Restore() // 等价 v2 WindowUnminimise
+				w.Show()
+			}
+		}
+	}()
 	go func() {
 		defer func() { recover() }()
 		platformruntime.ForceShowWindow()
@@ -70,7 +69,7 @@ func setupSystray(app *App) {
 
 		showMain := func() {
 			log.Println("[Systray] showMain invoked, awakening main window")
-			forceShowWindow(app.ctx)
+			forceShowWindow()
 		}
 
 		if runtime.GOOS == "darwin" {
@@ -209,7 +208,7 @@ var logExeDirSeam = ""
 //  3. exe 同级目录 lumin.log —— 便携版场景：对方解压运行后日志就在运行目录，
 //     无需进入隐藏的 %AppData%，直接取回即可；安装版（Program Files）写失败自动忽略
 // 追加模式，0600，单文件 5MB 运行期轮转。
-// 返回清理函数（关闭文件句柄），应在 wails.Run 返回后调用。
+// 返回清理函数（关闭文件句柄），应在应用 Run 返回后调用。
 func initLogFile() func() {
 	var writers []io.Writer
 	var closers []io.Closer
@@ -248,7 +247,7 @@ func initLogFile() func() {
 	}
 }
 
-// Run 启动 Wails 应用。embed 资源由 main 包注入（//go:embed 路径必须相对根目录的 main.go）。
+// Run 启动应用。embed 资源由 main 包注入（//go:embed 路径必须相对根目录的 main.go）。
 func Run(assets embed.FS, icon []byte) {
 	// 日志落盘：先于一切业务日志，保证 [channel-diag] 等诊断可追溯
 	closeLogs := initLogFile()
@@ -272,79 +271,99 @@ func Run(assets embed.FS, icon []byte) {
 	}
 	app.onBeforeQuit = cleanupTray
 
-	// Create application with options
-	opts := &options.App{
-		Title:     "Lumin",
-		Width:     1440,
-		Height:    900,
-		Frameless: true,
-		DragAndDrop: &options.DragAndDrop{
-			EnableFileDrop: true,
+	// v3：窗口级 GPU 禁用改由 WebView2 启动参数实现（v2 的 WebviewGpuIsDisabled 已移除）
+	gpuDisabled := app.configManager != nil && app.configManager.GetWebviewGpuDisabled()
+
+	wailsApp := application.New(application.Options{
+		Name:        "Lumin",
+		Description: "Lightweight SSH Client",
+		Icon:        icon,
+		Services: []application.Service{
+			application.NewService(app),
+			application.NewService(NewAIBindings(app)),
+			application.NewService(NewAIProviderBindings(app.configManager)),
 		},
-		AssetServer: &assetserver.Options{
-			Assets: assets,
+		Assets: application.AssetOptions{
+			Handler: application.AssetFileServerFS(assets),
 		},
-		BackgroundColour: &options.RGBA{R: 8, G: 12, B: 20, A: 255}, // #080c14
-		OnStartup: func(ctx context.Context) {
-			// 先挂托盘：startup 里 MCP 等可能阻塞，托盘若排后面会出现「窗口已能关到托盘但图标很久才出」。
-			app.ctx = ctx
-			platformruntime.AttachFramelessWindowFix()
-			go func() {
-				time.Sleep(200 * time.Millisecond)
-				platformruntime.AttachFramelessWindowFix()
-				time.Sleep(1 * time.Second)
-				platformruntime.AttachFramelessWindowFix()
-			}()
-			// macOS: 窗口隐藏到托盘后，点 Dock 图标恢复窗口。
-			// Wails 的 AppDelegate 未实现 applicationShouldHandleReopen:hasVisibleWindows:。
-			platformruntime.SetupDockReopenHandler(func() { forceShowWindow(app.ctx) })
-			platformruntime.StartSystray(func() { setupSystray(app) })
-			// 启动单实例 socket：二次启动会发 show 指令，经 forceShowWindow 走托盘同一路径唤起主窗口。
-			platformruntime.StartSingletonServer(func() {
-				forceShowWindow(app.ctx)
-			})
-			app.startup(ctx)
+		Windows: application.WindowsOptions{
+			// 固定 WebView2 用户数据根目录为 %AppData%\Lumin，避免便携包改名后按 exe 名多出
+			// Lumin-x.y.z-portable.exe/EBWebView。引擎会在其下自建 EBWebView，与 config 同级。
+			WebviewUserDataPath:   platformruntime.WebviewUserDataPath(),
+			AdditionalBrowserArgs: platformruntime.WebviewGPUArgs(gpuDisabled),
 		},
-		OnShutdown: func(ctx context.Context) {
+		OnShutdown: func() {
 			app.shutdown()
 			platformruntime.StopSingletonServer()
 			mcpbridge.StopServer(newMCPHost(app))
 			cleanupTray()
 		},
-		// 拦截窗口关闭：弹出对话框让用户选择退出 / 系统托盘 / 取消
-		OnBeforeClose: func(ctx context.Context) bool {
-			if app.quitting.Load() {
-				return false // 用户确认退出，放行
+	})
+
+	// 根据屏幕分辨率自适应窗口大小（Windows 上按屏幕 90% 收缩，其它平台原样返回）
+	width, height := platformruntime.AdjustWindowSize(1440, 900)
+
+	_, devtools := os.LookupEnv("LUMIN_OPEN_DEVTOOLS")
+
+	mainWindow := wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
+		Name:                   "main",
+		Title:                  "Lumin",
+		Width:                  width,
+		Height:                 height,
+		Frameless:              true,
+		EnableFileDrop:         true,
+		BackgroundType:         application.BackgroundTypeSolid,
+		BackgroundColour:       application.NewRGBA(8, 12, 20, 255), // #080c14
+		OpenInspectorOnStartup: devtools,
+		DevToolsEnabled:        devtools,
+		Mac: application.MacWindow{
+			// 等价 v2 mac.TitleBarHiddenInset()：透明标题栏 + 隐藏标题 + 内容满窗
+			TitleBar: application.MacTitleBar{
+				AppearsTransparent: true,
+				HideTitle:          true,
+				FullSizeContent:    true,
+			},
+			Appearance: application.DefaultAppearance,
+		},
+		Windows: application.WindowsWindow{
+			Theme: application.Dark,
+		},
+	})
+
+	// 文件拖放（v3 机制）：拖放落到 data-file-drop-target 元素后由 WebView 转给 Go 的
+	// WindowFilesDropped 窗口事件。这里把文件路径转发回前端 "wails:file-drop" 事件，
+	// 配合前端 wailsjs/runtime 兼容层复刻 v2 的 OnFileDrop(x, y, paths) 语义。
+	mainWindow.OnWindowEvent(events.Common.WindowFilesDropped, func(e *application.WindowEvent) {
+		files := e.Context().DroppedFiles()
+		x, y := 0, 0
+		if details := e.Context().DropTargetDetails(); details != nil {
+			x, y = details.X, details.Y
+		}
+		wailsApp.Event.Emit("wails:file-drop", x, y, files)
+	})
+
+	// 拦截窗口关闭（等价 v2 OnBeforeClose）：弹前端对话框让用户选择退出 / 系统托盘 / 取消。
+	// v3 机制：Hook 先于内部强制关闭监听器执行，Cancel 后本次 WM_CLOSE 被吞掉；
+	// 用户确认退出（DoQuit → app.Quit）时不 Cancel，走内部监听器正常关闭。
+	mainWindow.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
+		if app.quitting.Load() {
+			return // 用户确认退出，放行
+		}
+		app.closeAck.Store(false) // 重置，等待本次前端响应
+		wailsApp.Event.Emit("close-request")
+		// 超时兜底：仅当前端 5 秒内无响应（崩溃/JS 异常）时强制退出；
+		// 前端选 tray/cancel 会调 AckClose 置位 closeAck，跳过强制退出
+		go func() {
+			time.Sleep(5 * time.Second)
+			if !app.quitting.Load() && !app.closeAck.Load() {
+				// 前端无响应时也必须复用统一退出清理，先断开 SSH 再退出。
+				app.DoQuit()
 			}
-			app.closeAck.Store(false) // 重置，等待本次前端响应
-			wailsruntime.EventsEmit(ctx, "close-request")
-			// 超时兜底：仅当前端 5 秒内无响应（崩溃/JS 异常）时强制退出；
-			// 前端选 tray/cancel 会调 AckClose 置位 closeAck，跳过强制退出
-			go func() {
-				time.Sleep(5 * time.Second)
-				if !app.quitting.Load() && !app.closeAck.Load() {
-					// 前端无响应时也必须复用统一退出清理，先断开 SSH 再退出。
-					app.DoQuit()
-				}
-			}()
-			return true // 取消关闭，由前端弹窗决定后续操作
-		},
-		Bind: []interface{}{
-			app,
-			NewAIBindings(app),
-			NewAIProviderBindings(app.configManager),
-		},
-	}
+		}()
+		e.Cancel()
+	})
 
-	if _, ok := os.LookupEnv("LUMIN_OPEN_DEVTOOLS"); ok {
-		opts.Debug.OpenInspectorOnStartup = true
-	}
-
-	// 应用平台特定选项（平台特定实现）
-	gpuDisabled := app.configManager != nil && app.configManager.GetWebviewGpuDisabled()
-	platformruntime.ApplyOptions(opts, gpuDisabled)
-
-	err := wails.Run(opts)
+	err := wailsApp.Run()
 	// 退出后关闭日志文件句柄，避免残留
 	closeLogs()
 

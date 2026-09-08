@@ -15,7 +15,8 @@ import (
 
 	aitypes "luminssh-go/internal/aitypes"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	
+	"luminssh-go/internal/wailsevents"
 )
 
 // ─── 通用接口 ─────────────────────────────────────────────
@@ -1140,7 +1141,7 @@ func (c *ConfigManager) emitSyncEvent(event string, data map[string]interface{})
 		return
 	}
 	if c.wailsCtx != nil {
-		runtime.EventsEmit(c.wailsCtx, event, data)
+		wailsevents.Emit(event, data)
 	}
 }
 

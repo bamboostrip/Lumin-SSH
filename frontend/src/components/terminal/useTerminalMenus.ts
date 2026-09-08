@@ -3,6 +3,7 @@ import type * as React from 'react';
 import type { Terminal as XTerm } from '@xterm/xterm';
 import { readClipboardText } from '../../utils/terminalHelpers.ts';
 import type { I18nKey } from '../../i18n.ts';
+import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime.js';
 
 type LooseT = (key: I18nKey, vars?: Record<string, unknown>) => string;
 
@@ -82,11 +83,8 @@ export function useTerminalMenus(deps: {
 
   const openExternalUrl = (url: string) => {
     if (!url) return;
-    if (typeof window.runtime?.BrowserOpenURL === 'function') {
-      window.runtime.BrowserOpenURL(url);
-      return;
-    }
-    window.open(url, '_blank', 'noopener,noreferrer');
+    // v3：BrowserOpenURL 由 wailsjs shim 提供（无 wails 后端时内部降级 window.open）
+    void BrowserOpenURL(url);
   };
 
   const handleLinkMenuAction = (action: string) => {

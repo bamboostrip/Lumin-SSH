@@ -13,6 +13,15 @@ $hasNsis = $null -ne (Get-Command makensis -ErrorAction SilentlyContinue)
 # Ensure Go-installed tools (wails3) are reachable
 $env:PATH = "$env:USERPROFILE\go\bin;" + $env:PATH
 
+# Windows locks running executables, which would make the final Move-Item
+# overwrite fail with an obscure error. Fail fast with an actionable hint.
+$runningApps = Get-Process -Name "Lumin*" -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -and $_.Path.StartsWith((Join-Path $PSScriptRoot "bin"), [System.StringComparison]::OrdinalIgnoreCase) }
+if ($runningApps) {
+    Write-Error "Detected running Lumin instance(s) launched from bin\: $($runningApps.Path -join ', '). Close the app and retry."
+    exit 1
+}
+
 $mode = if ($hasNsis) { "portable + installer" } else { "portable only (NSIS not found, installer skipped)" }
 Write-Host "`n[1/2] Building with Wails v3 ($mode)..." -ForegroundColor Yellow
 
@@ -43,14 +52,24 @@ if ($upxCmd) {
 
 Write-Host "`n[2/2] Renaming output files..." -ForegroundColor Yellow
 $portableDest = "bin\Lumin-V$version-portable.exe"
-Move-Item -Path "bin\Lumin.exe" -Destination $portableDest -Force
+try {
+    Move-Item -Path "bin\Lumin.exe" -Destination $portableDest -Force -ErrorAction Stop
+} catch {
+    Write-Error "Failed to rename portable exe: $($_.Exception.Message). If the file is in use, close the running Lumin app and retry."
+    exit 1
+}
 
 Write-Host "`n==============================================" -ForegroundColor Cyan
 Write-Host "  SUCCESS!" -ForegroundColor Cyan
 Write-Host "  Portable:  $portableDest" -ForegroundColor Green
 if ($hasNsis) {
     $setupDest = "bin\Lumin-V$version-amd64-installer.exe"
-    Move-Item -Path "bin\Lumin-amd64-installer.exe" -Destination $setupDest -Force
+    try {
+        Move-Item -Path "bin\Lumin-amd64-installer.exe" -Destination $setupDest -Force -ErrorAction Stop
+    } catch {
+        Write-Error "Failed to rename installer exe: $($_.Exception.Message). If the file is in use, close the running Lumin app and retry."
+        exit 1
+    }
     Write-Host "  Installer: $setupDest" -ForegroundColor Green
 }
 Write-Host "==============================================" -ForegroundColor Cyan

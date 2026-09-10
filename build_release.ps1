@@ -26,6 +26,21 @@ if ($hasNsis) {
     Write-Warning "makensis not found in PATH - skipping NSIS installer. Install NSIS (e.g. winget install NSIS.NSIS) to build the installer."
 }
 
+# Compress the portable exe with UPX (v2 CLI did this via -upx; v3 has no flag).
+# Must run AFTER windows:package, which re-runs go build and overwrites bin\Lumin.exe.
+$upxCmd = (Get-Command upx -ErrorAction SilentlyContinue).Source
+if (-not $upxCmd -and (Test-Path "$env:LOCALAPPDATA\Microsoft\WinGet\Links\upx.exe")) {
+    $upxCmd = "$env:LOCALAPPDATA\Microsoft\WinGet\Links\upx.exe"
+}
+
+if ($upxCmd) {
+    Write-Host "`nCompressing portable exe with UPX..." -ForegroundColor Yellow
+    & $upxCmd --best --lzma "bin\Lumin.exe"
+    if ($LASTEXITCODE -ne 0) { Write-Warning "UPX compression failed - keeping uncompressed exe" }
+} else {
+    Write-Warning "upx not found - portable exe will not be compressed. Install with: winget install upx"
+}
+
 Write-Host "`n[2/2] Renaming output files..." -ForegroundColor Yellow
 $portableDest = "bin\Lumin-V$version-portable.exe"
 Move-Item -Path "bin\Lumin.exe" -Destination $portableDest -Force

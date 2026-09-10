@@ -11,7 +11,7 @@ info:
   description: "Lightweight SSH Client"
   copyright: "Copyright 2026 Lumin"
   comments: "Lightweight SSH Client"
-  version: "1.3.3"
+  version: "1.3.4"
 
 # Dev mode configuration
 dev_mode:

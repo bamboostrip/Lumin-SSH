@@ -6,8 +6,9 @@
  * 无需改动。类型声明见同目录 runtime.d.ts（保持 v2 签名不变）。
  *
  * 差异说明：
- *  - v3 事件回调收到 WailsEvent 对象（data 为参数数组），此处展开后回传，
- *    保持 v2 的 (...data) 回调签名。
+ *  - v3 事件回调收到 WailsEvent 对象；Go 侧 Event.Emit 单参数时 data 是原始值
+ *    （非数组，见 v3 event_manager.go 的 len(data)==1 分支），多参数时才是数组。
+ *    此处归一化为数组后展开，保持 v2 的 (...data) 回调签名。
  *  - v3 文件拖放改为 data-file-drop-target 属性 + Go 侧 WindowFilesDropped 事件，
  *    Go 侧转发为 "wails:file-drop" 事件，此处复刻 v2 的 OnFileDrop(x, y, paths) 回调。
  */
@@ -16,7 +17,12 @@ import { Browser, Clipboard, Events, Window } from '@wailsio/runtime';
 const currentWindow = Window.Get();
 
 function spreadEventData(callback) {
-  return (event) => callback(...(event?.data ?? []));
+  return (event) => {
+    const data = event?.data;
+    if (Array.isArray(data)) return callback(...data);
+    if (data === null || data === undefined) return callback();
+    return callback(data);
+  };
 }
 
 // ── Events ──────────────────────────────────────────────────────────────────

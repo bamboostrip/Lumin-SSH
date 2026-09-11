@@ -110,6 +110,8 @@ export class AIGlobalSettings {
     "aiRequestProxyId"?: string;
     "updatedAt"?: number;
     "proxyNodes"?: AIProxyNode[];
+    "autoCondenseEnabled": boolean;
+    "autoCondenseThresholdRatio"?: number;
 
     /** Creates a new AIGlobalSettings instance. */
     constructor($$source: Partial<AIGlobalSettings> = {}) {
@@ -190,6 +192,9 @@ export class AIGlobalSettings {
         }
         if (!("commandActionButtonOrder" in $$source)) {
             this["commandActionButtonOrder"] = "";
+        }
+        if (!("autoCondenseEnabled" in $$source)) {
+            this["autoCondenseEnabled"] = false;
         }
 
         Object.assign(this, $$source);

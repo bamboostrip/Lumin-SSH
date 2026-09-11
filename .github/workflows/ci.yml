@@ -1,9 +1,9 @@
 # 依赖验证 CI：负责在 PR/push 上跑构建与测试，验证 dependabot 升级后的依赖
 # 是否仍能编译通过。release.yml 只在打 tag 时触发，dependabot PR 走这里。
 #
-# 说明：不能手工拆分 wails generate module + npm run build —— 两者互相依赖
-# （generate 需 dist、npm build 需 wailsjs），会形成死锁。必须用一个
-# `wails build` 由 Wails 自己按序生成绑定、构建前端、再编译 Go。
+# v3 说明：构建统一走 `wails3 task build`（由 Taskfile 编排：安装前端依赖 ->
+# 全量重建 v3 绑定 -> 前端产物 -> Go 编译）。绑定生成是 -clean 重建且前端
+# 打包会引用生成的绑定，无法拆开单独执行，必须由 task 按序完成。
 
 name: CI
 
@@ -14,7 +14,7 @@ on:
 env:
   NODE_VERSION: '24'
   GO_VERSION: '1.26'
-  WAILS_VERSION: 'v2.15.0'
+  WAILS_VERSION: 'v3.0.0-beta.20'
 
 jobs:
   check:
@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: 安装系统依赖（wails build 需要 GTK/WebKit 开发库）
+      - name: 安装系统依赖（wails3 build 需要 GTK/WebKit 开发库）
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -40,7 +40,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: 安装 Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
 
       - name: 安装前端依赖
         # runner 全局默认走腾讯云 npm 镜像且可能超时；GitHub runner 上用官方源更稳，
@@ -53,10 +53,10 @@ jobs:
           --fetch-retry-maxtimeout=120000
         working-directory: frontend
 
-      - name: Wails 完整构建（生成绑定 + 前端产物 + Go 编译）
+      - name: Wails3 完整构建（生成绑定 + 前端产物 + Go 编译）
         run: |
           export PATH=$HOME/go/bin:$PATH
-          wails build -clean -tags webkit2_41
+          wails3 task build
 
       - name: Go 静态检查
         run: go vet ./...

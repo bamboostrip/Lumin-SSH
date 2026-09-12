@@ -10,10 +10,11 @@ License:        proprietary
 URL:            https://github.com/wmwlwmwl/Lumin-SSH
 Packager:       Lumin <admin@662662.xyz>
 # rpm 依赖用较通用的包名（覆盖 Fedora/openSUSE 等）。
-Requires:       gtk3
-Requires:       webkit2gtk3
+# v3 (Wails v3) Linux 默认走 GTK4 + WebKitGTK 6.0 后端，托盘经 D-Bus 直连
+# StatusNotifier，不再链接 libayatana-appindicator。
+Requires:       gtk4
+Requires:       webkitgtk6.0
 Requires:       glib2
-Requires:       libayatana-appindicator
 BuildArch:      x86_64
 
 %description

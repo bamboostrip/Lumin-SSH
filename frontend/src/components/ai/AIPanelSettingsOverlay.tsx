@@ -162,7 +162,8 @@ export default function AIPanelSettingsOverlay({
   // AI 对话完整日志(ai.log)在文件管理器中定位,便于用户直接把文件提供出来排查。
   const handleRevealAIDebugLog = async () => {
     try {
-      const bridge = window?.go?.wailsapp?.AIBindings || window?.go?.wailsapp?.App;
+      // v3 生成绑定中 AI 方法仅在 AIBindings 上（App 无此方法，避免 union 类型收窄失败）
+      const bridge = window?.go?.wailsapp?.AIBindings;
       if (!bridge?.RevealAIDebugLog) {
         window.luminDialog?.alert?.(t('定位 AI 日志能力未就绪'), t('错误'), { priority: 'settings' });
         return;

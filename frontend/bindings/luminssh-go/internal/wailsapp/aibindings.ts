@@ -219,6 +219,14 @@ export function RestoreAIConversationBackup(conversationID: string, backupID: st
     });
 }
 
+/**
+ * RevealAIDebugLog 在文件管理器中定位 AI 对话完整日志(ai.log),
+ * 便于用户在 AI 面板出现异常时直接把该文件提供出来排查。
+ */
+export function RevealAIDebugLog(): $CancellablePromise<void> {
+    return $Call.ByID(95599865);
+}
+
 export function SaveAIConversation(jsonStr: string): $CancellablePromise<ai$0.AIConversationSnapshot> {
     return $Call.ByID(2089018945, jsonStr).then(($result: any) => {
         return $$createType5($result);

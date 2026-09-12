@@ -113,6 +113,12 @@ export class AIGlobalSettings {
     "autoCondenseEnabled": boolean;
     "autoCondenseThresholdRatio"?: number;
 
+    /**
+     * AIDebugLogEnabled 控制是否把每轮 AI 请求与原始响应流写入 ai.log。
+     * 旧配置缺少该键时,LoadAIGlobalSettings 会保留默认值(true),即默认开启。
+     */
+    "aiDebugLogEnabled": boolean;
+
     /** Creates a new AIGlobalSettings instance. */
     constructor($$source: Partial<AIGlobalSettings> = {}) {
         if (!("currentProviderId" in $$source)) {
@@ -195,6 +201,9 @@ export class AIGlobalSettings {
         }
         if (!("autoCondenseEnabled" in $$source)) {
             this["autoCondenseEnabled"] = false;
+        }
+        if (!("aiDebugLogEnabled" in $$source)) {
+            this["aiDebugLogEnabled"] = false;
         }
 
         Object.assign(this, $$source);

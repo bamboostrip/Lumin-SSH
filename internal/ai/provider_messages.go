@@ -195,7 +195,16 @@ func (a *Service) requestMessagesAIChatRound(ctx context.Context, requestID stri
 	if err != nil {
 		return result, err
 	}
-	resp, err := client.Do(req)
+	resp, err := traceAIHTTPRound(client, req, aiDebugRoundMeta{
+		RequestID:         requestID,
+		ConversationID:    payload.ConversationID,
+		Protocol:          profile.Provider,
+		Model:             profile.Model,
+		Endpoint:          endpoint,
+		MessageCount:      len(requestMessages),
+		SystemPromptChars: len(systemPrompt),
+		APIKey:            profile.APIKey,
+	}, body)
 	if err != nil {
 		return result, err
 	}
@@ -286,7 +295,7 @@ func (a *Service) requestMessagesAIChatRound(ctx context.Context, requestID stri
 
 	result.Text = strings.TrimSpace(contentBuilder.String())
 	if result.Text == "" {
-		result.Text = "未返回内容"
+		result.Text = aiChatEmptyResponseText
 	}
 	if !firstTokenAt.IsZero() {
 		result.FirstTokenMs = firstTokenAt.Sub(startedAt).Milliseconds()

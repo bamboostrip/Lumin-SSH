@@ -2272,15 +2272,20 @@ func (a *Service) CancelAIChat(requestID string) {
 			collaborationState.Cancel()
 		}
 	}
-	pendingBatch := a.popAIChatPendingToolBatch(trimmedRequestID)
-	pendingFollowup := a.popAIChatPendingFollowupBatch(trimmedRequestID)
-	if pendingBatch != nil || pendingFollowup != nil || collaborationState != nil {
-		a.emitAIChatRuntimePhase(trimmedRequestID, "ready")
-		a.emitAIChatEvent(map[string]interface{}{
-			"kind":      "cancelled",
-			"requestId": trimmedRequestID,
-		})
-	}
+	// 待批准/待追问批次一并清理；它们存在与否不再决定是否回事件。
+	a.popAIChatPendingToolBatch(trimmedRequestID)
+	a.popAIChatPendingFollowupBatch(trimmedRequestID)
+	// 无条件回终态事件：前端以 activeRequestId 匹配面板，只要面板还挂着这个 requestId
+	// 就一定能复位回 idle。原先仅在「存在待批准/待追问/协同态」时才发 cancelled，
+	// 留下两个死锁口子：
+	//  1) 纯流式取消（无 pending 批次）只能指望请求循环自己补发 cancelled；
+	//  2) 后端已自行收尾（finishAIChatRequest，如恢复流程切全量摘要）却漏发终态事件时，
+	//     面板会永久停在「生成中」，停止按钮再点也不会有任何反应。
+	a.emitAIChatRuntimePhase(trimmedRequestID, "ready")
+	a.emitAIChatEvent(map[string]interface{}{
+		"kind":      "cancelled",
+		"requestId": trimmedRequestID,
+	})
 }
 
 func (a *Service) ApproveAIChatTools(requestID string) error {

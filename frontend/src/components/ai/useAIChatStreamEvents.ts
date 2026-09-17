@@ -3,7 +3,7 @@ import { EventsOn } from '../../../wailsjs/runtime/runtime.js'
 import {
   buildAIUpstreamTokenUsage,
   normalizeAIUpstreamTokenValue,
-  AI_CONVERSATION_DIFF_SUCCESS_STATUSES, AI_FOLLOWUP_PENDING_STATUS_KEY, buildAIQueuedSubmission, buildMetrics, buildReasoningDuration, dropAssistantTurnMessages, insertMessageBeforeAssistant, isAIMessageBelongingToTurn, normalizeAICollaborationDecision, normalizeAICollaborationMode, normalizeAIContextTokensValue, normalizeAIMessageStatus, normalizeAIRuntimePhase, parseAICollaborationStreamBuffer, resolveAIEventSound, trimLatestAssistantAPIHistoryMessage, updateAILastAssistantTurnState, upsertAPIHistoryMessage, upsertMessageBeforeAssistant,
+  AI_CONVERSATION_DIFF_SUCCESS_STATUSES, AI_FOLLOWUP_PENDING_STATUS_KEY, buildAIQueuedSubmission, buildMetrics, dropAssistantTurnMessages, insertMessageBeforeAssistant, isAIMessageBelongingToTurn, normalizeAICollaborationDecision, normalizeAICollaborationMode, normalizeAIContextTokensValue, normalizeAIMessageStatus, normalizeAIRuntimePhase, parseAICollaborationStreamBuffer, resolveAIEventSound, trimLatestAssistantAPIHistoryMessage, updateAILastAssistantTurnState, upsertAPIHistoryMessage, upsertMessageBeforeAssistant,
 } from './aiChatLogic.ts'
 import type { AIConversationSnapshot, AIMessage, PanelState } from './aiChatLogic.ts'
 import { disableAIChatCollaboration, startAIChatCollaboration } from './aiChatBridge.ts'
@@ -336,6 +336,11 @@ export function useAIChatStreamEvents({
         setComposerInputValue('')
         setPanelState(matchedPanelKey, (current) => ({
           ...current,
+          // fallback 追问：后端只发 collaboration_finished，不再补 runtime_phase ready
+          // （completion / forced 分支都会补）。此时已无在途请求、只等用户回答追问，
+          // 必须自行复位，否则 isAIQueueBlocked() 恒真，排队提交永远冲不出去。
+          requestPhase: isFallbackFollowup ? 'idle' : current.requestPhase,
+          runtimePhase: isFallbackFollowup ? 'ready' : current.runtimePhase,
           collaborationLocked: isFallbackFollowup ? false : current.collaborationLocked,
           collaborationActive: false,
           collaborationMode: '',
@@ -438,17 +443,10 @@ export function useAIChatStreamEvents({
               upstreamOutputTokens: upstreamTokenUsage.upstreamOutputTokens,
               updatedAt: Date.now(),
               status: current.conversation.status,
-              messages: Array.isArray(current.messages)
-                ? current.messages.filter((message) => {
-                    if (!message || typeof message !== 'object') {
-                      return false
-                    }
-                    if (message.id === assistantMessageId && (message.kind === 'assistant' || message.kind === 'reasoning')) {
-                      return false
-                    }
-                    return true
-                  })
-                : [],
+              // 落盘快照剔除本回合：必须连子卡片一起丢，只删 assistant/reasoning
+              // 会留下无归属的 tool/command/mcp/followup 卡片（且 reasoning 的 id 是
+              // `<id>-reasoning`，按 id 相等判断会漏删）。
+              messages: dropAssistantTurnMessages(current.messages, assistantMessageId),
               apiMessages: Array.isArray(current.apiMessages) ? [...current.apiMessages] : [],
             }
           }
@@ -1045,95 +1043,9 @@ export function useAIChatStreamEvents({
         return
       }
 
-      if (payload.kind === 'done') {
-        const assistantMessageId = matchedPanel.activeAssistantMessageId || requestId
-        const metrics = buildMetrics(payload)
-        const upstreamTokenUsage = buildAIUpstreamTokenUsage(payload, matchedPanel.upstreamInputTokens, matchedPanel.upstreamOutputTokens)
-        const reasoningDuration = buildReasoningDuration(payload)
-        const shouldClearSummarySubtaskCollaboration = matchedPanel.collaborationMode === 'summary_subtask'
-        const nextMessages = matchedPanel.messages.map((message) => {
-          if (message.id === `${assistantMessageId}-reasoning` && message.kind === 'reasoning') {
-            return {
-              ...message,
-              duration: reasoningDuration,
-            }
-          }
-          if (message.id !== assistantMessageId || message.kind !== 'assistant') {
-            return message
-          }
-          return {
-            ...message,
-            text: payload.text || String(message.text || '').replace(/▍$/u, ''),
-            metrics,
-            upstreamInputTokens: upstreamTokenUsage.upstreamInputTokens,
-            upstreamOutputTokens: upstreamTokenUsage.upstreamOutputTokens,
-            streaming: false,
-            extra: {
-              ...(message.extra || {}),
-              cacheReadTokens: Number.isFinite(Number(payload.cacheReadTokens)) ? Math.max(0, Math.trunc(Number(payload.cacheReadTokens))) : undefined,
-              requestStatusLive: false,
-              finishedAtMs: Date.now(),
-              errorText: '',
-            },
-          }
-        })
-        const nextConversation = {
-          ...conversation,
-          updatedAt: Date.now(),
-          status: 'idle',
-          upstreamInputTokens: upstreamTokenUsage.upstreamInputTokens,
-          upstreamOutputTokens: upstreamTokenUsage.upstreamOutputTokens,
-          messages: nextMessages,
-          apiMessages: upsertAPIHistoryMessage(
-            matchedPanel.apiMessages,
-            {
-              role: 'assistant',
-              content: payload.text || '',
-              messageId: `api-${assistantMessageId}`,
-              turnId: assistantMessageId,
-              ts: Date.now(),
-            },
-            nextMessages,
-          ),
-        }
-
-        if (shouldClearSummarySubtaskCollaboration) {
-          setComposerInputValue('')
-          setComposerImages([])
-        }
-        setPanelState(matchedPanelKey, {
-          ...matchedPanel,
-          activeRequestId: '',
-          activeAssistantMessageId: '',
-          activeToolExecution: null,
-          requestPhase: 'idle',
-          skipNextAutomaticRequest: false,
-          isCondensingContext: false,
-          upstreamInputTokens: upstreamTokenUsage.upstreamInputTokens,
-          upstreamOutputTokens: upstreamTokenUsage.upstreamOutputTokens,
-          conversation: nextConversation,
-          messages: nextMessages,
-          apiMessages: nextConversation.apiMessages,
-          recoverableToolStopReason: '',
-          collaborationLocked: shouldClearSummarySubtaskCollaboration ? false : matchedPanel.collaborationLocked,
-          collaborationActive: shouldClearSummarySubtaskCollaboration ? false : matchedPanel.collaborationActive,
-          collaborationMode: shouldClearSummarySubtaskCollaboration ? '' : matchedPanel.collaborationMode,
-          collaborationStreamBuffer: shouldClearSummarySubtaskCollaboration ? '' : matchedPanel.collaborationStreamBuffer,
-          collaborationAwaitingManualFollowup: shouldClearSummarySubtaskCollaboration ? false : matchedPanel.collaborationAwaitingManualFollowup,
-          collaborationFollowupRequestId: shouldClearSummarySubtaskCollaboration ? '' : matchedPanel.collaborationFollowupRequestId,
-          collaborationPendingMode: shouldClearSummarySubtaskCollaboration ? '' : matchedPanel.collaborationPendingMode,
-          collaborationPendingRequestId: shouldClearSummarySubtaskCollaboration ? '' : matchedPanel.collaborationPendingRequestId,
-          collaborationInterruptedRequestId: shouldClearSummarySubtaskCollaboration ? '' : matchedPanel.collaborationInterruptedRequestId,
-          collaborationStatusStartedAtMs: shouldClearSummarySubtaskCollaboration ? 0 : matchedPanel.collaborationStatusStartedAtMs,
-          collaborationStatusFirstTokenAtMs: shouldClearSummarySubtaskCollaboration ? 0 : matchedPanel.collaborationStatusFirstTokenAtMs,
-          collaborationStatusText: shouldClearSummarySubtaskCollaboration ? '' : matchedPanel.collaborationStatusText,
-          collaborationStatusReasoningText: shouldClearSummarySubtaskCollaboration ? '' : matchedPanel.collaborationStatusReasoningText,
-        })
-
-        void saveConversationSnapshot(nextConversation, matchedPanelKey)
-        setProviderBalanceRefreshSignal((current) => current + 1)
-        return
-      }
+      // 后端已不再发射 `done`（收尾统一走 automatic_request_skipped），原分支是永不执行的
+      // 死代码，且缺少 runtimePhase 复位（一旦被恢复发射会把面板卡在非 ready 相位）。
+      // 这里整段移除；如后端日后重新引入该事件，需连同相位复位一并实现。
 
       if (payload.kind === 'error') {
         const assistantMessageId = matchedPanel.activeAssistantMessageId || requestId
@@ -1236,6 +1148,30 @@ export function useAIChatStreamEvents({
       }
     }
   }, [enrichAIChatCommandMessage, playAISound, rebuildAIConversationTokenLedger, saveConversationSnapshot, setPanelState, shouldLockAssistantCollaboration])
+
+  // 「停止并恢复」：取消后，等请求真正收尾再自动恢复任务。
+  // 不在具体终态事件里触发——取消可能以 cancelled / tool_execution_terminated /
+  // automatic_request_skipped 中的任意一种收尾，逐分支处理会漏；这里统一以
+  // 「面板回到空闲」为信号，并避开与在途请求竞争（必须先无 activeRequestId）。
+  useEffect(() => {
+    const pendingResumeRequestId = typeof panelState.resumeAfterCancelRequestId === 'string'
+      ? panelState.resumeAfterCancelRequestId.trim()
+      : ''
+    if (!pendingResumeRequestId || panelState.activeRequestId || panelState.requestPhase !== 'idle') {
+      return
+    }
+    const conversationSnapshot = terminalPanelsRef.current[panelInstanceKey]?.conversation || null
+    if (!conversationSnapshot) {
+      return
+    }
+    // 先清标志再恢复：避免恢复失败时该 effect 反复触发。
+    setPanelState(panelInstanceKey, (current) => (
+      current.resumeAfterCancelRequestId === pendingResumeRequestId
+        ? { ...current, resumeAfterCancelRequestId: '' }
+        : current
+    ))
+    void resumeAIChatFromConversation(conversationSnapshot, panelInstanceKey)
+  }, [panelInstanceKey, panelState.activeRequestId, panelState.requestPhase, panelState.resumeAfterCancelRequestId, resumeAIChatFromConversation, setPanelState])
 
   useEffect(() => {
     const pendingRequestId = typeof panelState.collaborationPendingRequestId === 'string' ? panelState.collaborationPendingRequestId.trim() : ''

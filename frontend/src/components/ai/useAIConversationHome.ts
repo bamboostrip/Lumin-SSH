@@ -396,6 +396,15 @@ export function useAIConversationHome({ t, addToast, terminalId, sessionId, work
       await onOpenConversationRequested(conversationId)
       return
     }
+    // 切换到别的会话前，先取消本面板的在途请求。否则后端请求会继续跑完（白耗 token），
+    // 而它的流事件因为面板 activeRequestId 已被替换而匹配不到面板，被静默丢弃。
+    // 重新打开同一个会话不算切换，不能误取消。
+    const switchingPanel = terminalPanelsRef.current[panelInstanceKey]
+    const switchingRequestId = switchingPanel?.activeRequestId || ''
+    const switchingConversationId = switchingPanel?.activeConversationId || ''
+    if (switchingRequestId && switchingConversationId !== normalizedConversationId) {
+      void cancelAIChat(switchingRequestId).catch(() => {})
+    }
     const requestToken = conversationLoadRequestRef.current + 1
     conversationLoadRequestRef.current = requestToken
     setPendingConversationId(normalizedConversationId)

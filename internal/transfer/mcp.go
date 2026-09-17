@@ -483,10 +483,10 @@ func (s *Service) transferDownloadFileContext(ctx context.Context, transferID st
 	if err != nil {
 		return 0, err
 	}
+	// 本地同名路径若已是目录则直接失败,不做删除:目录可能承载用户数据,
+	// 静默递归删除属于不可逆破坏,交由调用方换名或先清理后再重试。
 	if existingInfo, statErr := os.Stat(localFullPath); statErr == nil && existingInfo != nil && existingInfo.IsDir() {
-		if err := os.RemoveAll(localFullPath); err != nil {
-			return 0, err
-		}
+		return 0, fmt.Errorf("local path already exists as a directory, refusing to replace it: %s", localFullPath)
 	}
 	if err := os.MkdirAll(filepath.Dir(localFullPath), 0o755); err != nil {
 		return 0, err

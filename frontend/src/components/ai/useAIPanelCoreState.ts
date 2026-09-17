@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { cancelAIChat } from './aiChatBridge.ts'
 import { buildAIConversationTokenLedger, countAIConversationAPIMessageRawTokens, saveAIConversation, saveTemporaryAIConversation } from './aiConversationBridge.ts'
 import { getConversationBranchAnchor } from './chat/aiChatMessageTopology.ts'
-import { AI_API_HISTORY_TRUNCATE_UNSAFE_ERROR, collectRetainedUIMessageIds, createEmptyPanelState, isAIQueueBlocked, normalizeAIRuntimePhase, resolveAPIHistoryCutIndex } from './aiChatLogic.ts'
+import { AI_API_HISTORY_TRUNCATE_UNSAFE_ERROR, collectRetainedUIMessageIds, createEmptyPanelState, dropAssistantTurnMessages, isAIQueueBlocked, normalizeAIRuntimePhase, resolveAPIHistoryCutIndex } from './aiChatLogic.ts'
 import type { AIConversationSnapshot, AIMessage, AIPanelProps, ComposerEditState, PanelState, PerfRecord, TokenLedger } from './aiChatLogic.ts'
 import { upsertTemporaryAIConversation } from './aiTemporaryConversations.ts'
 import { upsertConversationSummary, type ConversationSummary } from './aiConversationSummary.ts'
@@ -371,12 +371,7 @@ export function useAIPanelCoreState({ terminalId, sessionId, workspaceTabId, ini
       const conversation = panel.conversation
       if (conversation && !conversation.transient && !deletedConversationIdsRef.current.has(conversation.id)) {
         const assistantMessageId = panel.activeAssistantMessageId || requestId
-        const messages = (Array.isArray(panel.messages) ? panel.messages : []).filter((message) => (
-          !(
-            (message.id === assistantMessageId || message.id === `${assistantMessageId}-reasoning`)
-            && (message.kind === 'assistant' || message.kind === 'reasoning')
-          )
-        ))
+        const messages = dropAssistantTurnMessages(panel.messages, assistantMessageId)
         void saveAIConversation({
           ...conversation,
           updatedAt: Date.now(),

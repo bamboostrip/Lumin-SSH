@@ -3,7 +3,7 @@ import { EventsOn } from '../../../wailsjs/runtime/runtime.js'
 import {
   buildAIUpstreamTokenUsage,
   normalizeAIUpstreamTokenValue,
-  AI_CONVERSATION_DIFF_SUCCESS_STATUSES, AI_FOLLOWUP_PENDING_STATUS_KEY, buildAIQueuedSubmission, buildMetrics, buildReasoningDuration, insertMessageBeforeAssistant, normalizeAICollaborationDecision, normalizeAICollaborationMode, normalizeAIContextTokensValue, normalizeAIMessageStatus, normalizeAIRuntimePhase, parseAICollaborationStreamBuffer, resolveAIEventSound, trimLatestAssistantAPIHistoryMessage, updateAILastAssistantTurnState, upsertAPIHistoryMessage, upsertMessageBeforeAssistant,
+  AI_CONVERSATION_DIFF_SUCCESS_STATUSES, AI_FOLLOWUP_PENDING_STATUS_KEY, buildAIQueuedSubmission, buildMetrics, buildReasoningDuration, dropAssistantTurnMessages, insertMessageBeforeAssistant, isAIMessageBelongingToTurn, normalizeAICollaborationDecision, normalizeAICollaborationMode, normalizeAIContextTokensValue, normalizeAIMessageStatus, normalizeAIRuntimePhase, parseAICollaborationStreamBuffer, resolveAIEventSound, trimLatestAssistantAPIHistoryMessage, updateAILastAssistantTurnState, upsertAPIHistoryMessage, upsertMessageBeforeAssistant,
 } from './aiChatLogic.ts'
 import type { AIConversationSnapshot, AIMessage, PanelState } from './aiChatLogic.ts'
 import { disableAIChatCollaboration, startAIChatCollaboration } from './aiChatBridge.ts'
@@ -244,18 +244,7 @@ export function useAIChatStreamEvents({
           const previousAssistantMessageId = typeof current.activeAssistantMessageId === 'string' && current.activeAssistantMessageId.trim()
             ? current.activeAssistantMessageId.trim()
             : (typeof current.activeRequestId === 'string' ? current.activeRequestId.trim() : '')
-          const nextMessages = (Array.isArray(current.messages) ? current.messages : []).filter((message) => {
-            if (!message || typeof message !== 'object') {
-              return true
-            }
-            if (previousAssistantMessageId && message.id === previousAssistantMessageId && message.kind === 'assistant') {
-              return false
-            }
-            if (previousAssistantMessageId && message.id === `${previousAssistantMessageId}-reasoning` && message.kind === 'reasoning') {
-              return false
-            }
-            return true
-          })
+          const nextMessages = dropAssistantTurnMessages(current.messages, previousAssistantMessageId)
           const nextConversation = current.conversation
             ? {
                 ...current.conversation,
@@ -375,10 +364,9 @@ export function useAIChatStreamEvents({
               if (!message || typeof message !== 'object') {
                 return true
               }
-              if (message.id === `${assistantMessageId}-reasoning` && message.kind === 'reasoning') {
-                return false
-              }
-              if (message.id !== assistantMessageId && message.turnId === assistantMessageId) {
+              // 本回合 assistant 本体保留并重置，其余子消息（reasoning / tool / followup 等）全部丢弃：
+              // 只按 turnId 匹配会漏掉历史快照中没有 turnId 的节点，回落 id 前缀一并覆盖。
+              if (isAIMessageBelongingToTurn(message, assistantMessageId) && message.id !== assistantMessageId) {
                 return false
               }
               return true
@@ -1206,15 +1194,7 @@ export function useAIChatStreamEvents({
 
       if (payload.kind === 'cancelled') {
         const assistantMessageId = matchedPanel.activeAssistantMessageId || requestId
-        const nextMessages = matchedPanel.messages.filter((message) => {
-          if (message.id === `${assistantMessageId}-reasoning` && message.kind === 'reasoning') {
-            return false
-          }
-          if (message.id === assistantMessageId && message.kind === 'assistant') {
-            return false
-          }
-          return true
-        })
+        const nextMessages = dropAssistantTurnMessages(matchedPanel.messages, assistantMessageId)
         const nextConversation = {
           ...conversation,
           updatedAt: Date.now(),

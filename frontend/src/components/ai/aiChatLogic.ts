@@ -4,6 +4,7 @@ import { t as translate } from '../../i18n.ts';
 import type { AIProviderLike } from './AIProviderSelector.tsx';
 import { getAIProviderDefinition } from './providers/index.ts';
 import type { ConversationSummary } from './aiConversationSummary.ts';
+import { ASSISTANT_TURN_CHILD_KINDS } from './chat/aiChatMessageTopology.ts';
 // 来自 Go 桥或事件 payload 的外部数据形状：字段均以 typeof 守卫读取，
 // 无索引签名（字段名拼错编译期报错）；新增字段时在此补充。
 // ============================================================
@@ -541,7 +542,9 @@ export function pruneOrphanTurnMessages<T extends AIConversationSnapshot | null 
     }
   }
   const nextMessages = (snapshot.messages as AIMessage[]).filter((message) => {
-    if (!message || typeof message !== 'object' || !isAIBusinessTurnMessageKind(message.kind)) {
+    // 只处理「assistant 回合的子消息」。`condense_context`（上下文压缩卡片）是顶层独立卡片，
+    // turnId 形如 `condense-<nano>` 本就没有对应 assistant，绝不能按孤儿删除。
+    if (!message || typeof message !== 'object' || !ASSISTANT_TURN_CHILD_KINDS.has(String(message.kind || '').trim())) {
       return true
     }
     const turnId = typeof message.turnId === 'string' ? message.turnId.trim() : ''

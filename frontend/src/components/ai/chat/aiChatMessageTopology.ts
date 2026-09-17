@@ -37,7 +37,9 @@ function normalizeString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-const ASSISTANT_TURN_CHILD_KINDS = new Set([
+// assistant 回合的子消息类型：这些 kind 通过 turnId / id 前缀挂在某个 assistant 回合下，
+// 一旦所属回合消失就会变成无归属的残留卡片。`condense_context`、`user`、`assistant` 不属于此列。
+export const ASSISTANT_TURN_CHILD_KINDS = new Set([
   'reasoning',
   'tool',
   'completion',

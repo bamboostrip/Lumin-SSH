@@ -1050,6 +1050,14 @@ export function useAIChatRequests({ t, terminalId, sessionId, workspaceTabId, is
       setPanelState(panelInstanceKey, (current) => ({
         ...current,
         activeRequestId: '',
+        // 必须连请求相位一起复位：只清 activeRequestId 会让面板停在「生成中」
+        // （requestPhase='streaming' 时底部仍是停止按钮），而停止按钮因为拿不到
+        // requestId 直接空转，用户既看不到结束、也点不动停止。
+        activeAssistantMessageId: '',
+        activeToolExecution: null,
+        requestPhase: 'idle',
+        runtimePhase: 'ready',
+        toolApprovalMode: '',
         isCondensingContext: false,
         collaborationLocked: false,
         collaborationActive: false,

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type * as React from 'react'
 import { getAIProviderState, type AIProviderState } from './aiProviderBridge.ts'
 import type { AIProviderLike } from './AIProviderSelector.tsx'
-import { AI_CONVERSATION_DIFF_SUCCESS_STATUSES, AI_CONVERSATION_DIFF_TOOL_NAMES, buildAIRequestModelMeta, computeAILastAssistantTurnState, createEmptyPanelState, extractAIConversationDiffPrimaryPath, normalizeAIMessageStatus } from './aiChatLogic.ts'
+import { AI_CONVERSATION_DIFF_SUCCESS_STATUSES, AI_CONVERSATION_DIFF_TOOL_NAMES, buildAIRequestModelMeta, computeAILastAssistantTurnState, createEmptyPanelState, dropAssistantTurnMessages, extractAIConversationDiffPrimaryPath, normalizeAIMessageStatus, pruneOrphanTurnMessages } from './aiChatLogic.ts'
 import type { AIConversationSnapshot, AIMessage, AIPanelProps, ComposerEditState, PanelState, TokenLedger } from './aiChatLogic.ts'
 import { cancelAIChat } from './aiChatBridge.ts'
 import { deleteAIConversation, deleteTemporaryAIConversation, getAIConversation, getTemporaryAIConversation, listAIConversations, listTemporaryAIConversations as listTemporaryAIConversationsFromDisk, normalizeAIConversationTaskSettings, openAIConversationFolder, saveAIConversation, saveTemporaryAIConversation, subscribeAIConversationChanges, type AIConversationMessageSearchResult } from './aiConversationBridge.ts'
@@ -328,12 +328,7 @@ export function useAIConversationHome({ t, addToast, terminalId, sessionId, work
     const persistCurrentConversation = previousConversation?.transient === true && !deletedConversationIdsRef.current.has(previousConversation.id)
       ? (() => {
           const assistantMessageId = previousPanel?.activeAssistantMessageId || previousRequestId
-          const messages = (Array.isArray(previousPanel?.messages) ? previousPanel.messages : []).filter((message) => (
-            !(
-              (message.id === assistantMessageId || message.id === `${assistantMessageId}-reasoning`)
-              && (message.kind === 'assistant' || message.kind === 'reasoning')
-            )
-          ))
+          const messages = dropAssistantTurnMessages(previousPanel?.messages, assistantMessageId)
           return saveTemporaryAIConversation({
             ...previousConversation,
             updatedAt: Date.now(),
@@ -345,12 +340,7 @@ export function useAIConversationHome({ t, addToast, terminalId, sessionId, work
       : (previousConversation && !deletedConversationIdsRef.current.has(previousConversation.id)
       ? (() => {
           const assistantMessageId = previousPanel?.activeAssistantMessageId || previousRequestId
-          const messages = (Array.isArray(previousPanel?.messages) ? previousPanel.messages : []).filter((message) => (
-            !(
-              (message.id === assistantMessageId || message.id === `${assistantMessageId}-reasoning`)
-              && (message.kind === 'assistant' || message.kind === 'reasoning')
-            )
-          ))
+          const messages = dropAssistantTurnMessages(previousPanel?.messages, assistantMessageId)
           return saveAIConversation({
             ...previousConversation,
             updatedAt: Date.now(),
@@ -406,6 +396,15 @@ export function useAIConversationHome({ t, addToast, terminalId, sessionId, work
       await onOpenConversationRequested(conversationId)
       return
     }
+    // 切换到别的会话前，先取消本面板的在途请求。否则后端请求会继续跑完（白耗 token），
+    // 而它的流事件因为面板 activeRequestId 已被替换而匹配不到面板，被静默丢弃。
+    // 重新打开同一个会话不算切换，不能误取消。
+    const switchingPanel = terminalPanelsRef.current[panelInstanceKey]
+    const switchingRequestId = switchingPanel?.activeRequestId || ''
+    const switchingConversationId = switchingPanel?.activeConversationId || ''
+    if (switchingRequestId && switchingConversationId !== normalizedConversationId) {
+      void cancelAIChat(switchingRequestId).catch(() => {})
+    }
     const requestToken = conversationLoadRequestRef.current + 1
     conversationLoadRequestRef.current = requestToken
     setPendingConversationId(normalizedConversationId)
@@ -429,7 +428,10 @@ export function useAIConversationHome({ t, addToast, terminalId, sessionId, work
       const latestProviders = Array.isArray(latestProviderState?.providers) ? latestProviderState.providers : []
       const snapshotSettings = snapshot?.settings && typeof snapshot.settings === 'object' ? snapshot.settings as Record<string, unknown> : null
       const resolvedProviderId = resolveAvailableProviderId(latestProviders, typeof snapshotSettings?.currentProviderId === 'string' ? snapshotSettings.currentProviderId : '')
-      const nextSnapshot = buildConversationWithProviderId(snapshot, resolvedProviderId)
+      // 加载时修补历史快照：早期版本在中断/回首页时只删除 assistant 与 reasoning，
+      // 遗留的子卡片（工具/追问等）会在重新分组时变成无归属的残留卡片，这里一次性清掉。
+      const healedSnapshot = pruneOrphanTurnMessages(snapshot)
+      const nextSnapshot = buildConversationWithProviderId(healedSnapshot, resolvedProviderId)
       setAIProviderState({
         currentProviderId: resolvedProviderId,
         providers: latestProviders,

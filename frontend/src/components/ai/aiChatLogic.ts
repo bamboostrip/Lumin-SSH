@@ -4,6 +4,7 @@ import { t as translate } from '../../i18n.ts';
 import type { AIProviderLike } from './AIProviderSelector.tsx';
 import { getAIProviderDefinition } from './providers/index.ts';
 import type { ConversationSummary } from './aiConversationSummary.ts';
+import { ASSISTANT_TURN_CHILD_KINDS } from './chat/aiChatMessageTopology.ts';
 // 来自 Go 桥或事件 payload 的外部数据形状：字段均以 typeof 守卫读取，
 // 无索引签名（字段名拼错编译期报错）；新增字段时在此补充。
 // ============================================================
@@ -487,6 +488,88 @@ export function collectTurnUiMessageIds(messages: unknown, assistantMessageId: u
     }
   }
   return [...ids]
+}
+
+// 判断消息是否属于指定 assistant 回合（含 assistant 本体、reasoning 与全部子卡片）。
+// turnId 优先，缺失时回落到 id 前缀 `<assistantId>-`，兼容历史快照里没有 turnId 的节点。
+export function isAIMessageBelongingToTurn(message: unknown, assistantMessageId: unknown) {
+  if (!message || typeof message !== 'object') {
+    return false
+  }
+  const targetTurnId = typeof assistantMessageId === 'string' ? assistantMessageId.trim() : ''
+  if (!targetTurnId) {
+    return false
+  }
+  const raw = message as Record<string, unknown>
+  const messageId = typeof raw.id === 'string' ? raw.id.trim() : ''
+  const turnId = typeof raw.turnId === 'string' ? raw.turnId.trim() : ''
+  if (turnId && turnId === targetTurnId) {
+    return true
+  }
+  if (!messageId) {
+    return false
+  }
+  return messageId === targetTurnId || messageId.startsWith(`${targetTurnId}-`)
+}
+
+// 丢弃指定 assistant 回合的全部 UI 消息（本体 + reasoning + tool/command/mcp/followup/completion 子卡片）。
+// 仅删除 assistant 与 reasoning 会留下失去归属的子卡片，重新分组时会被兜底渲染成 orphan 残留卡片。
+export function dropAssistantTurnMessages(messages: unknown, assistantMessageId: unknown): AIMessage[] {
+  const list = Array.isArray(messages) ? messages : []
+  const targetTurnId = typeof assistantMessageId === 'string' ? assistantMessageId.trim() : ''
+  if (!targetTurnId) {
+    return list as AIMessage[]
+  }
+  return list.filter((message) => !isAIMessageBelongingToTurn(message, targetTurnId)) as AIMessage[]
+}
+
+// 修复历史快照：删除所有找不到归属 assistant 回合的子消息（工具/追问/命令/MCP/完成卡片）。
+// 只作用于已落盘的旧数据，不改动 apiMessages——UI 卡片不参与请求上下文，删除是安全的。
+export function pruneOrphanTurnMessages<T extends AIConversationSnapshot | null | undefined>(snapshot: T): T {
+  if (!snapshot || !Array.isArray(snapshot.messages) || snapshot.messages.length === 0) {
+    return snapshot
+  }
+  const knownTurnIds = new Set<string>()
+  for (const message of snapshot.messages as AIMessage[]) {
+    if (message?.kind !== 'assistant') {
+      continue
+    }
+    const turnId = typeof message.turnId === 'string' && message.turnId.trim()
+      ? message.turnId.trim()
+      : (typeof message.id === 'string' ? message.id.trim() : '')
+    if (turnId) {
+      knownTurnIds.add(turnId)
+    }
+  }
+  const nextMessages = (snapshot.messages as AIMessage[]).filter((message) => {
+    // 只处理「assistant 回合的子消息」。`condense_context`（上下文压缩卡片）是顶层独立卡片，
+    // turnId 形如 `condense-<nano>` 本就没有对应 assistant，绝不能按孤儿删除。
+    if (!message || typeof message !== 'object' || !ASSISTANT_TURN_CHILD_KINDS.has(String(message.kind || '').trim())) {
+      return true
+    }
+    const turnId = typeof message.turnId === 'string' ? message.turnId.trim() : ''
+    if (turnId) {
+      return knownTurnIds.has(turnId)
+    }
+    // 没有 turnId 的历史节点：用 id 前缀反查是否仍有同 id 的 assistant 回合
+    const messageId = typeof message.id === 'string' ? message.id.trim() : ''
+    if (!messageId) {
+      return true
+    }
+    for (const turnIdCandidate of knownTurnIds) {
+      if (messageId.startsWith(`${turnIdCandidate}-`)) {
+        return true
+      }
+    }
+    return false
+  })
+  if (nextMessages.length === snapshot.messages.length) {
+    return snapshot
+  }
+  return {
+    ...snapshot,
+    messages: nextMessages,
+  } as T
 }
 
 export function findApiAnchorIndexByUiMessageId(apiMessages: unknown, uiMessageId: unknown) {

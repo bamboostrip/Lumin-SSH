@@ -10,14 +10,22 @@ import type * as App from '../../wailsjs/go/wailsapp/App';
 import type * as AIBindings from '../../wailsjs/go/wailsapp/AIBindings';
 import type * as AIProviderBindings from '../../wailsjs/go/wailsapp/AIProviderBindings';
 
+/**
+ * v3 迁移后 Go 侧按服务拆分为 App / AIBindings / AIProviderBindings 三个命名
+ * 空间，而历史桥接代码统一经 `AIBindings || AIProviderBindings || App` 回退链
+ * 取用任一可用实现；类型上对三个命名空间取交叉视图，使回退链访问各服务方法
+ * 时类型完备。运行时 main.tsx 仍按服务分别挂载各自实现。
+ */
+type WailsAppNamespace = typeof App & typeof AIBindings & typeof AIProviderBindings;
+
 declare global {
   interface Window {
     /** v3 已移除该全局；main.tsx 用 v3 绑定模块重新挂载，供历史桥接代码使用 */
     go?: {
       wailsapp: {
-        App: typeof App;
-        AIBindings: typeof AIBindings;
-        AIProviderBindings: typeof AIProviderBindings;
+        App: WailsAppNamespace;
+        AIBindings: WailsAppNamespace;
+        AIProviderBindings: WailsAppNamespace;
       };
     };
     /** v3 已移除该全局；main.tsx 用 @wailsio/runtime 兼容 shim 重新挂载 */

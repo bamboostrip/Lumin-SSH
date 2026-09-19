@@ -224,7 +224,7 @@ export default function useAppSessionHub({
   }, [awaitDisconnectTerminals, markConnectionCancelled]);
   const disconnectSessionConnection = useCallback((sessionId: string, terminalIds: string[] = []) => {
     const ids = markConnectionCancelled([sessionId, ...terminalIds]);
-    return window.go?.wailsapp.App.DisconnectSSHConnection(sessionId, terminalIds).then(() => ids);
+    return window.go?.wailsapp.App.DisconnectSSHConnection(sessionId, terminalIds).then(() => ids) ?? Promise.resolve(ids);
   }, [markConnectionCancelled]);
   const registerServerDisconnect = useCallback((serverId: string, disconnectPromise: Promise<unknown>) => {
     const normalizedServerId = typeof serverId === 'string' ? serverId.trim() : '';

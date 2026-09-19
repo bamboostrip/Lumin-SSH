@@ -65,6 +65,11 @@ jobs:
       - name: Go 测试
         run: go test ./...
 
+      - name: 前端类型检查
+        # vite build 不做类型检查；UI 代码与 v3 生成绑定的类型偏差在此拦截
+        run: npx tsc --noEmit
+        working-directory: frontend
+
       - name: i18n 校验
         run: npm run i18n:check
         working-directory: frontend

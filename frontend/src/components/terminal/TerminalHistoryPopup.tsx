@@ -4,6 +4,7 @@ import * as AppGo from '../../../wailsjs/go/wailsapp/App.js';
 import { Z } from '../../constants/zIndex';
 import { ToggleSwitch } from '../settings/SharedComponents.tsx';
 import Tiptop from '../Tiptop.tsx';
+import { warnDev } from '../../utils/devLog';
 import type { I18nKey } from '../../i18n.ts';
 
 type LooseT = (key: I18nKey, vars?: Record<string, unknown>) => string;
@@ -93,7 +94,7 @@ export function TerminalHistoryPopup({
                   const msg = scope === 'global'
                     ? t('确定要清空全部服务器的历史指令吗？')
                     : t('确定要清空该服务器的历史指令吗？');
-                  const result = await window.luminDialog?.confirm(msg);
+                  const result = await window.lumeDialog?.confirm(msg);
                   const confirmed = typeof result === 'object' ? result?.confirmed : result === true;
                   if (!confirmed) return;
                   try {
@@ -108,7 +109,7 @@ export function TerminalHistoryPopup({
                       detail: { sessionId: serverId, historyServerId, scope }
                     }));
                   } catch (error) {
-                    console.error('[Terminal] 清空历史失败:', error);
+                    warnDev('[Terminal] 清空历史失败:', error);
                   }
                 }}
                 className="inline-flex items-center justify-center gap-1 border border-line bg-raised text-danger rounded-[var(--radius-sm)] px-2 py-[2px] text-xs cursor-pointer select-none transition-colors duration-[80ms] hover:bg-hover"

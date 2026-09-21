@@ -4,8 +4,8 @@ package platformruntime
 
 import (
 	"log"
+	"lumeterm/internal/apppaths"
 	"os"
-	"path/filepath"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -75,7 +75,7 @@ const (
 	nimDelete = 0x00000002
 	// energye/systray 固定 uID=100；NIM_DELETE 靠 hWnd+uID 定位图标
 	systrayIconID   = 100
-	mainWindowTitle = "Lumin"
+	mainWindowTitle = "LumeTerm"
 	wailsFormClass  = "winc_Form"
 	systrayClass    = "SystrayClass"
 	// SendMessageTimeoutW
@@ -221,7 +221,7 @@ func isTopLevelWindow(hwnd syscall.Handle) bool {
 // UpdateWindow 均同步发送消息到主窗口线程——若主线程卡死（SSH 断开等），
 // 这些同步发送会阻塞托盘消息泵，导致托盘单击/双击/右键全部无响应。
 // 用 SendMessageTimeoutW(WM_GETTEXTLENGTH, SMTO_ABORTIFHUNG) 探测主线程存活：
-// 存活则返回非零（"Lumin" 标题长度），hung/超时返回 0。
+// 存活则返回非零（"LumeTerm" 标题长度），hung/超时返回 0。
 func activateHWND(hwnd syscall.Handle) {
 	if hwnd == 0 {
 		return
@@ -479,7 +479,7 @@ func ForceShowWindow() {
 func EnsureSingleInstance() {
 	kernel32 := syscall.NewLazyDLL("kernel32.dll")
 	procCreateMutex := kernel32.NewProc("CreateMutexW")
-	mutexName, _ := syscall.UTF16PtrFromString("LuminSSH_Global_Single_Instance_Mutex")
+	mutexName, _ := syscall.UTF16PtrFromString("LumeTerm_Global_Single_Instance_Mutex")
 	_, _, errMutex := procCreateMutex.Call(0, 1, uintptr(unsafe.Pointer(mutexName)))
 	if errMutex == syscall.ERROR_ALREADY_EXISTS {
 		findAndShowWindow()
@@ -571,15 +571,13 @@ func AdjustWindowSize(width, height int) (int, int) {
 	return width, height
 }
 
-// WebviewUserDataPath 固定 WebView2 用户数据根目录为 %AppData%\Lumin，避免便携包改名后
-// 按 exe 名多出 Lumin-x.y.z-portable.exe/EBWebView。引擎会在其下自建 EBWebView，与 config 同级。
+// WebviewUserDataPath 固定 WebView2 用户数据根目录（apppaths.DataRoot，含旧目录迁移），
+// 避免便携包改名后按 exe 名多出 LumeTerm-x.y.z-portable.exe/EBWebView。
+// 引擎会在其下自建 EBWebView，与 config 同级。
 func WebviewUserDataPath() string {
-	if appData, err := os.UserConfigDir(); err == nil {
-		dir := filepath.Join(appData, "Lumin")
-		_ = os.MkdirAll(dir, 0700)
-		return dir
-	}
-	return ""
+	dir := apppaths.DataRoot()
+	_ = os.MkdirAll(dir, 0700)
+	return dir
 }
 
 // WebviewGPUArgs v3 移除了 WebviewGpuIsDisabled 选项，GPU 加速禁用改由

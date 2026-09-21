@@ -6,12 +6,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
 
-	aiprovider "luminssh-go/internal/ai/provider"
+	aiprovider "lumeterm/internal/ai/provider"
 )
 
 const anthropicPromptCachingBetaHeader = "prompt-caching-2024-07-31"
@@ -211,8 +210,8 @@ func (a *Service) requestMessagesAIChatRound(ctx context.Context, requestID stri
 	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		errorText := strings.TrimSpace(string(bodyBytes))
+		bodyStr := readErrorBody(resp, 4096)
+		errorText := strings.TrimSpace(bodyStr)
 		if errorText == "" {
 			errorText = resp.Status
 		}

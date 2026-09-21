@@ -13,9 +13,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"luminssh-go/internal/wailsevents"
-	"luminssh-go/internal/mcpserver"
-	"luminssh-go/internal/transfer"
+	"lumeterm/internal/mcpserver"
+	"lumeterm/internal/transfer"
+	"lumeterm/internal/wailsevents"
 
 	"github.com/pkg/sftp"
 	

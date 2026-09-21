@@ -13,6 +13,7 @@ import type { useFileManagerCore } from './useFileManagerCore.ts';
 import type { useFileManagerWorkspaceSync } from './useFileManagerWorkspaceSync.ts';
 import type { useFileManagerPaneView } from './useFileManagerPaneView.ts';
 import type { useFileManagerClipboard } from './useFileManagerClipboard.ts';
+import { warnDev } from '../../utils/devLog';
 import type { useFileManagerEditorState } from './useFileManagerEditorState.ts';
 import type { useFileManagerDirectoryLoader } from './useFileManagerDirectoryLoader.ts';
 import type { useFileManagerTransfers } from './useFileManagerTransfers.ts';
@@ -105,7 +106,7 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
     const remotePath = joinPath(currentPath, item.name);
     const needConfirm = localStorage.getItem('skipFileDeleteConfirm') !== 'true';
     if (needConfirm) {
-      const ok = await window.luminDialog?.confirm(`${t('确定删除')}${item.name}${t('？此操作不可撤销')}`);
+      const ok = await window.lumeDialog?.confirm(`${t('确定删除')}${item.name}${t('？此操作不可撤销')}`);
       fileListRef.current?.focus();
       if (!ok) { operationInProgressRef.current = false; return; }
     }
@@ -133,7 +134,7 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
     const remotePath = joinPath(currentPath, item.name);
     const needConfirm = localStorage.getItem('skipFileDeleteConfirm') !== 'true';
     if (needConfirm) {
-      const ok = await window.luminDialog?.confirm(`${t('确定删除')}${item.name}${t('？(rm -rf) 此操作不可撤销')}`);
+      const ok = await window.lumeDialog?.confirm(`${t('确定删除')}${item.name}${t('？(rm -rf) 此操作不可撤销')}`);
       fileListRef.current?.focus();
       if (!ok) { operationInProgressRef.current = false; return; }
     }
@@ -161,7 +162,7 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
     operationInProgressRef.current = true;
     const needConfirm = localStorage.getItem('skipFileDeleteConfirm') !== 'true';
     if (needConfirm) {
-      const ok = await window.luminDialog?.confirm(`${t('确定删除所选')} (${selectedPaths.length}${t('项')})${t('？此操作不可撤销')}`);
+      const ok = await window.lumeDialog?.confirm(`${t('确定删除所选')} (${selectedPaths.length}${t('项')})${t('？此操作不可撤销')}`);
       fileListRef.current?.focus();
       if (!ok) { operationInProgressRef.current = false; return; }
     }
@@ -172,7 +173,7 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
       await AppGo.BatchDeleteItemShell(sessionId, selectedPaths);
       removedPaths = [...selectedPaths];
     } catch (err) {
-      console.error('batch delete failed:', err);
+      warnDev('batch delete failed:', err);
       addToast?.(`${t('删除失败')}: ${err instanceof Error ? err.message : String(err || '')}`, 'error');
     } finally {
       setOperationProgress(null);
@@ -295,7 +296,7 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
   }, [clipboard, currentPath, transferFileManagerItems]);
   const handleMkdir = async (targetDirPath = currentPath) => {
     const normalizedTargetDirPath = normalizePath(typeof targetDirPath === 'string' ? targetDirPath : (currentPathRef.current || currentPath)) || '/';
-    const promptResult = await window.luminDialog?.prompt(t('新文件夹名称:'));
+    const promptResult = await window.lumeDialog?.prompt(t('新文件夹名称:'));
     const name = typeof promptResult === 'string' ? promptResult : '';
     if (!name) return;
     const remotePath = joinPath(normalizedTargetDirPath, name);
@@ -328,7 +329,7 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
 
   const handleNewFile = async (targetDirPath = currentPath) => {
     const normalizedTargetDirPath = normalizePath(typeof targetDirPath === 'string' ? targetDirPath : (currentPathRef.current || currentPath)) || '/';
-    const promptResult = await window.luminDialog?.prompt(t('新文件名称:'));
+    const promptResult = await window.lumeDialog?.prompt(t('新文件名称:'));
     const name = typeof promptResult === 'string' ? promptResult : '';
     if (!name) return;
     const remotePath = joinPath(normalizedTargetDirPath, name);
@@ -400,7 +401,7 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
         if (preview?.mode === 'folder' && preview?.targetExists === true) {
           const targetName = String(preview?.targetName || item.name || '').trim() || t('文件夹');
           const targetKind = preview?.targetKind === 'file' ? t('文件') : t('文件夹');
-          const choice = await window.luminDialog?.choice?.(
+          const choice = await window.lumeDialog?.choice?.(
             `${t('准备解压到“{name}”', { name: targetName })}\n${t('但当前目录里已经有同名{kind}', { kind: targetKind })}\n\n${t('请选择这次怎么处理')}`,
             t('智能解压遇到同名'),
             [
@@ -550,7 +551,7 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
             };
           }
         } catch (error) {
-          console.warn('GetPathOwnership failed:', error);
+          warnDev('GetPathOwnership failed:', error);
         }
       }
       return resolvedTargetItem;
@@ -604,7 +605,7 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
         };
       });
     } catch (error) {
-      console.warn('ListOwnershipCandidates failed:', error);
+      warnDev('ListOwnershipCandidates failed:', error);
     }
   }, [sessionId]);
 
@@ -672,7 +673,7 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
       try {
         await AppGo.SaveChmodDialogSettings(normalizedMode, rememberedIncludeSubdirectories);
       } catch (saveErr) {
-        console.warn('SaveChmodDialogSettings failed:', saveErr);
+        warnDev('SaveChmodDialogSettings failed:', saveErr);
       }
 
       const appliedTargets: Array<{

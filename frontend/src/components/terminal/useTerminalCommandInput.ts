@@ -5,6 +5,7 @@ import * as AppGo from '../../../wailsjs/go/wailsapp/App.js';
 import { EventsOn } from '../../../wailsjs/runtime/runtime.js';
 import { extractQuickCommandParams } from '../../utils/quickCommandParams.ts';
 import { buildWrappedMultiLineCommand, getTextareaAutocompletePopupPosition, isInteractivePromptText } from '../../utils/terminalHelpers.ts';
+import { warnDev } from '../../utils/devLog';
 import {
   buildPathAutocompleteContext,
   buildStaticAutocompleteItems,
@@ -114,7 +115,7 @@ export function useTerminalCommandInput(deps: {
         : text + '\r');
     prepareScreenScrollbackRef.current(text);
     AppGo.WriteTerminal(sessionId, finalPayload).catch((err) => {
-      console.error('WriteTerminal failed:', err);
+      warnDev('WriteTerminal failed:', err);
     });
     termRef.current?.scrollToBottom();
     if (!isBlankSubmit && text.length > 1 && !/^\d+$/.test(text) && !isInteractivePromptText(text) && !awaitingPasswordRef.current) {
@@ -172,7 +173,7 @@ export function useTerminalCommandInput(deps: {
       : `${t('关闭后将不再显示命令输入快捷键提示')}\n${t('随时按 {shortcut} 可重新开启').replace('{shortcut}', 'F1')}`;
     let confirmed = false;
     try {
-      confirmed = Boolean(await window.luminDialog?.confirm(detail, t('提示')));
+      confirmed = Boolean(await window.lumeDialog?.confirm(detail, t('提示')));
     } catch {
       confirmed = false;
     }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type * as React from 'react';
 import * as AppGo from '../../../wailsjs/go/wailsapp/App.js';
+import { warnDev } from '../../utils/devLog';
 import type { QuickCommandsHandle } from '../QuickCommands.tsx';
 
 // 历史指令弹窗逻辑：列表加载/清空/删除、搜索过滤、键盘导航、
@@ -45,7 +46,7 @@ export function useTerminalHistory(deps: {
       if (!(target instanceof Node)) return;
       if (historyPopupRef.current?.contains(target)) return;
       if (historyBtnRef.current?.contains(target)) return;
-      // 全局对话框（luminDialog，如清空确认）打开时，点确认/取消不应收起历史弹窗
+      // 全局对话框（lumeDialog，如清空确认）打开时，点确认/取消不应收起历史弹窗
       if ((target as Element).closest?.('[data-global-dialog-active="true"]')) return;
       setShowHistory(false);
       setHistoryPopupPos(null);
@@ -232,7 +233,7 @@ export function useTerminalHistory(deps: {
         detail: { sessionId: serverId, historyServerId, scope }
       }));
     } catch (error) {
-      console.error('[Terminal] 删除历史失败:', error);
+      warnDev('[Terminal] 删除历史失败:', error);
     }
   };
 

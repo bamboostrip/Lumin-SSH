@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
-	ai "luminssh-go/internal/ai"
-	"luminssh-go/internal/wailsevents"
-	"luminssh-go/internal/mcpserver"
+	ai "lumeterm/internal/ai"
+	"lumeterm/internal/mcpserver"
+	"lumeterm/internal/wailsevents"
 
 	
 )

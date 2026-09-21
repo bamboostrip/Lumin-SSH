@@ -3,6 +3,7 @@ import { Plus, Pencil, Trash2, Key, Lock, Eye, EyeOff } from 'lucide-react';
 import * as AppGo from '../../wailsjs/go/wailsapp/App.js';
 import type { config } from '../../wailsjs/go/models.ts';
 import { useTranslation } from '../i18n.ts';
+import { warnDev } from '../utils/devLog';
 import Tiptop from './Tiptop.tsx';
 import { Button, Modal, Select } from './ui';
 
@@ -48,7 +49,7 @@ export default function CredentialsModal({ onClose, onChange, addToast }: Creden
       setCredentials(list || []);
     } catch (e) {
       if (signal?.cancelled) return;
-      console.error('Failed to load credentials:', e);
+      warnDev('Failed to load credentials:', e);
     }
   };
 
@@ -93,8 +94,8 @@ export default function CredentialsModal({ onClose, onChange, addToast }: Creden
 
   const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!form.name.trim()) return window.luminDialog?.alert(t('凭据名称'));
-    if (!form.username.trim()) return window.luminDialog?.alert(t('请填写用户名'));
+    if (!form.name.trim()) return window.lumeDialog?.alert(t('凭据名称'));
+    if (!form.username.trim()) return window.lumeDialog?.alert(t('请填写用户名'));
     setSaving(true);
     try {
       // 新增时无 id，保存参数允许缺省；断言为 Credential 便于调 Go 侧类型
@@ -105,14 +106,14 @@ export default function CredentialsModal({ onClose, onChange, addToast }: Creden
       closeForm();
       onChange?.();
     } catch (err) {
-      window.luminDialog?.alert(String(err));
+      window.lumeDialog?.alert(String(err));
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (cred: config.Credential) => {
-    const ok = await window.luminDialog?.confirm(t('确定删除此凭据？'));
+    const ok = await window.lumeDialog?.confirm(t('确定删除此凭据？'));
     if (!ok) return;
     try {
       await AppGo.DeleteCredential(cred.id);
@@ -121,7 +122,7 @@ export default function CredentialsModal({ onClose, onChange, addToast }: Creden
       if (editing === cred.id) closeForm();
       onChange?.();
     } catch (err) {
-      window.luminDialog?.alert(String(err));
+      window.lumeDialog?.alert(String(err));
     }
   };
 
@@ -257,12 +258,12 @@ export default function CredentialsModal({ onClose, onChange, addToast }: Creden
                   <textarea
                     id="cred-private-key"
                     name="cred-private-key"
-                    className="input resize-y"
+                    className="input resize-y font-mono"
                     rows={4}
                     value={form.privateKey}
                     onChange={set('privateKey')}
                     placeholder={isEditing ? t('留空不修改') : '-----BEGIN RSA PRIVATE KEY-----...'}
-                    style={{ fontFamily: 'monospace', fontSize: 12 }}
+                    style={{ fontSize: 12 }}
                   />
                 </div>
                 <div className="form-group">

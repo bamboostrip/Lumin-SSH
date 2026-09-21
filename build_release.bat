@@ -1,7 +1,7 @@
 @echo off
 setlocal
 echo ==============================================
-echo        Lumin SSH Automated Builder (wails3)
+echo        LumeTerm Automated Builder (wails3)
 echo ==============================================
 
 if "%~1"=="" (
@@ -21,7 +21,7 @@ set "VER_NUM=%VERSION%"
 if /i "%VER_NUM:~0,1%"=="V" set "VER_NUM=%VER_NUM:~1%"
 
 echo [1/4] Updating version to %VER_NUM% in source files...
-node scripts\sync-version.mjs "%VER_NUM%"
+node -e "const fs=require('fs');const v=process.argv[1];const w=JSON.parse(fs.readFileSync('wails.json','utf8'));w.info.productVersion=v;fs.writeFileSync('wails.json',JSON.stringify(w,null,2)+'\n');let c=fs.readFileSync('frontend/src/config.ts','utf8');c=c.replace(/APP_VERSION\s*=\s*'[^']*'/,'APP_VERSION = '+String.fromCharCode(39)+v+String.fromCharCode(39));fs.writeFileSync('frontend/src/config.ts',c);const p=JSON.parse(fs.readFileSync('frontend/package.json','utf8'));p.version=v;fs.writeFileSync('frontend/package.json',JSON.stringify(p,null,2)+'\n');const pl=JSON.parse(fs.readFileSync('frontend/package-lock.json','utf8'));pl.version=v;if(pl.packages&&pl.packages[''])pl.packages[''].version=v;fs.writeFileSync('frontend/package-lock.json',JSON.stringify(pl,null,2)+'\n');console.log('Updated wails.json, config.ts, package.json, package-lock.json')" "%VER_NUM%"
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Failed to update version in source files.
     if "%~1"=="" pause
@@ -51,19 +51,19 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
-if not exist "bin\Lumin-amd64-installer.exe" (
+if not exist "bin\LumeTerm-amd64-installer.exe" (
     echo [ERROR] Setup installer not found.
     if "%~1"=="" pause
     exit /b 1
 )
 
-move /y "bin\Lumin.exe" "bin\Lumin-V%VER_NUM%-portable.exe" >nul
-move /y "bin\Lumin-amd64-installer.exe" "bin\Lumin-V%VER_NUM%-amd64-installer.exe" >nul
+move /y "bin\LumeTerm.exe" "bin\LumeTerm-V%VER_NUM%-windows-amd64-portable.exe" >nul
+move /y "bin\LumeTerm-amd64-installer.exe" "bin\LumeTerm-V%VER_NUM%-windows-amd64-installer.exe" >nul
 
 echo.
 echo ==============================================
 echo   SUCCESS!
-echo   Installer: %CD%\bin\Lumin-V%VER_NUM%-amd64-installer.exe
-echo   Portable:  %CD%\bin\Lumin-V%VER_NUM%-portable.exe
+echo   Installer: %CD%\bin\LumeTerm-V%VER_NUM%-windows-amd64-installer.exe
+echo   Portable:  %CD%\bin\LumeTerm-V%VER_NUM%-windows-amd64-portable.exe
 echo ==============================================
 if "%~1"=="" pause

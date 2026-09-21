@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	
-	"luminssh-go/internal/wailsevents"
+	"lumeterm/internal/wailsevents"
 )
 
 const defaultSSHMaxSessions = 10

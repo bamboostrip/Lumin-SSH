@@ -9,7 +9,7 @@ import (
 
 	
 	"golang.org/x/crypto/ssh"
-	"luminssh-go/internal/wailsevents"
+	"lumeterm/internal/wailsevents"
 )
 
 func (m *SSHManager) watchClient(connKey string, client *ssh.Client) {

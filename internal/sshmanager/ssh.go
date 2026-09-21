@@ -17,16 +17,21 @@ import (
 	"sync"
 	"time"
 
-	"luminssh-go/internal/wailsevents"
-	"luminssh-go/internal/config"
-	"luminssh-go/internal/localsftp"
-	"luminssh-go/internal/terminalstream"
-	"luminssh-go/internal/transfer"
+	"lumeterm/internal/config"
+	"lumeterm/internal/localsftp"
+	"lumeterm/internal/terminalstream"
+	"lumeterm/internal/transfer"
+	"lumeterm/internal/wailsevents"
 
 	"github.com/pkg/sftp"
 	
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
+)
+
+const (
+	defaultTermRows = 24
+	defaultTermCols = 80
 )
 
 // ─── 类型别名：引用 config 包类型 ──────────────────────────
@@ -193,7 +198,6 @@ func (s transferSink) Emit(event string, payload any) {
 			progress.UploadID,
 			progress.Phase,
 			progress.Progress,
-			progress.PhaseProgress,
 			progress.BytesDone,
 			progress.BytesTotal,
 			progress.Current,
@@ -374,6 +378,9 @@ func isTransientNetError(err error) bool {
 
 func (m *SSHManager) runPostAuthStep(ctx context.Context, cancel context.CancelFunc, sessionId string, client *ssh.Client, closeClientOnStop bool, fn func() error) error {
 	done := make(chan error, 1)
+	// ponytail: goroutine 无 context 感知，ctx 取消后仍在执行 fn()（可能阻塞 I/O）。
+	// 当前 fn() 通常为 session.Shell()/session.RequestPty() 等短期操作，超时后由 closeClientOnStop 关闭 client 间接释放。
+	// 若未来 fn 涉及长时网络 I/O，需重构为 context-aware。
 	go func() {
 		done <- fn()
 	}()
@@ -768,7 +775,7 @@ func (m *SSHManager) setupSession(ctx context.Context, client *ssh.Client, connK
 		ssh.TTY_OP_OSPEED: 115200,
 	}
 
-	if err := session.RequestPty("xterm-256color", 24, 80, modes); err != nil {
+	if err := session.RequestPty("xterm-256color", defaultTermRows, defaultTermCols, modes); err != nil {
 		session.Close()
 		return err
 	}
@@ -1330,6 +1337,8 @@ func (m *SSHManager) DisconnectAll() {
 		m.Disconnect(id)
 	}
 	m.transferService.Close()
+	// ponytail: 清理输出监听注册表，防止长期运行的桌面应用累积内存
+	sshOutputTapRegistry.Delete(m)
 }
 
 // OpenTerminal 为已有连接创建新的终端通道
@@ -1457,7 +1466,7 @@ func runCommandWithSessionContext(ctx context.Context, session *ssh.Session, cmd
 }
 
 const dynamicProbeScript = `#!/bin/sh
-# LuminSSH Dynamic Probe - auto generated
+# LumeTerm Dynamic Probe - auto generated
 # Collects dynamic metrics via /proc
 
 # ── 进程双采样 + 远端选 top6(只传 6 条,流量与 1.2.7 ps|head -6 持平)──
@@ -1558,8 +1567,8 @@ if [ "$1" = "network" ]; then if command -v ss >/dev/null 2>&1; then out=$(ss -H
 echo ---DISKIO1---
 cat /proc/diskstats
 if [ "$1" = "procs" ]; then
-mkdir -p /tmp/.lumin 2>/dev/null
-proctmp=/tmp/.lumin/.ptop.$$
+mkdir -p /tmp/.lumeterm 2>/dev/null
+proctmp=/tmp/.lumeterm/.ptop.$$
 ts1p=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || date +%s)
 sample_procs > "$proctmp"
 fi
@@ -1574,7 +1583,7 @@ echo ---DISKIO2---
 cat /proc/diskstats
 if [ "$1" = "procs" ]; then
 ts2p=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || date +%s)
-proctop=/tmp/.lumin/.ptop6.$$
+proctop=/tmp/.lumeterm/.ptop6.$$
 sample_procs | sample_procs_select "$proctmp" > "$proctop"
 rm -f "$proctmp"
 echo ---PROC1---

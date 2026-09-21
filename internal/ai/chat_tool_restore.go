@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"luminssh-go/internal/mcpserver"
+	"lumeterm/internal/mcpserver"
 )
 
 type aiToolRestoreFileSnapshot struct {
@@ -642,9 +642,8 @@ func (a *Service) PreviewAIChatToolRestore(artifactPath string, sessionID string
 	return a.buildAIRestoreReviewPayload(state), nil
 }
 
-func (a *Service) PreviewAIChatToolDiff(artifactPath string, sessionID string) (map[string]interface{}, error) {
+func (a *Service) PreviewAIChatToolDiff(artifactPath string) (map[string]interface{}, error) {
 	trimmedArtifactPath := strings.TrimSpace(artifactPath)
-	_ = sessionID
 	if a == nil || a.configManager == nil || trimmedArtifactPath == "" {
 		return nil, fmt.Errorf("差异预览失败")
 	}

@@ -4,6 +4,7 @@ import type { DashboardHostPageMode, ServerListViewMode } from '../hooks/useDash
 import type { ServerFormData } from '../hooks/useServerCatalog.ts';
 import type { PingCounts, ServerPingResult } from '../hooks/useServerPing.ts';
 import { useTranslation } from '../i18n.ts';
+import { warnDev } from '../utils/devLog';
 import AddServerModal from './AddServerModal.tsx';
 import { DashboardBatchOperationBar } from './dashboard/DashboardBatchOperationBar.tsx';
 import { DashboardHeaderActions } from './dashboard/DashboardHeaderActions.tsx';
@@ -139,7 +140,7 @@ export default function Dashboard({
         setLocalShells(list || []);
       })
       .catch((err) => {
-        console.error('Failed to load local shells:', err);
+        warnDev('Failed to load local shells:', err);
       });
   }, []);
 
@@ -170,7 +171,7 @@ export default function Dashboard({
 
   const handleClearRecent = async () => {
     if (!recentServers.length) return;
-    const ok = await window.luminDialog?.confirm?.(t('确定清空最近连接列表吗？'), t('操作确认'));
+    const ok = await window.lumeDialog?.confirm?.(t('确定清空最近连接列表吗？'), t('操作确认'));
     if (!ok) return;
     onClearRecentConnections?.();
   };

@@ -3,25 +3,25 @@
 #
 # The lines below are called `modelines`. See `:help modeline`
 
-name: "Lumin"
+name: "LumeTerm"
 arch: ${GOARCH}
 platform: "linux"
-version: "1.3.2"
+version: "1.3.4"
 section: "default"
 priority: "extra"
 maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
-description: "Lightweight SSH Client"
-vendor: "Lumin"
-homepage: "https://github.com/wmwlwmwl/Lumin-SSH"
+description: "Lightweight Terminal Client"
+vendor: "LumeTerm"
+homepage: "https://github.com/wmwlwmwl/LumeTerm"
 license: "MIT"
 release: "1"
 
 contents:
-  - src: "./bin/Lumin"
+  - src: "./bin/LumeTerm"
     dst: "/usr/local/bin/wails3ref.exe"
   - src: "./build/appicon.png"
     dst: "/usr/share/icons/hicolor/128x128/apps/wails3ref.exe.png"
-  - src: "./build/linux/lumin.desktop"
+  - src: "./build/linux/lumeterm.desktop"
     dst: "/usr/share/applications/wails3ref.exe.desktop"
 
 # Default dependencies for the GTK4 + WebKitGTK 6.0 stack (Ubuntu 24.04+ / Debian 13+)

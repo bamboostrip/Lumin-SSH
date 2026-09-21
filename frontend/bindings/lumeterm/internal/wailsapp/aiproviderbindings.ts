@@ -13,13 +13,13 @@ import * as ai$0 from "../ai/models.js";
 import * as aitypes$0 from "../aitypes/models.js";
 
 export function GetAIProviderState(): $CancellablePromise<ai$0.AIProviderState> {
-    return $Call.ByID(927133438).then(($result: any) => {
+    return $Call.ByID(418698785).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function SaveAIProviderState(jsonStr: string): $CancellablePromise<void> {
-    return $Call.ByID(2149802137, jsonStr);
+    return $Call.ByID(2649888408, jsonStr);
 }
 
 // Private type creation functions

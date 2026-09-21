@@ -16,205 +16,205 @@ import * as provider$0 from "../ai/provider/models.js";
 import * as aitypes$0 from "../aitypes/models.js";
 
 export function ApproveAIChatTools(requestID: string): $CancellablePromise<void> {
-    return $Call.ByID(59000861, requestID);
+    return $Call.ByID(3416928594, requestID);
 }
 
 export function AssignAIChatToolTerminal(requestID: string, targetSessionID: string): $CancellablePromise<void> {
-    return $Call.ByID(185030762, requestID, targetSessionID);
+    return $Call.ByID(2156086113, requestID, targetSessionID);
 }
 
 export function BuildAIConversationTokenLedger(sessionID: string, snapshotJSON: string): $CancellablePromise<ai$0.AIConversationTokenLedger> {
-    return $Call.ByID(2006322302, sessionID, snapshotJSON).then(($result: any) => {
+    return $Call.ByID(1816316909, sessionID, snapshotJSON).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function CancelAIChat(requestID: string): $CancellablePromise<void> {
-    return $Call.ByID(209992119, requestID);
+    return $Call.ByID(3892493632, requestID);
 }
 
 export function CondenseAIConversationContext(conversationID: string, sessionID: string): $CancellablePromise<ai$0.AIConversationContextCondenseResult> {
-    return $Call.ByID(1600852754, conversationID, sessionID).then(($result: any) => {
+    return $Call.ByID(852320187, conversationID, sessionID).then(($result: any) => {
         return $$createType1($result);
     });
 }
 
 export function ContinueAIChatTool(requestID: string): $CancellablePromise<void> {
-    return $Call.ByID(3605485866, requestID);
+    return $Call.ByID(3295958645, requestID);
 }
 
 export function CountAIConversationAPIMessageRawTokens(sessionID: string, conversationID: string, messagesJSON: string): $CancellablePromise<ai$0.AIConversationAPIMessageTokenEntry[]> {
-    return $Call.ByID(1845752858, sessionID, conversationID, messagesJSON).then(($result: any) => {
+    return $Call.ByID(4026697337, sessionID, conversationID, messagesJSON).then(($result: any) => {
         return $$createType3($result);
     });
 }
 
 export function CountAIConversationContextTokens(sessionID: string, snapshotJSON: string): $CancellablePromise<ai$0.AIConversationContextMetrics> {
-    return $Call.ByID(3496656966, sessionID, snapshotJSON).then(($result: any) => {
+    return $Call.ByID(20229989, sessionID, snapshotJSON).then(($result: any) => {
         return $$createType4($result);
     });
 }
 
 export function CreateAIConversation(title: string): $CancellablePromise<ai$0.AIConversationSnapshot> {
-    return $Call.ByID(3609717956, title).then(($result: any) => {
+    return $Call.ByID(504028067, title).then(($result: any) => {
         return $$createType5($result);
     });
 }
 
 export function CreateAIConversationSummarySubtask(conversationID: string, sessionID: string, requestID: string): $CancellablePromise<ai$0.AIConversationSummarySubtaskResult> {
-    return $Call.ByID(3900065155, conversationID, sessionID, requestID).then(($result: any) => {
+    return $Call.ByID(3238984884, conversationID, sessionID, requestID).then(($result: any) => {
         return $$createType6($result);
     });
 }
 
 export function DeleteAIConversation(conversationID: string): $CancellablePromise<void> {
-    return $Call.ByID(460513443, conversationID);
+    return $Call.ByID(4238324136, conversationID);
 }
 
 export function DeleteAIConversationBackup(conversationID: string, backupID: string): $CancellablePromise<void> {
-    return $Call.ByID(3876719953, conversationID, backupID);
+    return $Call.ByID(1277148454, conversationID, backupID);
 }
 
 export function DeleteTemporaryAIConversation(conversationID: string): $CancellablePromise<void> {
-    return $Call.ByID(3273552640, conversationID);
+    return $Call.ByID(3766871489, conversationID);
 }
 
 export function DisableAIChatCollaboration(requestID: string): $CancellablePromise<void> {
-    return $Call.ByID(3337141736, requestID);
+    return $Call.ByID(3357879619, requestID);
 }
 
 export function GetAIAssistantFirstReply(language: string): $CancellablePromise<string> {
-    return $Call.ByID(3206196301, language);
+    return $Call.ByID(3389717502, language);
 }
 
 export function GetAIConversation(conversationID: string): $CancellablePromise<ai$0.AIConversationSnapshot> {
-    return $Call.ByID(267415838, conversationID).then(($result: any) => {
+    return $Call.ByID(686109435, conversationID).then(($result: any) => {
         return $$createType5($result);
     });
 }
 
 export function GetAIConversationBackupHistory(conversationID: string, backupID: string): $CancellablePromise<ai$0.AIConversationAPIMessage[]> {
-    return $Call.ByID(1576162784, conversationID, backupID).then(($result: any) => {
+    return $Call.ByID(1925057067, conversationID, backupID).then(($result: any) => {
         return $$createType8($result);
     });
 }
 
 export function GetAIGlobalSettings(): $CancellablePromise<ai$0.AIGlobalSettings> {
-    return $Call.ByID(3038856499).then(($result: any) => {
+    return $Call.ByID(1570864574).then(($result: any) => {
         return $$createType9($result);
     });
 }
 
 export function GetAIProviderPromptCachePolicy(modelID: string): $CancellablePromise<ai$0.AIProviderPromptCachePolicy> {
-    return $Call.ByID(2629963194, modelID).then(($result: any) => {
+    return $Call.ByID(3990922445, modelID).then(($result: any) => {
         return $$createType10($result);
     });
 }
 
 export function GetAIProviderState(): $CancellablePromise<ai$0.AIProviderState> {
-    return $Call.ByID(1526470201).then(($result: any) => {
+    return $Call.ByID(2166349994).then(($result: any) => {
         return $$createType11($result);
     });
 }
 
 export function GetTemporaryAIConversation(conversationID: string): $CancellablePromise<ai$0.AIConversationSnapshot> {
-    return $Call.ByID(2478637983, conversationID).then(($result: any) => {
+    return $Call.ByID(491708376, conversationID).then(($result: any) => {
         return $$createType5($result);
     });
 }
 
 export function ListAIChatCommandTerminalCandidates(requestID: string): $CancellablePromise<ai$0.AIChatCommandTerminalCandidate[]> {
-    return $Call.ByID(1976405788, requestID).then(($result: any) => {
+    return $Call.ByID(2025480129, requestID).then(($result: any) => {
         return $$createType13($result);
     });
 }
 
 export function ListAIConversationBackups(conversationID: string): $CancellablePromise<ai$0.AIConversationBackup[]> {
-    return $Call.ByID(1402450591, conversationID).then(($result: any) => {
+    return $Call.ByID(3743278798, conversationID).then(($result: any) => {
         return $$createType15($result);
     });
 }
 
 export function ListAIConversations(): $CancellablePromise<ai$0.AIConversationSummary[]> {
-    return $Call.ByID(3730756945).then(($result: any) => {
+    return $Call.ByID(1402200936).then(($result: any) => {
         return $$createType17($result);
     });
 }
 
 export function ListTemporaryAIConversations(): $CancellablePromise<ai$0.AIConversationSummary[]> {
-    return $Call.ByID(4101390150).then(($result: any) => {
+    return $Call.ByID(111557697).then(($result: any) => {
         return $$createType17($result);
     });
 }
 
 export function OpenAIConversationFolder(conversationID: string): $CancellablePromise<void> {
-    return $Call.ByID(2186094460, conversationID);
+    return $Call.ByID(3558277003, conversationID);
 }
 
 export function PreprocessAIConversationLongText(conversationID: string, text: string): $CancellablePromise<string> {
-    return $Call.ByID(1126994155, conversationID, text);
+    return $Call.ByID(781676244, conversationID, text);
 }
 
 export function PreviewAIChatToolDiff(reviewID: string, sessionID: string): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(1536286106, reviewID, sessionID).then(($result: any) => {
+    return $Call.ByID(2980935187, reviewID, sessionID).then(($result: any) => {
         return $$createType18($result);
     });
 }
 
 export function PreviewAIChatToolRestore(reviewID: string, sessionID: string): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(3481920785, reviewID, sessionID).then(($result: any) => {
+    return $Call.ByID(1258159870, reviewID, sessionID).then(($result: any) => {
         return $$createType18($result);
     });
 }
 
 export function PreviewAIConversationContextCondense(conversationID: string, sessionID: string): $CancellablePromise<ai$0.AIConversationContextCondenseResult> {
-    return $Call.ByID(3381507598, conversationID, sessionID).then(($result: any) => {
+    return $Call.ByID(2233246285, conversationID, sessionID).then(($result: any) => {
         return $$createType1($result);
     });
 }
 
 export function ProbeAIProviderLiveness(conversationID: string, sessionID: string, requestID: string): $CancellablePromise<boolean> {
-    return $Call.ByID(3111511639, conversationID, sessionID, requestID);
+    return $Call.ByID(881681266, conversationID, sessionID, requestID);
 }
 
 export function ReadAIConversationWrappedFile(conversationID: string, localPath: string): $CancellablePromise<string> {
-    return $Call.ByID(587219959, conversationID, localPath);
+    return $Call.ByID(3052202410, conversationID, localPath);
 }
 
 export function ReapplyAIChatTool(reviewID: string, sessionID: string): $CancellablePromise<void> {
-    return $Call.ByID(2751068706, reviewID, sessionID);
+    return $Call.ByID(3903203415, reviewID, sessionID);
 }
 
 export function RejectAIChatTools(requestID: string): $CancellablePromise<void> {
-    return $Call.ByID(837051937, requestID);
+    return $Call.ByID(1076733924, requestID);
 }
 
 export function RejectAIChatToolsForQueuedSubmission(requestID: string): $CancellablePromise<void> {
-    return $Call.ByID(1006704849, requestID);
+    return $Call.ByID(1818549606, requestID);
 }
 
 export function RequestAIProviderModels(baseURL: string, apiKey: string): $CancellablePromise<string[]> {
-    return $Call.ByID(2996218399, baseURL, apiKey).then(($result: any) => {
+    return $Call.ByID(1843741114, baseURL, apiKey).then(($result: any) => {
         return $$createType19($result);
     });
 }
 
 export function RequestAIProviderModelsWithProfile(jsonStr: string): $CancellablePromise<string[]> {
-    return $Call.ByID(3673575608, jsonStr).then(($result: any) => {
+    return $Call.ByID(1638468555, jsonStr).then(($result: any) => {
         return $$createType19($result);
     });
 }
 
 export function ResolveAIChatFollowup(requestID: string, answer: string, imagesJSON: string): $CancellablePromise<void> {
-    return $Call.ByID(117001031, requestID, answer, imagesJSON);
+    return $Call.ByID(3659127142, requestID, answer, imagesJSON);
 }
 
 export function RestoreAIChatTool(reviewID: string, sessionID: string): $CancellablePromise<void> {
-    return $Call.ByID(535554387, reviewID, sessionID);
+    return $Call.ByID(1638099586, reviewID, sessionID);
 }
 
 export function RestoreAIConversationBackup(conversationID: string, backupID: string): $CancellablePromise<ai$0.AIConversationSnapshot> {
-    return $Call.ByID(1147885870, conversationID, backupID).then(($result: any) => {
+    return $Call.ByID(2089865239, conversationID, backupID).then(($result: any) => {
         return $$createType5($result);
     });
 }
@@ -224,53 +224,53 @@ export function RestoreAIConversationBackup(conversationID: string, backupID: st
  * 便于用户在 AI 面板出现异常时直接把该文件提供出来排查。
  */
 export function RevealAIDebugLog(): $CancellablePromise<void> {
-    return $Call.ByID(95599865);
+    return $Call.ByID(2894286654);
 }
 
 export function SaveAIConversation(jsonStr: string): $CancellablePromise<ai$0.AIConversationSnapshot> {
-    return $Call.ByID(2089018945, jsonStr).then(($result: any) => {
+    return $Call.ByID(1233044818, jsonStr).then(($result: any) => {
         return $$createType5($result);
     });
 }
 
 export function SaveAIGlobalSettings(jsonStr: string): $CancellablePromise<void> {
-    return $Call.ByID(16432848, jsonStr);
+    return $Call.ByID(1596170871, jsonStr);
 }
 
 export function SaveAIProviderState(jsonStr: string): $CancellablePromise<void> {
-    return $Call.ByID(1540857344, jsonStr);
+    return $Call.ByID(3247612341, jsonStr);
 }
 
 export function SaveTemporaryAIConversation(jsonStr: string): $CancellablePromise<ai$0.AIConversationSnapshot> {
-    return $Call.ByID(3940822958, jsonStr).then(($result: any) => {
+    return $Call.ByID(1461306459, jsonStr).then(($result: any) => {
         return $$createType5($result);
     });
 }
 
 export function SearchAIConversationMessages(query: string, conversationID: string, limit: number): $CancellablePromise<ai$0.AIConversationMessageSearchResult[]> {
-    return $Call.ByID(4171668804, query, conversationID, limit).then(($result: any) => {
+    return $Call.ByID(1640780375, query, conversationID, limit).then(($result: any) => {
         return $$createType21($result);
     });
 }
 
 export function SetAIChatSkipNextAutomaticRequest(requestID: string, enabled: boolean): $CancellablePromise<void> {
-    return $Call.ByID(400204517, requestID, enabled);
+    return $Call.ByID(1624122048, requestID, enabled);
 }
 
 export function StartAIChat(requestID: string, messagesJSON: string): $CancellablePromise<void> {
-    return $Call.ByID(2607093859, requestID, messagesJSON);
+    return $Call.ByID(1276789630, requestID, messagesJSON);
 }
 
 export function StartAIChatCollaboration(requestID: string): $CancellablePromise<void> {
-    return $Call.ByID(2282226596, requestID);
+    return $Call.ByID(1044952227, requestID);
 }
 
 export function TerminateAIChatTool(requestID: string): $CancellablePromise<void> {
-    return $Call.ByID(3517113986, requestID);
+    return $Call.ByID(2505027411, requestID);
 }
 
 export function ValidateAIProviderWebSearch(jsonStr: string): $CancellablePromise<ai$0.AIProviderWebSearchValidationResult> {
-    return $Call.ByID(2392488054, jsonStr).then(($result: any) => {
+    return $Call.ByID(42325079, jsonStr).then(($result: any) => {
         return $$createType22($result);
     });
 }

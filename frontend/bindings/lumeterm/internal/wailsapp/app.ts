@@ -40,19 +40,19 @@ import * as runtimeenv$0 from "../../module/runtimeenv/models.js";
 import * as $models from "./models.js";
 
 export function AbortChunkedUploadFile(taskID: string, fileID: string): $CancellablePromise<void> {
-    return $Call.ByID(722211055, taskID, fileID);
+    return $Call.ByID(2384395830, taskID, fileID);
 }
 
 export function AbortChunkedUploadTask(taskID: string): $CancellablePromise<void> {
-    return $Call.ByID(2354400552, taskID);
+    return $Call.ByID(1589137973, taskID);
 }
 
 export function AbortCompressedUpload(sessionId: string): $CancellablePromise<void> {
-    return $Call.ByID(3958912856, sessionId);
+    return $Call.ByID(3314951043, sessionId);
 }
 
 export function AbortDownloadTransfer(identifier: string): $CancellablePromise<void> {
-    return $Call.ByID(3954525431, identifier);
+    return $Call.ByID(769567876, identifier);
 }
 
 /**
@@ -60,44 +60,44 @@ export function AbortDownloadTransfer(identifier: string): $CancellablePromise<v
  * action: 0=取消, 1=仅本次接受, 2=接受并保存
  */
 export function AcceptHostKeyChange(sessionId: string, action: number): $CancellablePromise<void> {
-    return $Call.ByID(3291439847, sessionId, action);
+    return $Call.ByID(3696618204, sessionId, action);
 }
 
 /**
  * AckClose 前端响应了关闭弹窗（tray/cancel），取消 5s 兜底强制退出
  */
 export function AckClose(): $CancellablePromise<void> {
-    return $Call.ByID(2445924029);
+    return $Call.ByID(2077179644);
 }
 
 export function AddGitIgnoreEntries(sessionID: string, repoPath: string, filePaths: string[]): $CancellablePromise<void> {
-    return $Call.ByID(3830608435, sessionID, repoPath, filePaths);
+    return $Call.ByID(2640210124, sessionID, repoPath, filePaths);
 }
 
 export function AutoRepairCompressedUploadTargets(sessionId: string, localPaths: string[], remoteDir: string): $CancellablePromise<void> {
-    return $Call.ByID(1880633310, sessionId, localPaths, remoteDir);
+    return $Call.ByID(469525837, sessionId, localPaths, remoteDir);
 }
 
 export function BackupToFTP(): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(2016818229).then(($result: any) => {
+    return $Call.ByID(1160328762).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function BackupToR2(): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(232635861).then(($result: any) => {
+    return $Call.ByID(2039880360).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function BackupToSFTP(): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(1287643160).then(($result: any) => {
+    return $Call.ByID(2462049933).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function BackupToWebdav(): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(2448642916).then(($result: any) => {
+    return $Call.ByID(3104083253).then(($result: any) => {
         return $$createType0($result);
     });
 }
@@ -106,62 +106,62 @@ export function BackupToWebdav(): $CancellablePromise<{ [_ in string]?: any }> {
  * BatchDeleteConnections removes multiple connections at once
  */
 export function BatchDeleteConnections(ids: string[]): $CancellablePromise<void> {
-    return $Call.ByID(539449242, ids);
+    return $Call.ByID(1069791035, ids);
 }
 
 /**
  * BatchDeleteItemShell 用一条rm -rf path1 path2 ... 批量删除
  */
 export function BatchDeleteItemShell(sessionId: string, paths: string[]): $CancellablePromise<void> {
-    return $Call.ByID(1636832188, sessionId, paths);
+    return $Call.ByID(2291566825, sessionId, paths);
 }
 
 /**
  * BatchSetConnectionGroup 批量更新服务器分组
  */
 export function BatchSetConnectionGroup(ids: string[], group: string): $CancellablePromise<void> {
-    return $Call.ByID(554830653, ids, group);
+    return $Call.ByID(910578750, ids, group);
 }
 
 export function BeginChunkedUploadFile(taskID: string, relativePath: string, size: number, totalChunks: number): $CancellablePromise<string> {
-    return $Call.ByID(111939770, taskID, relativePath, size, totalChunks);
+    return $Call.ByID(526514027, taskID, relativePath, size, totalChunks);
 }
 
 export function BeginChunkedUploadTask(sessionId: string, remoteDir: string, maxClients: number): $CancellablePromise<string> {
-    return $Call.ByID(874061913, sessionId, remoteDir, maxClients);
+    return $Call.ByID(3827849252, sessionId, remoteDir, maxClients);
 }
 
 export function ChangeRecoveryPassword(newPassword: string): $CancellablePromise<void> {
-    return $Call.ByID(530240868, newPassword);
+    return $Call.ByID(441235057, newPassword);
 }
 
 /**
  * ChmodFile changes file permissions via SFTP or recursively via chmod -R
  */
 export function ChmodFile(sessionId: string, path: string, mode: string, recursive: boolean): $CancellablePromise<void> {
-    return $Call.ByID(628344009, sessionId, path, mode, recursive);
+    return $Call.ByID(3469707286, sessionId, path, mode, recursive);
 }
 
 export function ChownFile(sessionId: string, path: string, owner: string, group: string, recursive: boolean): $CancellablePromise<void> {
-    return $Call.ByID(4234774797, sessionId, path, owner, group, recursive);
+    return $Call.ByID(1218980682, sessionId, path, owner, group, recursive);
 }
 
 /**
  * CleanupSession 在会话彻底销毁时清理所有旁路资源。
  */
 export function CleanupSession(sessionId: string): $CancellablePromise<void> {
-    return $Call.ByID(2801709014, sessionId);
+    return $Call.ByID(1475332275, sessionId);
 }
 
 /**
  * ClearTombstoneConflicts 放弃删除意图（保留云端项）后应再执行合并同步。
  */
 export function ClearTombstoneConflicts(connectionIDs: string[], credentialIDs: string[]): $CancellablePromise<void> {
-    return $Call.ByID(421443029, connectionIDs, credentialIDs);
+    return $Call.ByID(896039386, connectionIDs, credentialIDs);
 }
 
 export function ClearWorkspaceState(): $CancellablePromise<void> {
-    return $Call.ByID(2700711037);
+    return $Call.ByID(2580052614);
 }
 
 /**
@@ -169,50 +169,50 @@ export function ClearWorkspaceState(): $CancellablePromise<void> {
  * navigator.clipboard.readText 触发的 WebKit "Paste" 提示气泡（issue #263）。
  */
 export function ClipboardGetText(): $CancellablePromise<string> {
-    return $Call.ByID(2722766423);
+    return $Call.ByID(4115997786);
 }
 
 export function CompleteChunkedUploadFile(taskID: string, fileID: string): $CancellablePromise<void> {
-    return $Call.ByID(1465596092, taskID, fileID);
+    return $Call.ByID(1408709575, taskID, fileID);
 }
 
 /**
  * CompressItem archives a file or directory on the remote server
  */
 export function CompressItem(sessionId: string, remotePath: string): $CancellablePromise<void> {
-    return $Call.ByID(3087947105, sessionId, remotePath);
+    return $Call.ByID(3061219892, sessionId, remotePath);
 }
 
 /**
  * ConnectLocal spawns a local command process and pipes it to the WebSocket path.
  */
 export function ConnectLocal(sessionId: string, name: string, shellPath: string, cwd: string): $CancellablePromise<void> {
-    return $Call.ByID(1802834403, sessionId, name, shellPath, cwd);
+    return $Call.ByID(492631146, sessionId, name, shellPath, cwd);
 }
 
 /**
  * ConnectSSH establishes an SSH connection
  */
 export function ConnectSSH(sessionId: string, connId: string): $CancellablePromise<void> {
-    return $Call.ByID(1346818010, sessionId, connId);
+    return $Call.ByID(3241523451, sessionId, connId);
 }
 
 /**
  * ConnectSerial connects to a local serial port and pipes it to the WebSocket path.
  */
 export function ConnectSerial(sessionId: string, name: string, portName: string, baudRate: number, dataBits: number, stopBits: number, parity: string): $CancellablePromise<void> {
-    return $Call.ByID(103033916, sessionId, name, portName, baudRate, dataBits, stopBits, parity);
+    return $Call.ByID(1404214207, sessionId, name, portName, baudRate, dataBits, stopBits, parity);
 }
 
 /**
  * CopyItem copies a file or directory within the same server (server-local cp -a).
  */
 export function CopyItem(sessionId: string, srcPath: string, dstPath: string): $CancellablePromise<void> {
-    return $Call.ByID(3741453008, sessionId, srcPath, dstPath);
+    return $Call.ByID(3580659845, sessionId, srcPath, dstPath);
 }
 
 export function CopyThemePackageToMode(themeID: string, targetMode: string): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(581577886, themeID, targetMode).then(($result: any) => {
+    return $Call.ByID(112299383, themeID, targetMode).then(($result: any) => {
         return $$createType0($result);
     });
 }
@@ -221,75 +221,75 @@ export function CopyThemePackageToMode(themeID: string, targetMode: string): $Ca
  * DeleteConnection removes a connection by ID
  */
 export function DeleteConnection(id: string): $CancellablePromise<boolean> {
-    return $Call.ByID(262495081, id);
+    return $Call.ByID(2013779444, id);
 }
 
 export function DeleteCredential(id: string): $CancellablePromise<void> {
-    return $Call.ByID(53893288, id);
+    return $Call.ByID(669754677, id);
 }
 
 /**
  * DeleteItem deletes a file or directory via SFTP
  */
 export function DeleteItem(sessionId: string, path: string, isDir: boolean): $CancellablePromise<void> {
-    return $Call.ByID(680995574, sessionId, path, isDir);
+    return $Call.ByID(2965895931, sessionId, path, isDir);
 }
 
 /**
  * DeleteItemShell 用 rm -rf 删除
  */
 export function DeleteItemShell(sessionId: string, path: string): $CancellablePromise<void> {
-    return $Call.ByID(3878308264, sessionId, path);
+    return $Call.ByID(3949090735, sessionId, path);
 }
 
 export function DeleteMCPGlobalServer(name: string): $CancellablePromise<void> {
-    return $Call.ByID(2203637203, name);
+    return $Call.ByID(633872740, name);
 }
 
 export function DeletePortForwardForSession(sessionId: string, id: string): $CancellablePromise<void> {
-    return $Call.ByID(2774978866, sessionId, id);
+    return $Call.ByID(2003163805, sessionId, id);
 }
 
 export function DeleteProgramFont(fileName: string): $CancellablePromise<void> {
-    return $Call.ByID(2577571490, fileName);
+    return $Call.ByID(3741113245, fileName);
 }
 
 export function DeleteThemePackage(themeID: string): $CancellablePromise<void> {
-    return $Call.ByID(2157415258, themeID);
+    return $Call.ByID(3903791855, themeID);
 }
 
 export function DisconnectSSH(sessionId: string): $CancellablePromise<void> {
-    return $Call.ByID(2542387286, sessionId);
+    return $Call.ByID(327040361, sessionId);
 }
 
 /**
  * DisconnectSSH closes an SSH connection
  */
 export function DisconnectSSHConnection(sessionId: string, terminalIds: string[]): $CancellablePromise<void> {
-    return $Call.ByID(3327332978, sessionId, terminalIds);
+    return $Call.ByID(2123196453, sessionId, terminalIds);
 }
 
 /**
  * DoQuit 用户确认退出，设标记让 WindowClosing 钩子放行并清理应用资源。
  */
 export function DoQuit(): $CancellablePromise<void> {
-    return $Call.ByID(2702556168);
+    return $Call.ByID(1676510489);
 }
 
 export function DownloadDirectoryCompressed(sessionId: string, downloadID: string, remotePath: string, localDir: string, optionsJSON: string): $CancellablePromise<void> {
-    return $Call.ByID(2730013248, sessionId, downloadID, remotePath, localDir, optionsJSON);
+    return $Call.ByID(721620595, sessionId, downloadID, remotePath, localDir, optionsJSON);
 }
 
 export function DownloadDirectoryToLocal(sessionId: string, downloadID: string, remotePath: string, localDir: string, optionsJSON: string): $CancellablePromise<void> {
-    return $Call.ByID(1734486691, sessionId, downloadID, remotePath, localDir, optionsJSON);
+    return $Call.ByID(581884982, sessionId, downloadID, remotePath, localDir, optionsJSON);
 }
 
 export function DownloadFile(sessionId: string, remotePath: string, defaultDir: string): $CancellablePromise<void> {
-    return $Call.ByID(1034026940, sessionId, remotePath, defaultDir);
+    return $Call.ByID(3731551645, sessionId, remotePath, defaultDir);
 }
 
 export function DownloadFileToLocal(sessionId: string, downloadID: string, remotePath: string, localPath: string, optionsJSON: string): $CancellablePromise<void> {
-    return $Call.ByID(2849125432, sessionId, downloadID, remotePath, localPath, optionsJSON);
+    return $Call.ByID(2729563927, sessionId, downloadID, remotePath, localPath, optionsJSON);
 }
 
 /**
@@ -297,62 +297,62 @@ export function DownloadFileToLocal(sessionId: string, downloadID: string, remot
  * 弹出保存对话框；用户取消时返回 ("", nil)。返回写入的文件路径。
  */
 export function DownloadImportTemplate(lang: string): $CancellablePromise<string> {
-    return $Call.ByID(3292173669, lang);
+    return $Call.ByID(4049162492, lang);
 }
 
 /**
  * EnsureRemoteDirAndRetrySync 先重建远端同步目录再重试同步（目录 404/被删时使用）
  */
 export function EnsureRemoteDirAndRetrySync(): $CancellablePromise<string> {
-    return $Call.ByID(2606109467);
+    return $Call.ByID(359839476);
 }
 
 export function ExecuteGitCommand(sessionID: string, repoPath: string, args: string[], interactive: boolean): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(3640661476, sessionID, repoPath, args, interactive).then(($result: any) => {
+    return $Call.ByID(2405346651, sessionID, repoPath, args, interactive).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 /**
  * ExportConnections 导出全部节点到用户选择的文件。
- * useEncryption=false 导出明文 .json（含真实密码/私钥）；true 导出密文 .lumin2。
- * password 非空时用于 LUMIN2 PBKDF2 派生；空则用本机恢复密码（与云端同步加密口径一致）。
+ * useEncryption=false 导出明文 .json（含真实密码/私钥）；true 导出密文 .lumeterm2。
+ * password 非空时用于 LUMETERM2 PBKDF2 派生；空则用本机恢复密码（与云端同步加密口径一致）。
  * 弹出保存对话框；用户取消时返回 ("", nil)。返回写入的文件路径。
  */
 export function ExportConnections(useEncryption: boolean, password: string): $CancellablePromise<string> {
-    return $Call.ByID(2007392489, useEncryption, password);
+    return $Call.ByID(2503822846, useEncryption, password);
 }
 
 /**
  * ExportConnectionsByIDs 按 ID 列表导出节点到用户选择的文件。
  * ids 为空时等同导出全部（向后兼容 ExportConnections）。
- * useEncryption=false 导出明文 .json；true 导出密文 .lumin2。
- * password 非空时用于 LUMIN2 PBKDF2 派生；空则用本机恢复密码。
+ * useEncryption=false 导出明文 .json；true 导出密文 .lumeterm2。
+ * password 非空时用于 LUMETERM2 PBKDF2 派生；空则用本机恢复密码。
  */
 export function ExportConnectionsByIDs(ids: string[], useEncryption: boolean, password: string): $CancellablePromise<string> {
-    return $Call.ByID(1686241602, ids, useEncryption, password);
+    return $Call.ByID(811720875, ids, useEncryption, password);
 }
 
 export function FinishChunkedUploadTask(taskID: string): $CancellablePromise<void> {
-    return $Call.ByID(2183797419, taskID);
+    return $Call.ByID(310979900, taskID);
 }
 
 /**
  * GetArch returns the current executable's CPU architecture (amd64, arm64, etc.)
  */
 export function GetArch(): $CancellablePromise<string> {
-    return $Call.ByID(1785029150);
+    return $Call.ByID(2030692421);
 }
 
 export function GetAutoSyncEnabled(): $CancellablePromise<boolean> {
-    return $Call.ByID(3222957379);
+    return $Call.ByID(2248368010);
 }
 
 /**
  * GetChmodDialogSettings returns remembered chmod dialog preferences
  */
 export function GetChmodDialogSettings(): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(11069810).then(($result: any) => {
+    return $Call.ByID(3644023179).then(($result: any) => {
         return $$createType0($result);
     });
 }
@@ -361,27 +361,27 @@ export function GetChmodDialogSettings(): $CancellablePromise<{ [_ in string]?: 
  * GetCommandHistory 获取指定会话的命令历史
  */
 export function GetCommandHistory(sessionId: string): $CancellablePromise<string> {
-    return $Call.ByID(947190905, sessionId);
+    return $Call.ByID(1238608678, sessionId);
 }
 
 /**
  * GetConnectionByID 返回指定连接的真实数据（含解密密码），供克隆等场景使用
  */
 export function GetConnectionByID(id: string): $CancellablePromise<config$0.Connection> {
-    return $Call.ByID(2378353846, id).then(($result: any) => {
+    return $Call.ByID(4082165905, id).then(($result: any) => {
         return $$createType1($result);
     });
 }
 
 export function GetConnectionPassword(id: string): $CancellablePromise<string> {
-    return $Call.ByID(3958436879, id);
+    return $Call.ByID(3831257920, id);
 }
 
 /**
  * GetConnections returns all saved SSH connections
  */
 export function GetConnections(): $CancellablePromise<config$0.Connection[]> {
-    return $Call.ByID(2023234531).then(($result: any) => {
+    return $Call.ByID(1297026538).then(($result: any) => {
         return $$createType2($result);
     });
 }
@@ -390,13 +390,13 @@ export function GetConnections(): $CancellablePromise<config$0.Connection[]> {
  * GetConnectionsMasked 返回掩码后的连接列表，用于前端显示
  */
 export function GetConnectionsMasked(): $CancellablePromise<config$0.Connection[]> {
-    return $Call.ByID(82682326).then(($result: any) => {
+    return $Call.ByID(3418659267).then(($result: any) => {
         return $$createType2($result);
     });
 }
 
 export function GetCredentials(): $CancellablePromise<config$0.Credential[]> {
-    return $Call.ByID(1518090272).then(($result: any) => {
+    return $Call.ByID(508329477).then(($result: any) => {
         return $$createType4($result);
     });
 }
@@ -405,13 +405,13 @@ export function GetCredentials(): $CancellablePromise<config$0.Credential[]> {
  * FTP Methods
  */
 export function GetFTPConfig(): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(535308130).then(($result: any) => {
+    return $Call.ByID(787472027).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function GetFileManagerSettings(): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(3172198354).then(($result: any) => {
+    return $Call.ByID(1407996955).then(($result: any) => {
         return $$createType0($result);
     });
 }
@@ -420,19 +420,19 @@ export function GetFileManagerSettings(): $CancellablePromise<{ [_ in string]?: 
  * GetFullProcessList retrieves all process list from the remote server
  */
 export function GetFullProcessList(sessionId: string): $CancellablePromise<{ [_ in string]?: any }[]> {
-    return $Call.ByID(1636267236, sessionId).then(($result: any) => {
+    return $Call.ByID(651117057, sessionId).then(($result: any) => {
         return $$createType5($result);
     });
 }
 
 export function GetGitFileModTime(sessionID: string, repoPath: string, filePath: string): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(1257751965, sessionID, repoPath, filePath).then(($result: any) => {
+    return $Call.ByID(177512958, sessionID, repoPath, filePath).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function GetGitHubContributors(): $CancellablePromise<$models.GitHubContributor[]> {
-    return $Call.ByID(27980187).then(($result: any) => {
+    return $Call.ByID(2435408852).then(($result: any) => {
         return $$createType7($result);
     });
 }
@@ -441,44 +441,44 @@ export function GetGitHubContributors(): $CancellablePromise<$models.GitHubContr
  * GetGlobalCommandHistory 获取全局命令历史
  */
 export function GetGlobalCommandHistory(): $CancellablePromise<string> {
-    return $Call.ByID(2561969638);
+    return $Call.ByID(868453253);
 }
 
 export function GetLastSyncTime(): $CancellablePromise<number> {
-    return $Call.ByID(3237123960);
+    return $Call.ByID(959877099);
 }
 
 export function GetLiveWorkspaceState(): $CancellablePromise<string> {
-    return $Call.ByID(2796702354);
+    return $Call.ByID(447604413);
 }
 
 /**
  * GetLocalShells lists detected shells on the local system.
  */
 export function GetLocalShells(): $CancellablePromise<string[]> {
-    return $Call.ByID(367135694).then(($result: any) => {
+    return $Call.ByID(3972300399).then(($result: any) => {
         return $$createType8($result);
     });
 }
 
 export function GetMCPEmbeddedFirecrawlAPIKey(): $CancellablePromise<string> {
-    return $Call.ByID(3526069900);
+    return $Call.ByID(3301743859);
 }
 
 export function GetMCPOutputCompressionSettings(): $CancellablePromise<{ [_ in string]?: number }> {
-    return $Call.ByID(969208158).then(($result: any) => {
+    return $Call.ByID(3792014305).then(($result: any) => {
         return $$createType9($result);
     });
 }
 
 export function GetMCPServerInfo(): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(2497598693).then(($result: any) => {
+    return $Call.ByID(1736305688).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function GetMCPSettingsState(): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(492493272).then(($result: any) => {
+    return $Call.ByID(3672262183).then(($result: any) => {
         return $$createType0($result);
     });
 }
@@ -487,11 +487,11 @@ export function GetMCPSettingsState(): $CancellablePromise<{ [_ in string]?: any
  * GetParamHistory 获取参数历史
  */
 export function GetParamHistory(): $CancellablePromise<string> {
-    return $Call.ByID(1932895769);
+    return $Call.ByID(18084694);
 }
 
 export function GetPathOwnership(sessionId: string, path: string): $CancellablePromise<sshmanager$0.PathOwnershipInfo> {
-    return $Call.ByID(530600438, sessionId, path).then(($result: any) => {
+    return $Call.ByID(1619259391, sessionId, path).then(($result: any) => {
         return $$createType10($result);
     });
 }
@@ -500,21 +500,21 @@ export function GetPathOwnership(sessionId: string, path: string): $CancellableP
  * GetProcessEnv returns environment variables of a remote process
  */
 export function GetProcessEnv(sessionId: string, pid: string): $CancellablePromise<string[]> {
-    return $Call.ByID(1362176638, sessionId, pid).then(($result: any) => {
+    return $Call.ByID(3194199425, sessionId, pid).then(($result: any) => {
         return $$createType8($result);
     });
 }
 
 export function GetProgramDirectory(): $CancellablePromise<string> {
-    return $Call.ByID(3967616477);
+    return $Call.ByID(3382767710);
 }
 
 export function GetProgramFontDataURL(fileName: string): $CancellablePromise<string> {
-    return $Call.ByID(2015721848, fileName);
+    return $Call.ByID(3888173727, fileName);
 }
 
 export function GetProxyNodes(): $CancellablePromise<ai$0.AIProxyNode[]> {
-    return $Call.ByID(253472919).then(($result: any) => {
+    return $Call.ByID(3574043244).then(($result: any) => {
         return $$createType12($result);
     });
 }
@@ -523,14 +523,14 @@ export function GetProxyNodes(): $CancellablePromise<ai$0.AIProxyNode[]> {
  * GetQuickCommands 获取快捷命令列表
  */
 export function GetQuickCommands(): $CancellablePromise<string> {
-    return $Call.ByID(3833421103);
+    return $Call.ByID(3024588470);
 }
 
 /**
  * R2 Methods
  */
 export function GetR2Config(): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(3498228708).then(($result: any) => {
+    return $Call.ByID(3700311363).then(($result: any) => {
         return $$createType0($result);
     });
 }
@@ -539,21 +539,21 @@ export function GetR2Config(): $CancellablePromise<{ [_ in string]?: any }> {
  * RecoveryPassword methods
  */
 export function GetRecoveryPassword(): $CancellablePromise<string> {
-    return $Call.ByID(1128293116);
+    return $Call.ByID(1694561519);
 }
 
 export function GetRememberWorkspace(): $CancellablePromise<boolean> {
-    return $Call.ByID(940642026);
+    return $Call.ByID(2196240183);
 }
 
 export function GetRuntimeEnvironmentSettings(): $CancellablePromise<runtimeenv$0.Settings> {
-    return $Call.ByID(1591717862).then(($result: any) => {
+    return $Call.ByID(756063949).then(($result: any) => {
         return $$createType13($result);
     });
 }
 
 export function GetRuntimeEnvironmentStatus(): $CancellablePromise<runtimeenv$0.Status> {
-    return $Call.ByID(3309706445).then(($result: any) => {
+    return $Call.ByID(3266660418).then(($result: any) => {
         return $$createType14($result);
     });
 }
@@ -562,7 +562,7 @@ export function GetRuntimeEnvironmentStatus(): $CancellablePromise<runtimeenv$0.
  * SFTP Methods
  */
 export function GetSFTPConfig(): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(4224700741).then(($result: any) => {
+    return $Call.ByID(1200538098).then(($result: any) => {
         return $$createType0($result);
     });
 }
@@ -571,7 +571,7 @@ export function GetSFTPConfig(): $CancellablePromise<{ [_ in string]?: any }> {
  * GetSSHChannelUsage 返回当前会话占用的 SSH 通道数量明细
  */
 export function GetSSHChannelUsage(sessionId: string): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(3932401926, sessionId).then(($result: any) => {
+    return $Call.ByID(816631515, sessionId).then(($result: any) => {
         return $$createType0($result);
     });
 }
@@ -580,7 +580,7 @@ export function GetSSHChannelUsage(sessionId: string): $CancellablePromise<{ [_ 
  * GetServerStaticInfo retrieves static server info (OS/timezone/hostname/CPU model)
  */
 export function GetServerStaticInfo(sessionId: string): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(559774467, sessionId).then(($result: any) => {
+    return $Call.ByID(3015073432, sessionId).then(($result: any) => {
         return $$createType0($result);
     });
 }
@@ -589,14 +589,14 @@ export function GetServerStaticInfo(sessionId: string): $CancellablePromise<{ [_
  * SyncMode methods
  */
 export function GetSyncMode(): $CancellablePromise<string> {
-    return $Call.ByID(2443347538);
+    return $Call.ByID(840806725);
 }
 
 /**
  * GetSyncTombstoneStats 返回本地同步删除记录条数。
  */
 export function GetSyncTombstoneStats(): $CancellablePromise<config$0.SyncTombstoneStats> {
-    return $Call.ByID(545653771).then(($result: any) => {
+    return $Call.ByID(3867532900).then(($result: any) => {
         return $$createType15($result);
     });
 }
@@ -605,67 +605,67 @@ export function GetSyncTombstoneStats(): $CancellablePromise<config$0.SyncTombst
  * GetTasksDir 返回当前 AI 对话存储目录（自定义路径或默认 configDir/tasks）
  */
 export function GetTasksDir(): $CancellablePromise<string> {
-    return $Call.ByID(2540294255);
+    return $Call.ByID(217336520);
 }
 
 /**
  * GetTerminalCwd retrieves current working directory of the shell
  */
 export function GetTerminalCwd(sessionId: string): $CancellablePromise<string> {
-    return $Call.ByID(3923409300, sessionId);
+    return $Call.ByID(1592624849, sessionId);
 }
 
 export function GetThemePackageSettings(): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(1850639192).then(($result: any) => {
+    return $Call.ByID(1963641827).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function GetThemePackagesDirectory(): $CancellablePromise<string> {
-    return $Call.ByID(4118609265);
+    return $Call.ByID(3699219286);
 }
 
 /**
  * WebDAV Methods
  */
 export function GetWebdavConfig(): $CancellablePromise<{ [_ in string]?: string }> {
-    return $Call.ByID(1909966529).then(($result: any) => {
+    return $Call.ByID(4017678446).then(($result: any) => {
         return $$createType16($result);
     });
 }
 
 export function GetWebviewGpuDisabled(): $CancellablePromise<boolean> {
-    return $Call.ByID(95181289);
+    return $Call.ByID(364658542);
 }
 
 export function GetWorkspacePersistenceLevel(): $CancellablePromise<string> {
-    return $Call.ByID(3809246760);
+    return $Call.ByID(161225001);
 }
 
 export function GetWorkspaceSessionState(serverId: string): $CancellablePromise<string> {
-    return $Call.ByID(2684021986, serverId);
+    return $Call.ByID(932514747, serverId);
 }
 
 export function GetWorkspaceState(): $CancellablePromise<string> {
-    return $Call.ByID(1207541832);
+    return $Call.ByID(1902578247);
 }
 
 /**
  * GetWsPort 返回本地 WebSocket 服务器端口，前端用于连接终端
  */
 export function GetWsPort(): $CancellablePromise<number> {
-    return $Call.ByID(797700107);
+    return $Call.ByID(2822696124);
 }
 
 /**
  * GetWsToken 返回 WebSocket 鉴权 token，前端连接时通过 ?token=xxx 携带
  */
 export function GetWsToken(): $CancellablePromise<string> {
-    return $Call.ByID(2049520773);
+    return $Call.ByID(997395264);
 }
 
 export function HandleThemeToolRequest(request: ai$0.ThemeToolRequest): $CancellablePromise<ai$0.ThemeToolResult> {
-    return $Call.ByID(1688173340, request).then(($result: any) => {
+    return $Call.ByID(420721097, request).then(($result: any) => {
         return $$createType17($result);
     });
 }
@@ -674,49 +674,49 @@ export function HandleThemeToolRequest(request: ai$0.ThemeToolRequest): $Cancell
  * HasRecoveryPassword 返回是否设置了恢复密码（供前端导出 UI 决定是否允许"复用恢复密码"）。
  */
 export function HasRecoveryPassword(): $CancellablePromise<boolean> {
-    return $Call.ByID(4117414368);
+    return $Call.ByID(1261270283);
 }
 
 /**
  * ImportConnections 从指定文件导入节点（合并，跳过重复）。
  * filePath 由前端通过 SelectImportFile 获取；password 为弹窗输入的自定义解密密码（可空）。
- * 智能识别明文 JSON / LUMIN2 密文：
+ * 智能识别明文 JSON / LUMETERM2 密文：
  *   - 明文直接解析
  *   - 密文优先用本机恢复密码，失败返回 config.ErrNeedPassword，前端弹窗输入自定义密码后再试
  */
 export function ImportConnections(filePath: string, password: string): $CancellablePromise<config$0.ImportResult> {
-    return $Call.ByID(3572667828, filePath, password).then(($result: any) => {
+    return $Call.ByID(1787004659, filePath, password).then(($result: any) => {
         return $$createType18($result);
     });
 }
 
 export function ImportProgramFontFiles(paths: string[]): $CancellablePromise<programfonts$0.ProgramFontInfo[]> {
-    return $Call.ByID(2204288083, paths).then(($result: any) => {
+    return $Call.ByID(2881851518, paths).then(($result: any) => {
         return $$createType20($result);
     });
 }
 
 export function ImportThemePackageFiles(paths: string[]): $CancellablePromise<{ [_ in string]?: any }[]> {
-    return $Call.ByID(1035508567, paths).then(($result: any) => {
+    return $Call.ByID(3610132368, paths).then(($result: any) => {
         return $$createType5($result);
     });
 }
 
 export function InstallRuntimeEnvironment(language: string): $CancellablePromise<runtimeenv$0.Status> {
-    return $Call.ByID(4022186264, language).then(($result: any) => {
+    return $Call.ByID(3767924851, language).then(($result: any) => {
         return $$createType14($result);
     });
 }
 
 export function InstallUnzip(sessionId: string): $CancellablePromise<void> {
-    return $Call.ByID(3077099789, sessionId);
+    return $Call.ByID(755969212, sessionId);
 }
 
 /**
  * IsCustomTasksDir 返回是否使用了自定义 AI 对话存储目录
  */
 export function IsCustomTasksDir(): $CancellablePromise<boolean> {
-    return $Call.ByID(562811596);
+    return $Call.ByID(2987932497);
 }
 
 /**
@@ -724,18 +724,18 @@ export function IsCustomTasksDir(): $CancellablePromise<boolean> {
  * 开发构建默认视为便携版（exe 名不含 installer/setup）
  */
 export function IsPortableVersion(): $CancellablePromise<boolean> {
-    return $Call.ByID(4209125875);
+    return $Call.ByID(3539054592);
 }
 
 /**
  * KillProcess kills a process by PID on the remote server
  */
 export function KillProcess(sessionId: string, pid: string): $CancellablePromise<void> {
-    return $Call.ByID(1028100019, sessionId, pid);
+    return $Call.ByID(3592750836, sessionId, pid);
 }
 
 export function ListConnectedSessions(): $CancellablePromise<mcpserver$0.ConnectedSession[]> {
-    return $Call.ByID(722769644).then(($result: any) => {
+    return $Call.ByID(3841364399).then(($result: any) => {
         return $$createType22($result);
     });
 }
@@ -744,7 +744,7 @@ export function ListConnectedSessions(): $CancellablePromise<mcpserver$0.Connect
  * ListDir lists directory contents via SFTP
  */
 export function ListDir(sessionId: string, path: string): $CancellablePromise<{ [_ in string]?: any }[]> {
-    return $Call.ByID(2865888157, sessionId, path).then(($result: any) => {
+    return $Call.ByID(1057779870, sessionId, path).then(($result: any) => {
         return $$createType5($result);
     });
 }
@@ -753,49 +753,49 @@ export function ListDir(sessionId: string, path: string): $CancellablePromise<{ 
  * ListExternalEditSessions returns active external-edit sessions.
  */
 export function ListExternalEditSessions(): $CancellablePromise<{ [_ in string]?: any }[]> {
-    return $Call.ByID(2717484640).then(($result: any) => {
+    return $Call.ByID(3621491405).then(($result: any) => {
         return $$createType5($result);
     });
 }
 
 export function ListFTPBackups(): $CancellablePromise<{ [_ in string]?: any }[]> {
-    return $Call.ByID(2422362603).then(($result: any) => {
+    return $Call.ByID(1023696474).then(($result: any) => {
         return $$createType5($result);
     });
 }
 
 export function ListGitTerminalCandidates(sessionID: string): $CancellablePromise<{ [_ in string]?: any }[]> {
-    return $Call.ByID(3716236612, sessionID).then(($result: any) => {
+    return $Call.ByID(1011249487, sessionID).then(($result: any) => {
         return $$createType5($result);
     });
 }
 
 export function ListOwnershipCandidates(sessionId: string): $CancellablePromise<sshmanager$0.OwnershipCandidates> {
-    return $Call.ByID(1066640069, sessionId).then(($result: any) => {
+    return $Call.ByID(3037648650, sessionId).then(($result: any) => {
         return $$createType23($result);
     });
 }
 
 export function ListPortForwards(sessionId: string): $CancellablePromise<sshmanager$0.PortForwardInfo[]> {
-    return $Call.ByID(3653317367, sessionId).then(($result: any) => {
+    return $Call.ByID(1089120018, sessionId).then(($result: any) => {
         return $$createType25($result);
     });
 }
 
 export function ListProgramFonts(): $CancellablePromise<programfonts$0.ProgramFontInfo[]> {
-    return $Call.ByID(1325049612).then(($result: any) => {
+    return $Call.ByID(130909757).then(($result: any) => {
         return $$createType20($result);
     });
 }
 
 export function ListR2Backups(): $CancellablePromise<{ [_ in string]?: any }[]> {
-    return $Call.ByID(862490013).then(($result: any) => {
+    return $Call.ByID(1464252066).then(($result: any) => {
         return $$createType5($result);
     });
 }
 
 export function ListSFTPBackups(): $CancellablePromise<{ [_ in string]?: any }[]> {
-    return $Call.ByID(1660306282).then(($result: any) => {
+    return $Call.ByID(2697155557).then(($result: any) => {
         return $$createType5($result);
     });
 }
@@ -804,59 +804,59 @@ export function ListSFTPBackups(): $CancellablePromise<{ [_ in string]?: any }[]
  * ListSerialPorts returns the list of available serial port names.
  */
 export function ListSerialPorts(): $CancellablePromise<string[]> {
-    return $Call.ByID(3037638402).then(($result: any) => {
+    return $Call.ByID(627148861).then(($result: any) => {
         return $$createType8($result);
     });
 }
 
 export function ListThemePackages(): $CancellablePromise<{ [_ in string]?: any }[]> {
-    return $Call.ByID(3926887122).then(($result: any) => {
+    return $Call.ByID(3940911273).then(($result: any) => {
         return $$createType5($result);
     });
 }
 
 export function ListWebdavBackups(): $CancellablePromise<{ [_ in string]?: any }[]> {
-    return $Call.ByID(112562278).then(($result: any) => {
+    return $Call.ByID(611616597).then(($result: any) => {
         return $$createType5($result);
     });
 }
 
 export function MarkThemeToolConversationUserConfirmed(conversationID: string): $CancellablePromise<void> {
-    return $Call.ByID(1675765635, conversationID);
+    return $Call.ByID(2789403602, conversationID);
 }
 
 /**
  * MigrateAITasksDir 将 AI 对话数据迁移到目标目录
  */
 export function MigrateAITasksDir(targetDir: string): $CancellablePromise<void> {
-    return $Call.ByID(3039892780, targetDir);
+    return $Call.ByID(777044235, targetDir);
 }
 
 /**
  * Mkdir creates a directory via SFTP
  */
 export function Mkdir(sessionId: string, path: string): $CancellablePromise<void> {
-    return $Call.ByID(2443009777, sessionId, path);
+    return $Call.ByID(3766475294, sessionId, path);
 }
 
 /**
  * MoveItem moves a file or directory within the same server (server-local mv).
  */
 export function MoveItem(sessionId: string, srcPath: string, dstPath: string): $CancellablePromise<void> {
-    return $Call.ByID(546179552, sessionId, srcPath, dstPath);
+    return $Call.ByID(1876006509, sessionId, srcPath, dstPath);
 }
 
 /**
  * NetworkInfo retrieves full network probe info including connection details.
  */
 export function NetworkInfo(sessionId: string): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(2062959444, sessionId).then(($result: any) => {
+    return $Call.ByID(4239089659, sessionId).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function OpenLocalPathInExplorer(localPath: string, isDirectory: boolean): $CancellablePromise<void> {
-    return $Call.ByID(2595909938, localPath, isDirectory);
+    return $Call.ByID(3211795013, localPath, isDirectory);
 }
 
 /**
@@ -867,7 +867,7 @@ export function OpenLocalPathInExplorer(localPath: string, isDirectory: boolean)
  * 编辑大小上限由用户配置（GetFileManagerMaxEditSizeBytes），每次打开实时读取以反映最新设置。
  */
 export function OpenRemoteFileInSystemEditor(sessionId: string, remotePath: string, content: string, readOnly: boolean): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(2846417337, sessionId, remotePath, content, readOnly).then(($result: any) => {
+    return $Call.ByID(685119032, sessionId, remotePath, content, readOnly).then(($result: any) => {
         return $$createType0($result);
     });
 }
@@ -876,7 +876,7 @@ export function OpenRemoteFileInSystemEditor(sessionId: string, remotePath: stri
  * OpenRemoteFileWithEditor is like OpenRemoteFileInSystemEditor but launches a specific editor binary/.app.
  */
 export function OpenRemoteFileWithEditor(sessionId: string, remotePath: string, content: string, editorPath: string, readOnly: boolean): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(1468960267, sessionId, remotePath, content, editorPath, readOnly).then(($result: any) => {
+    return $Call.ByID(4172454466, sessionId, remotePath, content, editorPath, readOnly).then(($result: any) => {
         return $$createType0($result);
     });
 }
@@ -885,20 +885,20 @@ export function OpenRemoteFileWithEditor(sessionId: string, remotePath: string, 
  * OpenTerminal 在当前服务器连接上打开新的终端标签页
  */
 export function OpenTerminal(sessionId: string): $CancellablePromise<string> {
-    return $Call.ByID(3910325546, sessionId);
+    return $Call.ByID(2877396183, sessionId);
 }
 
 /**
  * PingServer pings a server. mode 为延迟检测方式：auto / banner / tcp（见 ping.go normalizePingMode）。
  */
 export function PingServer(connId: string, mode: string): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(3099417653, connId, mode).then(($result: any) => {
+    return $Call.ByID(3854813976, connId, mode).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function PreviewDownloadConflicts(sessionId: string, remotePath: string, localPath: string, isDirectory: boolean): $CancellablePromise<{ [_ in string]?: any }[]> {
-    return $Call.ByID(4210230469, sessionId, remotePath, localPath, isDirectory).then(($result: any) => {
+    return $Call.ByID(3615521708, sessionId, remotePath, localPath, isDirectory).then(($result: any) => {
         return $$createType5($result);
     });
 }
@@ -907,7 +907,7 @@ export function PreviewDownloadConflicts(sessionId: string, remotePath: string, 
  * PreviewSmartUncompressItem previews smart extract destination without modifying files.
  */
 export function PreviewSmartUncompressItem(sessionId: string, remotePath: string): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(3475309527, sessionId, remotePath).then(($result: any) => {
+    return $Call.ByID(4226893678, sessionId, remotePath).then(($result: any) => {
         return $$createType0($result);
     });
 }
@@ -916,7 +916,7 @@ export function PreviewSmartUncompressItem(sessionId: string, remotePath: string
  * PreviewTombstoneConflicts 合并同步前：先读目标云，列出本地墓碑将删掉的远端项。
  */
 export function PreviewTombstoneConflicts(): $CancellablePromise<config$0.TombstoneConflictPreview> {
-    return $Call.ByID(574209876).then(($result: any) => {
+    return $Call.ByID(1138516391).then(($result: any) => {
         return $$createType26($result);
     });
 }
@@ -926,7 +926,7 @@ export function PreviewTombstoneConflicts(): $CancellablePromise<config$0.Tombst
  * days <= 0 表示清理全部。
  */
 export function PruneSyncTombstones(days: number): $CancellablePromise<config$0.SyncTombstonePruneResult> {
-    return $Call.ByID(547393985, days).then(($result: any) => {
+    return $Call.ByID(440238486, days).then(($result: any) => {
         return $$createType27($result);
     });
 }
@@ -935,14 +935,14 @@ export function PruneSyncTombstones(days: number): $CancellablePromise<config$0.
  * ReadFile reads a file's content via SFTP
  */
 export function ReadFile(sessionId: string, path: string): $CancellablePromise<string> {
-    return $Call.ByID(3933599540, sessionId, path);
+    return $Call.ByID(3408226133, sessionId, path);
 }
 
 /**
  * ReadPrivateKeyFile opens a file dialog to read a private key file
  */
 export function ReadPrivateKeyFile(): $CancellablePromise<string> {
-    return $Call.ByID(3531544814);
+    return $Call.ByID(2895721787);
 }
 
 /**
@@ -950,55 +950,55 @@ export function ReadPrivateKeyFile(): $CancellablePromise<string> {
  * persist: true=保存密码, false=仅本次会话使用
  */
 export function ReconnectWithPassword(sessionId: string, connId: string, newPassword: string, persist: boolean): $CancellablePromise<void> {
-    return $Call.ByID(2473454546, sessionId, connId, newPassword, persist);
+    return $Call.ByID(478021045, sessionId, connId, newPassword, persist);
 }
 
 export function ReloadMCPGlobalServers(): $CancellablePromise<void> {
-    return $Call.ByID(495456358);
+    return $Call.ByID(2413172339);
 }
 
 /**
  * RenameConnectionGroup 重命名服务器分组（批量更新该组下所有连接的 group）
  */
 export function RenameConnectionGroup(oldName: string, newName: string): $CancellablePromise<void> {
-    return $Call.ByID(3228126999, oldName, newName);
+    return $Call.ByID(3021278840, oldName, newName);
 }
 
 /**
  * RenameItem renames a file or directory via SFTP
  */
 export function RenameItem(sessionId: string, oldPath: string, newPath: string): $CancellablePromise<void> {
-    return $Call.ByID(2632658987, sessionId, oldPath, newPath);
+    return $Call.ByID(2185131150, sessionId, oldPath, newPath);
 }
 
 export function ResetRecoveryPassword(newPassword: string): $CancellablePromise<void> {
-    return $Call.ByID(108608371, newPassword);
+    return $Call.ByID(1682613516, newPassword);
 }
 
 /**
  * ResetTasksDir 重置为默认目录（迁移数据后清除自定义路径设置）
  */
 export function ResetTasksDir(): $CancellablePromise<void> {
-    return $Call.ByID(648834052);
+    return $Call.ByID(1428588831);
 }
 
 /**
  * ResizeTerminal resizes the SSH PTY
  */
 export function ResizeTerminal(sessionId: string, cols: number, rows: number): $CancellablePromise<void> {
-    return $Call.ByID(500558094, sessionId, cols, rows);
+    return $Call.ByID(3258701315, sessionId, cols, rows);
 }
 
 export function ResolveDirectoryPath(sessionId: string, path: string): $CancellablePromise<string> {
-    return $Call.ByID(2644166690, sessionId, path);
+    return $Call.ByID(4068048379, sessionId, path);
 }
 
 export function ResolveDownloadLocalPath(localPath: string, isDirectory: boolean, optionsJSON: string): $CancellablePromise<string> {
-    return $Call.ByID(1620265082, localPath, isDirectory, optionsJSON);
+    return $Call.ByID(2716003415, localPath, isDirectory, optionsJSON);
 }
 
 export function ResolveDownloadPath(remotePath: string, defaultDir: string, isDirectory: boolean, optionsJSON: string): $CancellablePromise<string> {
-    return $Call.ByID(394995321, remotePath, defaultDir, isDirectory, optionsJSON);
+    return $Call.ByID(2121930318, remotePath, defaultDir, isDirectory, optionsJSON);
 }
 
 /**
@@ -1006,61 +1006,61 @@ export function ResolveDownloadPath(remotePath: string, defaultDir: string, isDi
  * approves or rejects an external MCP tool invocation.
  */
 export function ResolveMCPApproval(requestID: string, approved: boolean): $CancellablePromise<void> {
-    return $Call.ByID(730546733, requestID, approved);
+    return $Call.ByID(2863268236, requestID, approved);
 }
 
 export function RestartMCPClientServer(name: string, source: string): $CancellablePromise<void> {
-    return $Call.ByID(2824179743, name, source);
+    return $Call.ByID(3574868750, name, source);
 }
 
 export function RestartPortForwardForSession(sessionId: string, id: string): $CancellablePromise<string> {
-    return $Call.ByID(4191538858, sessionId, id);
+    return $Call.ByID(3867014319, sessionId, id);
 }
 
 export function RestoreFromFTPFile(filename: string): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(1165431520, filename).then(($result: any) => {
+    return $Call.ByID(3315704989, filename).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function RestoreFromFTPFileWithPassword(filename: string, password: string): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(705364113, filename, password).then(($result: any) => {
+    return $Call.ByID(1220990204, filename, password).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function RestoreFromR2File(objectKey: string): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(855161786, objectKey).then(($result: any) => {
+    return $Call.ByID(1293348941, objectKey).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function RestoreFromR2FileWithPassword(objectKey: string, password: string): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(374279579, objectKey, password).then(($result: any) => {
+    return $Call.ByID(2965045452, objectKey, password).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function RestoreFromSFTPFile(filename: string): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(3890392359, filename).then(($result: any) => {
+    return $Call.ByID(3029267488, filename).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function RestoreFromSFTPFileWithPassword(filename: string, password: string): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(2233542150, filename, password).then(($result: any) => {
+    return $Call.ByID(4288852433, filename, password).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function RestoreFromWebdavFile(filename: string): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(3248670751, filename).then(($result: any) => {
+    return $Call.ByID(2066790976, filename).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function RestoreFromWebdavFileWithPassword(filename: string, password: string): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(728473646, filename, password).then(($result: any) => {
+    return $Call.ByID(1009363825, filename, password).then(($result: any) => {
         return $$createType0($result);
     });
 }
@@ -1069,131 +1069,131 @@ export function RestoreFromWebdavFileWithPassword(filename: string, password: st
  * RetrySync 手动重试云端同步，返回空字符串表示成功，非空为错误信息
  */
 export function RetrySync(): $CancellablePromise<string> {
-    return $Call.ByID(779514259);
+    return $Call.ByID(704009840);
 }
 
 /**
  * SaveChmodDialogSettings persists chmod dialog preferences
  */
 export function SaveChmodDialogSettings(mode: string, includeSubdirectories: boolean): $CancellablePromise<void> {
-    return $Call.ByID(3089932029, mode, includeSubdirectories);
+    return $Call.ByID(533173126, mode, includeSubdirectories);
 }
 
 /**
  * SaveCommandHistory 保存指定会话的命令历史
  */
 export function SaveCommandHistory(sessionId: string, jsonStr: string): $CancellablePromise<void> {
-    return $Call.ByID(2228127748, sessionId, jsonStr);
+    return $Call.ByID(571748701, sessionId, jsonStr);
 }
 
 /**
  * SaveConnection saves a new or existing connection
  */
 export function SaveConnection(conn: config$0.Connection, noSync: boolean): $CancellablePromise<config$0.Connection> {
-    return $Call.ByID(1206341423, conn, noSync).then(($result: any) => {
+    return $Call.ByID(747100326, conn, noSync).then(($result: any) => {
         return $$createType1($result);
     });
 }
 
 export function SaveCredential(cred: config$0.Credential): $CancellablePromise<config$0.Credential> {
-    return $Call.ByID(1134746622, cred).then(($result: any) => {
+    return $Call.ByID(183845311, cred).then(($result: any) => {
         return $$createType3($result);
     });
 }
 
 export function SaveFTPConfig(config: { [_ in string]?: string }): $CancellablePromise<void> {
-    return $Call.ByID(2253210029, config);
+    return $Call.ByID(3413163526, config);
 }
 
 /**
  * SaveGlobalCommandHistory 保存全局命令历史
  */
 export function SaveGlobalCommandHistory(jsonStr: string): $CancellablePromise<void> {
-    return $Call.ByID(3639242783, jsonStr);
+    return $Call.ByID(3285573194, jsonStr);
 }
 
 export function SaveMCPEmbeddedFirecrawlAPIKey(apiKey: string): $CancellablePromise<void> {
-    return $Call.ByID(3064010297, apiKey);
+    return $Call.ByID(4023592656, apiKey);
 }
 
 export function SaveMCPGlobalServer(name: string, configText: string): $CancellablePromise<void> {
-    return $Call.ByID(1329555497, name, configText);
+    return $Call.ByID(1983570574, name, configText);
 }
 
 export function SaveMCPOutputCompressionSettings(lineLimit: number, characterLimit: number): $CancellablePromise<void> {
-    return $Call.ByID(3187496619, lineLimit, characterLimit);
+    return $Call.ByID(1021450842, lineLimit, characterLimit);
 }
 
 /**
  * SaveParamHistory 保存参数历史
  */
 export function SaveParamHistory(jsonStr: string): $CancellablePromise<void> {
-    return $Call.ByID(2935278052, jsonStr);
+    return $Call.ByID(1429586573, jsonStr);
 }
 
 export function SaveProxyNodes(jsonStr: string): $CancellablePromise<void> {
-    return $Call.ByID(3607231310, jsonStr);
+    return $Call.ByID(4042208635, jsonStr);
 }
 
 /**
  * SaveQuickCommands 保存快捷命令列表
  */
 export function SaveQuickCommands(jsonStr: string): $CancellablePromise<void> {
-    return $Call.ByID(3122703640, jsonStr);
+    return $Call.ByID(2958810387, jsonStr);
 }
 
 /**
  * SaveQuickCommandsLocal 保存快捷命令列表到本地，不触发云端同步
  */
 export function SaveQuickCommandsLocal(jsonStr: string): $CancellablePromise<void> {
-    return $Call.ByID(3918358515, jsonStr);
+    return $Call.ByID(3969384866, jsonStr);
 }
 
 export function SaveR2Config(config: { [_ in string]?: string }): $CancellablePromise<void> {
-    return $Call.ByID(1291948021, config);
+    return $Call.ByID(591619456, config);
 }
 
 export function SaveRuntimeEnvironmentSettings(jsonStr: string): $CancellablePromise<void> {
-    return $Call.ByID(1657294923, jsonStr);
+    return $Call.ByID(2929463418, jsonStr);
 }
 
 export function SaveSFTPConfig(config: { [_ in string]?: string }): $CancellablePromise<void> {
-    return $Call.ByID(301649028, config);
+    return $Call.ByID(11549969, config);
 }
 
 export function SaveThemePackageSettings(payload: { [_ in string]?: string }): $CancellablePromise<void> {
-    return $Call.ByID(2788334325, payload);
+    return $Call.ByID(28115100, payload);
 }
 
 export function SaveTransferTuningSettings(maxPacketKiB: number, maxRequestsPerFile: number, concurrentWrites: boolean, applyToSharedClient: boolean): $CancellablePromise<void> {
-    return $Call.ByID(3921232688, maxPacketKiB, maxRequestsPerFile, concurrentWrites, applyToSharedClient);
+    return $Call.ByID(564108813, maxPacketKiB, maxRequestsPerFile, concurrentWrites, applyToSharedClient);
 }
 
 export function SaveWebdavConfig(config: { [_ in string]?: string }): $CancellablePromise<void> {
-    return $Call.ByID(2941915412, config);
+    return $Call.ByID(1412830685, config);
 }
 
 export function SaveWorkspaceSessionState(serverId: string, jsonStr: string): $CancellablePromise<void> {
-    return $Call.ByID(2530315949, serverId, jsonStr);
+    return $Call.ByID(4212848078, serverId, jsonStr);
 }
 
 export function SaveWorkspaceState(jsonStr: string): $CancellablePromise<void> {
-    return $Call.ByID(3128304305, jsonStr);
+    return $Call.ByID(3383830196, jsonStr);
 }
 
 export function SelectDownloadDirectory(defaultDir: string): $CancellablePromise<string> {
-    return $Call.ByID(1051442913, defaultDir);
+    return $Call.ByID(4257841538, defaultDir);
 }
 
 export function SelectDownloadFilePath(remotePath: string, defaultDir: string): $CancellablePromise<string> {
-    return $Call.ByID(602653043, remotePath, defaultDir);
+    return $Call.ByID(3514506430, remotePath, defaultDir);
 }
 
 /**
  * SelectExternalEditor opens a native file dialog for choosing an editor executable.
  */
 export function SelectExternalEditor(): $CancellablePromise<string> {
-    return $Call.ByID(2685460588);
+    return $Call.ByID(3108133925);
 }
 
 /**
@@ -1201,11 +1201,11 @@ export function SelectExternalEditor(): $CancellablePromise<string> {
  * 与 ImportConnections 分离，便于密文导入需要密码时无需重新选文件。
  */
 export function SelectImportFile(): $CancellablePromise<string> {
-    return $Call.ByID(481735137);
+    return $Call.ByID(1785423792);
 }
 
 export function SelectProgramFontFiles(): $CancellablePromise<string[]> {
-    return $Call.ByID(3040208714).then(($result: any) => {
+    return $Call.ByID(966796755).then(($result: any) => {
         return $$createType8($result);
     });
 }
@@ -1214,149 +1214,149 @@ export function SelectProgramFontFiles(): $CancellablePromise<string[]> {
  * SelectTasksDirectory 弹出目录选择对话框，返回用户选择的目录路径
  */
 export function SelectTasksDirectory(): $CancellablePromise<string> {
-    return $Call.ByID(1627624943);
+    return $Call.ByID(148079374);
 }
 
 export function SelectThemePackageFiles(): $CancellablePromise<string[]> {
-    return $Call.ByID(1437301244).then(($result: any) => {
+    return $Call.ByID(2690193367).then(($result: any) => {
         return $$createType8($result);
     });
 }
 
 export function SelectUploadDirectory(): $CancellablePromise<string> {
-    return $Call.ByID(1655130686);
+    return $Call.ByID(1961457881);
 }
 
 export function SelectUploadFiles(): $CancellablePromise<string[]> {
-    return $Call.ByID(3991179294).then(($result: any) => {
+    return $Call.ByID(4127843389).then(($result: any) => {
         return $$createType8($result);
     });
 }
 
 export function SetAutoSyncEnabled(enabled: boolean): $CancellablePromise<void> {
-    return $Call.ByID(1012026679, enabled);
+    return $Call.ByID(170436822, enabled);
 }
 
 export function SetChmodAutoApplyLastSettings(enabled: boolean): $CancellablePromise<void> {
-    return $Call.ByID(941008965, enabled);
+    return $Call.ByID(4180452038, enabled);
 }
 
 /**
  * SetConnectionGroup 仅更新服务器分组
  */
 export function SetConnectionGroup(id: string, group: string): $CancellablePromise<void> {
-    return $Call.ByID(286613473, id, group);
+    return $Call.ByID(1127041208, id, group);
 }
 
 /**
  * SetConnectionOS 仅更新服务器操作系统
  */
 export function SetConnectionOS(id: string, os: string): $CancellablePromise<void> {
-    return $Call.ByID(891877312, id, os);
+    return $Call.ByID(238659163, id, os);
 }
 
 export function SetFileManagerAutoRefreshDisabled(disabled: boolean): $CancellablePromise<void> {
-    return $Call.ByID(1136504515, disabled);
+    return $Call.ByID(847632860, disabled);
 }
 
 export function SetFileManagerDoubleClickUncompressArchive(enabled: boolean): $CancellablePromise<void> {
-    return $Call.ByID(3737548069, enabled);
+    return $Call.ByID(1342427924, enabled);
 }
 
 /**
  * SetFileManagerMaxEditSize sets the max editable file size (MB), normalized to [1, 50].
  */
 export function SetFileManagerMaxEditSize(mb: number): $CancellablePromise<void> {
-    return $Call.ByID(1864437822, mb);
+    return $Call.ByID(3089765945, mb);
 }
 
 export function SetFileManagerSmartUncompressConflictStrategy(strategy: string): $CancellablePromise<void> {
-    return $Call.ByID(4046119760, strategy);
+    return $Call.ByID(2563999919, strategy);
 }
 
 export function SetLiveWorkspaceState(jsonStr: string): $CancellablePromise<void> {
-    return $Call.ByID(2641948526, jsonStr);
+    return $Call.ByID(788407953, jsonStr);
 }
 
 export function SetRecoveryPassword(password: string): $CancellablePromise<void> {
-    return $Call.ByID(1398381112, password);
+    return $Call.ByID(237034195, password);
 }
 
 export function SetRememberWorkspace(enabled: boolean): $CancellablePromise<void> {
-    return $Call.ByID(211754374, enabled);
+    return $Call.ByID(3484367483, enabled);
 }
 
 export function SetSyncMode(mode: string): $CancellablePromise<void> {
-    return $Call.ByID(3708397342, mode);
+    return $Call.ByID(775720713, mode);
 }
 
 export function SetWebviewGpuDisabled(enabled: boolean): $CancellablePromise<void> {
-    return $Call.ByID(1172353317, enabled);
+    return $Call.ByID(3104084034, enabled);
 }
 
 export function SetWorkspacePersistenceLevel(level: string): $CancellablePromise<void> {
-    return $Call.ByID(394638300, level);
+    return $Call.ByID(3757202597, level);
 }
 
 export function StartLocalPortForward(sessionId: string, localAddr: string, remoteAddr: string): $CancellablePromise<string> {
-    return $Call.ByID(833105367, sessionId, localAddr, remoteAddr);
+    return $Call.ByID(32076768, sessionId, localAddr, remoteAddr);
 }
 
 export function StartRemotePortForward(sessionId: string, remoteAddr: string, localAddr: string): $CancellablePromise<string> {
-    return $Call.ByID(2576183736, sessionId, remoteAddr, localAddr);
+    return $Call.ByID(640219609, sessionId, remoteAddr, localAddr);
 }
 
 /**
  * StopExternalEdit stops watching and cleans temp files for one remote path.
  */
 export function StopExternalEdit(sessionId: string, remotePath: string): $CancellablePromise<void> {
-    return $Call.ByID(2469336989, sessionId, remotePath);
+    return $Call.ByID(1469351696, sessionId, remotePath);
 }
 
 export function StopPortForward(id: string): $CancellablePromise<void> {
-    return $Call.ByID(1481034258, id);
+    return $Call.ByID(2690554021, id);
 }
 
 export function StopPortForwardForSession(sessionId: string, id: string): $CancellablePromise<void> {
-    return $Call.ByID(2781984995, sessionId, id);
+    return $Call.ByID(4155981916, sessionId, id);
 }
 
 export function SupportsWebviewGpuDisable(): $CancellablePromise<boolean> {
-    return $Call.ByID(2889122655);
+    return $Call.ByID(2789444312);
 }
 
 export function SyncAllProviders(): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(507566738).then(($result: any) => {
+    return $Call.ByID(2494320595).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function SyncFromFTP(): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(4216821905).then(($result: any) => {
+    return $Call.ByID(2359728454).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function SyncFromR2(): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(1035597849).then(($result: any) => {
+    return $Call.ByID(2958721420).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function SyncFromSFTP(): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(1359692140).then(($result: any) => {
+    return $Call.ByID(3849615393).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function SyncFromWebdav(): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(2005443704).then(($result: any) => {
+    return $Call.ByID(1453739609).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function SyncWithRecoveryPassword(password: string): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(290738923, password).then(($result: any) => {
+    return $Call.ByID(1886460838, password).then(($result: any) => {
         return $$createType0($result);
     });
 }
@@ -1365,7 +1365,7 @@ export function SyncWithRecoveryPassword(password: string): $CancellablePromise<
  * SystemInfo retrieves basic system probe info
  */
 export function SystemInfo(sessionId: string): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(4086640583, sessionId).then(($result: any) => {
+    return $Call.ByID(1188076742, sessionId).then(($result: any) => {
         return $$createType0($result);
     });
 }
@@ -1374,57 +1374,57 @@ export function SystemInfo(sessionId: string): $CancellablePromise<{ [_ in strin
  * SystemInfoLite retrieves CPU, memory, disk, network, and uptime metrics for the big-screen view.
  */
 export function SystemInfoLite(sessionId: string): $CancellablePromise<{ [_ in string]?: any }> {
-    return $Call.ByID(4034429219, sessionId).then(($result: any) => {
+    return $Call.ByID(1619067330, sessionId).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
 export function TestFTPConnection(host: string, port: number, username: string, password: string, mode: string): $CancellablePromise<config$0.FTPConnectionTestResult | null> {
-    return $Call.ByID(3384754904, host, port, username, password, mode).then(($result: any) => {
+    return $Call.ByID(4168517731, host, port, username, password, mode).then(($result: any) => {
         return $$createType29($result);
     });
 }
 
 export function TestFTPConnectionWithCertificateApproval(host: string, port: number, username: string, password: string, mode: string, approvedFingerprint: string, expectedPinnedFingerprint: string): $CancellablePromise<config$0.FTPConnectionTestResult | null> {
-    return $Call.ByID(2238313188, host, port, username, password, mode, approvedFingerprint, expectedPinnedFingerprint).then(($result: any) => {
+    return $Call.ByID(2677548505, host, port, username, password, mode, approvedFingerprint, expectedPinnedFingerprint).then(($result: any) => {
         return $$createType29($result);
     });
 }
 
 export function TestR2Connection(accessKeyId: string, secretAccessKey: string, bucket: string, endpoint: string): $CancellablePromise<void> {
-    return $Call.ByID(1609270826, accessKeyId, secretAccessKey, bucket, endpoint);
+    return $Call.ByID(117749331, accessKeyId, secretAccessKey, bucket, endpoint);
 }
 
 export function TestSFTPConnection(host: string, port: number, username: string, password: string, authMethod: string, privateKey: string, passphrase: string): $CancellablePromise<config$0.SFTPConnectionTestResult | null> {
-    return $Call.ByID(1992077227, host, port, username, password, authMethod, privateKey, passphrase).then(($result: any) => {
+    return $Call.ByID(1262008850, host, port, username, password, authMethod, privateKey, passphrase).then(($result: any) => {
         return $$createType31($result);
     });
 }
 
 export function TestSFTPConnectionWithHostKeyApproval(host: string, port: number, username: string, password: string, authMethod: string, privateKey: string, passphrase: string, approvedFingerprint: string): $CancellablePromise<config$0.SFTPConnectionTestResult | null> {
-    return $Call.ByID(3880781967, host, port, username, password, authMethod, privateKey, passphrase, approvedFingerprint).then(($result: any) => {
+    return $Call.ByID(3077064500, host, port, username, password, authMethod, privateKey, passphrase, approvedFingerprint).then(($result: any) => {
         return $$createType31($result);
     });
 }
 
 export function TestWebdavConnection(url: string, username: string, password: string): $CancellablePromise<void> {
-    return $Call.ByID(3026087087, url, username, password);
+    return $Call.ByID(68002066, url, username, password);
 }
 
 export function ToggleMCPClientServer(name: string, source: string, disabled: boolean): $CancellablePromise<mcp$0.ServerRuntime> {
-    return $Call.ByID(2457613194, name, source, disabled).then(($result: any) => {
+    return $Call.ByID(1491131477, name, source, disabled).then(($result: any) => {
         return $$createType32($result);
     });
 }
 
 export function ToggleMCPClientServerDisabledForPrompts(name: string, source: string, disabledForPrompts: boolean): $CancellablePromise<mcp$0.ServerRuntime> {
-    return $Call.ByID(793752676, name, source, disabledForPrompts).then(($result: any) => {
+    return $Call.ByID(1411042303, name, source, disabledForPrompts).then(($result: any) => {
         return $$createType32($result);
     });
 }
 
 export function ToggleMCPClientServerToolDisabledForPrompts(name: string, source: string, toolName: string, disabledForPrompts: boolean): $CancellablePromise<mcp$0.ServerRuntime> {
-    return $Call.ByID(139759222, name, source, toolName, disabledForPrompts).then(($result: any) => {
+    return $Call.ByID(3921181833, name, source, toolName, disabledForPrompts).then(($result: any) => {
         return $$createType32($result);
     });
 }
@@ -1433,14 +1433,14 @@ export function ToggleMCPClientServerToolDisabledForPrompts(name: string, source
  * UncompressItem extracts an archive on the remote server using the saved smart extract strategy.
  */
 export function UncompressItem(sessionId: string, remotePath: string): $CancellablePromise<void> {
-    return $Call.ByID(488432898, sessionId, remotePath);
+    return $Call.ByID(2783335275, sessionId, remotePath);
 }
 
 /**
  * UncompressItemWithStrategy extracts an archive on the remote server using a caller-provided conflict strategy.
  */
 export function UncompressItemWithStrategy(sessionId: string, remotePath: string, strategy: string): $CancellablePromise<void> {
-    return $Call.ByID(2457271031, sessionId, remotePath, strategy);
+    return $Call.ByID(1930478230, sessionId, remotePath, strategy);
 }
 
 /**
@@ -1448,77 +1448,77 @@ export function UncompressItemWithStrategy(sessionId: string, remotePath: string
  * platform-specific installation or executable replacement flow.
  */
 export function UpdateApp(downloadUrl: string, filename: string, proxyFirst: boolean): $CancellablePromise<void> {
-    return $Call.ByID(2897282294, downloadUrl, filename, proxyFirst);
+    return $Call.ByID(2722255277, downloadUrl, filename, proxyFirst);
 }
 
 export function UpdateMCPClientServerTimeout(name: string, source: string, timeout: number): $CancellablePromise<mcp$0.ServerRuntime> {
-    return $Call.ByID(554492160, name, source, timeout).then(($result: any) => {
+    return $Call.ByID(1198166097, name, source, timeout).then(($result: any) => {
         return $$createType32($result);
     });
 }
 
 export function UploadChunkBase64(taskID: string, fileID: string, chunkIndex: number, offset: number, base64Content: string): $CancellablePromise<void> {
-    return $Call.ByID(3836195427, taskID, fileID, chunkIndex, offset, base64Content);
+    return $Call.ByID(2910536472, taskID, fileID, chunkIndex, offset, base64Content);
 }
 
 /**
  * UploadFile opens a file dialog to select a local file and uploads it to the remote path
  */
 export function UploadFile(sessionId: string, remotePath: string): $CancellablePromise<void> {
-    return $Call.ByID(1540257073, sessionId, remotePath);
+    return $Call.ByID(2987336028, sessionId, remotePath);
 }
 
 /**
  * UploadFileContent uploads file content from memory to a remote path
  */
 export function UploadFileContent(sessionId: string, fileName: string, remoteDir: string, content: string): $CancellablePromise<void> {
-    return $Call.ByID(2820185238, sessionId, fileName, remoteDir, content);
+    return $Call.ByID(2231488777, sessionId, fileName, remoteDir, content);
 }
 
 /**
  * UploadFileContentBase64 通过 base64 编码上传文件内容，避免前端内存爆炸
  */
 export function UploadFileContentBase64(sessionId: string, fileName: string, remoteDir: string, base64Content: string): $CancellablePromise<void> {
-    return $Call.ByID(2211593241, sessionId, fileName, remoteDir, base64Content);
+    return $Call.ByID(1688389718, sessionId, fileName, remoteDir, base64Content);
 }
 
 /**
  * UploadLocalDir recursively uploads a local directory to a remote directory (no dialog)
  */
 export function UploadLocalDir(sessionId: string, localDir: string, remoteDir: string): $CancellablePromise<void> {
-    return $Call.ByID(1058105269, sessionId, localDir, remoteDir);
+    return $Call.ByID(1461286656, sessionId, localDir, remoteDir);
 }
 
 /**
  * UploadLocalFile uploads a local file to a remote directory (no dialog)
  */
 export function UploadLocalFile(sessionId: string, localFile: string, remoteDir: string): $CancellablePromise<void> {
-    return $Call.ByID(3460988120, sessionId, localFile, remoteDir);
+    return $Call.ByID(2203375767, sessionId, localFile, remoteDir);
 }
 
 export function UploadLocalPathsCompressed(sessionId: string, uploadID: string, maxConcurrent: number, localPaths: string[], remoteDir: string): $CancellablePromise<void> {
-    return $Call.ByID(3440768099, sessionId, uploadID, maxConcurrent, localPaths, remoteDir);
+    return $Call.ByID(1547970654, sessionId, uploadID, maxConcurrent, localPaths, remoteDir);
 }
 
 /**
  * WriteFile writes content to a file via SFTP
  */
 export function WriteFile(sessionId: string, path: string, content: string): $CancellablePromise<void> {
-    return $Call.ByID(2478277235, sessionId, path, content);
+    return $Call.ByID(4056381148, sessionId, path, content);
 }
 
 /**
  * WriteTerminal sends input to the SSH PTY (fallback, primary path is WebSocket)
  */
 export function WriteTerminal(sessionId: string, data: string): $CancellablePromise<void> {
-    return $Call.ByID(539451553, sessionId, data);
+    return $Call.ByID(324026066, sessionId, data);
 }
 
 /**
  * WriteWsOutput 将 WebSocket 输出写入给指定 session 的 WS 连接
  */
 export function WriteWsOutput(sessionId: string, data: string): $CancellablePromise<void> {
-    return $Call.ByID(2087628642, sessionId, data);
+    return $Call.ByID(702292001, sessionId, data);
 }
 
 // Private type creation functions

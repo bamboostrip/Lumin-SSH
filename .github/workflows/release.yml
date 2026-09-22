@@ -342,18 +342,10 @@ jobs:
           $env:PATH = "$env:USERPROFILE\go\bin;C:\Program Files (x86)\NSIS;" + $env:PATH
           wails3 task build
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          # NSIS 安装器（内部会重新 go build 并覆盖 bin\LumeTerm.exe）
+          # NSIS 安装器（内部会重新 go build 并覆盖 bin\LumeTerm.exe）。
+          # 不做 UPX：安装包内放未压缩 exe，由 project.nsi 的 LZMA solid 压缩，体积更小；便携版在打包步骤单独 UPX。
           wails3 task windows:package
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          # UPX 压缩便携 exe（installer 不压）；必须在 windows:package 之后。
-          # v3 CLI 无 -upx；压缩失败仅警告不阻断（与本地 build_release.ps1 一致）。
-          $upx = (Get-Command upx -ErrorAction SilentlyContinue).Source
-          if ($upx) {
-            & $upx --best --lzma "bin\LumeTerm.exe"
-            if ($LASTEXITCODE -ne 0) { Write-Warning "UPX compression failed - keeping uncompressed exe" }
-          } else {
-            Write-Warning "upx not found - portable exe will not be compressed"
-          }
 
       - name: Package portable & installer
         shell: bash
@@ -376,6 +368,8 @@ jobs:
             fi
           }
           cp bin/LumeTerm.exe "build/LumeTerm-${VERSION}-windows-amd64-portable.exe"
+          # 便携版单独 UPX（--best 对齐本地 build_release.ps1），压缩后再算哈希
+          upx --best "build/LumeTerm-${VERSION}-windows-amd64-portable.exe" >/dev/null
           sha256_file "build/LumeTerm-${VERSION}-windows-amd64-portable.exe" > "build/LumeTerm-${VERSION}-windows-amd64-portable.exe.sha256"
           installer=$(ls bin/LumeTerm-amd64-installer.exe | head -1)
           cp "${installer}" "build/LumeTerm-${VERSION}-windows-amd64-installer.exe"

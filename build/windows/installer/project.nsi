@@ -1,4 +1,4 @@
-Unicode true
+﻿Unicode true
 
 ####
 ## Please note: Template replacements don't work in this file. They are provided with default defines like
@@ -47,6 +47,9 @@ VIAddVersionKey "ProductName"     "${INFO_PRODUCTNAME}"
 
 # Enable HiDPI support. https://nsis.sourceforge.io/Reference/ManifestDPIAware
 ManifestDPIAware true
+
+# LZMA solid: 安装包内放未压缩 exe 时压缩率显著优于默认 zlib
+SetCompressor /SOLID lzma
 
 !include "MUI.nsh"
 

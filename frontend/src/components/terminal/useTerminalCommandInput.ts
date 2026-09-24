@@ -96,6 +96,9 @@ export function useTerminalCommandInput(deps: {
   });
   const commandAutocompleteListRef            = useRef<HTMLDivElement | null>(null);
   const [commandAutocompletePopupPos, setCommandAutocompletePopupPos] = useState<{ left: number; top: number; width: number; maxHeight: number } | null>(null);
+  // 上一次广播出去的输入框高度（连同会话）：仅在高度真正变化时才通知终端重排，
+  // 避免每次按键都扰动 xterm；会话切换时也要重新广播，防止终端侧「撑高」状态残留。
+  const cmdInputHeightRef = useRef<{ sessionId: string; height: number }>({ sessionId: '', height: 36 });
 
   const syncCommandInputHeight = useCallback(() => {
     const element = cmdInputRef.current
@@ -103,16 +106,25 @@ export function useTerminalCommandInput(deps: {
     element.style.height = '36px'
     element.style.overflowY = 'hidden'
     element.scrollTop = 0
-    if (!element.value) {
-      return
+    let nextHeight = 36
+    if (element.value) {
+      const scrollHeight = Math.max(element.scrollHeight, 36)
+      nextHeight = Math.min(scrollHeight, 132)
+      element.style.height = `${nextHeight}px`
+      if (scrollHeight > 132) {
+        element.style.overflowY = 'auto'
+      }
     }
-    const scrollHeight = Math.max(element.scrollHeight, 36)
-    const nextHeight = Math.min(scrollHeight, 132)
-    element.style.height = `${nextHeight}px`
-    if (scrollHeight > 132) {
-      element.style.overflowY = 'auto'
+    // 输入栏高度变化会通过 flex 挤压上方 xterm 可视区，必须在绘制前（本函数在
+    // useLayoutEffect 里调用）让终端重排行列，否则容器已收缩、xterm 还停在旧行数，
+    // 底部几行会被裁掉。终端侧只重排视觉，不会把缩小的行数发给 PTY
+    // （见 useTerminalSession 的 inputBarTallRef：撑高是纯本地 UI，不能触发远端 SIGWINCH）。
+    const last = cmdInputHeightRef.current
+    if (last.sessionId !== sessionId || last.height !== nextHeight) {
+      cmdInputHeightRef.current = { sessionId, height: nextHeight }
+      window.dispatchEvent(new CustomEvent('terminal-command-input-resized', { detail: { sessionId, height: nextHeight } }))
     }
-  }, [])
+  }, [sessionId])
 
   const executeCommand = (directCmd?: string) => {
     const rawCommand = directCmd ?? cmdInput;

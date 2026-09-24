@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import type * as React from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import type { IBufferRange, IMarker, ITerminalInitOnlyOptions, ITerminalOptions } from '@xterm/xterm';
@@ -112,6 +112,16 @@ export function useTerminalSession(deps: {
   const ptyResizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 多行粘贴逐行发送链的取消句柄(新输入/卸载时取消,防陈旧分片后发)
   const cancelPacedPasteRef = useRef<() => void>(() => {});
+  // 底部命令输入框是否处于「多行撑高」状态（textarea 高于基准 36px）。
+  // 撑高只是挤压 xterm 可视区的纯本地 UI 变化，绝不能让这个缩小的行数进入 PTY：
+  // 远端 shell 收到 SIGWINCH 会重绘提示行——bash/readline 实测发出 "\r\x1b[K" + 提示符，
+  // 把提示符所在行上「不以换行结束的最后一行」整行擦掉。这正是
+  // 「输入框超过一行就吞掉终端最后一行」的真凶（换行结束的最后一行提示符独占一行，擦了也看不出来）。
+  const inputBarTallRef = useRef(false);
+  // 最近一次「同步给 PTY」时终端容器的像素尺寸。PTY 尺寸只跟随容器像素尺寸变化：
+  // 输入框撑高/缩回、字体度量漂移都只重排本地视觉，不会打扰远端 shell。
+  // 这条规则同时解决了「只吞第一次」——那是撑高/缩回时一次性的尺寸补发造成的。
+  const ptyLayoutRectRef = useRef<{ w: number; h: number } | null>(null);
 
   const scheduleDebouncedPTYResize = useCallback((cols: number, rows: number, immediate = false) => {
     const MIN_COLS = 20;
@@ -138,6 +148,21 @@ export function useTerminalSession(deps: {
       ptyResizeTimerRef.current = setTimeout(send, 80);
     }
   }, [sessionId]);
+
+  // 只有「终端容器的像素尺寸」相对上次同步真的变了，才把尺寸发给 PTY：
+  //   · 输入框撑高/缩回 → 纯本地排版，一个信号都不发（撑高期间直接 return）
+  //   · 字体度量漂移 / 纯视觉重排 → 容器像素尺寸没变，不发
+  //   · 真窗口 / 侧栏 / AI 面板 / 文件管理面板变化 → 像素尺寸变了，照常跟随
+  // 撑高期间发生的真实尺寸变化会在缩回后补齐（那时像素尺寸与上次不同）。
+  const syncPtyIfLayoutChanged = useCallback((cols: number, rows: number, immediate = false) => {
+    if (inputBarTallRef.current) return;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) return;
+    const prev = ptyLayoutRectRef.current;
+    if (prev && Math.abs(prev.w - rect.width) <= 0.5 && Math.abs(prev.h - rect.height) <= 0.5) return;
+    ptyLayoutRectRef.current = { w: rect.width, h: rect.height };
+    scheduleDebouncedPTYResize(cols, rows, immediate);
+  }, [containerRef, scheduleDebouncedPTYResize]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -457,7 +482,9 @@ export function useTerminalSession(deps: {
         // 尺寸变化事件被错过，本地 PTY 可能长期停留在出生尺寸；这里主动
         // 同步一次，同时给 SIGWINCH 会重绘提示符的 shell（bash/zsh）兜底自愈机会。
         if (termRef.current) {
-          scheduleDebouncedPTYResize(termRef.current.cols, termRef.current.rows, true);
+          // 强制补发一次初始尺寸（容器像素尺寸可能自上次同步以来没变，会被去重跳过）
+          ptyLayoutRectRef.current = null;
+          syncPtyIfLayoutChanged(termRef.current.cols, termRef.current.rows, true);
         }
       };
 
@@ -663,7 +690,10 @@ export function useTerminalSession(deps: {
     });
 
     const resizeDisposable = term.onResize(({ cols, rows }) => {
-      scheduleDebouncedPTYResize(cols, rows, false);
+      // 只按「容器像素尺寸是否真的变了」决定是否通知 PTY：输入框撑高/缩回、
+      // 字体度量漂移都只重排本地视觉，不能让远端 shell 收到 SIGWINCH 重绘提示行
+      // 擦掉不以换行结束的最后一行（见 ptyLayoutRectRef 注释）。
+      syncPtyIfLayoutChanged(cols, rows, false);
       scheduleGutterSync();
       scheduleLinkUnderlineSync();
     });
@@ -793,7 +823,9 @@ export function useTerminalSession(deps: {
       if (term.cols !== cols || term.rows !== rows) {
         term.resize(cols, rows);
       }
-      scheduleDebouncedPTYResize(cols, rows, immediate);
+      // 只有容器像素尺寸真的变了才同步 PTY（见 ptyLayoutRectRef / syncPtyIfLayoutChanged）：
+      // 输入框撑高/缩回、字体度量漂移都不会让远端 shell 重绘提示行、擦掉最后一行。
+      syncPtyIfLayoutChanged(cols, rows, immediate);
 
       // xterm 5 在后台（display:none）时 IntersectionObserver 会将 RenderService 设为 paused，
       // 导致尺寸虽然更新但 renderer canvas 仍停留在旧高度，Viewport 因计算出 scrollHeight > height 而误显示滚动条。
@@ -840,7 +872,35 @@ export function useTerminalSession(deps: {
     } catch (e) {
       warnDev('[Terminal] safeFit error:', e);
     }
-  }, [scheduleDebouncedPTYResize]);
+  }, [syncPtyIfLayoutChanged]);
+
+  // ── 底部命令输入栏高度变化（多行/长行撑高）会挤压 xterm 可视区 ──────────
+  // 用 useLayoutEffect 而不是 useEffect：高度广播来自命令输入 hook 的 useLayoutEffect，
+  // 而本 hook 在 Terminal 组件里声明更早、effect 也先注册，保证任何一次广播都不会漏；
+  // 同时在绘制前就把 xterm 行列重算完，避免「容器已收缩、xterm 仍是旧行数」的裁剪帧。
+  // 撑高只重排本地视觉，PTY 只跟随容器像素尺寸变化（见 ptyLayoutRectRef 注释）。
+  useLayoutEffect(() => {
+    const handleCommandInputResize = (e: Event) => {
+      const detail = (e as CustomEvent<{ sessionId?: string; height?: number }>).detail;
+      if (detail?.sessionId && detail.sessionId !== sessionId) return;
+      inputBarTallRef.current = typeof detail?.height === 'number' && detail.height > 36;
+      safeFit(false);
+    };
+    // 字号 / 程序字体变化属于「用户主动改变度量」：容器像素尺寸没变，但列宽真的变了，
+    // 必须强制把新尺寸同步给 PTY，否则远端 shell 会一直按旧列宽折行。
+    const handleMetricChange = () => {
+      ptyLayoutRectRef.current = null;
+      safeFit(true);
+    };
+    window.addEventListener('terminal-command-input-resized', handleCommandInputResize);
+    window.addEventListener('terminal-font-size-changed', handleMetricChange);
+    window.addEventListener('program-font-settings-changed', handleMetricChange);
+    return () => {
+      window.removeEventListener('terminal-command-input-resized', handleCommandInputResize);
+      window.removeEventListener('terminal-font-size-changed', handleMetricChange);
+      window.removeEventListener('program-font-settings-changed', handleMetricChange);
+    };
+  }, [safeFit, sessionId]);
 
   // ── 监听容器与窗口大小变化以及侧边栏切换进行自适应 ─────────────────
   useEffect(() => {
@@ -852,6 +912,8 @@ export function useTerminalSession(deps: {
         if (entry.contentRect.width > 0 && entry.contentRect.height > 0) {
           if (resizeTimer) clearTimeout(resizeTimer);
           resizeTimer = setTimeout(() => {
+            // safeFit 内部按「容器像素尺寸是否真的变了」决定是否同步 PTY：
+            // 输入框撑高引起的收缩只动视觉，真窗口/面板变化照常跟随。
             safeFit(false);
           }, 30);
         }

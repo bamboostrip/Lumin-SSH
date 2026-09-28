@@ -187,19 +187,22 @@ export function useTerminalSession(deps: {
     const MIN_COLS = 20;
     const MIN_ROWS = 2;
     const clampedCols = Math.max(MIN_COLS, cols);
+    // 进入本函数即取代之前挂起的那次 resize——包括下面的 null 早退也必须先清定时器：
+    // 不清的话 80ms 内挂起的旧 send 仍会执行（其行数按当时的 growth/几何算出）。
+    // 现有调用链里撑高/收起的级联总会先清掉它，但这个保证不应依赖全局事件时序，
+    // 后续新增调用点也不至于破坏。去重早退同理：快速拖动窗口回到 earlier size 时，
+    // 过期的更大尺寸若不被清掉，会在 80ms 后仍发给 PTY，造成 shell 折行列数与
+    // 终端实际列数长期错位。
+    if (ptyResizeTimerRef.current) {
+      clearTimeout(ptyResizeTimerRef.current);
+      ptyResizeTimerRef.current = null;
+    }
     const resolvedRows = resolvePtyRows(rows);
     if (resolvedRows === null) {
       logPtyResize({ reason, cols, rows, sent: false, skipped: 'no-compensation' });
       return;
     }
     const clampedRows = Math.max(MIN_ROWS, resolvedRows);
-    // 必须先取消挂起的 resize 再去重：快速拖动窗口回到 earlier size 时，
-    // 去重早退若不清定时器，过期的更大尺寸会在 80ms 后仍发给 PTY，
-    // 造成 shell 折行列数与终端实际列数长期错位
-    if (ptyResizeTimerRef.current) {
-      clearTimeout(ptyResizeTimerRef.current);
-      ptyResizeTimerRef.current = null;
-    }
     if (lastSentPTYSizeRef.current.cols === clampedCols && lastSentPTYSizeRef.current.rows === clampedRows) {
       logPtyResize({ reason, cols: clampedCols, rows: clampedRows, sent: false, skipped: 'dedupe' });
       return;

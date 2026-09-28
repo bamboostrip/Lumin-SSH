@@ -28,6 +28,14 @@ import { createTerminalKeyEventHandler } from './terminalKeyEventHandler.ts';
 
 type LooseT = (key: I18nKey, vars?: Record<string, unknown>) => string;
 
+/** xterm 当前单元格尺寸（css px）；拿不到时返回 0 */
+function readTermCellSize(term: XTerm | null): { w: number; h: number } {
+  const cell = (term as unknown as {
+    _core?: { _renderService?: { dimensions?: { css?: { cell?: { width?: number; height?: number } } } } };
+  } | null)?._core?._renderService?.dimensions?.css?.cell;
+  return { w: cell?.width ?? 0, h: cell?.height ?? 0 };
+}
+
 // ── 初始化 xterm + WebSocket 终端通道 ────────────────────────────────
 // xterm.js 通过 AttachAddon + WebSocket 直接连到本地 Go WebSocket 服务器
 // 完全绕开 Wails IPC跨进程通信，走 TCP loopback 延迟极低
@@ -115,6 +123,8 @@ export function useTerminalSession(deps: {
   const ptyResizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 多行粘贴逐行发送链的取消句柄(新输入/卸载时取消,防陈旧分片后发)
   const cancelPacedPasteRef = useRef<() => void>(() => {});
+  // 上一次被接受的终端容器像素尺寸（按轴比较，见 safeFit 的按轴去抖）。
+  const lastFitRectRef = useRef<{ w: number; h: number } | null>(null);
 
   // 把「本地终端当前行数」换算成「输入栏收起时应该有的 PTY 行数」。
   //
@@ -136,9 +146,7 @@ export function useTerminalSession(deps: {
     const growth = inputBarGrowthRef.current;
     if (!(growth > 0)) return localRows;
     const container = containerRef.current;
-    const term = termRef.current as (XTerm & {
-      _core?: { _renderService?: { dimensions?: { css?: { cell?: { height?: number } } } } };
-    }) | null;
+    const term = termRef.current;
     const termElement = term?.element;
     if (!container || !termElement) return null;
     // 容器没有布局盒时（祖先 display:none，例如回到服务器列表而会话仍保活），
@@ -146,7 +154,7 @@ export function useTerminalSession(deps: {
     // parseInt("100%") = 100 这种假高度必须先用布局盒判断拦掉，
     // 否则会把 ~5 行这种荒谬尺寸发给 PTY，等面板重新显示时再纠正 → 多一次 SIGWINCH。
     if (container.getClientRects().length === 0) return null;
-    const cellHeight = term?._core?._renderService?.dimensions?.css?.cell?.height ?? 0;
+    const cellHeight = readTermCellSize(term).h;
     if (!(cellHeight > 0)) return null;
     const containerHeight = parseInt(window.getComputedStyle(container).height, 10) || 0;
     if (containerHeight <= 0) return null;
@@ -190,6 +198,8 @@ export function useTerminalSession(deps: {
     }
     const send = () => {
       lastSentPTYSizeRef.current = { cols: clampedCols, rows: clampedRows };
+      const rect = containerRef.current?.getBoundingClientRect();
+      const cell = readTermCellSize(termRef.current);
       logPtyResize({
         reason,
         cols: clampedCols,
@@ -198,6 +208,10 @@ export function useTerminalSession(deps: {
         localRows: termRef.current?.rows,
         inputBarGrowth: inputBarGrowthRef.current,
         containerHeight: containerRef.current?.clientHeight,
+        rectW: rect ? Math.round(rect.width * 100) / 100 : null,
+        rectH: rect ? Math.round(rect.height * 100) / 100 : null,
+        cellW: Math.round(cell.w * 1000) / 1000,
+        cellH: Math.round(cell.h * 1000) / 1000,
         sent: true,
       });
       AppGo.ResizeTerminal(sessionId, clampedCols, clampedRows);
@@ -865,8 +879,19 @@ export function useTerminalSession(deps: {
       if (!dims || isNaN(dims.cols) || isNaN(dims.rows)) return;
       const MIN_COLS = 20;
       const MIN_ROWS = 2;
-      const cols = Math.max(MIN_COLS, dims.cols);
-      const rows = Math.max(MIN_ROWS, dims.rows);
+      let cols = Math.max(MIN_COLS, dims.cols);
+      let rows = Math.max(MIN_ROWS, dims.rows);
+      // ── 按轴去抖 ──
+      // 某个轴的容器像素尺寸没变时，proposeDimensions 在该轴上仍可能因为字体度量/取整
+      // 抖动给出 ±1 差异（实测：容器像素尺寸不变、列数 139→140）。那不是真实尺寸变化：
+      // 本地重排纯属浪费，发给 PTY 更会让远端 shell 收到 SIGWINCH、用 readline 重绘提示行，
+      // 把「不以换行结束的最后一行」整行擦掉。该轴尺寸真变了（窗口/面板/输入栏撑高）时照常同步。
+      const lastRect = lastFitRectRef.current;
+      if (lastRect) {
+        if (Math.abs(lastRect.w - rect.width) <= 0.5 && term.cols !== cols) cols = term.cols;
+        if (Math.abs(lastRect.h - rect.height) <= 0.5 && term.rows !== rows) rows = term.rows;
+      }
+      lastFitRectRef.current = { w: rect.width, h: rect.height };
       if (term.cols !== cols || term.rows !== rows) {
         term.resize(cols, rows);
       }
@@ -885,7 +910,7 @@ export function useTerminalSession(deps: {
           core._renderService.handleResize?.(cols, rows);
           core._renderService.refreshRows?.(0, rows - 1);
         }
-        const buf = term.buffer.active;
+        const buf = term.buffer.active;6 
         const targetLine = userPinnedRef.current ? Math.min(buf.viewportY, buf.baseY) : buf.baseY;
         if (!userPinnedRef.current) {
           term.scrollToBottom();

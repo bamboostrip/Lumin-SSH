@@ -19,6 +19,11 @@ export class ConnectedSession {
     "sftp_available": boolean;
     "is_child_terminal": boolean;
 
+    /**
+     * IsLatestTerminal 表示该终端是同服务器上最新打开的，外部 AI 应优先使用。
+     */
+    "is_latest_terminal": boolean;
+
     /** Creates a new ConnectedSession instance. */
     constructor($$source: Partial<ConnectedSession> = {}) {
         if (!("session_id" in $$source)) {
@@ -32,6 +37,9 @@ export class ConnectedSession {
         }
         if (!("is_child_terminal" in $$source)) {
             this["is_child_terminal"] = false;
+        }
+        if (!("is_latest_terminal" in $$source)) {
+            this["is_latest_terminal"] = false;
         }
 
         Object.assign(this, $$source);

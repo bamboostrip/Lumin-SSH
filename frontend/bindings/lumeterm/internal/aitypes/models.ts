@@ -97,6 +97,12 @@ export class AIGlobalSettings {
     "mcpAllowBrowserCalls": boolean;
     "mcpRequireApproval": boolean;
     "mcpActivityVisible": boolean;
+
+    /**
+     * MCPTerminalFollowLatest 控制外部 MCP 会话解析是否自动跟随同服务器最新终端。
+     * 旧配置缺少该键时,LoadAIGlobalSettings 会保留默认值(true),即默认跟随。
+     */
+    "mcpTerminalFollowLatest": boolean;
     "terminalIsolation": boolean;
     "confirmDelete": boolean;
     "continueAfterToolRejection": boolean;
@@ -175,6 +181,9 @@ export class AIGlobalSettings {
         if (!("mcpActivityVisible" in $$source)) {
             this["mcpActivityVisible"] = false;
         }
+        if (!("mcpTerminalFollowLatest" in $$source)) {
+            this["mcpTerminalFollowLatest"] = false;
+        }
         if (!("terminalIsolation" in $$source)) {
             this["terminalIsolation"] = false;
         }
@@ -218,7 +227,7 @@ export class AIGlobalSettings {
         const $$createField11_0 = $$createType2;
         const $$createField12_0 = $$createType4;
         const $$createField13_0 = $$createType6;
-        const $$createField37_0 = $$createType8;
+        const $$createField38_0 = $$createType8;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("allowedCommands" in $$parsedSource) {
             $$parsedSource["allowedCommands"] = $$createField9_0($$parsedSource["allowedCommands"]);
@@ -236,7 +245,7 @@ export class AIGlobalSettings {
             $$parsedSource["systemPromptPresets"] = $$createField13_0($$parsedSource["systemPromptPresets"]);
         }
         if ("proxyNodes" in $$parsedSource) {
-            $$parsedSource["proxyNodes"] = $$createField37_0($$parsedSource["proxyNodes"]);
+            $$parsedSource["proxyNodes"] = $$createField38_0($$parsedSource["proxyNodes"]);
         }
         return new AIGlobalSettings($$parsedSource as Partial<AIGlobalSettings>);
     }

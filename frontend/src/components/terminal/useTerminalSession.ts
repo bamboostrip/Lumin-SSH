@@ -155,7 +155,12 @@ export function useTerminalSession(deps: {
     // 否则会把 ~5 行这种荒谬尺寸发给 PTY，等面板重新显示时再纠正 → 多一次 SIGWINCH。
     if (container.getClientRects().length === 0) return null;
     const cellHeight = readTermCellSize(term).h;
-    if (!(cellHeight > 0)) return null;
+    if (!(cellHeight > 0)) {
+      // xterm 私有路径 _renderService.dimensions.css.cell 变更（升级）后读不到 cell：
+      // 撑高期间所有 PTY resize 会被静默跳过，必须让这种升级破坏显式暴露出来。
+      warnDev('[Terminal] readTermCellSize 读不到 cell 尺寸（xterm 私有 API 变更？），输入栏撑高期间 PTY resize 将被跳过');
+      return null;
+    }
     const containerHeight = parseInt(window.getComputedStyle(container).height, 10) || 0;
     if (containerHeight <= 0) return null;
     const termStyle = window.getComputedStyle(termElement);
@@ -164,16 +169,19 @@ export function useTerminalSession(deps: {
     return rows > 0 ? rows : null;
   }, [containerRef, inputBarGrowthRef, termRef]);
 
-  // 诊断：记录最近若干次 PTY 尺寸决策（原因 / 实际发送值 / 本地行列 / 输入栏撑高 / 容器高度），
-  // 排查「最后一行被擦」这类远端 SIGWINCH 问题时在控制台读 window.__luminPtyResizeLog。
+  // 诊断：记录最近若干次 PTY 尺寸决策（原因 / 实际发送值 / 本地行列 / 输入栏撑高 / 容器高度）。
+  // 排查「最后一行被擦」这类远端 SIGWINCH 问题时在 DEV 控制台读
+  // window.__luminPtyResizeLog:<sessionId>（按会话分 key，多终端互不覆盖；生产构建不写 window）。
   const ptyResizeLogRef = useRef<Array<Record<string, unknown>>>([]);
   const logPtyResize = useCallback((entry: Record<string, unknown>) => {
     const log = ptyResizeLogRef.current;
     log.push({ t: Math.round(performance.now()), ...entry });
     if (log.length > 60) log.shift();
-    (window as unknown as Record<string, unknown>).__luminPtyResizeLog = log;
+    if (import.meta.env.DEV) {
+      (window as unknown as Record<string, unknown>)[`__luminPtyResizeLog:${sessionId}`] = log;
+    }
     if (entry.sent) warnDev('[Terminal] ResizeTerminal', entry);
-  }, []);
+  }, [sessionId]);
 
   const scheduleDebouncedPTYResize = useCallback((cols: number, rows: number, immediate = false, reason = '') => {
     const MIN_COLS = 20;
@@ -227,6 +235,10 @@ export function useTerminalSession(deps: {
     if (!containerRef.current) return;
 
     containerRef.current.innerHTML = '';
+    // xterm 即将按默认 80x24 重建（wsRebuildKey 重连复用同一 sessionId）：残留的旧
+    // rect 会让 safeFit 的按轴去抖把切回标签后的真实 fit 误判为抖动而抑制，
+    // 终端从此钉死在 80x24，直到用户手动改窗口尺寸。
+    lastFitRectRef.current = null;
 
     const fontSize = parseInt(localStorage.getItem('terminalFontSize') || '13', 10);
 
@@ -910,7 +922,7 @@ export function useTerminalSession(deps: {
           core._renderService.handleResize?.(cols, rows);
           core._renderService.refreshRows?.(0, rows - 1);
         }
-        const buf = term.buffer.active;6 
+        const buf = term.buffer.active;
         const targetLine = userPinnedRef.current ? Math.min(buf.viewportY, buf.baseY) : buf.baseY;
         if (!userPinnedRef.current) {
           term.scrollToBottom();

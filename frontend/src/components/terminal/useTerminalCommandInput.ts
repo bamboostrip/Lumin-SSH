@@ -6,6 +6,7 @@ import { EventsOn } from '../../../wailsjs/runtime/runtime.js';
 import { extractQuickCommandParams } from '../../utils/quickCommandParams.ts';
 import { buildWrappedMultiLineCommand, createGatedLineSender, getTextareaAutocompletePopupPosition, isInteractivePromptText } from '../../utils/terminalHelpers.ts';
 import { warnDev } from '../../utils/devLog';
+import { CMD_INPUT_BASE_HEIGHT_PX, CMD_INPUT_MAX_HEIGHT_PX } from './terminalTypes.ts';
 import {
   buildPathAutocompleteContext,
   buildStaticAutocompleteItems,
@@ -106,26 +107,26 @@ export function useTerminalCommandInput(deps: {
   const syncCommandInputHeight = useCallback(() => {
     const element = cmdInputRef.current
     if (!element) return
-    // display:none 时（切到文件/AI 标签、切会话）元素没有布局：scrollHeight 为 0，
-    // 照常重算会把多行草稿压回 36px 并把撑高量一起清掉。此时保持原状，
+    // display:none 时（切到文件/AI 等内容标签页）元素没有布局：scrollHeight 为 0，
+    // 照常重算会把多行草稿压回基准高度并把撑高量一起清掉。此时保持原状，
     // 回到可见状态后草稿与撑高量都还在。
     if (element.getClientRects().length === 0) return
-    element.style.height = '36px'
+    element.style.height = `${CMD_INPUT_BASE_HEIGHT_PX}px`
     element.style.overflowY = 'hidden'
     element.scrollTop = 0
     if (element.value) {
-      const scrollHeight = Math.max(element.scrollHeight, 36)
-      const nextHeight = Math.min(scrollHeight, 132)
+      const scrollHeight = Math.max(element.scrollHeight, CMD_INPUT_BASE_HEIGHT_PX)
+      const nextHeight = Math.min(scrollHeight, CMD_INPUT_MAX_HEIGHT_PX)
       element.style.height = `${nextHeight}px`
-      if (scrollHeight > 132) {
+      if (scrollHeight > CMD_INPUT_MAX_HEIGHT_PX) {
         element.style.overflowY = 'auto'
       }
     }
-    // 把「输入栏相对单行基准 36px 撑高了多少像素」告诉 useTerminalSession：
+    // 把「输入栏相对单行基准高度撑高了多少像素」告诉 useTerminalSession：
     // 输入栏在 flex 流里，撑高会把终端容器挤矮，本地 xterm 必须跟着缩行（顶部内容才滚得到），
     // 但 PTY 行数要按「输入栏收起时」的高度算，否则远端 shell 收到 SIGWINCH 会重绘提示行、
     // 擦掉「不以换行结束的最后一行」。
-    inputBarGrowthRef.current = Math.max(0, Math.round(element.getBoundingClientRect().height) - 36)
+    inputBarGrowthRef.current = Math.max(0, Math.round(element.getBoundingClientRect().height) - CMD_INPUT_BASE_HEIGHT_PX)
   }, [])
 
   const executeCommand = (directCmd?: string) => {

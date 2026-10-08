@@ -132,7 +132,12 @@ func newTestSSHClient(t *testing.T, reply *bool) (*ssh.Client, net.Conn) {
 				go func() {
 					defer channel.Close()
 					for request := range channelRequests {
-						_ = request.Reply(true, nil)
+						// 协议要求只应答 want_reply=1 的请求；对 want_reply=0 的
+						// 请求（如 env）回复会产生杂散 CHANNEL_SUCCESS，可能被
+						// 下一个等待回复的请求误消费
+						if request.WantReply {
+							_ = request.Reply(true, nil)
+						}
 						if request.Type == "shell" || request.Type == "exec" {
 							return
 						}
@@ -583,7 +588,12 @@ func newCycleTestServer(t *testing.T) (host string, port int, hostKeyLine string
 									// shell 常驻：回复 true，保持通道打开
 									_ = request.Reply(true, nil)
 								default:
-									_ = request.Reply(true, nil)
+									// 仅应答 want_reply=1 的请求；env 等免回复请求
+									// 收到杂散 CHANNEL_SUCCESS 会被后续等待回复的
+									// 请求误消费
+									if request.WantReply {
+										_ = request.Reply(true, nil)
+									}
 								}
 							}
 						}()

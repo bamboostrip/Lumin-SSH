@@ -830,6 +830,25 @@ func (m *SSHManager) Connect(sessionId string, conn Connection) error {
 	return nil
 }
 
+// requestUTF8LocaleEnv 请求在远端会话设置 LANG=C.UTF-8，与 OpenSSH/Xshell 等主流
+// 客户端发送 locale 环境变量的行为对齐。未配置默认 locale 的服务器（精简镜像/VPS
+// 常见）会以 C locale 运行会话，ls 把中文文件名转成八进制转义、TUI 程序把中文渲染
+// 成横杠（#370）。仅对 UTF-8 终端编码的连接发送：sshd 开启 AcceptEnv 时生效，
+// 未开启或拒绝时无副作用；GBK 等遗留编码连接的 locale 由服务器与用户的转码设置
+// 管理，不发送。
+// 必须以 want_reply=0 发送（与 OpenSSH 客户端一致）：x/crypto 的 Setenv 是
+// want_reply=1，遇到只应答 pty/shell 却不理会 env 请求的不良固件会永久阻塞在建连
+// 阶段；免回复发送对拒绝场景不可感知，属可接受的诊断信息损失。
+func requestUTF8LocaleEnv(session *ssh.Session, terminalEncoding, sessionId string) {
+	if config.NormalizeTerminalEncoding(terminalEncoding) != "utf-8" {
+		return
+	}
+	payload := ssh.Marshal(&struct{ Name, Value string }{Name: "LANG", Value: "C.UTF-8"})
+	if _, err := session.SendRequest("env", false, payload); err != nil {
+		log.Printf("[setupSession] 发送 LANG=C.UTF-8 环境变量失败(%s): %v", sessionId, err)
+	}
+}
+
 // setupSession 创建 shell session 的共享逻辑
 func (m *SSHManager) setupSession(ctx context.Context, client *ssh.Client, connKey, sessionId, groupSessionId, launchCmd string, remoteHistoryActive bool, shellPath string, terminalInitPath string, terminalEncoding string) error {
 	if ctx != nil && ctx.Err() != nil {
@@ -854,6 +873,7 @@ func (m *SSHManager) setupSession(ctx context.Context, client *ssh.Client, connK
 		session.Close()
 		return err
 	}
+	requestUTF8LocaleEnv(session, terminalEncoding, sessionId)
 	if ctx != nil && ctx.Err() != nil {
 		session.Close()
 		return ctx.Err()

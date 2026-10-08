@@ -210,6 +210,47 @@ func TestRequestUTF8LocaleEnvSkipsNonUTF8Encoding(t *testing.T) {
 	}
 }
 
+// TestRequestUTF8LocaleEnvEncodingNormalization 钉死归一化语义：空值（默认连接）、
+// utf8/UTF-8 别名与未知编码值都归一为 utf-8，应当发送；显式非 UTF-8 编码不发送。
+func TestRequestUTF8LocaleEnvEncodingNormalization(t *testing.T) {
+	cases := []struct {
+		name     string
+		encoding string
+		wantSend bool
+	}{
+		{"空值即默认连接", "", true},
+		{"utf8 别名", "utf8", true},
+		{"大小写混合", "UTF-8", true},
+		{"未知编码值归一为 utf-8", "not-an-encoding", true},
+		{"显式非 UTF-8 不发送", "us-ascii", false},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			client, recorder := newEnvRecordingSSHClient(t)
+			session, err := client.NewSession()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer session.Close()
+
+			requestUTF8LocaleEnv(session, testCase.encoding, "test-session")
+			if err := session.Shell(); err != nil {
+				t.Fatal(err)
+			}
+			waitShellSeen(t, recorder)
+
+			envs := recorder.envRequests()
+			if testCase.wantSend {
+				if len(envs) != 1 || envs[0].Payload != "LANG=C.UTF-8" {
+					t.Fatalf("编码 %q 归一为 utf-8 后应发送 LANG=C.UTF-8，实际: %#v", testCase.encoding, envs)
+				}
+			} else if len(envs) != 0 {
+				t.Fatalf("编码 %q 不应发送 env 请求，实际: %#v", testCase.encoding, envs)
+			}
+		})
+	}
+}
+
 func TestRequestUTF8LocaleEnvToleratesClosedTransport(t *testing.T) {
 	client, _ := newEnvRecordingSSHClient(t)
 	session, err := client.NewSession()

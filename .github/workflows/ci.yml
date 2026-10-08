@@ -46,6 +46,14 @@ jobs:
           echo "wails3 ${WAILS_VERSION}"
           go install "github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}"
 
+      - name: Lockfile 完整性检查
+        # npm ≤11.6 在 Windows 重新生成 lock 会裁剪 wasm 平台回退子树
+        # （@tailwindcss/oxide-wasm32-wasi 下的 @emnapi/* 等），上游合并对 lock 的
+        # 文本 auto-merge 也可能拼出悬空依赖边；两者都会让 Linux npm ci 报
+        # 难以定位的 EUSAGE。提前校验并给出明确修复提示（npm ≥11.19 已修复裁剪）。
+        run: npm run lock:check
+        working-directory: frontend
+
       - name: 安装前端依赖
         # runner 全局默认走腾讯云 npm 镜像且可能超时；GitHub runner 上用官方源更稳，
         # 并加大重试次数/超时兜底偶发网络抖动

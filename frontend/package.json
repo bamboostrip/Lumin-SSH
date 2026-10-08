@@ -11,6 +11,7 @@
     "styles:check": "node scripts/check-styles.mjs",
     "styles:baseline": "node scripts/check-styles.mjs --baseline",
     "overlay:check": "node scripts/check-overlay-lock.mjs",
+    "lock:check": "node scripts/check-lockfile.mjs",
     "lint": "oxlint src",
     "lint:fix": "oxlint --fix src"
   },

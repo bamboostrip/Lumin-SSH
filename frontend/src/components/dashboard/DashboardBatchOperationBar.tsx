@@ -104,7 +104,10 @@ export function DashboardBatchOperationBar({
           {showMoveGroupDropdown && selectedIds.length > 0 && (
             <div
               className="context-menu absolute bottom-full left-0 mb-2 flex flex-col min-w-[180px] px-2 py-1.5"
-              style={{ zIndex: Z.POPUP }}
+              // ponytail: .context-menu 在未分层 CSS 里是 position:fixed，会覆盖 @layer 里的
+              // absolute，导致菜单被定位到视口外不可见；此处内联强制 absolute。
+              // 升级路径：把 .context-menu 收进 @layer components 后可移除。
+              style={{ position: 'absolute', zIndex: Z.POPUP }}
             >
               <div className="px-1 pt-0.5 pb-1.5 mb-1.5 text-xs text-muted border-b border-line">
                 {t('移动到分组')}

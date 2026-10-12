@@ -516,7 +516,6 @@ export function useTerminalSession(deps: {
       shortcutsRef,
       wsRef,
       pendingCmdRef,
-      awaitingCommandFinishRef,
       termRef,
       termSearchInputRef,
       setShowTermSearch,
@@ -630,7 +629,7 @@ export function useTerminalSession(deps: {
     let localInputLength = 0; // 用于保护提示符，防止退格越界
     let pendingCmdReliable = true;
 
-    // 多行粘贴逐行 + 提示符回归门控(与远端时序无关)；2.5s 超时兜底防卡死
+    // 远端未开 bracketed paste(2004) 时的多行粘贴回退：逐行 + 提示符回归门控(与远端时序无关)；2.5s 超时兜底防卡死
     const gatedLineSender = createGatedLineSender({
       send: (chunk) => {
         if (wsRef.current?.readyState !== WebSocket.OPEN) return false;
@@ -655,8 +654,11 @@ export function useTerminalSession(deps: {
 
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         cancelPacedPasteRef.current?.();
-        if (out.length > 1 && out.includes('\r')) {
-          // 多行粘贴：逐行发送 + 提示符回归门控，与远端时序无关(实现见上方)
+        if (out.includes('\x1b[200~')) {
+          // bracketed paste：整块透传，远端 readline 字面插入不执行，不拆行不补 \r
+          wsRef.current.send(textEncoder.encode(out));
+        } else if (out.length > 1 && out.includes('\r')) {
+          // 远端未开 bracketed paste(2004) 时的回退：逐行发送 + 提示符回归门控(实现见上方)
           cancelPacedPasteRef.current = gatedLineSender(out.split('\r'));
         } else {
           wsRef.current.send(textEncoder.encode(out));

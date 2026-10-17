@@ -36,6 +36,7 @@ export default function FileManagerTabPane({ activeTab, addToast }: FileManagerT
     fileManagerDownloadConflictDiffByMtime, handleToggleFileManagerDownloadConflictDiffByMtime,
     fileManagerDownloadRenameSuffixMode, handleFileManagerDownloadRenameSuffixModeChange,
     fileManagerDownloadDefaultDir, setFileManagerDownloadDefaultDir,
+    handleFileManagerDownloadDefaultDirPick,
     fileManagerUploadChunkSizeKiB, setFileManagerUploadChunkSizeKiB,
     fileManagerUploadMaxFiles, setFileManagerUploadMaxFiles,
     fileManagerUploadMaxChunksPerFile, setFileManagerUploadMaxChunksPerFile,
@@ -99,6 +100,7 @@ export default function FileManagerTabPane({ activeTab, addToast }: FileManagerT
           onFileManagerDownloadRenameSuffixModeChange={handleFileManagerDownloadRenameSuffixModeChange}
           fileManagerDownloadDefaultDir={fileManagerDownloadDefaultDir}
           onFileManagerDownloadDefaultDirChange={handleFileManagerUploadSettingChange('fileManagerDownloadDefaultDir', setFileManagerDownloadDefaultDir)}
+          onFileManagerDownloadDefaultDirPick={handleFileManagerDownloadDefaultDirPick}
           fileManagerDownloadDefaultDirPreview={resolveFileManagerDownloadDirPreview(fileManagerDownloadDefaultDir, programDirectory)}
           fileManagerUploadChunkSizeKiB={Number(fileManagerUploadChunkSizeKiB)}
           onFileManagerUploadChunkSizeKiBChange={handleFileManagerUploadSettingChange('fileManagerUploadChunkSizeKiB', setFileManagerUploadChunkSizeKiB)}

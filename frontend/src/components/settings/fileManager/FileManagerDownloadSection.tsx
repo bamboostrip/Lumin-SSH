@@ -1,6 +1,8 @@
 import { t as $t } from '../../../i18n.ts';
+import { Button } from '../../ui';
 import { RadioOption, ToggleSwitch, SettingRow, SettingsDivider, SettingsPanel, SettingsSectionTitle } from '../SharedComponents';
 import { settings } from '../settingDefinitions';
+import { DEFAULT_FILE_MANAGER_DOWNLOAD_DIR } from '../../../utils/fileManagerTransfer';
 import type { FileManagerTabProps } from './fileManagerTabTypes';
 
 export default function FileManagerDownloadSection({
@@ -16,10 +18,22 @@ export default function FileManagerDownloadSection({
   onFileManagerDownloadRenameSuffixModeChange,
   fileManagerDownloadDefaultDir,
   onFileManagerDownloadDefaultDirChange,
+  onFileManagerDownloadDefaultDirPick,
   fileManagerDownloadDefaultDirPreview,
 }: FileManagerTabProps) {
   // settingDefinitions.ts 已类型化，直接使用 settings 注册表
   const fmSettings = settings.fileManager;
+
+  const handlePickDownloadDefaultDir = async () => {
+    try {
+      const selected = await window?.go?.wailsapp?.App?.SelectDownloadDirectory?.(fileManagerDownloadDefaultDir);
+      if (typeof selected === 'string' && selected) onFileManagerDownloadDefaultDirPick(selected);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e || '');
+      if (msg.trim()) window.lumeDialog?.alert?.(msg, $t('错误'), { priority: 'settings' });
+    }
+  };
+
   return (
     <div>
       <SettingsSectionTitle definition={fmSettings.sections.download} />
@@ -120,7 +134,15 @@ export default function FileManagerDownloadSection({
               <div>{$t('预保存：{path}', { path: fileManagerDownloadDefaultDirPreview || $t('加载中...') })}</div>
             </>
           )}
-          action={<input id="fm-download-default-dir" name="fm-download-default-dir" className="input w-[260px]" type="text" autoComplete="off" value={fileManagerDownloadDefaultDir} onChange={onFileManagerDownloadDefaultDirChange} />}
+          action={(
+            <div className="flex items-center gap-2">
+              <input id="fm-download-default-dir" name="fm-download-default-dir" className="input w-[260px]" type="text" autoComplete="off" value={fileManagerDownloadDefaultDir} onChange={onFileManagerDownloadDefaultDirChange} />
+              <Button size="sm" onClick={handlePickDownloadDefaultDir}>{$t('更改目录')}</Button>
+              {fileManagerDownloadDefaultDir !== DEFAULT_FILE_MANAGER_DOWNLOAD_DIR ? (
+                <Button size="sm" onClick={() => onFileManagerDownloadDefaultDirPick(DEFAULT_FILE_MANAGER_DOWNLOAD_DIR)}>{$t('还原')}</Button>
+              ) : null}
+            </div>
+          )}
         />
       </SettingsPanel>
     </div>

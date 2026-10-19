@@ -448,12 +448,29 @@ export function normalizeTerminalPasteText(text: string) {
 }
 
 /**
- * 多行粘贴“逐行 + 提示符回归门控”发送器。
+ * 单行粘贴且剪贴板带尾部换行（如从网页复制 "ping x\n"）→ 粘贴后自动执行；
+ * 多行内容永远整块插入不执行（issue #379）。与 normalizeTerminalPasteText 搭配使用：
+ * payload 为 normalize 后的文本，多行（含 \r）或原文无尾换行时不自动执行。
+ */
+export function shouldAutoExecutePaste(payload: string, rawText: string) {
+  return payload !== '' && !payload.includes('\r') && /[\r\n]$/.test(rawText)
+}
+
+if (import.meta.env.DEV) {
+  console.assert(shouldAutoExecutePaste('ping 662662.xyz', 'ping 662662.xyz\n'), '单行+尾换行应自动执行');
+  console.assert(!shouldAutoExecutePaste('ping 662662.xyz', 'ping 662662.xyz'), '无尾换行不应自动执行');
+  console.assert(!shouldAutoExecutePaste('a\rb\n', 'a\nb\n'), '多行不应自动执行');
+  console.assert(!shouldAutoExecutePaste('', '\n'), '空内容不应自动执行');
+}
+
+/**
+ * 远端未开 bracketed paste(2004) 时，多行粘贴/发送的“逐行 + 提示符回归门控”发送器（issue #379）。
  * 一次性灌入多行时，上一行 \r 执行后远端 readline 尚未就绪，紧跟的行首
  * 字符可能被吞(实测丢 1~2 字符；行首补空格可规避，侧面证实)。逐行发送并
  * 等待 ssh-command-finished(提示符回归)事件确认上一行执行完，再发下一行，
  * 与远端时序无关，字节零丢失。timeoutMs 兜底防提示符识别失效卡死；
  * send 返回 false(断连等)即中止；返回的 cancel 用于清除未完成链。
+ * 注意：远端已开 2004 时粘贴走 term.paste 包裹整块透传，不经此发送器。
  */
 export function createGatedLineSender(opts: {
   send: (chunk: string) => boolean;

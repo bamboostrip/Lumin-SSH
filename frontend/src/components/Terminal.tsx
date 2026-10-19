@@ -123,7 +123,7 @@ export default function Terminal({
     pasteClipboardToTerminal, pasteTerminalSelectionToTerminal,
     handleTerminalMouseDownCapture, handleTerminalMouseUpCapture,
   } = useTerminalClipboard({
-    termRef, containerRef, wsRef, pendingCmdRef, awaitingCommandFinishRef, t,
+    termRef, containerRef, wsRef, pendingCmdRef, t,
     terminalRightClickPasteOnEmptyRef, terminalRightClickPasteModeRef,
     terminalLeftClickCopyOnSelectionRef, terminalLeftClickCopyOnSelectionModeRef,
   });

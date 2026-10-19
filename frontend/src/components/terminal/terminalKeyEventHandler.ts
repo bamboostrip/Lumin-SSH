@@ -2,7 +2,7 @@ import type * as React from 'react';
 import type { Terminal as XTerm } from '@xterm/xterm';
 import { getModKey, buildCombo, isMac } from '../../utils/platform.ts';
 import { warnDev } from '../../utils/devLog';
-import { createGatedLineSender, DEFAULT_TERMINAL_SHORTCUTS, TERMINAL_SIGNAL_BYTES, normalizeTerminalPasteText, readClipboardText, textEncoder } from '../../utils/terminalHelpers.ts';
+import { DEFAULT_TERMINAL_SHORTCUTS, TERMINAL_SIGNAL_BYTES, normalizeTerminalPasteText, readClipboardText, shouldAutoExecutePaste } from '../../utils/terminalHelpers.ts';
 
 // 自定义快捷键处理器工厂：attachCustomKeyEventHandler 回调体从 Terminal.tsx 原样搬移。
 // 修饰键策略：macOS 上 ⌘ = UI 动作（复制/粘贴/清屏/查找），物理 ⌃ = 终端控制信号
@@ -13,7 +13,6 @@ export function createTerminalKeyEventHandler(deps: {
   shortcutsRef: React.RefObject<Record<string, string> | null>;
   wsRef: React.RefObject<WebSocket | null>;
   pendingCmdRef: React.RefObject<string>;
-  awaitingCommandFinishRef: React.RefObject<boolean>;
   termRef: React.RefObject<XTerm | null>;
   termSearchInputRef: React.RefObject<HTMLInputElement | null>;
   setShowTermSearch: React.Dispatch<React.SetStateAction<boolean>>;
@@ -21,18 +20,9 @@ export function createTerminalKeyEventHandler(deps: {
   pasteTerminalSelectionToTerminal: () => void | Promise<void>;
 }) {
   const {
-    term, shortcutsRef, wsRef, pendingCmdRef, awaitingCommandFinishRef, termRef, termSearchInputRef,
+    term, shortcutsRef, wsRef, pendingCmdRef, termRef, termSearchInputRef,
     setShowTermSearch, setTermSearchQuery, pasteTerminalSelectionToTerminal,
   } = deps;
-  let lastPasteCancel: (() => void) | null = null;
-  const gatedLineSender = createGatedLineSender({
-    send: (chunk) => {
-      if (wsRef.current?.readyState !== WebSocket.OPEN) return false;
-      wsRef.current.send(textEncoder.encode(chunk));
-      return true;
-    },
-    armCommandFinish: () => { awaitingCommandFinishRef.current = true; },
-  });
 
   return (e: KeyboardEvent) => {
     if (e.type !== 'keydown') return true;
@@ -73,6 +63,8 @@ export function createTerminalKeyEventHandler(deps: {
       // 在 macOS 上按下 ⌘V 且使用默认粘贴配置时，放行给系统原生 paste 事件处理，避免触发 WebKit 异步剪贴板 "Paste" 提示气泡。
       // 原生路径由 xterm 的 paste 监听器处理：换行归一 + 按需 bracketed paste 包裹（多行粘贴不会逐行自动执行），
       // 并统一走 term.onData（含 normalizeTerminalPasteText 与本地回显逻辑）。
+      // ponytail: 该路径拿不到剪贴板原文做决策，"单行+尾换行自动执行"仅在 Win/Linux 及 macOS 右键/选区粘贴生效，
+      // macOS ⌘V 原生粘贴始终只插入；如需统一需拦截 paste 事件自读剪贴板（会退化 issue #263 的气泡规避）。
       if (isMac && e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && (e.key === 'v' || e.key === 'V') && customShortcuts.paste === 'Ctrl+V') {
         return true;
       }
@@ -84,12 +76,10 @@ export function createTerminalKeyEventHandler(deps: {
         const payload = normalizeTerminalPasteText(text);
         if (payload && wsRef.current?.readyState === WebSocket.OPEN) {
           pendingCmdRef.current += payload.replace(/[\x00-\x1F\x7F]/g, '');
-          if (payload.includes('\r')) {
-            lastPasteCancel?.();
-            lastPasteCancel = gatedLineSender(payload.split('\r'));
-          } else {
-            wsRef.current.send(textEncoder.encode(payload));
-          }
+          // 与右键/选区粘贴统一：term.paste 整块插入（issue #379），
+          // 单行+尾换行粘贴后自动执行（input 模拟键入走 onData，记录/命令块闭合全复用）
+          term.paste(payload);
+          if (shouldAutoExecutePaste(payload, text)) term.input('\r');
         }
       }).catch((err) => {
         warnDev('Clipboard read failed:', err);

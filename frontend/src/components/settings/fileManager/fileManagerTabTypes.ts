@@ -50,6 +50,7 @@ export interface FileManagerTabProps {
   onFileManagerDownloadRenameSuffixModeChange: (value: string) => void;
   fileManagerDownloadDefaultDir: string;
   onFileManagerDownloadDefaultDirChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onFileManagerDownloadDefaultDirPick: (value: string) => void;
   fileManagerDownloadDefaultDirPreview: string;
   fileManagerUploadChunkSizeKiB: number;
   onFileManagerUploadChunkSizeKiBChange: (e: React.ChangeEvent<HTMLInputElement>) => void;

@@ -2,10 +2,9 @@ import { useEffect, useState } from 'react';
 import * as AppGo from '../../../../wailsjs/go/wailsapp/App.js';
 import { t as $t } from '../../../i18n.ts';
 import { warnDev } from '../../../utils/devLog';
+import { DEFAULT_FILE_MANAGER_DOWNLOAD_DIR } from '../../../utils/fileManagerTransfer';
 
 type AddToast = (message: string | Error, type?: string, duration?: number, actions?: unknown[]) => number;
-
-export const DEFAULT_FILE_MANAGER_DOWNLOAD_DIR = '${APP_DIR}\\download';
 
 export function resolveFileManagerDownloadDirPreview(template: string, programDirectory: string) {
   const baseDir = String(programDirectory || '').trim();
@@ -205,6 +204,11 @@ export function useFileManagerSettings({ addToast }: { addToast: AddToast }) {
     setFileManagerDownloadRenameSuffixMode(value);
     localStorage.setItem('fileManagerDownloadRenameSuffixMode', value);
   };
+  const handleFileManagerDownloadDefaultDirPick = (value: string) => {
+    setFileManagerDownloadDefaultDir(value);
+    if (value === '') localStorage.removeItem('fileManagerDownloadDefaultDir');
+    else localStorage.setItem('fileManagerDownloadDefaultDir', value);
+  };
   const handleFileManagerUploadSettingChange = (key: string, setter: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const next = e.target.value;
     setter(next);
@@ -380,6 +384,7 @@ export function useFileManagerSettings({ addToast }: { addToast: AddToast }) {
     fileManagerDownloadConflictDiffByMtime, handleToggleFileManagerDownloadConflictDiffByMtime,
     fileManagerDownloadRenameSuffixMode, handleFileManagerDownloadRenameSuffixModeChange,
     fileManagerDownloadDefaultDir, setFileManagerDownloadDefaultDir,
+    handleFileManagerDownloadDefaultDirPick,
     fileManagerUploadChunkSizeKiB, setFileManagerUploadChunkSizeKiB,
     fileManagerUploadMaxFiles, setFileManagerUploadMaxFiles,
     fileManagerUploadMaxChunksPerFile, setFileManagerUploadMaxChunksPerFile,

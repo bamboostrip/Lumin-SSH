@@ -415,6 +415,10 @@ export function useTerminalSession(deps: {
       // PS2 续行提示符（heredoc 正文/引号续行的 `>`、`quote>`、`pipe>` 等）
       // 单独派发 ssh-continuation-ready：逐行门控发送器据此立即放行下一行，
       // 不必干等 2.5s 超时；不派发 ssh-command-finished，避免文件管理器中途误刷新。
+      // 注意不清 awaitingCommandFinish：PS2 只是续行不是完成，保持等待态，
+      // heredoc/REPL 结束回到 PS1 时仍能正常派发 ssh-command-finished；
+      // 普通命令输出里整行为 `>`/`小写词>` 的误判也只多派发一个(过滤后无人的)
+      // 事件，不会再吞掉真正的完成事件导致文件管理器漏刷新。
       if (!awaitingCommandFinishRef.current || alternateBufferActiveRef.current) return;
       const buf = term.buffer.active;
       if (!buf) return;
@@ -426,7 +430,6 @@ export function useTerminalSession(deps: {
           detail: { sessionId: serverIdRef.current }
         }));
       } else if (isShellContinuationPromptLine(text)) {
-        awaitingCommandFinishRef.current = false;
         window.dispatchEvent(new CustomEvent('ssh-continuation-ready', {
           detail: { sessionId: serverIdRef.current }
         }));
@@ -646,6 +649,7 @@ export function useTerminalSession(deps: {
         return true;
       },
       armCommandFinish: () => { awaitingCommandFinishRef.current = true; },
+      getSessionId: () => serverIdRef.current,
     });
     term.onData((data) => {
       if ((statusRef.current === 'closed' || statusRef.current === 'error') && (data.includes('\r') || data.includes('\n'))) {

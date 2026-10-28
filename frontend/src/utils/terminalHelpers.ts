@@ -292,8 +292,9 @@ export function extractCommandFromBufferLine(line: string) {
  * 只认整行小写词+> 的保守形态；自定义 PS2 不匹配时走门控发送器的超时兜底（与旧行为一致）。
  */
 export function isShellContinuationPromptLine(text: string) {
+  // 尾部空白已被剥掉（PS2 渲染宽度不定），这里只需整行「可选小写词 + 若干 >」
   const t = String(text || '').replace(/\s+$/g, '')
-  return /^[a-z]*>+\s?$/.test(t)
+  return /^[a-z]*>+$/.test(t)
 }
 
 if (import.meta.env.DEV) {
@@ -496,6 +497,9 @@ if (import.meta.env.DEV) {
  * 等待 ssh-command-finished(提示符回归) 或 ssh-continuation-ready(PS2 续行提示符，
  * 如 heredoc 正文 / 引号续行——此时 shell 已就绪等下一行输入) 事件确认上一行
  * 已被 shell 接收，再发下一行，与远端时序无关，字节零丢失。
+ * 内部空行照发裸 \r——heredoc 正文里的空行是有意义的内容，丢弃会损坏落盘文件；
+ * 与真实终端无 2004 时的粘贴行为一致（PS1 下的空行也只是多敲一个空回车）。
+ * 事件按 getSessionId() 返回值过滤，避免其它会话的提示符事件提前放掉本会话的门。
  * 不识别 PS2 时 heredoc 每行只能干等 timeoutMs 超时，表现为内容“一点一点”慢速出现。
  * timeoutMs 兜底防提示符识别失效卡死；
  * send 返回 false(断连等)即中止；返回的 cancel 用于清除未完成链。
@@ -504,14 +508,19 @@ if (import.meta.env.DEV) {
 export function createGatedLineSender(opts: {
   send: (chunk: string) => boolean;
   armCommandFinish: () => void;
+  /** 每次收到事件时调用，返回本会话 id；与 detail.sessionId 不符的事件忽略 */
+  getSessionId?: () => string;
   timeoutMs?: number;
 }): (lines: string[]) => () => void {
   const timeoutMs = opts.timeoutMs ?? 2500;
   let queue: string[] = [];
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
-  let listener: (() => void) | null = null;
-
+  let listener: ((e: Event) => void) | null = null;
+  const isOwnEvent = (e: Event) => {
+    const sid = opts.getSessionId?.();
+    return sid == null || (e as CustomEvent).detail?.sessionId === sid;
+  };
   const releaseGate = () => {
     if (timer !== null) { clearTimeout(timer); timer = null; }
     if (listener !== null) {
@@ -533,7 +542,8 @@ export function createGatedLineSender(opts: {
     if (!opts.send(line + '\r')) { stopped = true; return; }
     opts.armCommandFinish();
     timer = setTimeout(sendNext, timeoutMs);
-    const onFinished = () => {
+    const onFinished = (e: Event) => {
+      if (!isOwnEvent(e)) return;
       releaseGate();
       sendNext();
     };
@@ -544,7 +554,11 @@ export function createGatedLineSender(opts: {
   return (lines: string[]) => {
     cancel();
     stopped = false;
-    queue = lines.filter((l) => l !== '');
+    // 尾部空行剥掉(等效 normalizeTerminalPasteText 清尾回车，防多敲空回车连发)；
+    // 内部空行照发——heredoc 正文里的空行是有意义的内容，丢弃会损坏落盘文件
+    let end = lines.length;
+    while (end > 0 && lines[end - 1] === '') end -= 1;
+    queue = lines.slice(0, end);
     sendNext();
     return cancel;
   };

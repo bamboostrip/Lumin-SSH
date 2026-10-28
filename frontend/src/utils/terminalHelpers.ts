@@ -499,7 +499,9 @@ if (import.meta.env.DEV) {
  * 已被 shell 接收，再发下一行，与远端时序无关，字节零丢失。
  * 内部空行照发裸 \r——heredoc 正文里的空行是有意义的内容，丢弃会损坏落盘文件；
  * 与真实终端无 2004 时的粘贴行为一致（PS1 下的空行也只是多敲一个空回车）。
- * 事件按 getSessionId() 返回值过滤，避免其它会话的提示符事件提前放掉本会话的门。
+ * 事件按 getSessionId()/getTerminalId() 返回值双重过滤：前者挡其它服务器会话，
+ * 后者挡同一服务器会话的其它终端窗格(它们共享 serverId 但各有唯一的 terminalId)，
+ * 避免别人的提示符事件提前放掉本终端的门。
  * 不识别 PS2 时 heredoc 每行只能干等 timeoutMs 超时，表现为内容“一点一点”慢速出现。
  * timeoutMs 兜底防提示符识别失效卡死；
  * send 返回 false(断连等)即中止；返回的 cancel 用于清除未完成链。
@@ -510,6 +512,8 @@ export function createGatedLineSender(opts: {
   armCommandFinish: () => void;
   /** 每次收到事件时调用，返回本会话 id；与 detail.sessionId 不符的事件忽略 */
   getSessionId?: () => string;
+  /** 返回本终端 id；与 detail.terminalId 不符的事件忽略(同服务器多终端窗格隔离) */
+  getTerminalId?: () => string;
   timeoutMs?: number;
 }): (lines: string[]) => () => void {
   const timeoutMs = opts.timeoutMs ?? 2500;
@@ -518,8 +522,10 @@ export function createGatedLineSender(opts: {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let listener: ((e: Event) => void) | null = null;
   const isOwnEvent = (e: Event) => {
+    const detail = (e as CustomEvent).detail;
     const sid = opts.getSessionId?.();
-    return sid == null || (e as CustomEvent).detail?.sessionId === sid;
+    const tid = opts.getTerminalId?.();
+    return (sid == null || detail?.sessionId === sid) && (tid == null || detail?.terminalId === tid);
   };
   const releaseGate = () => {
     if (timer !== null) { clearTimeout(timer); timer = null; }

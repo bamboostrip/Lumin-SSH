@@ -406,6 +406,10 @@ export function useTerminalSession(deps: {
         scheduleGutterSync();
       }
     });
+    // PS2 去重：同一提示符行(buffer 绝对行号)只派发一次续行就绪。
+    // `>` 与空格分包到达、空行 `\r` 回显拆包、zle 重绘同一行等都会让同一提示符
+    // 反复匹配，重复派发会让门控发送器一次提示符放行多行，削弱逐行防丢字保护。
+    let lastContinuationPromptLine = -1;
     const writeParsedDisposable = term.onWriteParsed(() => {
       scheduleGutterSync();
       scheduleLinkUnderlineSync();
@@ -419,6 +423,8 @@ export function useTerminalSession(deps: {
       // heredoc/REPL 结束回到 PS1 时仍能正常派发 ssh-command-finished；
       // 普通命令输出里整行为 `>`/`小写词>` 的误判也只多派发一个(过滤后无人的)
       // 事件，不会再吞掉真正的完成事件导致文件管理器漏刷新。
+      // detail.terminalId 是每终端唯一的 sessionId，供门控发送器区分同一服务器
+      // 会话的多个终端窗格；sessionId(serverId) 字段保持原语义供文件管理器过滤。
       if (!awaitingCommandFinishRef.current || alternateBufferActiveRef.current) return;
       const buf = term.buffer.active;
       if (!buf) return;
@@ -426,12 +432,16 @@ export function useTerminalSession(deps: {
       const text = lastLine ? lastLine.translateToString(true) : '';
       if (isShellPromptLine(text)) {
         awaitingCommandFinishRef.current = false;
+        lastContinuationPromptLine = -1;
         window.dispatchEvent(new CustomEvent('ssh-command-finished', {
-          detail: { sessionId: serverIdRef.current }
+          detail: { sessionId: serverIdRef.current, terminalId: sessionId }
         }));
       } else if (isShellContinuationPromptLine(text)) {
+        const promptLine = buf.baseY + buf.cursorY;
+        if (promptLine === lastContinuationPromptLine) return;
+        lastContinuationPromptLine = promptLine;
         window.dispatchEvent(new CustomEvent('ssh-continuation-ready', {
-          detail: { sessionId: serverIdRef.current }
+          detail: { sessionId: serverIdRef.current, terminalId: sessionId }
         }));
       }
     });
@@ -650,6 +660,7 @@ export function useTerminalSession(deps: {
       },
       armCommandFinish: () => { awaitingCommandFinishRef.current = true; },
       getSessionId: () => serverIdRef.current,
+      getTerminalId: () => sessionId,
     });
     term.onData((data) => {
       if ((statusRef.current === 'closed' || statusRef.current === 'error') && (data.includes('\r') || data.includes('\n'))) {

@@ -18,6 +18,7 @@ import {
   formatTerminalTimestamp,
   getTerminalBufferSnapshotText,
   isInteractivePromptText,
+  isShellContinuationPromptLine,
   normalizeTerminalPasteText,
   startsInteractiveScreen,
   textDecoder,
@@ -411,6 +412,9 @@ export function useTerminalSession(deps: {
       // 命令完成检测：仅当处于"等待命令完成"状态且不在 TUI（备用屏）时，
       // 检查光标所在行是否已回归 shell 提示符。命中则派发事件并退出等待态。
       // 提示符识别复用 isShellPromptLine；只取末行避免全量扫描。
+      // PS2 续行提示符（heredoc 正文/引号续行的 `>`、`quote>`、`pipe>` 等）
+      // 单独派发 ssh-continuation-ready：逐行门控发送器据此立即放行下一行，
+      // 不必干等 2.5s 超时；不派发 ssh-command-finished，避免文件管理器中途误刷新。
       if (!awaitingCommandFinishRef.current || alternateBufferActiveRef.current) return;
       const buf = term.buffer.active;
       if (!buf) return;
@@ -419,6 +423,11 @@ export function useTerminalSession(deps: {
       if (isShellPromptLine(text)) {
         awaitingCommandFinishRef.current = false;
         window.dispatchEvent(new CustomEvent('ssh-command-finished', {
+          detail: { sessionId: serverIdRef.current }
+        }));
+      } else if (isShellContinuationPromptLine(text)) {
+        awaitingCommandFinishRef.current = false;
+        window.dispatchEvent(new CustomEvent('ssh-continuation-ready', {
           detail: { sessionId: serverIdRef.current }
         }));
       }

@@ -270,6 +270,9 @@ type SSHManager struct {
 	// apart two local/serial sessions that reused the same sessionId (fast
 	// reconnect). Guarded by mu.
 	nextGen uint64
+	// fileOps 是「右键压缩/解压/预览、递归 chmod、删除大目录」等同步等待型
+	// 远端长操作的取消注册表（opID → cancel），由 Wails binding 传入 opID。
+	fileOps *fileOperationRegistry
 }
 
 // dialAddr 拼接 host:port，自动处理 IPv6 地址
@@ -317,6 +320,7 @@ func NewSSHManager() *SSHManager {
 		reconnectLocks:   make(map[string]*sync.Mutex),
 		portForwards:     make(map[string]*managedPortForward),
 		recentClosed:     make(map[string]closedTerminalRecord),
+		fileOps:          newFileOperationRegistry(),
 		bufPool: sync.Pool{
 			New: func() any {
 				buf := make([]byte, 32768)
@@ -1297,6 +1301,9 @@ func (m *SSHManager) disconnect(sessionId string, expected *SessionData) bool {
 	disconnected = true
 	connKey := s.ConnKey
 	delete(m.sessions, sessionId)
+	// 会话关闭时取消该会话绑定的文件操作（压缩/解压/删除等），
+	// 避免远端 shell 命令继续占用失效连接。
+	m.abortSessionFileOperations(sessionId)
 	m.rememberClosedTerminal(sessionId, connKey)
 	isLocal := s.IsLocal
 	isSerial := s.IsSerial

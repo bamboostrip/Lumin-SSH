@@ -386,10 +386,18 @@ func (m *SSHManager) ChownFile(sessionId string, path string, owner string, grou
 }
 
 func (m *SSHManager) ChmodFile(sessionId string, path string, modeStr string, recursive bool) error {
+	return m.ChmodFileContext(context.Background(), sessionId, path, modeStr, recursive)
+}
+
+// ChmodFileContext 与 ChmodFile 相同，但递归 chmod 走可取消的 ctx 通道。
+func (m *SSHManager) ChmodFileContext(ctx context.Context, sessionId string, path string, modeStr string, recursive bool) error {
 	modeValue := strings.TrimSpace(modeStr)
 	modeInt, err := strconv.ParseInt(modeValue, 8, 32)
 	if err != nil {
 		return fmt.Errorf("invalid mode: %w", err)
+	}
+	if err := ensureContextActive(ctx); err != nil {
+		return err
 	}
 	if !recursive {
 		sftpClient, err := m.GetSFTPClient(sessionId)
@@ -402,7 +410,7 @@ func (m *SSHManager) ChmodFile(sessionId string, path string, modeStr string, re
 	if err != nil {
 		return err
 	}
-	_, err = m.executeLongCmdWithClient(client, "chmod -R "+modeValue+" -- "+shellQuotePath(path))
+	_, err = m.executeLongCmdWithClientContext(ctx, client, "chmod -R "+modeValue+" -- "+shellQuotePath(path))
 	return err
 }
 

@@ -14,6 +14,7 @@ import type { useFileManagerWorkspaceSync } from './useFileManagerWorkspaceSync.
 import type { useFileManagerPaneView } from './useFileManagerPaneView.ts';
 import type { useFileManagerClipboard } from './useFileManagerClipboard.ts';
 import { warnDev } from '../../utils/devLog';
+import { abortFileOperation, createFileOperationId, isFileOperationCanceled } from '../../utils/fileOperations.ts';
 import type { useFileManagerEditorState } from './useFileManagerEditorState.ts';
 import type { useFileManagerDirectoryLoader } from './useFileManagerDirectoryLoader.ts';
 import type { useFileManagerTransfers } from './useFileManagerTransfers.ts';
@@ -29,9 +30,10 @@ type FileManagerChmodBatchItem = {
 // 粘贴、新建文件/文件夹、压缩/解压、重命名、右键菜单与 chmod 保存
 export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore> & ReturnType<typeof useFileManagerWorkspaceSync> & ReturnType<typeof useFileManagerPaneView> & ReturnType<typeof useFileManagerClipboard> & ReturnType<typeof useFileManagerEditorState> & ReturnType<typeof useFileManagerDirectoryLoader> & ReturnType<typeof useFileManagerTransfers> & ReturnType<typeof useFileManagerLocator> & {
   addToast?: FileManagerProps['addToast']
+  removeToast?: FileManagerProps['removeToast']
 }) {
   const {
-    sessionId, addToast, t,
+    sessionId, addToast, removeToast, t,
     currentPath, currentPathRef, joinPath, normalizePath,
     updateClipboard,
     selectedPaths, lastClickedPathRef, setSelectedPaths,
@@ -49,6 +51,18 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
     loadDir,
     fileListRef,
   } = deps;
+
+  // 给长操作挂一条带「取消」按钮的常驻 toast（duration=0 不自动消失），操作结束自动移除。
+  const withCancelToast = async <T,>(message: string, operationId: string, run: () => Promise<T>): Promise<T> => {
+    const toastId = addToast?.(message, 'info', 0, [
+      { label: t('取消'), onClick: () => abortFileOperation(operationId) },
+    ]);
+    try {
+      return await run();
+    } finally {
+      if (toastId) removeToast?.(toastId);
+    }
+  };
 
   // Download file via Wails native file dialog
   const handleCopyPath = (item: FileManagerFileItem, basePath = currentPath, selectedItemPaths: unknown[] = []) => {
@@ -112,14 +126,20 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
     }
     try {
       setOperationProgress({ message: `${t('正在删除')} ${item.name}` });
-      await AppGo.DeleteItemShell(sessionId, remotePath);
+      const operationId = createFileOperationId('delete');
+      await withCancelToast(`${t('正在删除')} ${item.name}`, operationId, () => AppGo.DeleteItemShell(sessionId, remotePath, operationId));
       setSelectedPaths(prev => prev.filter(p => p !== remotePath));
       if (lastClickedPathRef.current === remotePath) {
         lastClickedPathRef.current = null;
       }
       updateItemsPreservingView((prev) => prev.filter((entry) => entry.name !== item.name));
     } catch (err) {
-      addToast?.(`${t('删除失败')}: ${err}`, 'error');
+      if (isFileOperationCanceled(err)) {
+        addToast?.(t('已终止'), 'info');
+        void loadDir(currentPathRef.current, { preserveView: true, showLoading: false });
+      } else {
+        addToast?.(`${t('删除失败')}: ${err}`, 'error');
+      }
     } finally {
       setOperationProgress(null);
       operationInProgressRef.current = false;
@@ -140,14 +160,20 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
     }
     try {
       setOperationProgress({ message: `${t('正在删除')} ${item.name}` });
-      await AppGo.DeleteItemShell(sessionId, remotePath);
+      const operationId = createFileOperationId('delete-rm');
+      await withCancelToast(`${t('正在删除')} ${item.name}`, operationId, () => AppGo.DeleteItemShell(sessionId, remotePath, operationId));
       setSelectedPaths(prev => prev.filter(p => p !== remotePath));
       if (lastClickedPathRef.current === remotePath) {
         lastClickedPathRef.current = null;
       }
       updateItemsPreservingView((prev) => prev.filter((entry) => entry.name !== item.name));
     } catch (err) {
-      addToast?.(`${t('删除失败')}: ${err}`, 'error');
+      if (isFileOperationCanceled(err)) {
+        addToast?.(t('已终止'), 'info');
+        void loadDir(currentPathRef.current, { preserveView: true, showLoading: false });
+      } else {
+        addToast?.(`${t('删除失败')}: ${err}`, 'error');
+      }
     } finally {
       setOperationProgress(null);
       operationInProgressRef.current = false;
@@ -168,13 +194,19 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
     }
     const total = selectedPaths.length;
     let removedPaths: string[] = [];
+    const operationId = createFileOperationId('batch-delete');
     setOperationProgress({ message: t('正在删除中...'), current: 0, total });
     try {
-      await AppGo.BatchDeleteItemShell(sessionId, selectedPaths);
+      await withCancelToast(t('正在删除中...'), operationId, () => AppGo.BatchDeleteItemShell(sessionId, selectedPaths, operationId));
       removedPaths = [...selectedPaths];
     } catch (err) {
-      warnDev('batch delete failed:', err);
-      addToast?.(`${t('删除失败')}: ${err instanceof Error ? err.message : String(err || '')}`, 'error');
+      if (isFileOperationCanceled(err)) {
+        addToast?.(t('已终止'), 'info');
+        void loadDir(currentPathRef.current, { preserveView: true, showLoading: false });
+      } else {
+        warnDev('batch delete failed:', err);
+        addToast?.(`${t('删除失败')}: ${err instanceof Error ? err.message : String(err || '')}`, 'error');
+      }
     } finally {
       setOperationProgress(null);
       operationInProgressRef.current = false;
@@ -312,7 +344,7 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
       }
       pushFileManagerUndoEntry({
         undo: async () => {
-          await AppGo.DeleteItemShell(sessionId, remotePath);
+          await AppGo.DeleteItemShell(sessionId, remotePath, createFileOperationId('undo-delete'));
           await refreshDirectoryAfterTransfer(normalizedTargetDirPath);
         },
       });
@@ -345,7 +377,7 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
       }
       pushFileManagerUndoEntry({
         undo: async () => {
-          await AppGo.DeleteItemShell(sessionId, remotePath);
+          await AppGo.DeleteItemShell(sessionId, remotePath, createFileOperationId('undo-delete'));
           await refreshDirectoryAfterTransfer(normalizedTargetDirPath);
         },
       });
@@ -365,14 +397,21 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
   const handleCompress = async (item: FileManagerFileItem, options: Record<string, unknown> = {}) => {
     const basePath = typeof options.basePath === 'string' ? options.basePath : currentPath;
     const remotePath = joinPath(basePath, item.name);
+    const operationId = createFileOperationId('compress');
     try {
-      addToast?.(`${t('正在压缩')} ${item.name}...`, 'info');
-      await AppGo.CompressItem(sessionId, remotePath);
+      await withCancelToast(`${t('正在压缩')} ${item.name}...`, operationId, () => AppGo.CompressItem(sessionId, remotePath, operationId));
       addToast?.(t('压缩成功'), 'success');
       if (basePath === currentPathRef.current) {
         await loadDir(currentPathRef.current, { preserveView: true, showLoading: false });
       }
     } catch (err) {
+      if (isFileOperationCanceled(err)) {
+        addToast?.(t('已终止'), 'info');
+        if (basePath === currentPathRef.current) {
+          await loadDir(currentPathRef.current, { preserveView: true, showLoading: false });
+        }
+        return;
+      }
       addToast?.(`${t('压缩失败')}: ${err}`, 'error');
     }
   };
@@ -397,7 +436,12 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
       const uncompressItemWithStrategy = window?.go?.wailsapp?.App?.UncompressItemWithStrategy;
       let requestedStrategy = fileManagerSmartUncompressConflictStrategy;
       if (requestedStrategy === 'prompt' && typeof previewSmartUncompressItem === 'function') {
-        const preview = await previewSmartUncompressItem(sessionId, remotePath);
+        const previewOperationId = createFileOperationId('uncompress-preview');
+        const preview = await withCancelToast(
+          `${t('正在解压')} ${item.name}...`,
+          previewOperationId,
+          () => previewSmartUncompressItem(sessionId, remotePath, previewOperationId),
+        );
         if (preview?.mode === 'folder' && preview?.targetExists === true) {
           const targetName = String(preview?.targetName || item.name || '').trim() || t('文件夹');
           const targetKind = preview?.targetKind === 'file' ? t('文件') : t('文件夹');
@@ -418,17 +462,26 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
           requestedStrategy = selectedValue === 'overwrite' ? 'overwrite' : 'auto_rename';
         }
       }
-      addToast?.(`${t('正在解压')} ${item.name}...`, 'info');
-      if (typeof uncompressItemWithStrategy === 'function') {
-        await uncompressItemWithStrategy(sessionId, remotePath, requestedStrategy);
-      } else {
-        await AppGo.UncompressItem(sessionId, remotePath);
-      }
+      const extractOperationId = createFileOperationId('uncompress');
+      await withCancelToast(`${t('正在解压')} ${item.name}...`, extractOperationId, async () => {
+        if (typeof uncompressItemWithStrategy === 'function') {
+          await uncompressItemWithStrategy(sessionId, remotePath, requestedStrategy, extractOperationId);
+        } else {
+          await AppGo.UncompressItem(sessionId, remotePath, extractOperationId);
+        }
+      });
       addToast?.(t('解压成功'), 'success');
       if (basePath === currentPathRef.current) {
         await loadDir(currentPathRef.current, { preserveView: true, showLoading: false });
       }
     } catch (err) {
+      if (isFileOperationCanceled(err)) {
+        addToast?.(t('已终止'), 'info');
+        if (basePath === currentPathRef.current) {
+          await loadDir(currentPathRef.current, { preserveView: true, showLoading: false });
+        }
+        return;
+      }
       if (isZip && !autoInstallAttempted && isMissingUnzipError(err)) {
         const installUnzip = window?.go?.wailsapp?.App?.InstallUnzip;
         if (typeof installUnzip === 'function') {
@@ -705,7 +758,7 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
             applied.ownerApplied = true;
           }
           if (isBatch || modeChanged) {
-            await AppGo.ChmodFile(sessionId, target.path, normalizedMode, targetRecursive);
+            await AppGo.ChmodFile(sessionId, target.path, normalizedMode, targetRecursive, createFileOperationId('chmod'));
             applied.modeApplied = true;
           }
         } catch (err) {
@@ -740,7 +793,7 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
               );
             }
             if (target.modeApplied) {
-              await AppGo.ChmodFile(sessionId, target.path, target.currentMode, target.recursive);
+              await AppGo.ChmodFile(sessionId, target.path, target.currentMode, target.recursive, createFileOperationId('chmod-undo'));
             }
           }
           const refreshTargets = new Set(undoTargets.map((target) => getParentPath(target.path)));

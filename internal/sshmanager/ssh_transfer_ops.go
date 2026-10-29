@@ -397,26 +397,46 @@ func (m *SSHManager) DownloadFile(sessionId string, remotePath string, localPath
 }
 
 func (m *SSHManager) CompressItem(sessionId string, remotePath string) error {
-	client, _, err := m.GetClientEntry(sessionId)
+	return m.CompressItemContext(context.Background(), sessionId, remotePath)
+}
+
+// CompressItemContext 与 CompressItem 相同，但 tar 压缩走可取消的 ctx 通道；
+// 取消/失败时清理本次新产生的半成品归档（不误删压缩前已存在的同名归档）。
+func (m *SSHManager) CompressItemContext(ctx context.Context, sessionId string, remotePath string) error {
+	if err := ensureContextActive(ctx); err != nil {
+		return err
+	}
+	client, sftpClient, err := m.GetClientEntry(sessionId)
 	if err != nil {
 		return err
 	}
 
-	dir := filepath.Dir(remotePath)
+	dir := strings.ReplaceAll(filepath.Dir(remotePath), "\\", "/")
 	base := filepath.Base(remotePath)
 	archiveName := base + ".tar.gz"
+	archivePath := pathpkg.Join(dir, archiveName)
 
-	dir = strings.ReplaceAll(dir, "\\", "/")
+	// 记录压缩前归档是否存在：取消或失败只清理本次新建的半成品。
+	archiveExisted := false
+	if sftpClient != nil {
+		if _, statErr := sftpClient.Stat(archivePath); statErr == nil {
+			archiveExisted = true
+		}
+	}
+
 	cmd := fmt.Sprintf("cd %s && tar -czf %s %s", shellQuotePath(dir), shellQuotePath(archiveName), shellQuotePath(base))
 
-	out, err := m.executeLongCmdWithClient(client, cmd)
+	out, err := m.executeLongCmdWithClientContext(ctx, client, cmd)
 	if err != nil {
+		if !archiveExisted && sftpClient != nil {
+			_ = sftpClient.Remove(archivePath)
+		}
 		return fmt.Errorf("compress failed: %w, output: %s", err, out)
 	}
 	return nil
 }
 
-func (m *SSHManager) previewSmartUncompressItem(client *ssh.Client, sftpClient *sftp.Client, remotePath string) (smartUncompressPlan, string, string, error) {
+func (m *SSHManager) previewSmartUncompressItem(ctx context.Context, client *ssh.Client, sftpClient *sftp.Client, remotePath string) (smartUncompressPlan, string, string, error) {
 	if client == nil {
 		return smartUncompressPlan{}, "", "", fmt.Errorf("client not found")
 	}
@@ -428,7 +448,7 @@ func (m *SSHManager) previewSmartUncompressItem(client *ssh.Client, sftpClient *
 	}
 	members := []string{smartUncompressTargetBaseName(base)}
 	if listCmd != "" {
-		out, runErr := m.executeLongCmdWithClient(client, listCmd)
+		out, runErr := m.executeLongCmdWithClientContext(ctx, client, listCmd)
 		if runErr != nil {
 			return smartUncompressPlan{}, "", "", fmt.Errorf("list archive members failed: %w, output: %s", runErr, out)
 		}
@@ -438,6 +458,12 @@ func (m *SSHManager) previewSmartUncompressItem(client *ssh.Client, sftpClient *
 }
 
 func (m *SSHManager) PreviewSmartUncompressItem(sessionId string, remotePath string) (map[string]interface{}, error) {
+	return m.PreviewSmartUncompressItemContext(context.Background(), sessionId, remotePath)
+}
+
+// PreviewSmartUncompressItemContext 与 PreviewSmartUncompressItem 相同，但归档成员
+// 列表读取可被 ctx 取消（大归档 tar -tzf 可能很慢）。
+func (m *SSHManager) PreviewSmartUncompressItemContext(ctx context.Context, sessionId string, remotePath string) (map[string]interface{}, error) {
 	client, sftpClient, err := m.GetClientEntry(sessionId)
 	if err != nil {
 		return nil, err
@@ -448,7 +474,7 @@ func (m *SSHManager) PreviewSmartUncompressItem(sessionId string, remotePath str
 			return nil, err
 		}
 	}
-	plan, _, _, err := m.previewSmartUncompressItem(client, sftpClient, remotePath)
+	plan, _, _, err := m.previewSmartUncompressItem(ctx, client, sftpClient, remotePath)
 	if err != nil {
 		return nil, err
 	}
@@ -537,6 +563,15 @@ func (m *SSHManager) UncompressUploadedArchive(sessionId string, remotePath stri
 }
 
 func (m *SSHManager) UncompressItemWithStrategy(sessionId string, remotePath string, conflictStrategy string) error {
+	return m.UncompressItemWithStrategyContext(context.Background(), sessionId, remotePath, conflictStrategy)
+}
+
+// UncompressItemWithStrategyContext 与 UncompressItemWithStrategy 相同，但归档预览
+// 与远端解压都走可取消的 ctx 通道。
+func (m *SSHManager) UncompressItemWithStrategyContext(ctx context.Context, sessionId string, remotePath string, conflictStrategy string) error {
+	if err := ensureContextActive(ctx); err != nil {
+		return err
+	}
 	client, sftpClient, err := m.GetClientEntry(sessionId)
 	if err != nil {
 		return err
@@ -548,7 +583,7 @@ func (m *SSHManager) UncompressItemWithStrategy(sessionId string, remotePath str
 		}
 	}
 
-	plan, remoteDir, base, err := m.previewSmartUncompressItem(client, sftpClient, remotePath)
+	plan, remoteDir, base, err := m.previewSmartUncompressItem(ctx, client, sftpClient, remotePath)
 	if err != nil {
 		return err
 	}
@@ -614,7 +649,7 @@ func (m *SSHManager) UncompressItemWithStrategy(sessionId string, remotePath str
 		return fmt.Errorf("unsupported archive format")
 	}
 
-	out, err := m.executeLongCmdWithClient(client, cmd)
+	out, err := m.executeLongCmdWithClientContext(ctx, client, cmd)
 	if err != nil {
 		return fmt.Errorf("uncompress failed: %w, output: %s", err, out)
 	}

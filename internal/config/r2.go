@@ -178,7 +178,7 @@ type r2Storage struct {
 
 func (s *r2Storage) MaxBackups() int { return s.maxBackups }
 
-// runR2WithRetry 对幂等 R2 操作做一次快速重试，覆盖偶发 5xx/429/连接重置；
+// runR2WithRetry 对幂等 R2 操作做一次快速重试，覆盖偶发 5xx/429/408/网络超时；
 // 业务错误（403/404 等）与 ctx 取消不重试。
 func runR2WithRetry(op string, attempt func() error) error {
 	var lastErr error

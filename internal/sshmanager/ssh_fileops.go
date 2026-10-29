@@ -3,6 +3,7 @@ package sshmanager
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/pkg/sftp"
+	"golang.org/x/crypto/ssh"
 
 	"lumeterm/internal/stallguard"
 	"lumeterm/internal/transfer"
@@ -413,6 +415,11 @@ func (m *SSHManager) GetPathOwnership(sessionId string, path string) (PathOwners
 }
 
 func (m *SSHManager) ChownFile(sessionId string, path string, owner string, group string, recursive bool) error {
+	return m.ChownFileContext(context.Background(), sessionId, path, owner, group, recursive)
+}
+
+// ChownFileContext 与 ChownFile 相同，但递归 chown 走可取消的 ctx 通道。
+func (m *SSHManager) ChownFileContext(ctx context.Context, sessionId string, path string, owner string, group string, recursive bool) error {
 	spec := buildChownSpec(owner, group)
 	if spec == "" {
 		return nil
@@ -421,7 +428,7 @@ func (m *SSHManager) ChownFile(sessionId string, path string, owner string, grou
 	if recursive {
 		prefix = "-R "
 	}
-	return m.execRemoteCmdLong(context.Background(), sessionId, fmt.Sprintf("chown %s-- %s %s", prefix, shellQuotePath(spec), shellQuotePath(path)))
+	return m.execRemoteCmdLong(ctx, sessionId, fmt.Sprintf("chown %s-- %s %s", prefix, shellQuotePath(spec), shellQuotePath(path)))
 }
 
 func (m *SSHManager) ChmodFile(sessionId string, path string, modeStr string, recursive bool) error {
@@ -839,12 +846,8 @@ func (m *SSHManager) execRemoteCmdLong(ctx context.Context, sessionId string, cm
 	if err != nil {
 		return err
 	}
-	session, err := client.NewSession()
-	if err != nil {
-		return err
-	}
-	defer session.Close()
-	_, err = runCommandWithSessionContext(ctx, session, cmd, remoteCmdLongTimeout)
+	// 复用统一的长命令通道：它同时处理 NewSession 的取消/超时与 session 关闭。
+	_, err = m.ExecuteLongCmdWithClientContext(ctx, client, cmd)
 	return err
 }
 
@@ -895,6 +898,16 @@ func (m *SSHManager) DeleteItemContext(ctx context.Context, sessionId string, pa
 	if rmErr == nil {
 		return nil
 	}
+	// 取消/超时说明用户已放弃或链路异常：不能再用无超时、无法中断的 SFTP
+	// RemoveAll 继续删除（既违背取消语义，也可能永久挂起）。
+	if ctx != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+	}
+	if !rmUnavailableForFallback(rmErr) {
+		return fmt.Errorf("rm -rf failed: %w", rmErr)
+	}
 	if sftpClient == nil {
 		// 极少数服务器禁用了 shell/rm，回退前兜底取一次 SFTP 客户端。
 		sftpClient, err = m.GetSFTPClient(sessionId)
@@ -906,6 +919,40 @@ func (m *SSHManager) DeleteItemContext(ctx context.Context, sessionId string, pa
 		return fmt.Errorf("rm -rf failed: %v; sftp fallback failed: %w", rmErr, err)
 	}
 	return ensureContextActive(ctx)
+}
+
+// rmUnavailableForFallback 判断 rm -rf 失败是否属于「远端没有可用 shell / 没有 rm」。
+// 只有这类错误才值得退回 SFTP 逐项删除；超时、权限、磁盘错误、取消都必须直接
+// 返回，避免把用户取消变成「继续删」。
+func rmUnavailableForFallback(err error) bool {
+	if err == nil {
+		return false
+	}
+	var exitErr *ssh.ExitError
+	if errors.As(err, &exitErr) {
+		switch exitErr.ExitStatus() {
+		case 126, 127: // 不可执行 / 命令不存在
+			return true
+		}
+		return false
+	}
+	text := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"open failed", // 服务器禁用 shell channel / MaxSessions 满
+		"administratively prohibited",
+		"exec request failed", // 受限 shell（scponly 等）拒绝 exec
+		"shell request failed",
+		"command not found",
+		"not recognized as an internal or external command", // Windows cmd
+		"不是内部或外部命令",
+		"commandnotfoundexception", // Windows PowerShell
+		"parameter cannot be found",
+	} {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // DeleteItemShell 用 rm -rf 删除
@@ -943,7 +990,7 @@ func (m *SSHManager) DeleteItemShellContext(ctx context.Context, sessionId strin
 
 const (
 	batchDeleteTargetBytes = 64 * 1024
-	batchDeleteMaxItems = 500
+	batchDeleteMaxItems    = 500
 )
 
 func batchRmRfCmd(paths []string) string {

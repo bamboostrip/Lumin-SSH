@@ -657,6 +657,11 @@ func (s *Service) DownloadDirectoryToLocal(sessionId string, downloadID string, 
 		}
 		downloaded += totalSize
 	}
+	// 远端遍历/读取已结束，后面是本地应用目录（可能很慢）：停掉看门狗，
+	// 避免本地耗时被误判成 SFTP 无进展。
+	if stall != nil {
+		stall.Stop()
+	}
 	finalPath, err := ApplyDownloadedDirectoryFromSource(tempRoot, localRoot, options)
 	if err != nil {
 		return err
@@ -784,6 +789,11 @@ func (s *Service) DownloadDirectoryCompressed(sessionId string, downloadID strin
 	}
 
 	s.emitDownloadTransferProgress(sessionId, downloadID, "download-compressed", "extracting", "uploading", 99, 0, 0, remoteArchiveName, "")
+	// 归档已下载完成，后续是本地解压/应用（GB 级可能 >120s）：停掉看门狗，
+	// 避免把本地耗时误判成 SFTP 无进展，也避免在收尾阶段触发无谓的通道关闭。
+	if stall != nil {
+		stall.Stop()
+	}
 	extractBaseDir := filepath.Join(tempDir, "extract")
 	if err := os.MkdirAll(extractBaseDir, 0o755); err != nil {
 		return err

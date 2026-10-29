@@ -11,7 +11,15 @@ export function createFileOperationId(prefix: string): string {
 }
 
 export function abortFileOperation(operationId: string): void {
-  void window?.go?.wailsapp?.App?.AbortFileOperation?.(operationId);
+  const abort = window?.go?.wailsapp?.App?.AbortFileOperation;
+  if (typeof abort !== 'function') return;
+  try {
+    // 操作可能已经结束（取消晚于完成），后端会返回 "not running"；
+    // 这里必须 catch，否则控制台会出现未处理的 promise rejection。
+    void Promise.resolve(abort(operationId)).catch(() => {});
+  } catch {
+    // Wails bridge 本身异常时也不要把取消动作冒泡成未捕获异常。
+  }
 }
 
 export function isFileOperationCanceled(err: unknown): boolean {

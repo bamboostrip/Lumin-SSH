@@ -252,9 +252,9 @@ type SSHManager struct {
 	// recentClosed 已关闭终端 id → 关闭现场记录(所属 connKey/时间),带 TTL 与容量
 	// 上限,由 mu 保护。供外部 MCP「终端跟随最新」把已关闭标签的失效 session_id
 	// 兜底解析到同服务器最新终端,未记录的 id 不会路由到任何连接。
-	recentClosed     map[string]closedTerminalRecord
-	mu               sync.RWMutex
-	pendingMu        sync.Mutex
+	recentClosed map[string]closedTerminalRecord
+	mu           sync.RWMutex
+	pendingMu    sync.Mutex
 	// connectLocks 按 connKey 串行化 Connect 的拨号流程:防止前端手动/自动重连与
 	// MCP reconnect_server 并发对同一服务器各建一条 transport(重复连接泄漏)。
 	// connectLocksMu 保护 connectLocks 表本身;表随服务器数量增长,量级很小(数百以内)。
@@ -1544,16 +1544,57 @@ func (m *SSHManager) ExecuteLongCmdWithClientContext(ctx context.Context, client
 // ExecuteCmdWithClientContextTimeout 在 client 上新开 session 执行命令，
 // 以 timeout 兜底（<=0 时回落到短命令默认超时），并响应 ctx 取消。
 func (m *SSHManager) ExecuteCmdWithClientContextTimeout(ctx context.Context, client *ssh.Client, cmd string, timeout time.Duration) (string, error) {
-	session, err := client.NewSession()
-	if err != nil {
-		return "", err
+	if client == nil {
+		return "", fmt.Errorf("ssh client unavailable")
 	}
-	defer session.Close()
-
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if timeout <= 0 {
 		timeout = remoteCmdShortTimeout
 	}
-	return runCommandWithSessionContext(ctx, session, cmd, timeout)
+	deadline := time.Now().Add(timeout)
+
+	type sessionResult struct {
+		session *ssh.Session
+		err     error
+	}
+	// client.NewSession() 走 SSH channel open，库本身不接受 ctx、也没有超时：
+	// 服务器卡住或 MaxSessions 打满时会永久阻塞。放到 goroutine 里，让超时/取消
+	// 能先返回；事后才打开的 session 由发送方负责关闭，避免泄漏。
+	sessionCh := make(chan sessionResult)
+	abandon := make(chan struct{})
+	go func() {
+		session, err := client.NewSession()
+		select {
+		case sessionCh <- sessionResult{session: session, err: err}:
+		case <-abandon:
+			if session != nil {
+				_ = session.Close()
+			}
+		}
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	select {
+	case res := <-sessionCh:
+		if res.err != nil {
+			return "", res.err
+		}
+		if res.session == nil {
+			return "", fmt.Errorf("ssh session unavailable")
+		}
+		defer res.session.Close()
+		return runCommandWithSessionDeadline(ctx, res.session, cmd, timeout, deadline)
+	case <-ctx.Done():
+		close(abandon)
+		return "", ctx.Err()
+	case <-timer.C:
+		close(abandon)
+		return "", fmt.Errorf("command timed out after %v", timeout)
+	}
 }
 
 // runCommandWithSession 在 session 上执行命令，带超时控制
@@ -1562,6 +1603,13 @@ func runCommandWithSession(session *ssh.Session, cmd string, timeout time.Durati
 }
 
 func runCommandWithSessionContext(ctx context.Context, session *ssh.Session, cmd string, timeout time.Duration) (string, error) {
+	return runCommandWithSessionDeadline(ctx, session, cmd, timeout, time.Now().Add(timeout))
+}
+
+// runCommandWithSessionDeadline 与 runCommandWithSessionContext 相同，但使用调用方
+// 给定的绝对截止时间：这样「打开 session + 执行命令」共享同一份超时预算，
+// 又能在错误信息里保留原始 timeout。
+func runCommandWithSessionDeadline(ctx context.Context, session *ssh.Session, cmd string, timeout time.Duration, deadline time.Time) (string, error) {
 	var stdoutBuf bytes.Buffer
 	var stderrBuf bytes.Buffer
 	session.Stdout = &stdoutBuf
@@ -1577,7 +1625,12 @@ func runCommandWithSessionContext(ctx context.Context, session *ssh.Session, cmd
 		errCh <- session.Run(cmd)
 	}()
 
-	timer := time.NewTimer(timeout)
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		go session.Close()
+		return "", fmt.Errorf("command timed out after %v", timeout)
+	}
+	timer := time.NewTimer(remaining)
 	defer timer.Stop()
 
 	var ctxDone <-chan struct{}
@@ -1587,6 +1640,11 @@ func runCommandWithSessionContext(ctx context.Context, session *ssh.Session, cmd
 
 	select {
 	case err := <-errCh:
+		// 取消与命令结束可能同时就绪：优先按取消返回，避免前端把
+		// 「用户已终止」误判成 EOF/连接错误。
+		if ctx != nil && ctx.Err() != nil {
+			return "", ctx.Err()
+		}
 		stdout := stdoutBuf.String()
 		stderr := strings.TrimSpace(stderrBuf.String())
 		if err != nil && stderr != "" {

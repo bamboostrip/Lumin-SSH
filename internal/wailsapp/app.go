@@ -1036,8 +1036,13 @@ func (a *App) ResolveDirectoryPath(sessionId string, path string) (string, error
 	return a.sshManager.ResolveDirectoryPath(sessionId, path)
 }
 
-func (a *App) ChownFile(sessionId string, path string, owner string, group string, recursive bool) error {
-	return a.sshManager.ChownFile(sessionId, path, owner, group, recursive)
+func (a *App) ChownFile(sessionId string, path string, owner string, group string, recursive bool, operationId string) error {
+	ctx, done, err := a.beginFileOperation(sessionId, operationId)
+	if err != nil {
+		return err
+	}
+	defer done()
+	return a.sshManager.ChownFileContext(ctx, sessionId, path, owner, group, recursive)
 }
 
 // ChmodFile changes file permissions via SFTP or recursively via chmod -R

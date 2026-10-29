@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
 	"net"
 	"strings"
 	"sync"
@@ -166,8 +167,9 @@ func TestDeleteItemContextPrefersShellForRemoteDirectory(t *testing.T) {
 	}
 }
 
-func TestDeleteItemContextFallsBackWhenShellFails(t *testing.T) {
-	client, recorder := newRecordingSSHClient(t, 1)
+func TestDeleteItemContextFallsBackWhenRmMissing(t *testing.T) {
+	// 127 = command not found，属于「服务器没有 rm」的合法回退场景。
+	client, recorder := newRecordingSSHClient(t, 127)
 	manager := newDeleteStrategyManager(t, client)
 
 	err := manager.DeleteItemContext(context.Background(), "session-1", "/tmp/big-dir", true)
@@ -175,9 +177,70 @@ func TestDeleteItemContextFallsBackWhenShellFails(t *testing.T) {
 		t.Fatal("shell 删除失败且无 SFTP 可用时应返回错误")
 	}
 	if !strings.Contains(err.Error(), "rm -rf failed") || !strings.Contains(err.Error(), "sftp fallback unavailable") {
-		t.Fatalf("回退错误信息不符合预期: %v", err)
+		t.Fatalf("rm 不存在时应尝试 SFTP 回退: %v", err)
 	}
 	if len(recorder.all()) != 1 {
 		t.Fatalf("应先尝试一次 shell 删除，实际命令: %v", recorder.all())
+	}
+}
+
+func TestDeleteItemContextDoesNotFallbackOnGenericShellFailure(t *testing.T) {
+	// exit 1 是普通失败（权限/磁盘/路径错误），不能再用不可中断的 SFTP RemoveAll
+	// 继续删；否则「取消/超时后继续删除」会重新出现。
+	client, recorder := newRecordingSSHClient(t, 1)
+	manager := newDeleteStrategyManager(t, client)
+
+	err := manager.DeleteItemContext(context.Background(), "session-1", "/tmp/big-dir", true)
+	if err == nil {
+		t.Fatal("shell 删除失败应返回错误")
+	}
+	if strings.Contains(err.Error(), "sftp fallback") {
+		t.Fatalf("普通 shell 失败不应回退 SFTP，实际: %v", err)
+	}
+	if len(recorder.all()) != 1 {
+		t.Fatalf("只应尝试一次 shell 删除，实际命令: %v", recorder.all())
+	}
+}
+
+func TestDeleteItemContextCanceledDoesNotFallBack(t *testing.T) {
+	// 命令卡住时用户取消：必须立刻返回 ctx 错误，不能落到无超时的 SFTP RemoveAll。
+	client := newSlowExecSSHClient(t, 3*time.Second)
+	manager := NewSSHManager()
+	manager.clients["conn-1"] = &sshClientEntry{Client: client}
+	manager.sessions["session-1"] = &SessionData{ConnKey: "conn-1"}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+
+	started := time.Now()
+	err := manager.DeleteItemContext(ctx, "session-1", "/tmp/big-dir", true)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("取消后应返回 DeadlineExceeded，实际: %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
+		t.Fatalf("取消后未及时返回，耗时 %v", elapsed)
+	}
+}
+
+func TestRmUnavailableForFallbackClassification(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"restricted-shell", errors.New("ssh: exec request failed"), true},
+		{"windows-cmd", errors.New("'rm' is not recognized as an internal or external command"), true},
+		{"powershell", errors.New("The term 'rm' is not recognized as a name. CommandNotFoundException"), true},
+		{"permission-denied", errors.New("rm: cannot remove '/x': Permission denied"), false},
+		{"timeout", errors.New("command timed out after 30m0s"), false},
+		{"canceled", context.Canceled, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := rmUnavailableForFallback(tc.err); got != tc.want {
+				t.Fatalf("rmUnavailableForFallback(%v)=%v, want %v", tc.err, got, tc.want)
+			}
+		})
 	}
 }

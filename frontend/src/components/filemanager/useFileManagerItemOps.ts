@@ -394,7 +394,7 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
 
 
   // Compress
-  const handleCompress = async (item: FileManagerFileItem, options: Record<string, unknown> = {}) => {
+  const handleCompress = async (item: FileManagerFileItem, options: Record<string, unknown> = {}): Promise<boolean> => {
     const basePath = typeof options.basePath === 'string' ? options.basePath : currentPath;
     const remotePath = joinPath(basePath, item.name);
     const operationId = createFileOperationId('compress');
@@ -404,15 +404,17 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
       if (basePath === currentPathRef.current) {
         await loadDir(currentPathRef.current, { preserveView: true, showLoading: false });
       }
+      return true;
     } catch (err) {
       if (isFileOperationCanceled(err)) {
         addToast?.(t('已终止'), 'info');
         if (basePath === currentPathRef.current) {
           await loadDir(currentPathRef.current, { preserveView: true, showLoading: false });
         }
-        return;
+        return false;
       }
       addToast?.(`${t('压缩失败')}: ${err}`, 'error');
+      return true;
     }
   };
 
@@ -421,7 +423,9 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
       ? items.filter((item) => item && typeof item.name === 'string' && item.name.trim())
       : [];
     for (const item of normalizedItems) {
-      await handleCompress(item, options);
+      // 批量压缩共用一个取消语义：当前项被取消后不再继续后续项。
+      const keepGoing = await handleCompress(item, options);
+      if (!keepGoing) break;
     }
   };
 
@@ -722,6 +726,7 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
       return;
     }
 
+    let chmodToastId: number | undefined;
     try {
       try {
         await AppGo.SaveChmodDialogSettings(normalizedMode, rememberedIncludeSubdirectories);
@@ -729,7 +734,7 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
         warnDev('SaveChmodDialogSettings failed:', saveErr);
       }
 
-      const appliedTargets: Array<{
+      type ChmodAppliedTarget = {
         path: string
         currentMode: string
         currentOwnerId: string
@@ -737,10 +742,36 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
         recursive: boolean
         ownerApplied: boolean
         modeApplied: boolean
-      }> = [];
+      };
+      const appliedTargets: ChmodAppliedTarget[] = [];
+      const rememberApplied = (applied: ChmodAppliedTarget) => {
+        if (applied.ownerApplied || applied.modeApplied) {
+          appliedTargets.push(applied);
+        }
+      };
       const failures: string[] = [];
+      // chmod/chown 同属长操作：整批共用一个 opID + 一个取消按钮，
+      // 用户取消后立即停止后续 target（否则会「取消了还继续改」）。
+      const chmodOperationId = createFileOperationId('chmod');
+      let chmodCancelRequested = false;
+      chmodToastId = addToast?.(t('修改权限'), 'info', 0, [
+        {
+          label: t('取消'),
+          onClick: () => {
+            // 记录意图：如果点击时恰好在两个 target 之间（没有在途请求），
+            // abort 会失败，但循环仍能在下一个 target 开始前停下。
+            chmodCancelRequested = true;
+            abortFileOperation(chmodOperationId);
+          },
+        },
+      ]);
+      let chmodCanceled = false;
 
       for (const target of targetItems) {
+        if (chmodCancelRequested) {
+          chmodCanceled = true;
+          break;
+        }
         const targetCurrentMode = normalizeChmodMode(target.item.mode) || normalizedMode;
         const targetRecursive = Boolean(target.item.isDirectory && rememberedIncludeSubdirectories);
         const applied = {
@@ -754,26 +785,31 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
         };
         try {
           if (ownerChanged || groupChanged) {
-            await requireChownFile()(sessionId, target.path, ownerSpec, groupSpec, targetRecursive);
+            await requireChownFile()(sessionId, target.path, ownerSpec, groupSpec, targetRecursive, chmodOperationId);
             applied.ownerApplied = true;
           }
           if (isBatch || modeChanged) {
-            await AppGo.ChmodFile(sessionId, target.path, normalizedMode, targetRecursive, createFileOperationId('chmod'));
+            await AppGo.ChmodFile(sessionId, target.path, normalizedMode, targetRecursive, chmodOperationId);
             applied.modeApplied = true;
           }
         } catch (err) {
-          if (applied.ownerApplied || applied.modeApplied) {
-            appliedTargets.push(applied);
+          if (isFileOperationCanceled(err)) {
+            rememberApplied(applied);
+            chmodCanceled = true;
+            break;
           }
+          rememberApplied(applied);
           failures.push(`${target.path}: ${err}`);
           continue;
         }
-        if (applied.ownerApplied || applied.modeApplied) {
-          appliedTargets.push(applied);
-        }
+        rememberApplied(applied);
       }
 
       if (appliedTargets.length === 0) {
+        if (chmodCanceled) {
+          addToast?.(t('已终止'), 'info');
+          return;
+        }
         addToast?.(`${t('权限修改失败')}: ${failures.slice(0, 3).join('；') || t('操作失败')}`, 'error');
         return;
       }
@@ -790,6 +826,7 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
                 ownerChanged ? target.currentOwnerId : '',
                 groupChanged ? target.currentGroupId : '',
                 target.recursive,
+                createFileOperationId('chown-undo'),
               );
             }
             if (target.modeApplied) {
@@ -803,12 +840,16 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
         },
       });
 
-      addToast?.(
-        isBatch ? `${t('权限修改成功')}: ${appliedTargets.length}${t('项')}` : t('权限修改成功'),
-        'success',
-      );
-      if (failures.length > 0) {
-        addToast?.(`${t('权限修改失败')}: ${failures.slice(0, 3).join('；')}`, 'error');
+      if (chmodCanceled) {
+        addToast?.(t('已终止'), 'info');
+      } else {
+        addToast?.(
+          isBatch ? `${t('权限修改成功')}: ${appliedTargets.length}${t('项')}` : t('权限修改成功'),
+          'success',
+        );
+        if (failures.length > 0) {
+          addToast?.(`${t('权限修改失败')}: ${failures.slice(0, 3).join('；')}`, 'error');
+        }
       }
       setChmodTarget(null);
       const refreshTargets = new Set(appliedTargets.map((target) => getParentPath(target.path)));
@@ -817,6 +858,8 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
       }
     } catch (err) {
       addToast?.(`${t('权限修改失败')}: ${err}`, 'error');
+    } finally {
+      if (chmodToastId) removeToast?.(chmodToastId);
     }
   };
 

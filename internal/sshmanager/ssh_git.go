@@ -392,7 +392,7 @@ func (m *SSHManager) ExecuteGitCommand(sessionID string, repoPath string, args [
 	var output string
 	var commandErr error
 	for attempt := 0; attempt < 3; attempt++ {
-		output, commandErr = m.ExecuteCmdWithClientContext(context.Background(), client, command)
+		output, commandErr = m.executeLongCmdWithClientContext(context.Background(), client, command)
 		if commandErr == nil || !isRetryableGitChannelOpenError(commandErr) {
 			break
 		}

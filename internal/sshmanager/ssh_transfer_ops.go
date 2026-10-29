@@ -409,7 +409,7 @@ func (m *SSHManager) CompressItem(sessionId string, remotePath string) error {
 	dir = strings.ReplaceAll(dir, "\\", "/")
 	cmd := fmt.Sprintf("cd %s && tar -czf %s %s", shellQuotePath(dir), shellQuotePath(archiveName), shellQuotePath(base))
 
-	out, err := m.executeCmdWithClient(client, cmd)
+	out, err := m.executeLongCmdWithClient(client, cmd)
 	if err != nil {
 		return fmt.Errorf("compress failed: %w, output: %s", err, out)
 	}
@@ -428,7 +428,7 @@ func (m *SSHManager) previewSmartUncompressItem(client *ssh.Client, sftpClient *
 	}
 	members := []string{smartUncompressTargetBaseName(base)}
 	if listCmd != "" {
-		out, runErr := m.executeCmdWithClient(client, listCmd)
+		out, runErr := m.executeLongCmdWithClient(client, listCmd)
 		if runErr != nil {
 			return smartUncompressPlan{}, "", "", fmt.Errorf("list archive members failed: %w, output: %s", runErr, out)
 		}
@@ -529,7 +529,7 @@ func (m *SSHManager) UncompressUploadedArchive(sessionId string, remotePath stri
 		return fmt.Errorf("unsupported archive format")
 	}
 
-	out, err := m.executeCmdWithClient(client, cmd)
+	out, err := m.executeLongCmdWithClient(client, cmd)
 	if err != nil {
 		return fmt.Errorf("uncompress uploaded archive failed: %w, output: %s", err, out)
 	}
@@ -614,7 +614,7 @@ func (m *SSHManager) UncompressItemWithStrategy(sessionId string, remotePath str
 		return fmt.Errorf("unsupported archive format")
 	}
 
-	out, err := m.executeCmdWithClient(client, cmd)
+	out, err := m.executeLongCmdWithClient(client, cmd)
 	if err != nil {
 		return fmt.Errorf("uncompress failed: %w, output: %s", err, out)
 	}

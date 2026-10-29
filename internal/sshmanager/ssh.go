@@ -145,6 +145,10 @@ func (b transferBackend) ExecuteCommand(ctx context.Context, client *ssh.Client,
 	return b.manager.ExecuteCmdWithClientContext(ctx, client, command)
 }
 
+func (b transferBackend) ExecuteLongCommand(ctx context.Context, client *ssh.Client, command string) (string, error) {
+	return b.manager.ExecuteLongCmdWithClientContext(ctx, client, command)
+}
+
 func (b transferBackend) DeleteRemote(ctx context.Context, sessionID string, remotePath string, isDir bool) error {
 	return b.manager.DeleteItemContext(ctx, sessionID, remotePath, isDir)
 }
@@ -1475,6 +1479,16 @@ func (m *SSHManager) executeCmdWithClient(client *ssh.Client, cmd string) (strin
 	return m.ExecuteCmdWithClientContext(context.Background(), client, cmd)
 }
 
+// executeLongCmdWithClient 执行已知可能超过 30s 的远端命令（压缩/解压/递归删除/git 等）。
+func (m *SSHManager) executeLongCmdWithClient(client *ssh.Client, cmd string) (string, error) {
+	return m.ExecuteCmdWithClientContextTimeout(context.Background(), client, cmd, remoteCmdLongTimeout)
+}
+
+// executeLongCmdWithClientContext 同上，但保留 ctx 取消能力（用户点取消立即关 session）。
+func (m *SSHManager) executeLongCmdWithClientContext(ctx context.Context, client *ssh.Client, cmd string) (string, error) {
+	return m.ExecuteCmdWithClientContextTimeout(ctx, client, cmd, remoteCmdLongTimeout)
+}
+
 func (m *SSHManager) waitForCommandChannel(ctx context.Context, client *ssh.Client) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -1505,14 +1519,34 @@ func (m *SSHManager) waitForCommandChannel(ctx context.Context, client *ssh.Clie
 	}
 }
 
+// remoteCmdShortTimeout 是「秒级短命令」的兜底超时：stat/ls/mkdir/探测脚本这类命令
+// 30s 仍未返回基本可判定链路卡死。压缩/解压/递归删除/git 等合法长耗时操作不要用
+// 这个默认值，改走 ExecuteLongCmdWithClientContext（remoteCmdLongTimeout）。
+const remoteCmdShortTimeout = 30 * time.Second
+
 func (m *SSHManager) ExecuteCmdWithClientContext(ctx context.Context, client *ssh.Client, cmd string) (string, error) {
+	return m.ExecuteCmdWithClientContextTimeout(ctx, client, cmd, remoteCmdShortTimeout)
+}
+
+// ExecuteLongCmdWithClientContext 用长超时执行可能很耗时的远端命令。
+// 仍然受 ctx 取消约束：ctx 结束时立刻关闭 session，不会把远端任务留到超时。
+func (m *SSHManager) ExecuteLongCmdWithClientContext(ctx context.Context, client *ssh.Client, cmd string) (string, error) {
+	return m.ExecuteCmdWithClientContextTimeout(ctx, client, cmd, remoteCmdLongTimeout)
+}
+
+// ExecuteCmdWithClientContextTimeout 在 client 上新开 session 执行命令，
+// 以 timeout 兜底（<=0 时回落到短命令默认超时），并响应 ctx 取消。
+func (m *SSHManager) ExecuteCmdWithClientContextTimeout(ctx context.Context, client *ssh.Client, cmd string, timeout time.Duration) (string, error) {
 	session, err := client.NewSession()
 	if err != nil {
 		return "", err
 	}
 	defer session.Close()
 
-	return runCommandWithSessionContext(ctx, session, cmd, 30*time.Second)
+	if timeout <= 0 {
+		timeout = remoteCmdShortTimeout
+	}
+	return runCommandWithSessionContext(ctx, session, cmd, timeout)
 }
 
 // runCommandWithSession 在 session 上执行命令，带超时控制

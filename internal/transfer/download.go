@@ -691,7 +691,9 @@ func (s *Service) DownloadDirectoryCompressed(sessionId string, downloadID strin
 	s.emitDownloadTransferProgress(sessionId, downloadID, "download-compressed", "preparing", "uploading", 0, 0, 0, "", "")
 	s.emitDownloadTransferProgress(sessionId, downloadID, "download-compressed", "compressing", "uploading", 0, 0, 0, remoteBaseName, "")
 	compressCommand := fmt.Sprintf("cd %s && tar -czf %s %s", shellQuotePath(remoteParentDir), shellQuotePath(remoteArchiveName), shellQuotePath(remoteBaseName))
-	if _, err := s.backend.ExecuteCommand(ctx, client, compressCommand); err != nil {
+	// 大目录（GB 级）的 tar -czf 远端压缩常超过 30s，必须走长超时通道，
+	// 否则会被短命令的 30s 兜底打断（用户反馈：2GB 文件夹下载必失败）。
+	if _, err := s.backend.ExecuteLongCommand(ctx, client, compressCommand); err != nil {
 		return err
 	}
 

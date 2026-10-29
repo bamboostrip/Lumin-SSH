@@ -402,7 +402,7 @@ func (m *SSHManager) ChmodFile(sessionId string, path string, modeStr string, re
 	if err != nil {
 		return err
 	}
-	_, err = m.executeCmdWithClient(client, "chmod -R "+modeValue+" -- "+shellQuotePath(path))
+	_, err = m.executeLongCmdWithClient(client, "chmod -R "+modeValue+" -- "+shellQuotePath(path))
 	return err
 }
 
@@ -578,8 +578,9 @@ func rmRfCmd(path string) string {
 	return "rm -rf " + shellQuotePath(path)
 }
 
-// remoteCmdLongTimeout 是文件复制/移动这类可能很耗时操作（大文件 cp/mv）的超时上限。
-// executeCmdWithClientContext 固定 30 秒，对大文件 cp 会过早超时，故这里使用更长上限。
+// remoteCmdLongTimeout 是「合法但可能很耗时」的远端操作统一超时上限：
+// 大文件 cp/mv、tar 压缩/解压、rm -rf 大目录、git clone/fetch 等。
+// 这类操作走 ExecuteLongCmdWithClientContext；executeCmdWithClient 的 30s 只用于短命令。
 const remoteCmdLongTimeout = 30 * time.Minute
 
 const (
@@ -801,7 +802,7 @@ func (m *SSHManager) DeleteItemContext(ctx context.Context, sessionId string, pa
 				return ensureContextActive(ctx)
 			}
 		}
-		_, err := m.ExecuteCmdWithClientContext(ctx, client, rmRfCmd(path))
+		_, err := m.executeLongCmdWithClientContext(ctx, client, rmRfCmd(path))
 		return err
 	}
 	if sftpClient == nil {
@@ -845,7 +846,7 @@ func (m *SSHManager) DeleteItemShellContext(ctx context.Context, sessionId strin
 	if err != nil {
 		return err
 	}
-	_, err = m.ExecuteCmdWithClientContext(ctx, client, rmRfCmd(path))
+	_, err = m.executeLongCmdWithClientContext(ctx, client, rmRfCmd(path))
 	return err
 }
 
@@ -924,7 +925,7 @@ func (m *SSHManager) BatchDeleteItemShellContext(ctx context.Context, sessionId 
 		if err := ensureContextActive(ctx); err != nil {
 			return err
 		}
-		if _, err := m.ExecuteCmdWithClientContext(ctx, client, batchRmRfCmd(batch)); err != nil {
+		if _, err := m.executeLongCmdWithClientContext(ctx, client, batchRmRfCmd(batch)); err != nil {
 			return err
 		}
 	}

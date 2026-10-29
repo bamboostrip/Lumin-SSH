@@ -796,25 +796,49 @@ func (m *SSHManager) DeleteItemContext(ctx context.Context, sessionId string, pa
 	if err != nil {
 		return err
 	}
-	if isDir {
-		if sftpClient != nil {
-			if err := sftpClient.RemoveAll(path); err == nil {
-				return ensureContextActive(ctx)
+	if !isDir {
+		if sftpClient == nil {
+			sftpClient, err = m.GetSFTPClient(sessionId)
+			if err != nil {
+				return err
 			}
 		}
-		_, err := m.executeLongCmdWithClientContext(ctx, client, rmRfCmd(path))
-		return err
-	}
-	if sftpClient == nil {
-		sftpClient, err = m.GetSFTPClient(sessionId)
-		if err != nil {
+		if err := ensureContextActive(ctx); err != nil {
 			return err
 		}
+		return sftpClient.Remove(path)
 	}
-	if err := ensureContextActive(ctx); err != nil {
-		return err
+
+	// 目录：本地 session 的 SFTP 是内置服务（本地磁盘，不会网络挂起），直接 RemoveAll；
+	// 远端 session 优先用一条 rm -rf：SFTP RemoveAll 是逐目录项 RPC，十万级文件要跑很久
+	// 且中途卡住没有任何超时/取消手段，rm -rf 走长超时通道，可被 ctx 取消。
+	m.mu.RLock()
+	sd, hasSd := m.sessions[sessionId]
+	m.mu.RUnlock()
+	if hasSd && sd.IsLocal {
+		if sftpClient == nil {
+			sftpClient, err = m.GetSFTPClient(sessionId)
+			if err != nil {
+				return err
+			}
+		}
+		return sftpClient.RemoveAll(path)
 	}
-	return sftpClient.Remove(path)
+	_, rmErr := m.executeLongCmdWithClientContext(ctx, client, rmRfCmd(path))
+	if rmErr == nil {
+		return nil
+	}
+	if sftpClient == nil {
+		// 极少数服务器禁用了 shell/rm，回退前兜底取一次 SFTP 客户端。
+		sftpClient, err = m.GetSFTPClient(sessionId)
+		if err != nil {
+			return fmt.Errorf("rm -rf failed: %v; sftp fallback unavailable: %w", rmErr, err)
+		}
+	}
+	if err := sftpClient.RemoveAll(path); err != nil {
+		return fmt.Errorf("rm -rf failed: %v; sftp fallback failed: %w", rmErr, err)
+	}
+	return ensureContextActive(ctx)
 }
 
 // DeleteItemShell 用 rm -rf 删除

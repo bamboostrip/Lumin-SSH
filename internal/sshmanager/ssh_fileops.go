@@ -659,6 +659,9 @@ type smartUncompressPlan struct {
 	TargetPath   string
 	TargetKind   string
 	TargetExists bool
+	// RootName 是 direct 模式解压后在 remoteDir 下产生的顶层名字
+	// （single_file 的文件名 / single_root_dir 的目录名），用于取消时清理新产生的输出。
+	RootName string
 }
 
 func normalizeSmartUncompressConflictStrategy(value string) string {
@@ -742,9 +745,11 @@ func buildSmartUncompressPlan(remoteDir string, base string, members []string, s
 		normalizedMembers = []string{smartUncompressTargetBaseName(base)}
 	}
 	if len(normalizedMembers) == 1 && !strings.HasSuffix(normalizedMembers[0], "/") {
+		rootName := strings.SplitN(strings.TrimSpace(normalizedMembers[0]), "/", 2)[0]
 		return smartUncompressPlan{
-			Mode:   smartUncompressModeDirect,
-			Reason: "single_file",
+			Mode:     smartUncompressModeDirect,
+			Reason:   "single_file",
+			RootName: rootName,
 		}
 	}
 	topLevelName := ""
@@ -776,8 +781,9 @@ func buildSmartUncompressPlan(remoteDir string, base string, members []string, s
 	}
 	if sawEntry && allInSingleTopLevelDir && topLevelName != "" {
 		return smartUncompressPlan{
-			Mode:   smartUncompressModeDirect,
-			Reason: "single_root_dir",
+			Mode:     smartUncompressModeDirect,
+			Reason:   "single_root_dir",
+			RootName: topLevelName,
 		}
 	}
 	targetName := strings.TrimSpace(smartUncompressTargetBaseName(base))

@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/pkg/sftp"
+
+	"lumeterm/internal/stallguard"
 )
 
 type downloadTransferTask struct {
@@ -286,11 +288,14 @@ func sanitizeDownloadArchiveName(name string) string {
 	return cleaned
 }
 
-func collectRemoteDownloadStats(sftpClient *sftp.Client, remotePath string) (int64, int64, error) {
+func collectRemoteDownloadStats(sftpClient *sftp.Client, remotePath string, touch func()) (int64, int64, error) {
 	var totalBytes int64
 	var fileCount int64
 	walker := sftpClient.Walk(remotePath)
 	for walker.Step() {
+		if touch != nil {
+			touch()
+		}
 		if err := walker.Err(); err != nil {
 			return 0, 0, err
 		}
@@ -302,6 +307,18 @@ func collectRemoteDownloadStats(sftpClient *sftp.Client, remotePath string) (int
 		fileCount++
 	}
 	return totalBytes, fileCount, nil
+}
+
+// wrapSFTPStallError 把「看门狗已触发」的上下文补进底层 IO 错误，便于用户理解
+// 不是普通断连，而是远端 SFTP 长时间无进展被主动中断。
+func wrapSFTPStallError(stall *stallguard.Guard, err error) error {
+	if err == nil {
+		return nil
+	}
+	if stall != nil && stall.Stalled() {
+		return fmt.Errorf("%w (last error: %v)", stall.Err(), err)
+	}
+	return err
 }
 
 func ensureLocalDirectoryAvailable(localDir string) error {
@@ -425,13 +442,18 @@ func (s *Service) DownloadFileToLocal(sessionId string, downloadID string, remot
 	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
 		return err
 	}
-	sftpClient, err := s.backend.SFTPClient(sessionId)
+	sftpClient, closeSFTP, err := s.openDedicatedSFTP(sessionId)
 	if err != nil {
 		return err
 	}
+	defer closeSFTP()
+	// 下载专用通道的看门狗：120s 无字节进展即关闭本次通道，让阻塞的 Read 立刻返回。
+	stall := stallguard.New(stallguard.DefaultIdleLimit, stallguard.DefaultInterval, closeSFTP)
+	defer stall.Stop()
+
 	src, err := sftpClient.Open(remotePath)
 	if err != nil {
-		return err
+		return wrapSFTPStallError(stall, err)
 	}
 	defer src.Close()
 
@@ -464,13 +486,14 @@ func (s *Service) DownloadFileToLocal(sessionId string, downloadID string, remot
 	fileName := filepath.Base(remotePath)
 	s.emitDownloadTransferProgress(sessionId, downloadID, "download-file", "downloading", "uploading", 0, 0, totalSize, fileName, "")
 	if err := copyReaderWithProgressContext(ctx, dst, src, totalSize, func(done int64, total int64) {
+		stall.Touch()
 		progress := float64(100)
 		if total > 0 {
 			progress = float64(done) / float64(total) * 100
 		}
 		s.emitDownloadTransferProgress(sessionId, downloadID, "download-file", "downloading", "uploading", progress, done, total, fileName, "")
 	}); err != nil {
-		return err
+		return wrapSFTPStallError(stall, err)
 	}
 	if err := SyncPathTimestamps(localPath, remoteInfo.ModTime()); err != nil {
 		return err
@@ -533,13 +556,17 @@ func (s *Service) DownloadDirectoryToLocal(sessionId string, downloadID string, 
 	}
 	task.setLocalTempDir(tempDir)
 
-	sftpClient, err := s.backend.SFTPClient(sessionId)
+	sftpClient, closeSFTP, err := s.openDedicatedSFTP(sessionId)
 	if err != nil {
 		return err
 	}
-	totalBytes, fileCount, err := collectRemoteDownloadStats(sftpClient, normalizedRemotePath)
+	defer closeSFTP()
+	stall := stallguard.New(stallguard.DefaultIdleLimit, stallguard.DefaultInterval, closeSFTP)
+	defer stall.Stop()
+
+	totalBytes, fileCount, err := collectRemoteDownloadStats(sftpClient, normalizedRemotePath, stall.Touch)
 	if err != nil {
-		return err
+		return wrapSFTPStallError(stall, err)
 	}
 	s.emitDownloadTransferProgress(sessionId, downloadID, "download-directory", "downloading", "uploading", 0, 0, totalBytes, "", fmt.Sprintf("%d files", fileCount))
 
@@ -547,11 +574,12 @@ func (s *Service) DownloadDirectoryToLocal(sessionId string, downloadID string, 
 	walker := sftpClient.Walk(normalizedRemotePath)
 	var downloaded int64
 	for walker.Step() {
+		stall.Touch()
 		if err := ensureContextActive(ctx); err != nil {
 			return err
 		}
 		if err := walker.Err(); err != nil {
-			return err
+			return wrapSFTPStallError(stall, err)
 		}
 		currentRemotePath := filepath.ToSlash(walker.Path())
 		stat := walker.Stat()
@@ -587,6 +615,7 @@ func (s *Service) DownloadDirectoryToLocal(sessionId string, downloadID string, 
 		}
 		totalSize := stat.Size()
 		copyErr := copyReaderWithProgressContext(ctx, dst, src, totalSize, func(done int64, total int64) {
+			stall.Touch()
 			progress := float64(100)
 			if totalBytes > 0 {
 				progress = float64(downloaded+done) / float64(totalBytes) * 100
@@ -596,7 +625,7 @@ func (s *Service) DownloadDirectoryToLocal(sessionId string, downloadID string, 
 		closeDstErr := dst.Close()
 		closeSrcErr := src.Close()
 		if copyErr != nil {
-			return copyErr
+			return wrapSFTPStallError(stall, copyErr)
 		}
 		if closeDstErr != nil {
 			return closeDstErr
@@ -676,10 +705,6 @@ func (s *Service) DownloadDirectoryCompressed(sessionId string, downloadID strin
 	if err != nil {
 		return err
 	}
-	sftpClient, err := s.backend.SFTPClient(sessionId)
-	if err != nil {
-		return err
-	}
 
 	remoteParentDir := pathpkg.Dir(normalizedRemotePath)
 	remoteBaseName := pathpkg.Base(normalizedRemotePath)
@@ -697,15 +722,25 @@ func (s *Service) DownloadDirectoryCompressed(sessionId string, downloadID strin
 		return err
 	}
 
-	remoteArchiveFile, err := sftpClient.Open(remoteArchivePath)
+	// 压缩走 SSH exec 通道（已有 30min 上限与 ctx 取消），SFTP 专用通道只用于
+	// 后续读取归档；看门狗在压缩完成后才启动，避免把合法的长时间压缩误判为卡死。
+	sftpClient, closeSFTP, err := s.openDedicatedSFTP(sessionId)
 	if err != nil {
 		return err
+	}
+	defer closeSFTP()
+	stall := stallguard.New(stallguard.DefaultIdleLimit, stallguard.DefaultInterval, closeSFTP)
+	defer stall.Stop()
+
+	remoteArchiveFile, err := sftpClient.Open(remoteArchivePath)
+	if err != nil {
+		return wrapSFTPStallError(stall, err)
 	}
 	defer remoteArchiveFile.Close()
 
 	archiveStat, err := remoteArchiveFile.Stat()
 	if err != nil {
-		return err
+		return wrapSFTPStallError(stall, err)
 	}
 	archiveSize := archiveStat.Size()
 
@@ -717,13 +752,14 @@ func (s *Service) DownloadDirectoryCompressed(sessionId string, downloadID strin
 
 	s.emitDownloadTransferProgress(sessionId, downloadID, "download-compressed", "downloading", "uploading", 0, 0, archiveSize, remoteArchiveName, "")
 	if err := copyReaderWithProgressContext(ctx, localArchiveFile, remoteArchiveFile, archiveSize, func(done int64, total int64) {
+		stall.Touch()
 		progress := float64(100)
 		if total > 0 {
 			progress = float64(done) / float64(total) * 100
 		}
 		s.emitDownloadTransferProgress(sessionId, downloadID, "download-compressed", "downloading", "uploading", progress, done, total, remoteArchiveName, "")
 	}); err != nil {
-		return err
+		return wrapSFTPStallError(stall, err)
 	}
 
 	s.emitDownloadTransferProgress(sessionId, downloadID, "download-compressed", "extracting", "uploading", 99, 0, 0, remoteArchiveName, "")

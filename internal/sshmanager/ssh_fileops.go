@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	pathpkg "path"
 	"sort"
@@ -14,7 +15,45 @@ import (
 	"time"
 
 	"github.com/pkg/sftp"
+
+	"lumeterm/internal/stallguard"
+	"lumeterm/internal/transfer"
 )
+
+// openFileReadSFTP 优先为单次文件读取打开专用 SFTP 通道：共享 client 的 Read
+// 没有超时参数，服务端活着但传输卡死时会永久阻塞；专用通道可配合看门狗关闭，
+// 且不会误伤终端/其它传输。拿不到专用通道（本地 session、通道数超限）时
+// 回退共享 client（无看门狗，保持旧行为）。
+func (m *SSHManager) openFileReadSFTP(sessionId string) (*sftp.Client, *stallguard.Guard, func(), error) {
+	var shared *sftp.Client
+	if client, sftpClient, err := m.GetClientEntry(sessionId); err == nil {
+		shared = sftpClient
+		if client != nil {
+			dedicated, closeFn, openErr := transfer.OpenDedicatedSFTPClient(client, transfer.DefaultTuning())
+			if openErr == nil {
+				guard := stallguard.New(stallguard.DefaultIdleLimit, stallguard.DefaultInterval, closeFn)
+				return dedicated, guard, closeFn, nil
+			}
+			log.Printf("[file] dedicated sftp unavailable, fallback to shared: %v", openErr)
+		}
+	}
+	if shared == nil {
+		var err error
+		shared, err = m.GetSFTPClient(sessionId)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+	}
+	return shared, nil, func() {}, nil
+}
+
+// wrapSFTPReadStall 把看门狗已触发的信息补进读错误。
+func wrapSFTPReadStall(guard *stallguard.Guard, err error) error {
+	if err == nil || guard == nil || !guard.Stalled() {
+		return err
+	}
+	return fmt.Errorf("%w (last error: %v)", guard.Err(), err)
+}
 
 func normalizeRemotePath(input string) string {
 	trimmed := strings.TrimSpace(strings.ReplaceAll(input, "\\", "/"))
@@ -422,20 +461,24 @@ func (m *SSHManager) ReadFileContext(ctx context.Context, sessionId string, path
 	if err := ensureContextActive(ctx); err != nil {
 		return "", err
 	}
-	sftpClient, err := m.GetSFTPClient(sessionId)
+	sftpClient, stall, closeSFTP, err := m.openFileReadSFTP(sessionId)
 	if err != nil {
 		return "", err
+	}
+	defer closeSFTP()
+	if stall != nil {
+		defer stall.Stop()
 	}
 
 	f, err := sftpClient.Open(path)
 	if err != nil {
-		return "", err
+		return "", wrapSFTPReadStall(stall, err)
 	}
 	defer f.Close()
 
 	stat, err := f.Stat()
 	if err != nil {
-		return "", err
+		return "", wrapSFTPReadStall(stall, err)
 	}
 
 	const maxFileSize = 50 * 1024 * 1024
@@ -450,6 +493,9 @@ func (m *SSHManager) ReadFileContext(ctx context.Context, sessionId string, path
 		if err := ensureContextActive(ctx); err != nil {
 			return "", err
 		}
+		if stall != nil {
+			stall.Touch()
+		}
 		n, readErr := f.Read(buf)
 		if n > 0 {
 			b.Write(buf[:n])
@@ -458,7 +504,7 @@ func (m *SSHManager) ReadFileContext(ctx context.Context, sessionId string, path
 			break
 		}
 		if readErr != nil {
-			return "", readErr
+			return "", wrapSFTPReadStall(stall, readErr)
 		}
 	}
 	return b.String(), nil
@@ -476,20 +522,24 @@ func (m *SSHManager) ReadFileBytesContext(ctx context.Context, sessionId string,
 	if err := ensureContextActive(ctx); err != nil {
 		return nil, err
 	}
-	sftpClient, err := m.GetSFTPClient(sessionId)
+	sftpClient, stall, closeSFTP, err := m.openFileReadSFTP(sessionId)
 	if err != nil {
 		return nil, err
+	}
+	defer closeSFTP()
+	if stall != nil {
+		defer stall.Stop()
 	}
 
 	f, err := sftpClient.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, wrapSFTPReadStall(stall, err)
 	}
 	defer f.Close()
 
 	stat, err := f.Stat()
 	if err != nil {
-		return nil, err
+		return nil, wrapSFTPReadStall(stall, err)
 	}
 
 	const maxFileSize = 50 * 1024 * 1024
@@ -504,6 +554,9 @@ func (m *SSHManager) ReadFileBytesContext(ctx context.Context, sessionId string,
 		if err := ensureContextActive(ctx); err != nil {
 			return nil, err
 		}
+		if stall != nil {
+			stall.Touch()
+		}
 		n, readErr := f.Read(buf)
 		if n > 0 {
 			b.Write(buf[:n])
@@ -512,7 +565,7 @@ func (m *SSHManager) ReadFileBytesContext(ctx context.Context, sessionId string,
 			break
 		}
 		if readErr != nil {
-			return nil, readErr
+			return nil, wrapSFTPReadStall(stall, readErr)
 		}
 	}
 	return b.Bytes(), nil

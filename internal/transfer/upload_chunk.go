@@ -8,11 +8,17 @@ import (
 	pathpkg "path"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
+
+// uploadChunkStallTimeout 是单个分片写入的最长等待时间。
+// SFTP 的 WriteAt 没有超时参数，服务端活着但传输卡死时会永久阻塞前端上传请求；
+// 超时后关闭该池 client 可让阻塞的写返回错误，并把该 client 标记为丢弃不再复用。
+const uploadChunkStallTimeout = 120 * time.Second
 
 type sftpUploadPool struct {
 	sshClient      *ssh.Client
@@ -361,8 +367,15 @@ func (s *Service) UploadChunkBase64(taskID string, fileID string, chunkIndex int
 		return err
 	}
 	clientBroken := false
+	var stalled atomic.Bool
+	stallTimer := time.AfterFunc(uploadChunkStallTimeout, func() {
+		stalled.Store(true)
+		// 关闭池 client 以打断阻塞中的 WriteAt/Close；该 client 不再复用。
+		_ = client.Close()
+	})
 	defer func() {
-		if clientBroken {
+		stallTimer.Stop()
+		if clientBroken || stalled.Load() {
 			task.pool.Discard(client)
 			return
 		}
@@ -371,10 +384,17 @@ func (s *Service) UploadChunkBase64(taskID string, fileID string, chunkIndex int
 	fileHandle, err := client.OpenFile(fileState.tempPath, os.O_CREATE|os.O_WRONLY)
 	if err != nil {
 		clientBroken = true
+		if stalled.Load() {
+			return fmt.Errorf("upload chunk stalled for %s", uploadChunkStallTimeout)
+		}
 		return err
 	}
 	written, writeErr := fileHandle.WriteAt(content, offset)
 	closeErr := fileHandle.Close()
+	if stalled.Load() {
+		clientBroken = true
+		return fmt.Errorf("upload chunk stalled for %s", uploadChunkStallTimeout)
+	}
 	if writeErr != nil {
 		clientBroken = true
 		return writeErr

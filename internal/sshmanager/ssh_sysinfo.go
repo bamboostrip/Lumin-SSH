@@ -59,6 +59,13 @@ func (m *SSHManager) deployProbeScript(ctx context.Context, client *ssh.Client, 
 
 	select {
 	case err := <-done:
+		// 超时与 done 可能同时就绪；优先按「部署超时」上报，保持前端依赖的错误码。
+		if deployCtx.Err() != nil {
+			if errors.Is(deployCtx.Err(), context.DeadlineExceeded) {
+				return fmt.Errorf("PROBE_DEPLOY_TIMEOUT|%v", probeDeployTimeout)
+			}
+			return deployCtx.Err()
+		}
 		if err != nil {
 			m.mu.Lock()
 			m.probeFailed[connKey]++

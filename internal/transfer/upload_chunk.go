@@ -18,7 +18,9 @@ import (
 // uploadChunkStallTimeout 是单个分片写入的最长等待时间。
 // SFTP 的 WriteAt 没有超时参数，服务端活着但传输卡死时会永久阻塞前端上传请求；
 // 超时后关闭该池 client 可让阻塞的写返回错误，并把该 client 标记为丢弃不再复用。
-const uploadChunkStallTimeout = 120 * time.Second
+// 取 5min 而不是 120s：默认分片 256KiB、可配置到更大，慢链路（<40KB/s）下
+// 单分片也可能超过 2 分钟，避免把「慢但正常」误判成卡死。
+const uploadChunkStallTimeout = 5 * time.Minute
 
 type sftpUploadPool struct {
 	sshClient      *ssh.Client

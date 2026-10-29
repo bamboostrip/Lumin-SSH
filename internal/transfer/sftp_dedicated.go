@@ -2,6 +2,7 @@ package transfer
 
 import (
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/pkg/sftp"
@@ -59,4 +60,19 @@ func (s *Service) openDedicatedSFTP(sessionID string) (*sftp.Client, func(), err
 		return nil, nil, err
 	}
 	return OpenDedicatedSFTPClient(sshClient, s.Tuning())
+}
+
+// openDownloadSFTP 优先使用专用通道；服务器 MaxSessions 紧张/拒绝新 channel 时
+// 回退共享 client（保持旧行为，但失去看门狗保护）。dedicated=false 时调用方不启动看门狗。
+func (s *Service) openDownloadSFTP(sessionID string) (*sftp.Client, func(), bool, error) {
+	client, closeFn, err := s.openDedicatedSFTP(sessionID)
+	if err == nil {
+		return client, closeFn, true, nil
+	}
+	shared, sharedErr := s.backend.SFTPClient(sessionID)
+	if sharedErr != nil {
+		return nil, nil, false, fmt.Errorf("%v; shared sftp unavailable: %w", err, sharedErr)
+	}
+	log.Printf("[transfer] dedicated sftp unavailable, fallback to shared client: %v", err)
+	return shared, func() {}, false, nil
 }

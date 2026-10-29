@@ -9,10 +9,10 @@
 |---|---|---|---|
 | 远端短命令（stat/ls/mkdir/探测部署等） | 30s | `sshmanager.remoteCmdShortTimeout` | 只用于秒级命令，不得承载长任务 |
 | 远端长命令（tar 压缩/解压、`rm -rf`、git、chmod -R、大文件 cp/mv） | 30min | `sshmanager.remoteCmdLongTimeout` | 必须走 `ExecuteLongCmdWithClientContext`，且必须响应 ctx 取消 |
-| 探针一次采集（部署 15s + 运行 45s + 诊断 10s） | 70s 总预算 | `sshprobeTotalBudget` | 必须小于前端等待上限（ProbePanel/BigScreen 90s） |
+| 探针一次采集（部署 15s + 运行 45s + 诊断 10s） | 70s 总预算 | `probeTotalBudget` | 必须小于前端等待上限（ProbePanel/BigScreen 90s） |
 | 文件管理器长操作（压缩/解压/预览/chmod/删除） | 30min | `fileOperationRegistry` + `AbortFileOperation(opID)` | 必须有取消入口；压缩取消时清理本次新产生的半成品归档 |
 | 下载/读文件 SFTP 传输 | 120s 无进展 | `stallguard` + 专用 SFTP 通道 | 只看「是否有进展」，不限制总时长；卡死只断本次专用通道 |
-| 上传分片写入 | 120s | `uploadChunkStallTimeout` | 超时关闭该池 client 并丢弃，不阻塞后续分片 |
+| 上传分片写入 | 5min | `uploadChunkStallTimeout` | 超时关闭该池 client 并丢弃，不阻塞后续分片 |
 | R2 对象存储操作 | list/read/write 60s、delete 30s | `internal/config/r2.go` | 幂等操作（list/read）对 5xx/429/408/网络超时重试一次 |
 | 前端等待后端 | 必须 > 后端预算 | 各面板常量 | 前端 `Promise.race` 超时只是「放弃等待」，不等于取消；取消必须显式调用 abort 接口 |
 

@@ -413,3 +413,37 @@ func TestIsWindowsServerVersion(t *testing.T) {
 		}
 	}
 }
+
+// TestRemotePathRemovedBoundedTimesOut 回归：共享 SFTP client 没有看门狗，复核用的
+// Lstat 卡住时删除调用不能被拖住；超时按「无法复核」处理（保留相信 rm 的旧行为）。
+func TestRemotePathRemovedBoundedTimesOut(t *testing.T) {
+	started := time.Now()
+	removed, verifiable := remotePathRemovedBounded(context.Background(), func() (bool, bool) {
+		time.Sleep(3 * time.Second)
+		return false, true
+	}, 100*time.Millisecond)
+	if removed || verifiable {
+		t.Fatalf("复核超时应返回无法复核，实际 removed=%v verifiable=%v", removed, verifiable)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("复核超时未及时返回，耗时 %v", elapsed)
+	}
+}
+
+// TestRemotePathRemovedBoundedCancel 验证复核阶段响应取消，不会被卡住的 Lstat 拖住。
+func TestRemotePathRemovedBoundedCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	started := time.Now()
+	removed, verifiable := remotePathRemovedBounded(ctx, func() (bool, bool) {
+		time.Sleep(3 * time.Second)
+		return false, true
+	}, 5*time.Second)
+	if removed || verifiable {
+		t.Fatalf("取消后应返回无法复核，实际 removed=%v verifiable=%v", removed, verifiable)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("取消后复核未及时返回，耗时 %v", elapsed)
+	}
+}

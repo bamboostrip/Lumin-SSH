@@ -922,6 +922,10 @@ func isWindowsSSHServer(client *ssh.Client) bool {
 	return isWindowsServerVersion(client.ServerVersion())
 }
 
+// deleteVerifyTimeout 是删除后 SFTP 复核的上限。共享 SFTP client 没有看门狗，
+// Lstat 在服务端卡死时会永久阻塞，不能让删除调用跟着挂住。
+const deleteVerifyTimeout = 5 * time.Second
+
 // remotePathRemoved 用 SFTP Lstat 复核一次删除的结果。
 // verifiable=false 表示没有可用 SFTP、或 Lstat 报的不是「不存在」（例如权限不足），
 // 这时保留旧行为（相信 rm 的退出码），避免因为复核不了就把成功的删除判成失败。
@@ -936,6 +940,40 @@ func remotePathRemoved(sftpClient *sftp.Client, path string) (removed bool, veri
 		return false, false
 	}
 	return false, true
+}
+
+// remotePathRemovedBounded 在超时/取消边界内执行一次复核。
+// 超时或取消都返回 verifiable=false：调用方保留「相信 rm 退出码」的旧行为，
+// 并在返回前用 ensureContextActive 把用户取消映射成 ctx 错误。
+//
+// done 带缓冲，超时后后台 goroutine 仍能写完退出；但如果 Lstat 本身被卡住
+// （服务端不响应 SFTP 请求），该 goroutine 会挂到连接被拆掉为止——这是在不关
+// 共享 client 的前提下能做的兜底，至少调用方不会被拖住。
+func remotePathRemovedBounded(ctx context.Context, check func() (bool, bool), timeout time.Duration) (removed bool, verifiable bool) {
+	type verifyResult struct {
+		removed    bool
+		verifiable bool
+	}
+	done := make(chan verifyResult, 1)
+	go func() {
+		removed, verifiable := check()
+		done <- verifyResult{removed: removed, verifiable: verifiable}
+	}()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	var ctxDone <-chan struct{}
+	if ctx != nil {
+		ctxDone = ctx.Done()
+	}
+	select {
+	case res := <-done:
+		return res.removed, res.verifiable
+	case <-ctxDone:
+		return false, false
+	case <-timer.C:
+		log.Printf("[ssh] 删除后 SFTP 复核超时（%v），按无法复核处理", timeout)
+		return false, false
+	}
 }
 
 // sftpClientForVerify 返回可用于复核/回退的 SFTP 客户端；拿不到时返回 nil。
@@ -990,7 +1028,10 @@ func (m *SSHManager) removeRemotePaths(ctx context.Context, sessionId string, cl
 
 	_, rmErr := m.executeLongCmdWithClientContext(ctx, client, cmd)
 	if rmErr == nil {
-		removed, verifiable := remotePathRemoved(m.sftpClientForVerify(sessionId, sftpClient), paths[0])
+		verifyClient := m.sftpClientForVerify(sessionId, sftpClient)
+		removed, verifiable := remotePathRemovedBounded(ctx, func() (bool, bool) {
+			return remotePathRemoved(verifyClient, paths[0])
+		}, deleteVerifyTimeout)
 		if !verifiable || removed {
 			return ensureContextActive(ctx)
 		}

@@ -53,8 +53,12 @@ func openDedicatedSFTPClientWithTimeout(sshClient *ssh.Client, options []sftp.Cl
 	// abandon 分支里自行关闭，避免 session/client 无人接收而泄漏。
 	resultCh := make(chan openResult)
 	abandon := make(chan struct{})
+	// sessionCh 让后台在 NewSession 成功后立刻交出 session：超时路径只要拿到它
+	// 就能 Close，从而唤醒卡在 RequestSubsystem 上的后台 goroutine。否则每次
+	// 超时都会连带遗留一个 goroutine 和一个已打开的 session（连接还活着时不会自愈）。
+	sessionCh := make(chan *ssh.Session, 1)
 	go func() {
-		client, closeFn, err := openDedicatedSFTPClientBlocking(sshClient, options)
+		client, closeFn, err := openDedicatedSFTPClientBlocking(sshClient, options, sessionCh, abandon)
 		select {
 		case resultCh <- openResult{client: client, closeFn: closeFn, err: err}:
 		case <-abandon:
@@ -71,20 +75,55 @@ func openDedicatedSFTPClientWithTimeout(sshClient *ssh.Client, options []sftp.Cl
 	case res := <-resultCh:
 		return res.client, res.closeFn, res.err
 	case <-timer.C:
+		// 超时与完成可能同时就绪：先尝试收结果，收到就按成功返回。
+		select {
+		case res := <-resultCh:
+			return res.client, res.closeFn, res.err
+		default:
+		}
 		close(abandon)
+		closeStalledSession(sessionCh)
 		return nil, nil, fmt.Errorf("open dedicated sftp timed out after %v", timeout)
+	}
+}
+
+// closeStalledSession 在超时路径里收走后台已创建的 session 并关闭。
+// 只等很短时间：session 是在 NewSession 返回后立刻发布的，正常情况下要么已经在
+// channel 里，要么后台还卡在 NewSession（此时没有 session 可关，只能等连接被拆）。
+func closeStalledSession(sessionCh <-chan *ssh.Session) {
+	timer := time.NewTimer(100 * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case session := <-sessionCh:
+		if session != nil {
+			_ = session.Close()
+		}
+	case <-timer.C:
 	}
 }
 
 // openDedicatedSFTPClientBlocking 是原来的同步实现：建 session、开 sftp subsystem、
 // 包出 closeFn。调用方必须保证它不会永久阻塞（见上面的超时包一层）。
-func openDedicatedSFTPClientBlocking(sshClient *ssh.Client, options []sftp.ClientOption) (*sftp.Client, func(), error) {
+//
+// sessionCh/abandon 用于让超时路径能接管：session 一建出来就发布，之后每步都会
+// 检查 abandon，避免超时后还继续占用 channel。
+func openDedicatedSFTPClientBlocking(sshClient *ssh.Client, options []sftp.ClientOption, sessionCh chan<- *ssh.Session, abandon <-chan struct{}) (*sftp.Client, func(), error) {
 	if sshClient == nil {
 		return nil, nil, fmt.Errorf("ssh client unavailable")
 	}
 	session, err := sshClient.NewSession()
 	if err != nil {
 		return nil, nil, fmt.Errorf("open dedicated sftp session: %w", err)
+	}
+	select {
+	case sessionCh <- session:
+	default:
+	}
+	select {
+	case <-abandon:
+		_ = session.Close()
+		return nil, nil, fmt.Errorf("open dedicated sftp abandoned")
+	default:
 	}
 	stdin, err := session.StdinPipe()
 	if err != nil {

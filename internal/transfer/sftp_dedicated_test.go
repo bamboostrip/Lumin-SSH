@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,6 +25,17 @@ func newHungSFTPTestClient(t *testing.T) *ssh.Client {
 // 用来模拟「通道打开阶段卡住」，验证专用通道打开有界超时。
 func newScriptedSFTPTestClient(t *testing.T, replySubsystem bool) *ssh.Client {
 	t.Helper()
+	client, _ := newScriptedSFTPTestClientWithCloseSignal(t, replySubsystem)
+	return client
+}
+
+// newScriptedSFTPTestClientWithCloseSignal 同上，并额外返回一个在「session 通道
+// 被关闭」时触发的信号，用来断言打开超时后卡住的 session 已被清理。
+func newScriptedSFTPTestClientWithCloseSignal(t *testing.T, replySubsystem bool) (*ssh.Client, <-chan struct{}) {
+	t.Helper()
+	sessionClosed := make(chan struct{})
+	var closeOnce sync.Once
+	signalClosed := func() { closeOnce.Do(func() { close(sessionClosed) }) }
 
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -66,6 +78,7 @@ func newScriptedSFTPTestClient(t *testing.T, replySubsystem bool) *ssh.Client {
 						continue
 					}
 					go func(ch ssh.Channel, reqs <-chan *ssh.Request) {
+						defer signalClosed()
 						for request := range reqs {
 							if request.Type != "subsystem" {
 								if request.WantReply {
@@ -120,7 +133,7 @@ func newScriptedSFTPTestClient(t *testing.T, replySubsystem bool) *ssh.Client {
 			t.Error("假 SSH 服务端未退出")
 		}
 	})
-	return client
+	return client, sessionClosed
 }
 
 // TestDedicatedSFTPCloseUnblocksBlockedRequest 回归 P0：看门狗关闭专用通道时必须
@@ -195,5 +208,28 @@ func TestDedicatedSFTPOpenTimesOut(t *testing.T) {
 	}
 	if elapsed > 2*time.Second {
 		t.Fatalf("打开专用通道未按超时返回，耗时 %v", elapsed)
+	}
+}
+
+// TestDedicatedSFTPOpenTimeoutClosesStalledSession 回归：超时后必须关掉后台已经
+// 建出来、卡在 RequestSubsystem 上的 session，并把 goroutine 收掉。否则连接还活着
+// 时每次超时都会遗留一个 session（占用 MaxSessions）和一个阻塞的 goroutine。
+func TestDedicatedSFTPOpenTimeoutClosesStalledSession(t *testing.T) {
+	sshClient, sessionClosed := newScriptedSFTPTestClientWithCloseSignal(t, false)
+
+	started := time.Now()
+	_, _, err := openDedicatedSFTPClientWithTimeout(sshClient, nil, 200*time.Millisecond)
+	if err == nil {
+		t.Fatal("subsystem 无响应时打开专用通道应返回错误")
+	}
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
+		t.Fatalf("打开专用通道未按超时返回，耗时 %v", elapsed)
+	}
+
+	// 连接保持打开（cleanup 才关），此时卡住的 session 应该已被超时路径关闭。
+	select {
+	case <-sessionClosed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("超时后应关闭卡住的 session，否则每次超时都会遗留 goroutine + session")
 	}
 }

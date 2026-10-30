@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +15,14 @@ import (
 // newHungSFTPTestClient 启动一个假 SSH 服务端：接受 session + sftp subsystem 并回
 // 版本包，之后不再响应任何 SFTP 请求（模拟「服务端活着但 sftp-server 卡死」）。
 func newHungSFTPTestClient(t *testing.T) *ssh.Client {
+	t.Helper()
+	return newScriptedSFTPTestClient(t, true)
+}
+
+// newScriptedSFTPTestClient 是假 SSH 服务端的可配置版本。
+// replySubsystem=false 时只接受 session channel、永不回复 subsystem 请求，
+// 用来模拟「通道打开阶段卡住」，验证专用通道打开有界超时。
+func newScriptedSFTPTestClient(t *testing.T, replySubsystem bool) *ssh.Client {
 	t.Helper()
 
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
@@ -62,6 +71,10 @@ func newHungSFTPTestClient(t *testing.T) *ssh.Client {
 								if request.WantReply {
 									_ = request.Reply(false, nil)
 								}
+								continue
+							}
+							if !replySubsystem {
+								// 故意不回复 wantReply：客户端会一直等 subsystem 结果。
 								continue
 							}
 							if request.WantReply {
@@ -161,5 +174,26 @@ func TestDedicatedSFTPCloseIsIdempotent(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("重复调用 closeFn 阻塞")
+	}
+}
+
+// TestDedicatedSFTPOpenTimesOut 回归：channel 打开 / subsystem 请求卡住时，专用通道
+// 打开必须有界返回错误，让调用方回退共享 client，而不是永久挂起。
+func TestDedicatedSFTPOpenTimesOut(t *testing.T) {
+	sshClient := newScriptedSFTPTestClient(t, false)
+
+	const openTimeout = 200 * time.Millisecond
+	started := time.Now()
+	_, _, err := openDedicatedSFTPClientWithTimeout(sshClient, nil, openTimeout)
+	elapsed := time.Since(started)
+
+	if err == nil {
+		t.Fatal("subsystem 无响应时打开专用通道应返回错误")
+	}
+	if !strings.Contains(err.Error(), "timed out after") {
+		t.Fatalf("错误信息应说明打开超时: %v", err)
+	}
+	if elapsed > 2*time.Second {
+		t.Fatalf("打开专用通道未按超时返回，耗时 %v", elapsed)
 	}
 }

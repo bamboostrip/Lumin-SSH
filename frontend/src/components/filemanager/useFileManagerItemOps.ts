@@ -788,6 +788,14 @@ export function useFileManagerItemOps(deps: ReturnType<typeof useFileManagerCore
             await requireChownFile()(sessionId, target.path, ownerSpec, groupSpec, targetRecursive, chmodOperationId);
             applied.ownerApplied = true;
           }
+          // chown 成功返回不代表用户没取消：abort 只作用于「当时注册的那个操作」，
+          // 后端每次 begin 都会新建 ctx，所以 chown 结束后这里的 chmod 会拿到一个
+          // 全新的 ctx，点击时的那次取消就被吞掉了。进入下一步前再确认一次意图。
+          if (chmodCancelRequested) {
+            rememberApplied(applied);
+            chmodCanceled = true;
+            break;
+          }
           if (isBatch || modeChanged) {
             await AppGo.ChmodFile(sessionId, target.path, normalizedMode, targetRecursive, chmodOperationId);
             applied.modeApplied = true;

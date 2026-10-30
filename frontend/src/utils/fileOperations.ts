@@ -1,6 +1,7 @@
 // 文件管理器长操作（压缩/解压/删除/chmod）的取消标识工具。
-// 后端按 operationId 注册可取消 ctx，取消按钮调用 AbortFileOperation(operationId)
-// 会关闭对应的远端 session（tar/unzip/rm 立即终止）。
+// 后端按 operationId 注册可取消 ctx，取消按钮调用 AbortFileOperation(operationId)。
+// 取消是 best-effort：后端会先向远端进程组发 SIGTERM 再关 session，OpenSSH 上通常
+// 能停住 tar/rm/unzip，但受限 shell、非 OpenSSH 服务端和 Windows 远端可能不生效。
 
 export function createFileOperationId(prefix: string): string {
   const cryptoObj = typeof globalThis !== 'undefined' ? globalThis.crypto : undefined;

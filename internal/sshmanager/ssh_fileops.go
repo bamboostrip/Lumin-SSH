@@ -85,6 +85,15 @@ func isRemotePathNotFound(err error) bool {
 	if err == nil {
 		return false
 	}
+	// 优先看错误码：SFTP 的 SSH_FX_NO_SUCH_FILE 才是权威信号，文本只作兜底
+	// （不同服务端/语言环境的文案不一样，例如 Windows sftp-server 会返回中文）。
+	if errors.Is(err, os.ErrNotExist) {
+		return true
+	}
+	var statusErr *sftp.StatusError
+	if errors.As(err, &statusErr) && statusErr.Code == 2 { // SSH_FX_NO_SUCH_FILE
+		return true
+	}
 	lower := strings.ToLower(err.Error())
 	return strings.Contains(lower, "no such file") || strings.Contains(lower, "not found") || strings.Contains(lower, "does not exist")
 }
@@ -882,6 +891,8 @@ func (m *SSHManager) DeleteItemContext(ctx context.Context, sessionId string, pa
 	// 目录：本地 session 的 SFTP 是内置服务（本地磁盘，不会网络挂起），直接 RemoveAll；
 	// 远端 session 优先用一条 rm -rf：SFTP RemoveAll 是逐目录项 RPC，十万级文件要跑很久
 	// 且中途卡住没有任何超时/取消手段，rm -rf 走长超时通道，可被 ctx 取消。
+	// rm 的退出码不可全信（Windows cmd 不解析 POSIX 单引号，会「静默成功」），
+	// 所以统一走 removeRemotePaths：执行后复核，必要时回退 SFTP。
 	m.mu.RLock()
 	sd, hasSd := m.sessions[sessionId]
 	m.mu.RUnlock()
@@ -894,9 +905,97 @@ func (m *SSHManager) DeleteItemContext(ctx context.Context, sessionId string, pa
 		}
 		return sftpClient.RemoveAll(path)
 	}
-	_, rmErr := m.executeLongCmdWithClientContext(ctx, client, rmRfCmd(path))
-	if rmErr == nil {
+	return m.removeRemotePaths(ctx, sessionId, client, sftpClient, rmRfCmd(path), []string{path}, isWindowsSSHServer(client))
+}
+
+// isWindowsServerVersion 判断 SSH 服务端 banner 是否来自 Windows OpenSSH。
+// Windows OpenSSH 的版本串形如 "SSH-2.0-OpenSSH_for_Windows_9.5"。
+// 这是零成本的远端系统信号（握手时已经拿到），不用额外执行探测命令。
+func isWindowsServerVersion(version []byte) bool {
+	return bytes.Contains(bytes.ToLower(version), []byte("windows"))
+}
+
+func isWindowsSSHServer(client *ssh.Client) bool {
+	if client == nil {
+		return false
+	}
+	return isWindowsServerVersion(client.ServerVersion())
+}
+
+// remotePathRemoved 用 SFTP Lstat 复核一次删除的结果。
+// verifiable=false 表示没有可用 SFTP、或 Lstat 报的不是「不存在」（例如权限不足），
+// 这时保留旧行为（相信 rm 的退出码），避免因为复核不了就把成功的删除判成失败。
+func remotePathRemoved(sftpClient *sftp.Client, path string) (removed bool, verifiable bool) {
+	if sftpClient == nil || strings.TrimSpace(path) == "" {
+		return false, false
+	}
+	if _, err := sftpClient.Lstat(path); err != nil {
+		if isRemotePathNotFound(err) {
+			return true, true
+		}
+		return false, false
+	}
+	return false, true
+}
+
+// sftpClientForVerify 返回可用于复核/回退的 SFTP 客户端；拿不到时返回 nil。
+func (m *SSHManager) sftpClientForVerify(sessionId string, sftpClient *sftp.Client) *sftp.Client {
+	if sftpClient != nil {
+		return sftpClient
+	}
+	client, err := m.GetSFTPClient(sessionId)
+	if err != nil {
 		return nil
+	}
+	return client
+}
+
+// removePathsViaSFTP 用 SFTP RemoveAll 删除一批路径（回退路径，无超时但可靠）。
+func (m *SSHManager) removePathsViaSFTP(ctx context.Context, sessionId string, sftpClient *sftp.Client, paths []string, reason string) error {
+	if sftpClient == nil {
+		client, getErr := m.GetSFTPClient(sessionId)
+		if getErr != nil {
+			return fmt.Errorf("%s; sftp unavailable: %w", reason, getErr)
+		}
+		sftpClient = client
+	}
+	for _, path := range paths {
+		if err := ensureContextActive(ctx); err != nil {
+			return err
+		}
+		if err := sftpClient.RemoveAll(path); err != nil {
+			return fmt.Errorf("%s; sftp remove failed: %w", reason, err)
+		}
+	}
+	return ensureContextActive(ctx)
+}
+
+// removeRemotePaths 删除远端路径（文件或目录），返回 nil 表示已确认删除：
+//
+//  1. Windows 远端（banner 判定）直接走 SFTP：cmd.exe 不解析 POSIX 单引号，
+//     `rm -rf 'C:\dir'` 里的单引号会变成路径字面量的一部分——要么静默成功
+//     （-f 让不存在的路径被忽略），要么把路径里的 & | 当成命令分隔符（注入风险）。
+//  2. 其它远端先走 rm -rf（长超时通道，可被 ctx 取消），再用 SFTP Lstat 复核：
+//     退出码 0 但目标仍在（自定义 shell、rm 别名、指标不一的实现）时回退 SFTP。
+//  3. rm 失败但属于「没有 shell/没有 rm」时同样回退；取消/超时直接返回，
+//     不再进入不可中断的 RemoveAll。
+func (m *SSHManager) removeRemotePaths(ctx context.Context, sessionId string, client *ssh.Client, sftpClient *sftp.Client, cmd string, paths []string, windowsRemote bool) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	if windowsRemote {
+		log.Printf("[ssh] 远端是 Windows OpenSSH，跳过 POSIX shell 删除直接用 SFTP: %s", paths[0])
+		return m.removePathsViaSFTP(ctx, sessionId, sftpClient, paths, "windows remote: skip POSIX shell delete")
+	}
+
+	_, rmErr := m.executeLongCmdWithClientContext(ctx, client, cmd)
+	if rmErr == nil {
+		removed, verifiable := remotePathRemoved(m.sftpClientForVerify(sessionId, sftpClient), paths[0])
+		if !verifiable || removed {
+			return ensureContextActive(ctx)
+		}
+		log.Printf("[ssh] rm -rf 退出码为 0 但目标仍存在（远端 shell 可能不解析 POSIX 引号），回退 SFTP: %s", paths[0])
+		return m.removePathsViaSFTP(ctx, sessionId, sftpClient, paths, "rm -rf reported success but target still exists")
 	}
 	// 取消/超时说明用户已放弃或链路异常：不能再用无超时、无法中断的 SFTP
 	// RemoveAll 继续删除（既违背取消语义，也可能永久挂起）。
@@ -908,47 +1007,48 @@ func (m *SSHManager) DeleteItemContext(ctx context.Context, sessionId string, pa
 	if !rmUnavailableForFallback(rmErr) {
 		return fmt.Errorf("rm -rf failed: %w", rmErr)
 	}
-	if sftpClient == nil {
-		// 极少数服务器禁用了 shell/rm，回退前兜底取一次 SFTP 客户端。
-		sftpClient, err = m.GetSFTPClient(sessionId)
-		if err != nil {
-			return fmt.Errorf("rm -rf failed: %v; sftp fallback unavailable: %w", rmErr, err)
-		}
-	}
-	if err := sftpClient.RemoveAll(path); err != nil {
-		return fmt.Errorf("rm -rf failed: %v; sftp fallback failed: %w", rmErr, err)
-	}
-	return ensureContextActive(ctx)
+	return m.removePathsViaSFTP(ctx, sessionId, sftpClient, paths, fmt.Sprintf("rm -rf failed: %v", rmErr))
+}
+
+// rmUnavailableMarkers 是「命令根本没跑起来 / 目标系统没有 rm」的错误文本特征。
+// 这类失败不能只看退出码：Windows cmd 报 1（内部 ERRORLEVEL 才是 9009）、
+// PowerShell 报 1，都不在 POSIX 的 126/127 里；受限 shell 和 channel 被拒更是
+// 连命令都没执行。
+var rmUnavailableMarkers = []string{
+	"open failed", // 服务器禁用 shell channel / MaxSessions 满
+	"administratively prohibited",
+	"exec request failed", // 受限 shell（scponly 等）拒绝 exec
+	"shell request failed",
+	"command not found",
+	"not recognized as an internal or external command", // Windows cmd
+	"不是内部或外部命令",                                         // Windows cmd（中文）
+	"commandnotfoundexception",                          // Windows PowerShell
+	"parameter cannot be found",                         // Windows PowerShell（-rf 不是合法参数）
+	"namedparameternotfound",                            // 同上，部分 PowerShell 宿主会带 FullyQualifiedErrorId
+	"找不到与参数名称",                                          // 同上（中文 PowerShell）
 }
 
 // rmUnavailableForFallback 判断 rm -rf 失败是否属于「远端没有可用 shell / 没有 rm」。
 // 只有这类错误才值得退回 SFTP 逐项删除；超时、权限、磁盘错误、取消都必须直接
 // 返回，避免把用户取消变成「继续删」。
+//
+// 判定顺序很关键：先看错误文本，再看退出码。因为 Windows cmd/PowerShell 上
+// `rm -rf` 的退出码是 1（不是 126/127），如果先按 ExitError 分流，后面的文本标记
+// 永远走不到，Windows 服务器上就会直接失败而不是回退 SFTP。
 func rmUnavailableForFallback(err error) bool {
 	if err == nil {
 		return false
+	}
+	text := strings.ToLower(err.Error())
+	for _, marker := range rmUnavailableMarkers {
+		if strings.Contains(text, marker) {
+			return true
+		}
 	}
 	var exitErr *ssh.ExitError
 	if errors.As(err, &exitErr) {
 		switch exitErr.ExitStatus() {
 		case 126, 127: // 不可执行 / 命令不存在
-			return true
-		}
-		return false
-	}
-	text := strings.ToLower(err.Error())
-	for _, marker := range []string{
-		"open failed", // 服务器禁用 shell channel / MaxSessions 满
-		"administratively prohibited",
-		"exec request failed", // 受限 shell（scponly 等）拒绝 exec
-		"shell request failed",
-		"command not found",
-		"not recognized as an internal or external command", // Windows cmd
-		"不是内部或外部命令",
-		"commandnotfoundexception", // Windows PowerShell
-		"parameter cannot be found",
-	} {
-		if strings.Contains(text, marker) {
 			return true
 		}
 	}
@@ -980,12 +1080,11 @@ func (m *SSHManager) DeleteItemShellContext(ctx context.Context, sessionId strin
 		}
 		return sftpClient.RemoveAll(path)
 	}
-	client, _, err := m.GetClientEntry(sessionId)
+	client, sftpClient, err := m.GetClientEntry(sessionId)
 	if err != nil {
 		return err
 	}
-	_, err = m.executeLongCmdWithClientContext(ctx, client, rmRfCmd(path))
-	return err
+	return m.removeRemotePaths(ctx, sessionId, client, sftpClient, rmRfCmd(path), []string{path}, isWindowsSSHServer(client))
 }
 
 const (
@@ -1055,15 +1154,18 @@ func (m *SSHManager) BatchDeleteItemShellContext(ctx context.Context, sessionId 
 		}
 		return firstErr
 	}
-	client, _, err := m.GetClientEntry(sessionId)
+	client, sftpClient, err := m.GetClientEntry(sessionId)
 	if err != nil {
 		return err
 	}
+	windowsRemote := isWindowsSSHServer(client)
 	for _, batch := range splitBatchDeletePaths(safePaths) {
 		if err := ensureContextActive(ctx); err != nil {
 			return err
 		}
-		if _, err := m.executeLongCmdWithClientContext(ctx, client, batchRmRfCmd(batch)); err != nil {
+		// 每个 batch 一条 rm -rf；复核只看 batch 里第一条：静默失败是「整条命令
+		// 没生效」（shell 不解析引号），与具体路径无关，全量 Lstat 太重。
+		if err := m.removeRemotePaths(ctx, sessionId, client, sftpClient, batchRmRfCmd(batch), batch, windowsRemote); err != nil {
 			return err
 		}
 	}

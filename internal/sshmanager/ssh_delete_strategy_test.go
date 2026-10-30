@@ -6,12 +6,18 @@ import (
 	"crypto/rand"
 	"errors"
 	"net"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
+
+	"lumeterm/internal/localsftp"
 )
 
 // 本文件回归「远端删除目录优先走 shell rm -rf」的策略。
@@ -43,6 +49,14 @@ func (r *recordedExec) all() []string {
 
 // newRecordingSSHClient 启动一个会记录 exec 命令、按固定 exit status 回包的假 SSH 服务端。
 func newRecordingSSHClient(t *testing.T, exitStatus uint32) (*ssh.Client, *recordedExec) {
+	t.Helper()
+	return newRecordingSSHClientWithStderr(t, exitStatus, "")
+}
+
+// newRecordingSSHClientWithStderr 同上，但会在回 exit-status 前先写一段 stderr。
+// 用来覆盖「错误被 fmt.Errorf("%w: %s", err, stderr) 包装后按文本判定」的路径
+// （Windows cmd/PowerShell 上 rm 缺失时退出码是 1，不是 126/127）。
+func newRecordingSSHClientWithStderr(t *testing.T, exitStatus uint32, stderr string) (*ssh.Client, *recordedExec) {
 	t.Helper()
 
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
@@ -100,6 +114,9 @@ func newRecordingSSHClient(t *testing.T, exitStatus uint32) (*ssh.Client, *recor
 							recorder.add(payload.Command)
 							if request.WantReply {
 								_ = request.Reply(true, nil)
+							}
+							if stderr != "" {
+								_, _ = channel.Stderr().Write([]byte(stderr + "\n"))
 							}
 							_, _ = channel.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{exitStatus}))
 							_ = channel.Close()
@@ -176,7 +193,7 @@ func TestDeleteItemContextFallsBackWhenRmMissing(t *testing.T) {
 	if err == nil {
 		t.Fatal("shell 删除失败且无 SFTP 可用时应返回错误")
 	}
-	if !strings.Contains(err.Error(), "rm -rf failed") || !strings.Contains(err.Error(), "sftp fallback unavailable") {
+	if !strings.Contains(err.Error(), "rm -rf failed") || !strings.Contains(err.Error(), "sftp unavailable") {
 		t.Fatalf("rm 不存在时应尝试 SFTP 回退: %v", err)
 	}
 	if len(recorder.all()) != 1 {
@@ -199,6 +216,27 @@ func TestDeleteItemContextDoesNotFallbackOnGenericShellFailure(t *testing.T) {
 	}
 	if len(recorder.all()) != 1 {
 		t.Fatalf("只应尝试一次 shell 删除，实际命令: %v", recorder.all())
+	}
+}
+
+// TestDeleteItemContextFallsBackOnWindowsRmMissing 回归 Windows：cmd.exe 里没有 rm，
+// 退出码是 1（不是 POSIX 的 127），stderr 带 "is not recognized..."。
+// 判定必须先看错误文本，否则这条回退分支永远走不到，Windows 服务器上目录删除
+// 会直接失败而不是退回 SFTP。
+func TestDeleteItemContextFallsBackOnWindowsRmMissing(t *testing.T) {
+	client, recorder := newRecordingSSHClientWithStderr(t, 1,
+		"'rm' is not recognized as an internal or external command,\r\noperable program or batch file.")
+	manager := newDeleteStrategyManager(t, client)
+
+	err := manager.DeleteItemContext(context.Background(), "session-1", "/tmp/big-dir", true)
+	if err == nil {
+		t.Fatal("shell 删除失败且无 SFTP 可用时应返回错误")
+	}
+	if !strings.Contains(err.Error(), "sftp unavailable") {
+		t.Fatalf("Windows cmd 上 rm 缺失（exit 1）应触发 SFTP 回退: %v", err)
+	}
+	if len(recorder.all()) != 1 {
+		t.Fatalf("应先尝试一次 shell 删除，实际命令: %v", recorder.all())
 	}
 }
 
@@ -232,6 +270,7 @@ func TestRmUnavailableForFallbackClassification(t *testing.T) {
 		{"restricted-shell", errors.New("ssh: exec request failed"), true},
 		{"windows-cmd", errors.New("'rm' is not recognized as an internal or external command"), true},
 		{"powershell", errors.New("The term 'rm' is not recognized as a name. CommandNotFoundException"), true},
+		{"powershell-param-zh", errors.New("Remove-Item : 找不到与参数名称“rf”匹配的参数。"), true},
 		{"permission-denied", errors.New("rm: cannot remove '/x': Permission denied"), false},
 		{"timeout", errors.New("command timed out after 30m0s"), false},
 		{"canceled", context.Canceled, false},
@@ -242,5 +281,135 @@ func TestRmUnavailableForFallbackClassification(t *testing.T) {
 				t.Fatalf("rmUnavailableForFallback(%v)=%v, want %v", tc.err, got, tc.want)
 			}
 		})
+	}
+}
+
+// localPathToSFTPPath 把本机路径转成 localsftp 测试服务认的 SFTP 路径，
+// 映射规则与 localsftp.WindowsPathMapper 保持一致。
+func localPathToSFTPPath(p string) string {
+	if runtime.GOOS != "windows" {
+		return p
+	}
+	slash := filepath.ToSlash(p)
+	if len(slash) >= 2 && slash[1] == ':' {
+		return "/" + strings.ToLower(slash[:1]) + slash[2:]
+	}
+	return "/" + strings.TrimPrefix(slash, "/")
+}
+
+// newLocalSFTPForTest 起一个 localsftp 测试服务，返回直接操作真实磁盘的 SFTP 客户端，
+// 用来验证「shell 删除没生效后回退 SFTP」这条路径真的能把东西删掉。
+func newLocalSFTPForTest(t *testing.T) *sftp.Client {
+	t.Helper()
+	server, sshClient, sftpClient, err := localsftp.Start(localsftp.WindowsPathMapper(), localsftp.ListRoot)
+	if err != nil {
+		t.Fatalf("启动本地 SFTP 测试服务失败: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = sftpClient.Close()
+		_ = sshClient.Close()
+		_ = server.Close()
+	})
+	return sftpClient
+}
+
+// newSilentRmManager 构造一个 manager：exec 永远成功返回（模拟 Windows cmd 下
+// `rm -rf 'C:\dir'` 的静默成功），SFTP 指向真实的本地磁盘。
+func newSilentRmManager(t *testing.T) (*SSHManager, *recordedExec) {
+	t.Helper()
+	sshClient, recorder := newRecordingSSHClient(t, 0)
+	manager := NewSSHManager()
+	manager.clients["conn-1"] = &sshClientEntry{Client: sshClient, SFTP: newLocalSFTPForTest(t)}
+	manager.sessions["session-1"] = &SessionData{ConnKey: "conn-1"}
+	return manager, recorder
+}
+
+func prepareDeleteTarget(t *testing.T) (localPath string, remotePath string) {
+	t.Helper()
+	localPath = filepath.Join(t.TempDir(), "gone")
+	if err := os.MkdirAll(filepath.Join(localPath, "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(localPath, "nested", "f.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return localPath, localPathToSFTPPath(localPath)
+}
+
+// TestDeleteItemContextFallsBackWhenRmSilentlySucceeds 回归 Windows coreutils 场景：
+// cmd.exe 不解析 POSIX 单引号，`rm -rf 'C:\dir'` 拿到的是带引号的字面量路径，
+// -f 让它「静默成功」（退出码 0、什么都没删）。只靠退出码/错误文本发现不了，
+// 必须用 SFTP 复核目标是否仍在，再回退 RemoveAll。
+func TestDeleteItemContextFallsBackWhenRmSilentlySucceeds(t *testing.T) {
+	manager, recorder := newSilentRmManager(t)
+	localPath, remotePath := prepareDeleteTarget(t)
+
+	if err := manager.DeleteItemContext(context.Background(), "session-1", remotePath, true); err != nil {
+		t.Fatalf("rm 静默成功时应回退 SFTP 删除: %v", err)
+	}
+	if _, err := os.Stat(localPath); !os.IsNotExist(err) {
+		t.Fatalf("目标目录应已被删除，stat=%v", err)
+	}
+	if len(recorder.all()) != 1 {
+		t.Fatalf("应先尝试一次 rm -rf，实际: %v", recorder.all())
+	}
+}
+
+// TestDeleteItemShellContextFallsBackWhenRmSilentlySucceeds 验证文件管理器实际走的
+// 删除入口（DeleteItemShell）也有同样的复核/回退，而不是只修了 DeleteItemContext。
+func TestDeleteItemShellContextFallsBackWhenRmSilentlySucceeds(t *testing.T) {
+	manager, recorder := newSilentRmManager(t)
+	localPath, remotePath := prepareDeleteTarget(t)
+
+	if err := manager.DeleteItemShellContext(context.Background(), "session-1", remotePath); err != nil {
+		t.Fatalf("rm 静默成功时应回退 SFTP 删除: %v", err)
+	}
+	if _, err := os.Stat(localPath); !os.IsNotExist(err) {
+		t.Fatalf("目标目录应已被删除，stat=%v", err)
+	}
+	if len(recorder.all()) != 1 {
+		t.Fatalf("应先尝试一次 rm -rf，实际: %v", recorder.all())
+	}
+}
+
+// TestRemoveRemotePathsSkipsShellOnWindowsRemote 验证 banner 判定为 Windows 时
+// 完全不执行 POSIX shell 命令：cmd 下单引号会失效，路径里的 & | 还会被当成
+// 命令分隔符（注入风险），所以直接走 SFTP。
+func TestRemoveRemotePathsSkipsShellOnWindowsRemote(t *testing.T) {
+	manager, recorder := newSilentRmManager(t)
+	localPath, remotePath := prepareDeleteTarget(t)
+	client, sftpClient, err := manager.GetClientEntry("session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = manager.removeRemotePaths(context.Background(), "session-1", client, sftpClient, rmRfCmd(remotePath), []string{remotePath}, true)
+	if err != nil {
+		t.Fatalf("Windows 远端应直接走 SFTP 删除: %v", err)
+	}
+	if _, statErr := os.Stat(localPath); !os.IsNotExist(statErr) {
+		t.Fatalf("目标目录应已被删除，stat=%v", statErr)
+	}
+	if commands := recorder.all(); len(commands) != 0 {
+		t.Fatalf("Windows 远端不应执行 shell 命令，实际: %v", commands)
+	}
+}
+
+// TestIsWindowsServerVersion 覆盖 Windows OpenSSH 的 banner 判定。
+func TestIsWindowsServerVersion(t *testing.T) {
+	cases := []struct {
+		version string
+		want    bool
+	}{
+		{"SSH-2.0-OpenSSH_for_Windows_9.5", true},
+		{"SSH-2.0-OpenSSH_for_Windows_8.6", true},
+		{"SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13", false},
+		{"SSH-2.0-dropbear_2022.83", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		if got := isWindowsServerVersion([]byte(tc.version)); got != tc.want {
+			t.Fatalf("isWindowsServerVersion(%q)=%v, want %v", tc.version, got, tc.want)
+		}
 	}
 }

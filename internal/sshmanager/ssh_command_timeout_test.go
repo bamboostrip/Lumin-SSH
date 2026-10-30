@@ -27,6 +27,15 @@ import (
 // newSlowExecSSHClient 启动一个只会「收 exec 请求 → 等 delay → 回 exit-status 0」的假 SSH 服务端。
 func newSlowExecSSHClient(t *testing.T, delay time.Duration) *ssh.Client {
 	t.Helper()
+	client, _ := newSlowExecSSHClientWithSignalLog(t, delay)
+	return client
+}
+
+// newSlowExecSSHClientWithSignalLog 同上，但额外记录 exec 之后收到的 signal 请求，
+// 用来验证「取消时会向远端进程组发 SIGTERM」，而不是只关 channel 把命令丢在远端继续跑。
+func newSlowExecSSHClientWithSignalLog(t *testing.T, delay time.Duration) (*ssh.Client, <-chan string) {
+	t.Helper()
+	signalLog := make(chan string, 4)
 
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -72,18 +81,30 @@ func newSlowExecSSHClient(t *testing.T, delay time.Duration) *ssh.Client {
 					go func() {
 						defer channel.Close()
 						for request := range channelRequests {
-							if request.Type != "exec" {
+							switch request.Type {
+							case "exec":
+								if request.WantReply {
+									_ = request.Reply(true, nil)
+								}
+								// 命令开始执行：模拟一个会跑 delay 的远端任务。
+								go func() {
+									time.Sleep(delay)
+									_, _ = channel.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{0}))
+									_ = channel.Close()
+								}()
+							case "signal":
+								// RFC 4254 §6.9：取消时客户端会先发 signal（wantReply=false）。
+								var payload struct{ Signal string }
+								_ = ssh.Unmarshal(request.Payload, &payload)
+								select {
+								case signalLog <- payload.Signal:
+								default:
+								}
+							default:
 								if request.WantReply {
 									_ = request.Reply(false, nil)
 								}
-								continue
 							}
-							if request.WantReply {
-								_ = request.Reply(true, nil)
-							}
-							time.Sleep(delay)
-							_, _ = channel.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{0}))
-							return
 						}
 					}()
 				}
@@ -120,7 +141,7 @@ func newSlowExecSSHClient(t *testing.T, delay time.Duration) *ssh.Client {
 			t.Error("假 SSH 服务端未退出")
 		}
 	})
-	return client
+	return client, signalLog
 }
 
 // TestRemoteCommandTimeoutPolicy 锁住「短命令 30s、长命令 30min」这条策略，
@@ -190,5 +211,29 @@ func TestExecuteLongCmdWithClientContextStillCancellable(t *testing.T) {
 	}
 	if elapsed >= 5*time.Second {
 		t.Fatalf("ctx 取消未生效，等待了 %v", elapsed)
+	}
+}
+
+// TestCancelSendsSIGTERMToRemoteCommand 回归「取消只关 channel，远端 tar/rm 继续跑」：
+// 取消/超时必须先向远端发 signal（SIGTERM），OpenSSH 对非受限会话是 killpg，
+// 能把 tar/unzip/rm 这些孙进程一起停住；只关 channel 不杀进程。
+func TestCancelSendsSIGTERMToRemoteCommand(t *testing.T) {
+	client, signals := newSlowExecSSHClientWithSignalLog(t, 5*time.Second)
+	manager := NewSSHManager()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+
+	_, err := manager.ExecuteLongCmdWithClientContext(ctx, client, "slow-command")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("ctx 到期应返回 DeadlineExceeded，实际: %v", err)
+	}
+	select {
+	case sig := <-signals:
+		if sig != "TERM" {
+			t.Fatalf("取消时应发送 SIGTERM，实际发送 %q", sig)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("取消时未向远端发送 signal 请求，远端进程会继续执行到结束")
 	}
 }

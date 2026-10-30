@@ -11,8 +11,11 @@ import (
 // 同步等待的远端长操作提供取消入口。
 //
 // 背景：这些操作以前用 context.Background() + 30min 超时，用户点错大目录只能干等。
-// 前端给每次操作生成 opID，经 Wails binding 传入；取消时调用 AbortFileOperation(opID)，
-// ctx 取消会关闭对应的远端 session（tar/unzip/rm 立即终止）。
+// 前端给每次操作生成 opID，经 Wails binding 传入；取消时调用 AbortFileOperation(opID)。
+// 取消是 best-effort：先向远端进程组发 SIGTERM 并最多等 remoteCmdCancelGrace，再关闭
+// session。OpenSSH 对非受限会话是用 killpg 终止整组（tar/unzip/rm 会一起停），但
+// ForceCommand/subsystem 会话会拒绝 signal，非 OpenSSH 服务端和 Windows 远端可能
+// 直接忽略，因此远端仍有可能继续执行到结束（见 docs/TIMEOUT-POLICY.md）。
 
 // fileOperation 表示一个在途的可取消文件操作。
 type fileOperation struct {

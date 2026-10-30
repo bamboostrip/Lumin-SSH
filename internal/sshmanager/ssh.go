@@ -1531,6 +1531,36 @@ func (m *SSHManager) waitForCommandChannel(ctx context.Context, client *ssh.Clie
 // 这个默认值，改走 ExecuteLongCmdWithClientContext（remoteCmdLongTimeout）。
 const remoteCmdShortTimeout = 30 * time.Second
 
+// remoteCmdCancelGrace 是取消/超时后等待远端进程退出的上限。
+//
+// 为什么需要：Session.Close() 只是发一个 SSH_MSG_CHANNEL_CLOSE（x/crypto 的
+// channel.Close() 是 fire-and-forget，不等对端确认），而 OpenSSH 的
+// session_close_by_channel() 在「子进程还活着」时只 detach、不 kill。也就是说
+// 无 PTY 的 exec 会话里，tar/rm/unzip 这些进程在关闭 channel 后会继续跑。
+// RFC 4254 §6.9 的 signal 请求在 OpenSSH 上是 killpg(pid, sig)，能带走整组
+// 子孙进程，所以取消时先发 SIGTERM，再等这么久让它真正退出；进程不响应
+// （非 OpenSSH 服务端、Windows cmd/PowerShell、ForceCommand 受限会话等）时
+// 才退回关闭 channel，行为与旧实现一致。
+const remoteCmdCancelGrace = time.Second
+
+// terminateRemoteCommand 尽力终止远端命令所在的进程组，并在 grace 内等待其退出。
+//
+// 这是 best-effort：Signal 以 wantReply=false 发送，拿不到服务端是否执行的确认；
+// ForceCommand/subsystem 会话会被 sshd 直接拒绝；调用方仍应把它当作「可能没停住」
+// 处理（返回的仍应是 ctx 错误，而不是命令执行结果）。
+func terminateRemoteCommand(session *ssh.Session, exited <-chan error) {
+	if session == nil {
+		return
+	}
+	_ = session.Signal(ssh.SIGTERM)
+	timer := time.NewTimer(remoteCmdCancelGrace)
+	defer timer.Stop()
+	select {
+	case <-exited:
+	case <-timer.C:
+	}
+}
+
 func (m *SSHManager) ExecuteCmdWithClientContext(ctx context.Context, client *ssh.Client, cmd string) (string, error) {
 	return m.ExecuteCmdWithClientContextTimeout(ctx, client, cmd, remoteCmdShortTimeout)
 }
@@ -1627,6 +1657,7 @@ func runCommandWithSessionDeadline(ctx context.Context, session *ssh.Session, cm
 
 	remaining := time.Until(deadline)
 	if remaining <= 0 {
+		terminateRemoteCommand(session, errCh)
 		go session.Close()
 		return "", fmt.Errorf("command timed out after %v", timeout)
 	}
@@ -1652,9 +1683,11 @@ func runCommandWithSessionDeadline(ctx context.Context, session *ssh.Session, cm
 		}
 		return stdout, err
 	case <-ctxDone:
+		terminateRemoteCommand(session, errCh)
 		go session.Close()
 		return "", ctx.Err()
 	case <-timer.C:
+		terminateRemoteCommand(session, errCh)
 		go session.Close()
 		return "", fmt.Errorf("command timed out after %v", timeout)
 	}
